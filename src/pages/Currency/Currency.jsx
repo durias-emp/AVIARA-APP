@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { BackButton } from '../../components/Shell'
 import { get, put } from '../../lib/db'
+import { usePilotProfile } from '../../context/PilotProfile'
 import {
   FAR,
   calendarMonthExpiry, daysCurrencyExpiry, statusFromExpiry,
@@ -620,11 +621,11 @@ function ImValidCard({ data, onChange, warnDays }) {
                     <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: 'right', letterSpacing: '0.3px' }}>UNDER 40</div>
                     <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: 'right', letterSpacing: '0.3px' }}>40 +</div>
                     {info.tiers.map(t => (
-                      <>
-                        <div key={t.label + 'l'} style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t.label}</div>
-                        <div key={t.label + 'u'} style={{ fontSize: 12, color: 'var(--text)', textAlign: 'right', fontWeight: 500 }}>{t.u40}</div>
-                        <div key={t.label + 'o'} style={{ fontSize: 12, color: 'var(--text)', textAlign: 'right', fontWeight: 500 }}>{t.o40}</div>
-                      </>
+                      <Fragment key={t.label}>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t.label}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text)', textAlign: 'right', fontWeight: 500 }}>{t.u40}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text)', textAlign: 'right', fontWeight: 500 }}>{t.o40}</div>
+                      </Fragment>
                     ))}
                   </div>
                 </div>
@@ -866,29 +867,46 @@ function ImAirworthyCard({ data, onChange, warnDays }) {
 // Root — Currency page
 // ---------------------------------------------------------------------------
 export default function Currency() {
+  const { profile: pilotProfile } = usePilotProfile()
   const [data, setData] = useState({})
   const [warnDays] = useState(WARN_DAYS_DEFAULT)
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     get('currency', 'profile').then(saved => {
-      if (saved) setData(saved)
-      setLoaded(true)
-    })
-    // IM SAFE resets each session — clear safe flags on fresh load
-    get('currency', 'profile').then(saved => {
-      if (saved?.safe) {
-        const reset = { ...saved, safe: {} }
-        put('currency', { ...reset, id: 'profile' })
-        setData(reset)
+      const base = saved ?? {}
+      // Onboarding stores medClass as "1st"/"2nd"/"3rd"; Currency expects numeric 1/2/3
+      const toNumericClass = v => {
+        if (v === 1 || v === 2 || v === 3) return v
+        return { '1st': 1, '2nd': 2, '3rd': 3 }[v] ?? null
       }
+      // Merge pilot profile fields as defaults — only if not already set locally
+      const merged = {
+        ...base,
+        medical: {
+          ...base.medical,
+          medClass: toNumericClass(base.medical?.medClass ?? pilotProfile?.medClass),
+          dob:      base.medical?.dob      || pilotProfile?.dob      || '',
+          examDate: base.medical?.examDate || pilotProfile?.medDate  || '',
+        },
+        current: {
+          ...base.current,
+          flightReviewDate: base.current?.flightReviewDate || pilotProfile?.flightReview?.completionDate || '',
+        },
+      }
+      // Clear session-only safe flags
+      if (merged.safe) merged.safe = {}
+      setData(merged)
+      put('currency', { ...merged, id: 'profile' }).catch(() => {})
       setLoaded(true)
     })
-  }, [])
+  }, [pilotProfile])
 
   const handleChange = useCallback(newData => {
     setData(newData)
     put('currency', { ...newData, id: 'profile' }).catch(() => {})
+    // Sync key fields back to pilot profile
+    // (handled by user editing in Currency — pilot profile is the source of truth on first load)
   }, [])
 
   if (!loaded) return null

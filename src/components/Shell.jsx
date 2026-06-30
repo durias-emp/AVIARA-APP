@@ -8,11 +8,11 @@ function IconChevronLeft({ size = 20 }) {
   )
 }
 
-export function BackButton() {
+export function BackButton({ onBack }) {
   const navigate = useNavigate()
   return (
     <button
-      onClick={() => navigate('/')}
+      onClick={() => onBack ? onBack() : navigate('/')}
       style={{
         width: 36,
         height: 36,

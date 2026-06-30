@@ -1,0 +1,856 @@
+import { useState, useRef, useEffect } from 'react'
+import { usePilotProfile } from '../../context/PilotProfile'
+import { medicalExpiryRows, ageAt, fmtDate, calendarMonthExpiry, statusFromExpiry } from '../../lib/currency'
+import { TEMPLATES } from '../Aircraft/Aircraft'
+import { put } from '../../lib/db'
+import { loadWeather } from '../../lib/weather'
+
+const TOTAL = 6
+const CERTS  = ['Student', 'Private', 'Commercial', 'ATP']
+const MED_CLASSES = ['1st', '2nd', '3rd', 'BasicMed', 'None']
+
+const CERT_OPTIONS = {
+  Student: [
+    { key: 'trainingType', label: 'Type of training', options: ['Single Engine', 'Multi Engine'] },
+    { key: 'aircraftClass', label: 'Aircraft class',   options: ['Aeroplane Land', 'Aeroplane Sea', 'Helicopter'] },
+  ],
+  Private: [
+    { key: 'aircraftClass',  label: 'Class',        options: ['SEL', 'SES', 'MEL', 'MES', 'Rotorcraft'] },
+    { key: 'ratings',        label: 'Ratings',      options: ['Instrument'] },
+    { key: 'endorsements',   label: 'Endorsements', options: ['Aerobatic', 'Tailwheel'] },
+  ],
+  Commercial: [
+    { key: 'aircraftClass',  label: 'Class',        options: ['CASEL', 'CASES', 'CAMEL', 'Commercial Rotorcraft'] },
+    { key: 'ratings',        label: 'Ratings',      options: ['Instrument', 'CFI', 'CFII'] },
+    { key: 'endorsements',   label: 'Endorsements', options: ['Aerobatic', 'Tailwheel', 'High Performance', 'High Altitude', 'Complex', 'Spin Training'] },
+  ],
+  ATP: [
+    { key: 'endorsements',   label: 'Additional endorsements', options: ['Aerobatic', 'Tailwheel', 'High Performance', 'High Altitude', 'Complex', 'Spin Training'] },
+  ],
+}
+
+// ---------------------------------------------------------------------------
+// Shared primitives
+// ---------------------------------------------------------------------------
+
+function Label({ children }) {
+  return (
+    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5, letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+      {children}
+    </div>
+  )
+}
+
+function FakeInput({ children, muted }) {
+  return (
+    <div style={{
+      background: 'var(--bg-card-2)', borderRadius: 'var(--r-sm)',
+      padding: '11px 13px', fontSize: 15,
+      color: muted ? 'var(--text-tertiary)' : 'var(--text)',
+      border: '0.5px solid var(--border)',
+    }}>{children}</div>
+  )
+}
+
+function Field({ label, children }) {
+  return (
+    <div>
+      <Label>{label}</Label>
+      {children}
+    </div>
+  )
+}
+
+function TextInput({ label, value, onChange, placeholder, type = 'text' }) {
+  return (
+    <Field label={label}>
+      <input
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder ?? ''}
+        style={{
+          width: '100%', padding: '11px 13px', borderRadius: 'var(--r-sm)',
+          border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+          color: 'var(--text)', fontSize: 15, outline: 'none',
+          fontFamily: 'inherit',
+        }}
+      />
+    </Field>
+  )
+}
+
+function DateField({ label, value, onChange, placeholder }) {
+  return (
+    <Field label={label}>
+      <input
+        type="date"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          width: '100%', padding: '11px 13px', borderRadius: 'var(--r-sm)',
+          border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+          color: value ? 'var(--text)' : 'var(--text-tertiary)', fontSize: 15,
+          outline: 'none', fontFamily: 'inherit',
+        }}
+      />
+    </Field>
+  )
+}
+
+function MonthField({ label, value, onChange }) {
+  return (
+    <Field label={label}>
+      <input
+        type="month"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{
+          width: '100%', padding: '11px 13px', borderRadius: 'var(--r-sm)',
+          border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+          color: value ? 'var(--text)' : 'var(--text-tertiary)', fontSize: 15,
+          outline: 'none', fontFamily: 'inherit',
+        }}
+      />
+    </Field>
+  )
+}
+
+export function SegControl({ options, value, onChange }) {
+  const idx = options.indexOf(value)
+  const pct = 100 / options.length
+  return (
+    <div style={{ display: 'flex', background: 'var(--bg-card-2)', borderRadius: 'var(--r-sm)', padding: 3, position: 'relative' }}>
+      {idx >= 0 && (
+        <div style={{
+          position: 'absolute', top: 3, bottom: 3,
+          left: `calc(${idx * pct}% + 3px)`,
+          width: `calc(${pct}% - 6px)`,
+          background: 'var(--bg-card)', borderRadius: 6,
+          transition: 'left 0.22s cubic-bezier(0.34, 1.2, 0.64, 1)',
+          pointerEvents: 'none',
+        }} />
+      )}
+      {options.map(opt => (
+        <button key={opt} onClick={() => onChange(opt)} style={{
+          flex: 1, padding: '7px 4px', borderRadius: 6, border: 'none', cursor: 'pointer',
+          fontWeight: 600, fontSize: 13,
+          background: 'transparent',
+          color: value === opt ? 'var(--text)' : 'var(--text-secondary)',
+          fontFamily: 'inherit', position: 'relative', zIndex: 1,
+          transition: 'color 0.18s',
+        }}>{opt}</button>
+      ))}
+    </div>
+  )
+}
+
+function TagGrid({ options, selected, onToggle }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {options.map(opt => {
+        const on = selected.includes(opt)
+        return (
+          <button key={opt} onClick={() => onToggle(opt)} style={{
+            padding: '7px 14px', borderRadius: 20, border: `0.5px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+            background: on ? 'var(--accent-fg)' : 'transparent',
+            color: on ? 'var(--accent)' : 'var(--text-secondary)',
+            fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+          }}>{opt}</button>
+        )
+      })}
+    </div>
+  )
+}
+
+function NavButtons({ onBack, onNext, onSkip, nextLabel = 'Continue', step }) {
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {step > 1 && (
+          <button onClick={onBack} style={{
+            padding: '14px 18px', borderRadius: 'var(--r-md)', background: 'var(--bg-card-2)',
+            border: '0.5px solid var(--border)', color: 'var(--text-secondary)', fontSize: 20, cursor: 'pointer',
+          }}>←</button>
+        )}
+        <button onClick={onNext} style={{
+          flex: 1, padding: 14, borderRadius: 'var(--r-md)', background: 'var(--text)',
+          border: 'none', color: 'var(--bg)', fontSize: 16, fontWeight: 700, cursor: 'pointer',
+          fontFamily: 'inherit', letterSpacing: '-0.2px',
+        }}>{nextLabel}</button>
+      </div>
+      {onSkip && (
+        <div onClick={onSkip} style={{
+          textAlign: 'center', marginTop: 14, fontSize: 13,
+          color: 'var(--text-tertiary)', cursor: 'pointer',
+        }}>Skip for now</div>
+      )}
+    </div>
+  )
+}
+
+function ProgressDots({ step }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 32 }}>
+      {Array.from({ length: TOTAL }, (_, i) => {
+        const n = i + 1
+        const active = n === step
+        const done   = n < step
+        return (
+          <div key={n} style={{
+            height: 6, borderRadius: 3, transition: 'all 0.3s',
+            width: active ? 20 : 6,
+            background: (active || done) ? 'var(--text)' : 'var(--border)',
+            opacity: done ? 0.4 : 1,
+          }} />
+        )
+      })}
+    </div>
+  )
+}
+
+function StepHeader({ step, title, sub }) {
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 6 }}>
+        Step {step} of {TOTAL}
+      </div>
+      <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.4px', marginBottom: 6, lineHeight: 1.2 }}>
+        {title}
+      </div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{sub}</div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Step 1 — Pilot profile
+// ---------------------------------------------------------------------------
+
+function Step1({ draft, update, onNext }) {
+  function toggle(key, val) {
+    const list = draft[key] ?? []
+    update({ [key]: list.includes(val) ? list.filter(x => x !== val) : [...list, val] })
+  }
+
+  const groups = CERT_OPTIONS[draft.certificate] ?? []
+
+  return (
+    <div>
+      <StepHeader step={1} title="Your pilot profile" sub="Sets up your certificate, ratings, and drives age based currency calculations." />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <TextInput label="Full name" value={draft.name} onChange={v => update({ name: v })} placeholder="Your name" />
+        <DateField label="Date of birth" value={draft.dob} onChange={v => update({ dob: v })} />
+        <Field label="Certificate">
+          <SegControl options={CERTS} value={draft.certificate} onChange={v => update({ certificate: v, aircraftClass: [], ratings: [], endorsements: [], trainingType: [] })} />
+        </Field>
+        {groups.length > 0 && (
+          <div key={draft.certificate} style={{ display: 'flex', flexDirection: 'column', gap: 14, animation: 'slide-in-right 0.22s ease' }}>
+            {groups.map(group => (
+              <Field key={group.key + group.label} label={group.label}>
+                <TagGrid
+                  options={group.options}
+                  selected={draft[group.key] ?? []}
+                  onToggle={val => toggle(group.key, val)}
+                />
+              </Field>
+            ))}
+          </div>
+        )}
+      </div>
+      <NavButtons step={1} onNext={onNext} />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Step 2 — Medical
+// ---------------------------------------------------------------------------
+
+function medClassNum(cls) {
+  return cls === '1st' ? 1 : cls === '2nd' ? 2 : cls === '3rd' ? 3 : null
+}
+
+function Step2({ draft, update, onNext, onBack }) {
+  const classNum = medClassNum(draft.medClass)
+  const showPreview = classNum && draft.dob && draft.medDate
+
+  let rows = []
+  if (showPreview) {
+    const age = ageAt(draft.dob, draft.medDate)
+    const today = new Date()
+    rows = medicalExpiryRows(classNum, age).map(row => {
+      const expiry = calendarMonthExpiry(draft.medDate, row.months)
+      return { ...row, expiry, ok: expiry > today }
+    })
+  }
+
+  return (
+    <div>
+      <StepHeader step={2} title="Medical certificate" sub="Drives your medical validity card and expiry alerts." />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <Field label="Medical class">
+          <SegControl options={MED_CLASSES} value={draft.medClass} onChange={v => update({ medClass: v })} />
+        </Field>
+        {draft.medClass && draft.medClass !== 'None' && (
+          <>
+            <DateField label="Date of last exam" value={draft.medDate} onChange={v => update({ medDate: v })} />
+            {showPreview && (
+              <div style={{ background: 'var(--bg-card-2)', borderRadius: 'var(--r-md)', padding: '12px 14px', border: '0.5px solid var(--border)' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.4px', textTransform: 'uppercase', marginBottom: 10 }}>
+                  Expiry preview
+                </div>
+                {rows.map((row, i) => (
+                  <div key={i} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '8px 0',
+                    borderTop: i > 0 ? '0.5px solid var(--border)' : 'none',
+                  }}>
+                    <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{row.label}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: row.ok ? 'var(--ok)' : 'var(--warn)' }}>
+                      {fmtDate(row.expiry)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      <NavButtons step={2} onBack={onBack} onNext={onNext} />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Flight Review — config-driven (FAR 61.56)
+// Add new exceptions here without touching the component below.
+// ---------------------------------------------------------------------------
+
+const FLIGHT_REVIEW_OPTIONS = [
+  {
+    id: 'standard',
+    label: 'Standard Flight Review',
+    fields: [
+      { key: 'completionDate', label: 'Date completed', type: 'date' },
+    ],
+  },
+  {
+    id: 'practical_test',
+    label: 'Practical Test / Checkride',
+    fields: [
+      {
+        key: 'certificateType', label: 'Certificate or rating', type: 'select',
+        options: ['Private Pilot', 'Instrument Rating', 'Commercial Pilot', 'ATP', 'Type Rating', 'Other'],
+      },
+      { key: 'completionDate', label: 'Date passed', type: 'date' },
+    ],
+  },
+  {
+    id: 'wings',
+    label: 'FAA WINGS Program',
+    fields: [
+      {
+        key: 'phase', label: 'Phase completed', type: 'select',
+        options: ['Basic', 'Advanced', 'Master'],
+      },
+      { key: 'completionDate', label: 'Completion date', type: 'date' },
+    ],
+  },
+  {
+    id: 'cfi',
+    label: 'Flight Instructor Renewal',
+    fields: [
+      {
+        key: 'renewalMethod', label: 'Renewal method', type: 'select',
+        options: ['§61.197 Renewal', 'FIRC (§61.199)'],
+      },
+      { key: 'completionDate', label: 'Completion date', type: 'date' },
+    ],
+  },
+]
+
+function SelectField({ label, value, onChange, options }) {
+  return (
+    <Field label={label}>
+      <div style={{ position: 'relative' }}>
+        <select
+          value={value ?? ''}
+          onChange={e => onChange(e.target.value)}
+          style={{
+            width: '100%', padding: '11px 36px 11px 13px', borderRadius: 'var(--r-sm)',
+            border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+            color: value ? 'var(--text)' : 'var(--text-tertiary)', fontSize: 15,
+            outline: 'none', fontFamily: 'inherit', appearance: 'none', cursor: 'pointer',
+          }}
+        >
+          <option value="" disabled>Select…</option>
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+        <div style={{
+          position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)',
+          pointerEvents: 'none', color: 'var(--text-tertiary)', fontSize: 11,
+        }}>▼</div>
+      </div>
+    </Field>
+  )
+}
+
+export function FlightReviewSection({ value = {}, onChange }) {
+  const selectedOption = FLIGHT_REVIEW_OPTIONS.find(o => o.id === value.flightReviewType)
+
+  function setType(id) {
+    onChange({ flightReviewType: id, completionDate: '', certificateType: '', phase: '', renewalMethod: '' })
+  }
+
+  function setField(key, val) {
+    onChange({ ...value, [key]: val })
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+          <Label>Flight review basis</Label>
+          <a
+            href="https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.56"
+            target="_blank" rel="noreferrer"
+            style={{
+              fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)',
+              textDecoration: 'none', padding: '3px 8px', borderRadius: 20,
+              background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
+            }}
+          >FAR 61.56</a>
+        </div>
+        <div style={{ position: 'relative' }}>
+          <select
+            value={value.flightReviewType ?? ''}
+            onChange={e => setType(e.target.value)}
+            style={{
+              width: '100%', padding: '11px 36px 11px 13px', borderRadius: 'var(--r-sm)',
+              border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+              color: value.flightReviewType ? 'var(--text)' : 'var(--text-tertiary)', fontSize: 15,
+              outline: 'none', fontFamily: 'inherit', appearance: 'none', cursor: 'pointer',
+            }}
+          >
+            <option value="" disabled>Select…</option>
+            {FLIGHT_REVIEW_OPTIONS.map(o => (
+              <option key={o.id} value={o.id}>{o.label}</option>
+            ))}
+          </select>
+          <div style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-tertiary)', fontSize: 11 }}>▼</div>
+        </div>
+      </div>
+      {selectedOption && (
+        <div key={selectedOption.id} style={{ display: 'flex', flexDirection: 'column', gap: 14, animation: 'slide-in-right 0.22s ease' }}>
+          {selectedOption.fields.map(field => {
+            if (field.type === 'select') {
+              return (
+                <SelectField
+                  key={field.key}
+                  label={field.label}
+                  value={value[field.key] ?? ''}
+                  onChange={v => setField(field.key, v)}
+                  options={field.options}
+                />
+              )
+            }
+            const dateVal = value[field.key] ?? ''
+            const expiry = dateVal ? calendarMonthExpiry(dateVal, 24) : null
+            const { status } = expiry ? statusFromExpiry(expiry, 30) : { status: null }
+            const statusColor = status === 'valid' ? 'var(--ok)' : status === 'expiring' ? 'var(--warn)' : status === 'expired' ? '#ff453a' : null
+            const statusLabel = status === 'valid'
+              ? `Current, expires ${fmtDate(expiry)}`
+              : status === 'expiring'
+              ? `Expiring soon, ${fmtDate(expiry)}`
+              : status === 'expired'
+              ? `Expired ${fmtDate(expiry)}, flight review required`
+              : null
+            return (
+              <div key={field.key}>
+                <DateField
+                  label={field.label}
+                  value={dateVal}
+                  onChange={v => setField(field.key, v)}
+                />
+                {statusLabel && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                    <span style={{ position: 'relative', display: 'flex', width: 6, height: 6, flexShrink: 0 }}>
+                      <span style={{ position: 'absolute', width: '100%', height: '100%', borderRadius: '50%', background: statusColor, opacity: 0.75, animation: 'ping 1.2s cubic-bezier(0,0,0.2,1) infinite' }} />
+                      <span style={{ position: 'relative', width: 6, height: 6, borderRadius: '50%', background: statusColor }} />
+                    </span>
+                    <span style={{ fontSize: 11, color: statusColor, fontWeight: 600 }}>{statusLabel}</span>
+                    <a
+                      href="https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.56"
+                      target="_blank" rel="noreferrer"
+                      style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', textDecoration: 'none', padding: '2px 6px', borderRadius: 20, background: 'var(--bg-card-2)', border: '0.5px solid var(--border)', marginLeft: 'auto', flexShrink: 0 }}
+                    >24 mo FAR 61.56</a>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Step 3 — Currency baseline
+// ---------------------------------------------------------------------------
+
+function Step3({ draft, update, onNext, onBack, onSkip }) {
+  return (
+    <div>
+      <StepHeader step={3} title="Currency baseline" sub="Seed your currency tracker so it shows real status from day one." />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <FlightReviewSection
+          value={draft.flightReview ?? {}}
+          onChange={v => update({ flightReview: v })}
+        />
+      </div>
+      <NavButtons step={3} onBack={onBack} onNext={onNext} onSkip={onSkip} />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Step 4 — Aircraft
+// ---------------------------------------------------------------------------
+
+function AircraftHeroPicker({ selectedId, onSelect }) {
+  const [slideKey, setSlideKey] = useState(0)
+  const [slideDir, setSlideDir] = useState(1)
+  const [showArrows, setShowArrows] = useState(false)
+  const touchStartX = useRef(null)
+  const arrowTimer = useRef(null)
+
+  const currentIdx = TEMPLATES.findIndex(t => t.id === selectedId)
+  const idx = currentIdx >= 0 ? currentIdx : 0
+  const tpl = TEMPLATES[idx]
+
+  function flashArrows() {
+    setShowArrows(true)
+    clearTimeout(arrowTimer.current)
+    arrowTimer.current = setTimeout(() => setShowArrows(false), 1500)
+  }
+
+  function goTo(nextIdx) {
+    if (nextIdx < 0 || nextIdx >= TEMPLATES.length) return
+    setSlideDir(nextIdx > idx ? 1 : -1)
+    setSlideKey(k => k + 1)
+    onSelect(TEMPLATES[nextIdx])
+  }
+
+  function onTouchStart(e) { touchStartX.current = e.touches[0].clientX; flashArrows() }
+  function onTouchEnd(e) {
+    if (touchStartX.current === null) return
+    const dx = e.changedTouches[0].clientX - touchStartX.current
+    touchStartX.current = null
+    if (Math.abs(dx) < 40) return
+    goTo(idx + (dx < 0 ? 1 : -1))
+  }
+
+  return (
+    <div>
+      {/* Dots */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 8, opacity: showArrows ? 1 : 0.35, transition: 'opacity 0.3s ease' }}>
+        {TEMPLATES.map((t, i) => (
+          <div key={t.id} onClick={() => goTo(i)} style={{
+            width: i === idx ? 16 : 5, height: 5, borderRadius: 3,
+            background: i === idx ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.18)',
+            transition: 'width 0.2s, background 0.2s', cursor: 'pointer',
+          }} />
+        ))}
+      </div>
+
+      {/* Hero image */}
+      <div
+        onMouseEnter={() => setShowArrows(true)}
+        onMouseLeave={() => setShowArrows(false)}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        style={{ position: 'relative', width: '100%', height: 220, marginBottom: 0, overflow: 'hidden' }}
+      >
+        <img
+          key={slideKey}
+          src={tpl.image}
+          alt=""
+          style={{
+            width: '100%', height: '100%',
+            objectFit: 'contain', objectPosition: 'center bottom',
+            display: 'block', mixBlendMode: 'screen',
+            animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.3s cubic-bezier(0.25,0.46,0.45,0.94) both` : 'none',
+          }}
+        />
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '45%', background: 'linear-gradient(to bottom, transparent 0%, var(--bg) 100%)', pointerEvents: 'none' }} />
+
+        {/* Arrows */}
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 6px', opacity: showArrows ? 1 : 0, transition: 'opacity 0.4s ease', pointerEvents: showArrows ? 'auto' : 'none' }}>
+          <button onClick={() => goTo(idx - 1)} style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: idx === 0 ? 0.3 : 1 }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 12L6 8l4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+          <button onClick={() => goTo(idx + 1)} style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: idx === TEMPLATES.length - 1 ? 0.3 : 1 }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 12l4-4-4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Name + subtitle */}
+      <div key={tpl.id} style={{ textAlign: 'center', marginBottom: 6, animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.25s ease` : 'none' }}>
+        <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.4px', color: 'var(--text)' }}>{tpl.fullName}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{tpl.fuel?.type ?? tpl.fuel} · {tpl.category}</div>
+      </div>
+    </div>
+  )
+}
+
+function Step4({ draft, update, onNext, onBack, onSkip }) {
+  const selectedId = draft.aircraftTemplateId ?? TEMPLATES[0].id
+
+  function onSelect(tpl) {
+    const rawFuel = tpl.fuel?.type ?? tpl.fuel ?? ''
+    const fuelType = rawFuel.toLowerCase().includes('100') ? 'AVGAS 100LL' : 'JET-A'
+    const engineType = tpl.category === 'helicopter' || fuelType === 'JET-A' ? 'Turbine' : 'Piston'
+    update({ aircraftTemplateId: tpl.id, aircraftModel: tpl.fullName, fuelType, engineType })
+  }
+
+  return (
+    <div>
+      <StepHeader step={4} title="Primary aircraft" sub="Pre loads fuel type and engine defaults. V speeds and W&B you can fill in later." />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <AircraftHeroPicker selectedId={selectedId} onSelect={onSelect} />
+        <TextInput label="Tail number" value={draft.tailNumber ?? ''} onChange={v => update({ tailNumber: v })} placeholder="C-GXYZ or N12345" />
+        <Field label="Fuel type">
+          <SegControl options={['AVGAS 100LL', 'JET-A']} value={draft.fuelType ?? 'AVGAS 100LL'} onChange={v => update({ fuelType: v })} />
+        </Field>
+        <Field label="Engine type">
+          <SegControl options={['Piston', 'Turbine', 'Electric']} value={draft.engineType ?? 'Piston'} onChange={v => update({ engineType: v })} />
+        </Field>
+      </div>
+      <NavButtons step={4} onBack={onBack} onNext={onNext} onSkip={onSkip} />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Step 5 — Home base + preferences
+// ---------------------------------------------------------------------------
+
+export const UNIT_ROWS = [
+  { key: 'unitDistance',    label: 'Distance',       options: ['NM', 'SM', 'KM'],      default: 'NM' },
+  { key: 'unitSpeed',       label: 'Speed',          options: ['KT', 'MPH', 'KM/H'],  default: 'KT' },
+  { key: 'unitAltitude',    label: 'Altitude',       options: ['FT', 'M'],             default: 'FT' },
+  { key: 'unitWeight',      label: 'Weight',         options: ['LBS', 'KG'],           default: 'LBS' },
+  { key: 'unitFuelVolume',  label: 'Fuel volume',    options: ['USG', 'L', 'KG'],      default: 'USG' },
+  { key: 'unitTemperature', label: 'Temperature',    options: ['°C', '°F'],            default: '°C' },
+  { key: 'unitPressure',    label: 'Pressure',       options: ['inHg', 'hPa'],         default: 'inHg' },
+  { key: 'unitFuelBurn',    label: 'Fuel burn rate', options: ['GPH', 'LPH', 'KG/H'], default: 'GPH' },
+]
+
+function Step5({ draft, update, onNext, onBack }) {
+  const [airportStatus, setAirportStatus] = useState(null) // null | 'checking' | 'valid' | 'invalid'
+  const checkedRef = useRef('')
+
+  useEffect(() => {
+    const id = (draft.homeAirport ?? '').trim().toUpperCase()
+    if (id.length < 3) { setAirportStatus(null); return }
+    if (id === checkedRef.current) return
+
+    setAirportStatus('checking')
+    const timer = setTimeout(async () => {
+      checkedRef.current = id
+      try {
+        await loadWeather(id) // also caches METAR/TAF so it's ready on the Home page
+        setAirportStatus('valid')
+      } catch {
+        setAirportStatus('invalid')
+      }
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [draft.homeAirport])
+
+  const statusColor = airportStatus === 'valid' ? 'var(--ok)' : airportStatus === 'invalid' ? 'var(--danger)' : 'var(--text-tertiary)'
+  const statusLabel = airportStatus === 'checking' ? 'Checking airport…'
+    : airportStatus === 'valid' ? 'Airport found, weather ready'
+    : airportStatus === 'invalid' ? 'No weather data for this airport'
+    : null
+
+  return (
+    <div>
+      <StepHeader step={5} title="Home base" sub="Set your home airport and how you want units displayed across the app." />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div>
+          <TextInput
+            label="Home airport (ICAO)"
+            value={draft.homeAirport}
+            onChange={v => update({ homeAirport: v.toUpperCase() })}
+            placeholder="CYQB"
+          />
+          {statusLabel && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, paddingLeft: 2 }}>
+              {airportStatus === 'checking' ? (
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
+              ) : (
+                <span style={{ position: 'relative', display: 'flex', width: 6, height: 6, flexShrink: 0 }}>
+                  <span style={{ position: 'absolute', width: '100%', height: '100%', borderRadius: '50%', background: statusColor, opacity: 0.75, animation: 'ping 1.2s cubic-bezier(0,0,0.2,1) infinite' }} />
+                  <span style={{ position: 'relative', width: 6, height: 6, borderRadius: '50%', background: statusColor }} />
+                </span>
+              )}
+              <span style={{ fontSize: 11, color: statusColor, fontWeight: 600 }}>{statusLabel}</span>
+            </div>
+          )}
+        </div>
+
+        <div style={{ background: 'var(--bg-card)', border: '0.5px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
+          <div style={{ padding: '14px 16px 4px' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Units</span>
+          </div>
+          {UNIT_ROWS.map((row, i) => (
+            <div key={row.key} style={{
+              padding: '10px 16px',
+              borderBottom: 'none',
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, letterSpacing: '0.01em' }}>{row.label}</div>
+              <SegControl
+                options={row.options}
+                value={draft[row.key] ?? row.default}
+                onChange={v => update({ [row.key]: v })}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+      <NavButtons step={5} onBack={onBack} onNext={onNext} />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Step 6 — Summary
+// ---------------------------------------------------------------------------
+
+function SummaryRow({ label, value, color }) {
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      padding: '10px 14px',
+    }}>
+      <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{label}</span>
+      <span style={{ fontSize: 14, fontWeight: 600, color: color ?? 'var(--text)' }}>{value || '—'}</span>
+    </div>
+  )
+}
+
+function SummaryCard({ children }) {
+  return (
+    <div style={{ background: 'var(--bg-card-2)', borderRadius: 'var(--r-md)', border: '0.5px solid var(--border)', overflow: 'hidden', marginBottom: 12 }}>
+      {children}
+    </div>
+  )
+}
+
+function Step6({ draft, onBack, onDone }) {
+  const certLine = [draft.certificate, ...(draft.ratings ?? [])].filter(Boolean).join(' · ')
+
+  return (
+    <div>
+      <StepHeader step={6} title="Ready to fly" sub="Here's what we set up. You can edit any of this in the app at any time." />
+
+      <SummaryCard>
+        <SummaryRow label="Name" value={draft.name} />
+        <SummaryRow label="Certificate" value={certLine} />
+        <SummaryRow label="Home base" value={draft.homeAirport} />
+      </SummaryCard>
+
+      <SummaryCard>
+        <SummaryRow label="Medical" value={draft.medClass ? `${draft.medClass} Class` : 'Not set'} />
+        <SummaryRow label="Flight review" value={draft.flightReview?.completionDate ? fmtDate(draft.flightReview.completionDate) : 'Not set'} />
+      </SummaryCard>
+
+      {draft.tailNumber && (
+        <SummaryCard>
+          <SummaryRow label="Aircraft" value={`${draft.tailNumber}${draft.aircraftModel ? ` · ${draft.aircraftModel}` : ''}`} />
+            <SummaryRow label="Fuel" value={draft.fuelType ?? 'AVGAS 100LL'} />
+        </SummaryCard>
+      )}
+
+      <NavButtons step={6} onBack={onBack} onNext={onDone} nextLabel="Enter the app" />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Root — Onboarding
+// ---------------------------------------------------------------------------
+
+export default function Onboarding() {
+  const { profile, setProfile } = usePilotProfile()
+  const [step, setStep] = useState(1)
+  const [dir, setDir] = useState('forward')
+  const [draft, setDraft] = useState(profile ?? {})
+
+  function update(patch) {
+    setDraft(prev => ({ ...prev, ...patch }))
+  }
+
+  function next() { setDir('forward'); setStep(s => s + 1) }
+  function back() { setDir('back');    setStep(s => s - 1) }
+
+  async function finish() {
+    // Seed home airport so WeatherCard on the Home page finds it immediately
+    // (its METAR/TAF were already prefetched into the 'weather' store during Step 5)
+    if (draft.homeAirport) {
+      await put('settings', { key: 'homeAirport', value: draft.homeAirport.trim().toUpperCase() })
+    }
+
+    // Write selected aircraft template to aircraft store so Aircraft page loads it immediately
+    const tpl = TEMPLATES.find(t => t.id === draft.aircraftTemplateId) ?? TEMPLATES[0]
+    await put('aircraft', {
+      ...tpl,
+      id: 'profile',
+      registration: draft.tailNumber ?? '',
+      pilotName: draft.name ?? '',
+    })
+
+    // Seed currency store with onboarding data so Currency page shows correct status on first open
+    await put('currency', {
+      id: 'profile',
+      medClass:     draft.medClass ?? null,
+      dob:          draft.dob ?? '',
+      examDate:     draft.medDate ?? '',
+      flightReview: draft.flightReview?.completionDate ?? '',
+    })
+
+    // Flip onboardingComplete LAST — this triggers the route switch to Home,
+    // which mounts WeatherCard and reads 'settings'/homeAirport on mount.
+    const savedProfile = { ...draft, onboardingComplete: true }
+    await setProfile(savedProfile)
+  }
+
+  const anim = dir === 'forward' ? 'slide-in-right 0.28s ease' : 'slide-in-left 0.28s ease'
+
+  return (
+    <div style={{
+      minHeight: '100dvh', background: 'var(--bg)',
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+      overflow: 'hidden',
+    }}>
+      <div style={{ width: '100%', maxWidth: 480, padding: '48px 20px 40px' }}>
+        <ProgressDots step={step} />
+
+        <div key={step} style={{ animation: anim }}>
+          {step === 1 && <Step1 draft={draft} update={update} onNext={next} />}
+          {step === 2 && <Step2 draft={draft} update={update} onNext={next} onBack={back} />}
+          {step === 3 && <Step3 draft={draft} update={update} onNext={next} onBack={back} onSkip={next} />}
+          {step === 4 && <Step4 draft={draft} update={update} onNext={next} onBack={back} onSkip={next} />}
+          {step === 5 && <Step5 draft={draft} update={update} onNext={next} onBack={back} />}
+          {step === 6 && <Step6 draft={draft} onBack={back} onDone={finish} />}
+        </div>
+      </div>
+    </div>
+  )
+}

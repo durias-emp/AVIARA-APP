@@ -3,7 +3,7 @@ import { get, put } from '../../lib/db'
 import { BackButton } from '../../components/Shell'
 
 /* ── Aircraft library ────────────────────────────────────── */
-const TEMPLATES = [
+export const TEMPLATES = [
   // ── Fixed-wing ──────────────────────────────────────────
   {
     id: 'c152',
@@ -410,7 +410,7 @@ export default function Aircraft() {
           <Section title="V-Speeds (knots)">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <VSpeed label="Vs  Stall clean" value={profile.vspeeds?.vs ?? ''} onChange={v => patch('vspeeds', 'vs', v)} />
-              <VSpeed label="Vs0 Stall flaps" value={profile.vspeeds?.vs0 ?? ''} onChange={v => patch('vspeeds', 'vs0', v)} />
+              <VSpeed label="Vso Stall flaps" value={profile.vspeeds?.vs0 ?? ''} onChange={v => patch('vspeeds', 'vs0', v)} />
               <VSpeed label="Vx  Best angle" value={profile.vspeeds?.vx ?? ''} onChange={v => patch('vspeeds', 'vx', v)} />
               <VSpeed label="Vy  Best rate" value={profile.vspeeds?.vy ?? ''} onChange={v => patch('vspeeds', 'vy', v)} />
               <VSpeed label="Vg  Best glide" value={profile.vspeeds?.vg ?? ''} onChange={v => patch('vspeeds', 'vg', v)} />

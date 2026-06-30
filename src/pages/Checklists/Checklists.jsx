@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import FAA_CHARTS_DATA from '../../data/faa_charts.json'
 import { BackButton } from '../../components/Shell'
+import WBChecklistItem from './WBChecklistItem'
 import { get, put } from '../../lib/db'
 import { MapContainer, TileLayer, Marker, Polyline, Polygon, CircleMarker, Popup, useMap, Pane } from 'react-leaflet'
 import L from 'leaflet'
@@ -505,6 +506,7 @@ const CHECKLISTS = [
         title: 'PERFORMANCE',
         num: 2,
         items: [
+          { id: 'wb',         label: 'Weight & Balance', sub: 'CG envelope · Longitudinal & lateral', expand: 'wb' },
           { id: 'perf-da',    label: 'Density Altitude', sub: 'Pressure Alt · ISA Deviation · Performance Impact', expand: 'densityalt' },
           { id: 'perf-dist',  label: 'Takeoff / Landing / Accelerate-Stop Distances', sub: 'POH · Wind · Surface · Slope corrections', expand: 'perfdist' },
           { id: 'perf-cruise',label: 'Cruise Speed / Time / Fuel Required / Endurance', sub: 'GS · Winds Aloft · Fuel State · Go/No-Go', expand: 'cruise' },
@@ -627,90 +629,9 @@ function SubPills({ sub, isChecked }) {
 
 /* ── Root component ──────────────────────────────────────────── */
 export default function Checklists() {
-  const [active, setActive] = useState(null)
-
-  if (active) {
-    const cl = CHECKLISTS.find(c => c.id === active)
-    return <ChecklistDetail checklist={cl} onBack={() => setActive(null)} />
-  }
-  return <ChecklistList onSelect={setActive} />
+  return <ChecklistDetail checklist={CHECKLISTS[0]} />
 }
 
-/* ── List of checklists ──────────────────────────────────────── */
-function ChecklistList({ onSelect }) {
-  const [progress, setProgress] = useState({}) // { id: { done, total } }
-
-  useEffect(() => {
-    CHECKLISTS.forEach(async cl => {
-      const saved = await get('checklists', cl.id)
-      const total = allIds(cl).length
-      const done = saved ? saved.checked.length : 0
-      setProgress(p => ({ ...p, [cl.id]: { done, total } }))
-    })
-  }, [])
-
-  return (
-    <div style={{ paddingBottom: 32 }}>
-      <div style={{ padding: '20px 20px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <BackButton />
-        <h2 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)', fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif' }}>
-          Checklists
-        </h2>
-      </div>
-
-      <div style={{ padding: '20px 16px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {CHECKLISTS.map(cl => {
-          const p = progress[cl.id]
-          const pct = p ? p.done / p.total : 0
-          const done = p?.done ?? 0
-          const total = p?.total ?? allIds(cl).length
-          const complete = done === total && total > 0
-
-          return (
-            <button key={cl.id} onClick={() => onSelect(cl.id)} style={{
-              textAlign: 'left', padding: '16px', borderRadius: 'var(--r-lg)',
-              background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-              boxShadow: 'var(--shadow-sm)', cursor: 'pointer',
-              display: 'flex', flexDirection: 'column', gap: 10,
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.6px', color: 'var(--text-secondary)', marginBottom: 3 }}>
-                    {cl.tag}
-                  </div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.3px' }}>
-                    {cl.title}
-                  </div>
-                </div>
-                <div style={{
-                  fontSize: 13, fontWeight: 700,
-                  color: 'var(--text-secondary)',
-                  marginTop: 2,
-                }}>
-                  {complete ? '✓ Done' : `${done} / ${total}`}
-                </div>
-              </div>
-
-              {/* Progress bar */}
-              <div style={{ height: 4, borderRadius: 2, background: 'var(--bg-card-2)', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%', borderRadius: 2,
-                  background: 'var(--accent)',
-                  width: `${pct * 100}%`,
-                  transition: 'width 0.4s ease',
-                }} />
-              </div>
-
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                {cl.sections.length} sections · {total} items
-              </div>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
 
 /* ── Checklist detail — MTA Metro layout ────────────────────── */
 function ChecklistDetail({ checklist, onBack }) {
@@ -817,16 +738,7 @@ function ChecklistDetail({ checklist, onBack }) {
     <div style={{ paddingBottom: 64 }}>
       {/* Header */}
       <div style={{ padding: '20px 16px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button onClick={onBack} style={{
-          width: 36, height: 36, borderRadius: '50%',
-          border: '0.5px solid var(--border)', background: 'var(--bg-card)',
-          boxShadow: 'var(--shadow-md)', display: 'flex', alignItems: 'center',
-          justifyContent: 'center', cursor: 'pointer', color: 'var(--text)', flexShrink: 0,
-        }}>
-          <svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-            <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
+        <BackButton onBack={onBack} />
         <h2 style={{ flex: 1, fontSize: 22, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)' }}>
           {checklist.title}
         </h2>
@@ -3363,11 +3275,16 @@ function AltitudeItem({ item, isChecked, onToggle }) {
       }
       pts.push([waypoints[waypoints.length-1].lat, waypoints[waypoints.length-1].lon])
 
-      // OpenTopoData elevation (SRTM 30m, free, no key)
+      // Open-Elevation API (SRTM data, free, CORS-enabled)
       let elevations = []
       try {
-        const locStr = pts.map(([la, lo]) => `${la.toFixed(4)},${lo.toFixed(4)}`).join('|')
-        const res = await fetch(`https://api.opentopodata.org/v1/srtm30m?locations=${locStr}`, { signal: AbortSignal.timeout(8000) })
+        const locations = pts.map(([la, lo]) => ({ latitude: parseFloat(la.toFixed(4)), longitude: parseFloat(lo.toFixed(4)) }))
+        const res = await fetch('https://api.open-elevation.com/api/v1/lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ locations }),
+          signal: AbortSignal.timeout(8000),
+        })
         if (res.ok) {
           const d = await res.json()
           elevations = (d.results || []).map(r => r.elevation ?? 0)
@@ -6314,6 +6231,7 @@ function MetroItems({ items, checked, onToggle, depth }) {
 
         // Special expandable items
         const EXPAND_MAP = {
+          wb:         (props) => <WBChecklistItem {...props} ExpandableCard={ExpandableCard} />,
           metar:      MetarItem,
           altitude:   AltitudeItem,
           densityalt: DensityAltItem,

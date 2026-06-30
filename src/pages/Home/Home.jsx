@@ -21,7 +21,7 @@ function ModuleCard({ to, icon, label, desc, stat, statColor, badge }) {
         <img src={icon} width={28} height={28}
           style={{ objectFit: 'contain', flexShrink: 0, marginTop: 1, filter: 'var(--icon-filter)' }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {label}
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.35 }}>
@@ -68,7 +68,7 @@ export default function Home() {
     { id: 1, route: 'KMIA → KFXE', date: 'Jun 5,  2026', duration: '1h 05m', aircraft: 'N4723A' },
   ])
 
-  const CL_TOTAL = 16   // static: Flight Plan checklist has 16 items
+  const CL_TOTAL = 12   // static: Flight Plan checklist has 12 checkable items (incl. W&B)
 
   useEffect(() => {
     get('aircraft', 'profile').then(p => {
@@ -121,22 +121,14 @@ export default function Home() {
           </div>
         </div>
 
-        <Link to="/aircraft" style={{ textDecoration: 'none', flexShrink: 0 }}>
+        <Link to="/profile" style={{ textDecoration: 'none', flexShrink: 0 }}>
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '6px 12px', borderRadius: 20,
             background: 'var(--bg-card)', border: '0.5px solid var(--border)',
           }}>
-            <span style={{ position: 'relative', display: 'flex', width: 6, height: 6 }}>
-              <span style={{
-                position: 'absolute', width: '100%', height: '100%', borderRadius: '50%',
-                background: '#4ade80', opacity: 0.75,
-                animation: 'ping 1.2s cubic-bezier(0,0,0.2,1) infinite',
-              }} />
-              <span style={{ position: 'relative', width: 6, height: 6, borderRadius: '50%', background: '#4ade80' }} />
-            </span>
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.1px' }}>
-              {registration || 'Aircraft'}
+              Pilot
             </span>
           </div>
         </Link>
@@ -196,7 +188,7 @@ export default function Home() {
           <ModuleCard
             to="/checklists"
             icon="/clipboard.png"
-            label="Checklists"
+            label="Flight Planning"
             desc="Pre-flight · Briefing"
             stat={clStat}
             statColor={clColor}

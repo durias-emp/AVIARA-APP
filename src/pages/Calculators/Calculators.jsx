@@ -60,27 +60,26 @@ export default function Calculators() {
 function Conversions() {
   return (
     <>
-      <SectionCard title="Volume" formula="1 USG = 3.785 L">
-        <BidirCalc aLabel="USG" bLabel="Litres" aToB={conv.usgToL} bToA={conv.lToUsg} aStep="0.1" bStep="0.1" />
+      <CX3Button />
+      <SectionCard title="Volume">
+        <BidirCalc aLabel="USG" bLabel="Litres" aToB={conv.usgToL} bToA={conv.lToUsg} aStep="0.1" bStep="0.1" formula="1 USG = 3.785 L" />
       </SectionCard>
 
-      <SectionCard title="Mass" formula="1 lb = 0.454 kg">
-        <BidirCalc aLabel="Pounds" bLabel="Kilograms" aToB={conv.lbsToKg} bToA={conv.kgToLbs} />
+      <SectionCard title="Mass">
+        <BidirCalc aLabel="Pounds" bLabel="Kilograms" aToB={conv.lbsToKg} bToA={conv.kgToLbs} formula="1 lb = 0.454 kg" />
       </SectionCard>
 
-      <SectionCard title="Temperature" formula="°F = (°C × 1.8) + 32">
-        <BidirCalc aLabel="Celsius" bLabel="Fahrenheit" aToB={conv.cToF} bToA={conv.fToC} aStep="0.5" bStep="0.5" />
+      <SectionCard title="Temperature">
+        <BidirCalc aLabel="Celsius" bLabel="Fahrenheit" aToB={conv.cToF} bToA={conv.fToC} aStep="0.5" bStep="0.5" formula="°F = (°C × 1.8) + 32" />
       </SectionCard>
 
-      <SectionCard title="Pressure" formula="inHg = mb ÷ 33.8639">
-        <BidirCalc aLabel="Millibars" bLabel="inHg" aToB={conv.mbToInhg} bToA={conv.inhgToMb} aStep="0.1" bStep="0.01" />
+      <SectionCard title="Pressure">
+        <BidirCalc aLabel="Millibars" bLabel="inHg" aToB={conv.mbToInhg} bToA={conv.inhgToMb} aStep="0.1" bStep="0.01" formula="inHg = mb ÷ 33.8639" />
       </SectionCard>
 
       <SectionCard title="Distance from NM">
         <NmConverter />
       </SectionCard>
-
-      <CX3Button />
 
       <SectionCard title="Fuel Weight Reference">
         <FuelTable />
@@ -89,35 +88,105 @@ function Conversions() {
   )
 }
 
-function BidirCalc({ aLabel, bLabel, aToB, bToA, aStep = '1', bStep = '1' }) {
+function BidirCalc({ aLabel, bLabel, aToB, bToA, aStep = '1', bStep = '1', formula }) {
   const [a, setA] = useState('')
   const [b, setB] = useState('')
 
-  function handleA(v) { setA(v); const n = parseFloat(v); setB(isNaN(n) ? '' : fmt(aToB(n))) }
-  function handleB(v) { setB(v); const n = parseFloat(v); setA(isNaN(n) ? '' : fmt(bToA(n))) }
+  const [swapped, setSwapped] = useState(false)
+
+  const label1 = swapped ? bLabel : aLabel
+  const label2 = swapped ? aLabel : bLabel
+  const step1  = swapped ? bStep  : aStep
+  const step2  = swapped ? aStep  : bStep
+  const conv12 = swapped ? bToA   : aToB
+  const conv21 = swapped ? aToB   : bToA
+
+  function handleField1(v) { setA(v); const n = parseFloat(v); setB(isNaN(n) ? '' : fmt(conv12(n))) }
+  function handleField2(v) { setB(v); const n = parseFloat(v); setA(isNaN(n) ? '' : fmt(conv21(n))) }
+
+  function flip() {
+    const nextSwapped = !swapped
+    setSwapped(nextSwapped)
+    const nextConv = nextSwapped ? bToA : aToB
+    const n = parseFloat(a)
+    setB(a !== '' && !isNaN(n) ? fmt(nextConv(n)) : '')
+  }
+
+  const active = a !== '' || b !== ''
 
   return (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-      <NumField label={aLabel} value={a} onChange={handleA} step={aStep} />
-      <div style={{ color: 'var(--text-tertiary)', fontSize: 18, flexShrink: 0, paddingTop: 18 }}>⇄</div>
-      <NumField label={bLabel} value={b} onChange={handleB} step={bStep} />
+    <div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <NumField label={label1} value={a} onChange={handleField1} step={step1} />
+        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ height: 19 }} />
+          <button onClick={flip} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+            <img src="/volver-a-publicar.png" width={22} height={22} alt="" className="icon-themed" />
+          </button>
+        </div>
+        <NumField label={label2} value={b} onChange={handleField2} step={step2} />
+      </div>
+      {formula && active && (
+        <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 8, fontFamily: 'monospace', letterSpacing: '0.2px' }}>
+          {formula}
+        </p>
+      )}
     </div>
   )
 }
 
+const DIST_UNITS = [
+  { key: 'nm',  label: 'Nautical Miles',  toNm: v => v,               fromNm: v => v               },
+  { key: 'km',  label: 'Kilometres',      toNm: v => v / 1.852,       fromNm: v => v * 1.852       },
+  { key: 'sm',  label: 'Statute Miles',   toNm: v => v / 1.15078,     fromNm: v => v * 1.15078     },
+  { key: 'ft',  label: 'Feet',            toNm: v => v / 6076,        fromNm: v => v * 6076        },
+  { key: 'm',   label: 'Meters',          toNm: v => v / 1852,        fromNm: v => v * 1852        },
+]
+
 function NmConverter() {
-  const [nm, setNm] = useState('')
-  const n = parseFloat(nm)
+  const [value, setValue] = useState('')
+  const [unitKey, setUnitKey] = useState('nm')
+
+  const n = parseFloat(value)
   const valid = !isNaN(n) && n >= 0
+  const activeUnit = DIST_UNITS.find(u => u.key === unitKey)
+  const nmVal = valid ? activeUnit.toNm(n) : null
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <NumField label="Nautical Miles" value={nm} onChange={setNm} />
-      {valid && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, borderRadius: 10, overflow: 'hidden', background: 'var(--bg-card-2)' }}>
-          <ResultRow label="Feet" value={fmt(conv.nmToFt(n))} />
-          <ResultRow label="Statute Miles" value={fmt(conv.nmToSm(n))} />
-          <ResultRow label="Kilometres" value={fmt(conv.nmToKm(n))} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ flexShrink: 0 }}>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 5 }}>Unit</label>
+          <select
+            value={unitKey}
+            onChange={e => setUnitKey(e.target.value)}
+            style={{
+              height: 46, padding: '0 32px 0 12px', borderRadius: 'var(--r-sm)',
+              border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+              color: 'var(--text)', fontSize: 14, fontWeight: 500, cursor: 'pointer',
+              appearance: 'none', outline: 'none',
+              backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='3,6 8,11 13,6' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+              backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center',
+            }}
+          >
+            {DIST_UNITS.map(u => <option key={u.key} value={u.key}>{u.label}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 5 }}>Distance</label>
+          <input
+            type="number" inputMode="decimal" step="any"
+            value={value} onChange={e => setValue(e.target.value)}
+            style={{ width: '100%', height: 46, padding: '0 13px', borderRadius: 'var(--r-sm)', border: '0.5px solid var(--border)', background: 'var(--bg-card-2)', color: 'var(--text)', fontSize: 17, outline: 'none' }}
+          />
+        </div>
+      </div>
+
+      {valid && nmVal !== null && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, borderRadius: 10, overflow: 'hidden', background: 'var(--bg-card)' }}>
+          {DIST_UNITS.filter(u => u.key !== unitKey).map(u => (
+            <ResultRow key={u.key} label={u.label} value={fmt(u.fromNm(nmVal))} noBorder />
+          ))}
         </div>
       )}
     </div>
@@ -131,7 +200,7 @@ function FuelTable() {
     ['Oil',         `${FUEL.oil.lbPerUsg} lb/USG`,   `${FUEL.oil.lbPerQt} lb/qt`],
   ]
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, borderRadius: 10, overflow: 'hidden', background: 'var(--bg-card-2)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, borderRadius: 10, overflow: 'hidden', background: 'var(--bg-card)' }}>
       {rows.map(([name, a, b], i) => (
         <div key={name} style={{
           display: 'flex',
@@ -139,7 +208,7 @@ function FuelTable() {
           alignItems: 'center',
           padding: '11px 14px',
           background: 'var(--bg-card)',
-          borderBottom: i < rows.length - 1 ? '0.5px solid var(--border)' : 'none',
+          borderBottom: 'none',
         }}>
           <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)' }}>{name}</span>
           <span style={{ fontSize: 13, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{a} · {b}</span>
@@ -153,11 +222,11 @@ function FuelTable() {
 function Performance() {
   return (
     <>
+      <CX3Button />
       <DensityAltCalc />
       <GlideRatioCalc />
       <VRefCalc />
       <WeightShiftCalc />
-      <CX3Button />
       <SectionCard title="Standard References">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, borderRadius: 10, overflow: 'hidden', background: 'var(--bg-card-2)' }}>
           <ResultRow label="Standard Lapse Rate" value="2 °C / 1,000 ft" />
@@ -224,8 +293,8 @@ function VRefCalc() {
   const result = !isNaN(n) && n > 0 ? vRef(n) : null
 
   return (
-    <SectionCard title="V-REF" formula="V_REF = 1.3 × V_SO">
-      <NumField label="V_SO (knots)" value={vso} onChange={setVso} step="1" placeholder="0" />
+    <SectionCard title="V-REF" formula="V_REF = 1.3 × Vso">
+      <NumField label="Vso (knots)" value={vso} onChange={setVso} step="1" placeholder="0" />
       {result !== null && (
         <div style={{ marginTop: 12, borderRadius: 10, overflow: 'hidden', background: 'var(--bg-card-2)' }}>
           <ResultRow label="V-REF" value={`${fmt(result)} kt`} accent />
@@ -393,7 +462,7 @@ function NumField({ label, value, onChange, step = '1', placeholder = '' }) {
   )
 }
 
-function ResultRow({ label, value, accent }) {
+function ResultRow({ label, value, accent, noBorder }) {
   return (
     <div style={{
       display: 'flex',
@@ -401,7 +470,7 @@ function ResultRow({ label, value, accent }) {
       alignItems: 'center',
       padding: '11px 14px',
       background: accent ? 'var(--accent-light)' : 'var(--bg-card)',
-      borderBottom: '0.5px solid var(--border)',
+      borderBottom: noBorder ? 'none' : '0.5px solid var(--border)',
     }}>
       <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{label}</span>
       <span style={{
