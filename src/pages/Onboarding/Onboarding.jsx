@@ -129,23 +129,25 @@ export function SegControl({ options, value, onChange }) {
   const idx = options.indexOf(value)
   const pct = 100 / options.length
   return (
-    <div style={{ display: 'flex', background: 'var(--bg-card-2)', borderRadius: 'var(--r-sm)', padding: 3, position: 'relative' }}>
-      {idx >= 0 && (
-        <div style={{
-          position: 'absolute', top: 3, bottom: 3,
-          left: `calc(${idx * pct}% + 3px)`,
-          width: `calc(${pct}% - 6px)`,
-          background: 'var(--bg-card)', borderRadius: 6,
-          transition: 'left 0.22s cubic-bezier(0.34, 1.2, 0.64, 1)',
-          pointerEvents: 'none',
-        }} />
-      )}
+    <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', borderRadius: 'var(--r-sm)', padding: 3, position: 'relative' }}>
+      <div style={{
+        position: 'absolute', top: 3, bottom: 3,
+        left: `calc(${Math.max(0, idx) * pct}% + 3px)`,
+        width: `calc(${pct}% - 6px)`,
+        background: 'rgba(255,255,255,0.22)',
+        border: '0.5px solid rgba(255,255,255,0.18)',
+        borderRadius: 6,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+        transition: 'left 0.25s cubic-bezier(0.34, 1.2, 0.64, 1)',
+        pointerEvents: 'none',
+        opacity: idx >= 0 ? 1 : 0,
+      }} />
       {options.map(opt => (
         <button key={opt} onClick={() => onChange(opt)} style={{
           flex: 1, padding: '7px 4px', borderRadius: 6, border: 'none', cursor: 'pointer',
           fontWeight: 600, fontSize: 13,
           background: 'transparent',
-          color: value === opt ? 'var(--text)' : 'var(--text-secondary)',
+          color: value === opt ? 'var(--text)' : 'rgba(255,255,255,0.55)',
           fontFamily: 'inherit', position: 'relative', zIndex: 1,
           transition: 'color 0.18s',
         }}>{opt}</button>
@@ -976,7 +978,10 @@ export default function Onboarding() {
   const { profile, setProfile } = usePilotProfile()
   const [step, setStep] = useState(1)
   const [dir, setDir] = useState('forward')
-  const [draft, setDraft] = useState(profile ?? {})
+  const [draft, setDraft] = useState(() => {
+    const p = profile ?? {}
+    return { ...p, certificate: p.certificate || 'Student', medClass: p.medClass || '1st' }
+  })
 
   function update(patch) {
     setDraft(prev => ({ ...prev, ...patch }))
