@@ -254,7 +254,14 @@ function Step1({ draft, update, onNext }) {
     <div>
       <StepHeader step={1} title="Your pilot profile" sub="Sets up your certificate, ratings, and drives age based currency calculations." />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <TextInput label="Full name" value={draft.name} onChange={v => update({ name: v })} placeholder="Your name" />
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <TextInput label="First name" value={draft.firstName ?? ''} onChange={v => update({ firstName: v, name: (v + ' ' + (draft.lastName ?? '')).trim() })} placeholder="First" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <TextInput label="Last name" value={draft.lastName ?? ''} onChange={v => update({ lastName: v, name: ((draft.firstName ?? '') + ' ' + v).trim() })} placeholder="Last" />
+          </div>
+        </div>
         <DateField label="Date of birth" value={draft.dob} onChange={v => update({ dob: v })} />
         <Field label="Certificate">
           <SegControl options={CERTS} value={draft.certificate} onChange={v => update({ certificate: v, aircraftClass: [], ratings: [], endorsements: [], trainingType: [] })} />
