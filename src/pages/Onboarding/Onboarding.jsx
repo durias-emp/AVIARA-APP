@@ -608,7 +608,7 @@ function AircraftHeroPicker({ selectedId, onSelect, onCustomName }) {
         onMouseLeave={() => setShowArrows(false)}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
-        style={{ position: 'relative', width: '100%', height: 220, marginBottom: 0, overflow: 'hidden' }}
+        style={{ position: 'relative', width: '100%', height: 220, marginBottom: 0, overflow: 'hidden', background: '#1a1a22', borderRadius: 16 }}
       >
         {isCustomSlide ? (
           <div
