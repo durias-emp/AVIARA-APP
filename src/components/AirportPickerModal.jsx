@@ -81,25 +81,23 @@ export default function AirportPickerModal({ onConfirm, onClose }) {
   }
 
   async function validate(icao) {
-    const url   = `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&hours=3`
-    const proxy = `https://corsproxy.io/?url=${encodeURIComponent(url)}`
-
-    async function tryFetch(endpoint) {
-      const res  = await fetch(endpoint)
-      const data = await res.json()
-      return data
-    }
-
     try {
-      let data
-      try {
-        data = await tryFetch(url)
-      } catch {
-        data = await tryFetch(proxy)
-      }
-      if (Array.isArray(data) && data.length > 0 && data[0]?.icaoId) {
+      // Use our Vercel proxy — no CORS issues, no third-party rate limits
+      const res  = await fetch(`/api/awc?path=airport&ids=${icao}&format=json`, { signal: AbortSignal.timeout(8000) })
+      const data = await res.json()
+      if (Array.isArray(data) && data.length > 0) {
         const raw  = data[0]
-        const name = raw.name ?? raw.stationName ?? raw.site ?? raw.icaoId
+        const name = raw.name ?? raw.site ?? raw.icaoId
+        setName(name)
+        setStatus('valid')
+        return
+      }
+      // Fall back to METAR check (covers stations without airport record)
+      const res2  = await fetch(`/api/awc?path=metar&ids=${icao}&format=json&hours=3`, { signal: AbortSignal.timeout(8000) })
+      const data2 = await res2.json()
+      if (Array.isArray(data2) && data2.length > 0 && data2[0]?.icaoId) {
+        const raw  = data2[0]
+        const name = raw.name ?? raw.site ?? raw.stationName ?? raw.icaoId
         setName(name)
         setStatus('valid')
       } else {

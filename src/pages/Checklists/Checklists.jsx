@@ -310,12 +310,18 @@ const FAA_AIRPORTS = [
   { icao:'MUBА', name:'José Martí Intl',                   city:'Havana, CU' },
 ]
 
-/* ── Airport lookup — AWC + SkyVector scraper ────────────────── */
-const AWC     = 'https://aviationweather.gov/api/data'
-// Ordered by reliability for FAA/government endpoints
+/* ── Airport lookup — AWC proxy + SkyVector scraper ─────────── */
+const AWC = '/api/awc'  // Vercel serverless proxy — no CORS issues
+
+// Build URL for our proxy: /api/awc?path=airport&ids=KJFK&format=json
+function awcUrl(endpoint, params = {}) {
+  const qs = new URLSearchParams({ path: endpoint, ...params }).toString()
+  return `${AWC}?${qs}`
+}
+
+// Fallback CORS proxies for SkyVector (HTML scraping only)
 const PROXIES = [
   { url: 'https://corsproxy.io/?url=',         wrap: false },
-  { url: 'https://api.allorigins.win/get?url=', wrap: true  },  // returns { contents: '...' }
   { url: 'https://api.allorigins.win/raw?url=', wrap: false },
 ]
 
@@ -339,6 +345,12 @@ async function proxyText(url) {
 }
 
 async function proxyJSON(url) {
+  // Same-origin /api/ routes — fetch directly, no proxy needed
+  if (url.startsWith('/')) {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    const text = await res.text()
+    try { return JSON.parse(text) } catch { return null }
+  }
   const text = await proxyText(url)
   return JSON.parse(text)
 }
@@ -426,13 +438,15 @@ function parseSkyVector(html) {
 }
 
 async function fetchAWC(id) {
-  // Try FAA airport endpoint first, fall back to METAR station (covers international)
+  // Use our Vercel proxy — avoids CORS and third-party rate limits
   try {
-    const data = await proxyJSON(`${AWC}/airport?ids=${id}&format=json`)
+    const res = await fetch(awcUrl('airport', { ids: id, format: 'json' }), { signal: AbortSignal.timeout(8000) })
+    const data = await res.json()
     if (Array.isArray(data) && data.length) return data[0]
   } catch { /* ignore */ }
   try {
-    const metar = await proxyJSON(`${AWC}/metar?ids=${id}&format=json&hours=3`)
+    const res = await fetch(awcUrl('metar', { ids: id, format: 'json', hours: '3' }), { signal: AbortSignal.timeout(8000) })
+    const metar = await res.json()
     if (Array.isArray(metar) && metar.length) {
       const m = metar[0]
       return { icaoId: m.icaoId || id, faaId: m.stationId || id, name: m.site, lat: m.lat, lon: m.lon, elev: m.elev, state: m.state, country: m.country, tower: null, rwyNum: null }
@@ -1366,7 +1380,7 @@ function AlternatesItem({ item, isChecked, onToggle }) {
       const ids = nearby.map(a => a.icao).join(',')
       let metars = {}
       try {
-        const mRes  = await fetch(`https://aviationweather.gov/api/data/metar?ids=${ids}&format=json&hours=3`, { signal: AbortSignal.timeout(8000) })
+        const mRes  = await fetch(awcUrl('metar', { ids, format: 'json', hours: '3' }), { signal: AbortSignal.timeout(8000) })
         const mData = await mRes.json()
         if (Array.isArray(mData)) mData.forEach(m => { metars[m.station_id || m.icaoId] = m.raw_text || '' })
       } catch { /* ignore */ }
@@ -1400,7 +1414,7 @@ function AlternatesItem({ item, isChecked, onToggle }) {
     try {
       const [apt, metarRaw] = await Promise.allSettled([
         lookupAirport(icao),
-        proxyText(`https://aviationweather.gov/api/data/metar?ids=${icao}&format=raw&hours=3`),
+        fetch(awcUrl('metar', { ids: icao, format: 'raw', hours: '3' })).then(r => r.text()),
       ])
       if (apt.status !== 'fulfilled') throw new Error('Airport not found')
       const airport = apt.value
