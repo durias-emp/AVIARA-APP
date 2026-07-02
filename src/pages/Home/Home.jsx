@@ -92,10 +92,7 @@ function AircraftCard({ aircraftName, registration, aircraftImage, onOpen }) {
       }}>
         <div style={{ flex: 1, padding: '12px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-            <span style={{ position: 'relative', display: 'flex', width: 6, height: 6 }}>
-              <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#4ade80', opacity: 0.75, animation: 'ping 1.2s cubic-bezier(0,0,0.2,1) infinite' }} />
-              <span style={{ position: 'relative', width: 6, height: 6, borderRadius: '50%', background: '#4ade80' }} />
-            </span>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', flexShrink: 0 }} />
             <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Aircraft</span>
           </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.3px', lineHeight: 1.15 }}>
@@ -207,13 +204,12 @@ export default function Home() {
       <div style={{
         padding: '0 0 32px',
         transition: anyExpanded
-          ? 'transform 420ms cubic-bezier(0.16, 1, 0.3, 1), opacity 300ms ease'
-          : 'transform 300ms cubic-bezier(0.55, 0, 0.8, 0.9), opacity 260ms ease',
-        transform: anyExpanded ? 'scale(0.93)' : 'scale(1)',
-        opacity: anyExpanded ? 0.3 : 1,
+          ? 'transform 280ms cubic-bezier(0.16, 1, 0.3, 1), opacity 200ms ease'
+          : 'transform 200ms cubic-bezier(0.4, 0, 1, 1), opacity 180ms ease',
+        transform: anyExpanded ? 'scale(0.96)' : 'scale(1)',
+        opacity: anyExpanded ? 0.45 : 1,
         pointerEvents: anyExpanded ? 'none' : 'auto',
         transformOrigin: 'center top',
-        willChange: 'transform, opacity',
       }}>
 
         {/* ── Header ── */}

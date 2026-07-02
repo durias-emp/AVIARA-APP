@@ -544,10 +544,7 @@ export function FlightReviewSection({ value = {}, onChange }) {
                 />
                 {statusLabel && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-                    <span style={{ position: 'relative', display: 'flex', width: 6, height: 6, flexShrink: 0 }}>
-                      <span style={{ position: 'absolute', width: '100%', height: '100%', borderRadius: '50%', background: statusColor, opacity: 0.75, animation: 'ping 1.2s cubic-bezier(0,0,0.2,1) infinite' }} />
-                      <span style={{ position: 'relative', width: 6, height: 6, borderRadius: '50%', background: statusColor }} />
-                    </span>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
                     <span style={{ fontSize: 11, color: statusColor, fontWeight: 600 }}>{statusLabel}</span>
                     <a
                       href="https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.56"
@@ -936,10 +933,7 @@ function Step5({ draft, update, onNext, onBack }) {
               {airportStatus === 'checking' ? (
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
               ) : (
-                <span style={{ position: 'relative', display: 'flex', width: 6, height: 6, flexShrink: 0 }}>
-                  <span style={{ position: 'absolute', width: '100%', height: '100%', borderRadius: '50%', background: statusColor, opacity: 0.75, animation: 'ping 1.2s cubic-bezier(0,0,0.2,1) infinite' }} />
-                  <span style={{ position: 'relative', width: 6, height: 6, borderRadius: '50%', background: statusColor }} />
-                </span>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
               )}
               <span style={{ fontSize: 11, color: statusColor, fontWeight: 600 }}>{statusLabel}</span>
             </div>

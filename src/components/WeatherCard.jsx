@@ -55,7 +55,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
     setTimeout(() => {
       setOverlayOpen(false)
       setOverlayClosing(false)
-    }, 320)
+    }, 210)
   }
 
   function copyMetar(text) {
@@ -283,7 +283,6 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
       position: 'relative', overflow: 'hidden',
       borderRadius: 'var(--r-xl)',
       minHeight: loading || error ? 120 : 340,
-      transition: 'min-height 0.4s ease',
       boxShadow: 'var(--shadow-md)',
     }}>
       <WeatherAnimation metar={wx?.metar ?? null} />
@@ -364,8 +363,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
 
             {/* Bottom panel — data row + footer + METAR unified */}
             <div style={{
-              background: 'rgba(0,0,0,0.22)',
-              backdropFilter: 'blur(12px)',
+              background: 'rgba(0,0,0,0.38)',
               marginTop: 'auto',
               padding: '12px 16px 14px',
             }}>

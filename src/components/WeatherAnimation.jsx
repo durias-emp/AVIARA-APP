@@ -111,13 +111,10 @@ function Moon() {
 }
 
 // ── Stars ─────────────────────────────────────────────────────
-// Deterministic positions using a seeded pseudo-random approach
-const STAR_DATA = Array.from({ length: 55 }, (_, i) => ({
+const STAR_DATA = Array.from({ length: 18 }, (_, i) => ({
   top:   `${((i * 37 + 13) % 72)}%`,
   left:  `${((i * 61 + 7)  % 98)}%`,
-  size:  i % 7 === 0 ? 2.5 : i % 3 === 0 ? 2 : 1.5,
-  dur:   1.8 + (i % 5) * 0.5,
-  delay: (i * 0.22) % 3,
+  size:  i % 5 === 0 ? 2.5 : i % 3 === 0 ? 2 : 1.5,
 }))
 
 function Stars() {
@@ -130,8 +127,7 @@ function Stars() {
           width: s.size, height: s.size,
           borderRadius: '50%',
           background: 'white',
-          animation: `star-twinkle ${s.dur}s ease-in-out infinite`,
-          animationDelay: `${s.delay}s`,
+          opacity: 0.8,
         }} />
       ))}
     </>
@@ -166,7 +162,7 @@ function CloudBlob({ w = 200, tinted = false }) {
   ]
 
   return (
-    <div style={{ filter: 'blur(2px)' }}>
+    <div>
       <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ overflow: 'visible', display: 'block' }}>
         <defs>
           {/* Puff gradient — light source top-left, fades to transparent */}
@@ -242,44 +238,23 @@ function Clouds({ count = 2, tinted = false }) {
 }
 
 // ── Rain ─────────────────────────────────────────────────────
-const RAIN_DROPS = Array.from({ length: 36 }, (_, i) => ({
-  left:    `${(i / 36) * 108 - 4}%`,
-  height:  14 + (i % 5) * 5,
-  width:   i % 4 === 0 ? 1.5 : 1,
-  opacity: 0.35 + (i % 4) * 0.12,
-  dur:     0.45 + (i % 6) * 0.08,
-  delay:   (i * 0.085) % 1.1,
-}))
-
-const HEAVY_DROPS = Array.from({ length: 52 }, (_, i) => ({
-  left:    `${(i / 52) * 110 - 5}%`,
-  height:  18 + (i % 5) * 7,
-  width:   i % 3 === 0 ? 2 : 1.5,
-  opacity: 0.45 + (i % 4) * 0.12,
-  dur:     0.28 + (i % 5) * 0.06,
-  delay:   (i * 0.065) % 0.9,
-}))
-
+// Single-element CSS background-position animation — compositor-only, zero DOM overhead
 function Rain({ heavy = false }) {
-  const drops = heavy ? HEAVY_DROPS : RAIN_DROPS
+  const color = heavy ? 'rgba(150,195,255,0.55)' : 'rgba(180,215,255,0.42)'
+  const spacing = heavy ? '18px 28px' : '22px 36px'
+  const dur = heavy ? '0.38s' : '0.55s'
   return (
-    <>
-      {drops.map((d, i) => (
-        <div key={i} style={{
-          position: 'absolute',
-          top: 0, left: d.left,
-          width: d.width, height: d.height,
-          background: heavy
-            ? 'linear-gradient(180deg, transparent, rgba(160,200,255,0.75))'
-            : 'linear-gradient(180deg, transparent, rgba(180,215,255,0.65))',
-          borderRadius: 1,
-          transform: 'rotate(14deg)',
-          animation: `rain-drop ${d.dur}s linear infinite`,
-          animationDelay: `${d.delay}s`,
-          opacity: d.opacity,
-        }} />
-      ))}
-    </>
+    <div style={{
+      position: 'absolute', inset: 0,
+      backgroundImage: `repeating-linear-gradient(
+        170deg,
+        transparent 0px, transparent 8px,
+        ${color} 8px, ${color} 10px
+      )`,
+      backgroundSize: spacing,
+      animation: `wdRainVeil ${dur} linear infinite`,
+      opacity: 0.85,
+    }} />
   )
 }
 
@@ -329,10 +304,8 @@ function Fog() {
           position: 'absolute',
           top: b.top,
           left: '-25%', right: '-25%',
-          height: b.height,
-          background: 'rgba(255,255,255,0.9)',
-          borderRadius: b.height,
-          filter: 'blur(10px)',
+          height: b.height * 3,
+          background: `radial-gradient(ellipse 60% 50% at 50% 50%, rgba(255,255,255,0.85) 0%, transparent 100%)`,
           animation: `fog-layer ${b.dur}s ease-in-out infinite`,
           animationDelay: `${b.delay}s`,
           opacity: b.opacity,

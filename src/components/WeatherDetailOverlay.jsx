@@ -157,31 +157,17 @@ export default function WeatherDetailOverlay({
   const isOpen = visible && !closing
 
   // Build clip-path that matches the card's position when collapsed
-  function cardClip() {
-    if (!cardRect) return 'inset(30% 18px 50% 18px round 22px)'
-    const vw = window.innerWidth
-    const vh = window.innerHeight
-    const { top, left, width, height } = cardRect
-    const right  = Math.max(0, vw - left - width)
-    const bottom = Math.max(0, vh - top - height)
-    return `inset(${top}px ${right}px ${bottom}px ${left}px round 22px)`
-  }
-
-  const clipPath = isOpen ? 'inset(0px 0px 0px 0px round 22px)' : cardClip()
-  const transition = closing
-    ? 'clip-path 300ms cubic-bezier(0.55, 0, 0.8, 0.9)'
-    : 'clip-path 420ms cubic-bezier(0.16, 1, 0.3, 1)'
-
   const conditionLabel = parseWx(metar) ?? (type.charAt(0).toUpperCase() + type.slice(1))
 
   return (
     <div
       style={{
         position: 'fixed', inset: 0, zIndex: 200,
-        clipPath,
-        transition,
-        willChange: 'clip-path',
-        transform: 'translateZ(0)',
+        opacity: isOpen ? 1 : 0,
+        transform: isOpen ? 'translateY(0) scale(1)' : 'translateY(16px) scale(0.97)',
+        transition: isOpen
+          ? 'opacity 240ms ease, transform 260ms cubic-bezier(0.16, 1, 0.3, 1)'
+          : 'opacity 200ms ease, transform 200ms cubic-bezier(0.4, 0, 1, 1)',
         pointerEvents: isOpen ? 'auto' : 'none',
         overflowY: isOpen ? 'auto' : 'hidden',
         overflowX: 'hidden',
@@ -223,10 +209,6 @@ export default function WeatherDetailOverlay({
         {/* Scrollable content column */}
         <div style={{
           position: 'relative', zIndex: 2, padding: '52px 20px 48px',
-          opacity: isOpen ? 1 : 0,
-          transition: isOpen
-            ? 'opacity 200ms ease 100ms'
-            : 'opacity 80ms ease',
         }}>
 
           {/* ── Top bar ── */}
