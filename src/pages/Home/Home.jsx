@@ -107,7 +107,7 @@ function AircraftCard({ aircraftName, registration, aircraftImage, onOpen }) {
             </div>
           )}
         </div>
-        <div style={{ width: 150, background: 'var(--bg-card)', position: 'relative', flexShrink: 0 }}>
+        <div style={{ width: 150, position: 'relative', flexShrink: 0 }}>
           {aircraftImage && (
             <img src={aircraftImage} alt="" style={{
               position: 'absolute', inset: 0,
