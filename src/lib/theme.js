@@ -1,7 +1,5 @@
 export function isDarkTheme() {
-  const stored = localStorage.getItem('pqrh-theme')
-  if (stored) return stored === 'dark'
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
+  return document.documentElement.getAttribute('data-theme') === 'dark'
 }
 
 export function aircraftImgStyle() {

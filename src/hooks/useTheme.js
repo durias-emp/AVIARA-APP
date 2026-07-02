@@ -1,28 +1,28 @@
 import { useState, useEffect } from 'react'
 
-const THEMES = ['light', 'dark', 'red']
-const KEY = 'pqrh-theme'
+const mq = window.matchMedia('(prefers-color-scheme: dark)')
 
-function systemTheme() {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+function currentTheme() {
+  return mq.matches ? 'dark' : 'light'
 }
 
 export function useTheme() {
-  const [theme, setThemeState] = useState(() => {
-    return localStorage.getItem(KEY) || systemTheme()
-  })
+  const [theme, setTheme] = useState(currentTheme)
 
   useEffect(() => {
+    // Apply immediately
     document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem(KEY, theme)
   }, [theme])
 
-  function cycleTheme() {
-    setThemeState(t => {
-      const next = THEMES[(THEMES.indexOf(t) + 1) % THEMES.length]
-      return next
-    })
-  }
+  useEffect(() => {
+    // React to system changes in real time
+    function onChange(e) {
+      const next = e.matches ? 'dark' : 'light'
+      setTheme(next)
+    }
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
 
-  return { theme, cycleTheme }
+  return { theme }
 }
