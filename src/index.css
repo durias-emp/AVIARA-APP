@@ -120,6 +120,9 @@ body {
   line-height: 1.47;
   min-height: 100dvh;
   transition: background-color 0.2s, color 0.2s;
+  /* Extend body color behind status bar on iOS PWA */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 #root {
