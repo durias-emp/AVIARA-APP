@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { aircraftImgStyle } from '../../lib/theme'
 import { Link } from 'react-router-dom'
 import { get, getAll } from '../../lib/db'
 import WeatherCard   from '../../components/WeatherCard'
@@ -109,10 +110,11 @@ function AircraftCard({ aircraftName, registration, aircraftImage, onOpen }) {
         </div>
         <div style={{ width: 150, background: 'var(--bg-card)', position: 'relative', flexShrink: 0 }}>
           {aircraftImage && (
-            <img src={aircraftImage} alt="" className="aircraft-hero-img" style={{
+            <img src={aircraftImage} alt="" style={{
               position: 'absolute', inset: 0,
               width: '100%', height: '100%',
               objectFit: 'contain', objectPosition: 'center',
+              ...aircraftImgStyle(),
             }} />
           )}
         </div>

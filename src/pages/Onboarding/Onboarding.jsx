@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { aircraftImgStyle } from '../../lib/theme'
 import { usePilotProfile } from '../../context/PilotProfile'
 import { generateAircraftIcon } from '../../lib/generateIcon'
 import { medicalExpiryRows, ageAt, fmtDate, calendarMonthExpiry, statusFromExpiry } from '../../lib/currency'
@@ -697,11 +698,11 @@ function AircraftHeroPicker({ selectedId, onSelect, onCustomName }) {
               key={slideKey}
               src={tpl.image}
               alt=""
-              className="aircraft-hero-img"
               style={{
                 width: '100%', height: '100%',
                 objectFit: 'contain', objectPosition: 'center bottom',
                 display: 'block',
+                ...aircraftImgStyle(),
                 animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.3s cubic-bezier(0.25,0.46,0.45,0.94) both` : 'none',
               }}
             />
@@ -859,7 +860,7 @@ function Step4({ draft, update, onNext, onBack, onSkip }) {
 
         {isCustom && draft.aircraftImage && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg-card)', borderRadius: 10 }}>
-            <img src={draft.aircraftImage} alt="" className="aircraft-hero-img" style={{ width: 48, height: 48, objectFit: 'contain' }} />
+            <img src={draft.aircraftImage} alt="" style={{ width: 48, height: 48, objectFit: 'contain', ...aircraftImgStyle() }} />
             <div style={{ fontSize: 13, color: 'var(--ok)' }}>Icon ready</div>
           </div>
         )}
