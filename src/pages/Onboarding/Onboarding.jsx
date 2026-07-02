@@ -657,7 +657,7 @@ function AircraftHeroPicker({ selectedId, onSelect, onCustomName }) {
         onMouseLeave={() => setShowArrows(false)}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
-        style={{ position: 'relative', width: '100%', height: 220, marginBottom: 0, overflow: 'hidden', background: '#1a1a22', borderRadius: 16 }}
+        style={{ position: 'relative', width: '100%', height: 220, marginBottom: 0, overflow: 'hidden' }}
       >
         {isCustomSlide ? (
           <div
@@ -697,14 +697,14 @@ function AircraftHeroPicker({ selectedId, onSelect, onCustomName }) {
               key={slideKey}
               src={tpl.image}
               alt=""
+              className="aircraft-hero-img"
               style={{
                 width: '100%', height: '100%',
                 objectFit: 'contain', objectPosition: 'center bottom',
-                display: 'block', mixBlendMode: 'screen',
+                display: 'block',
                 animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.3s cubic-bezier(0.25,0.46,0.45,0.94) both` : 'none',
               }}
             />
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '45%', background: 'linear-gradient(to bottom, transparent 0%, var(--bg) 100%)', pointerEvents: 'none' }} />
           </>
         )}
 
