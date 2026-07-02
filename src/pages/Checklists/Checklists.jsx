@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { aircraftImgStyle } from '../../lib/theme'
 import FAA_CHARTS_DATA from '../../data/faa_charts.json'
 import { BackButton } from '../../components/Shell'
 import WBChecklistItem from './WBChecklistItem'
@@ -6315,7 +6314,6 @@ function AircraftItem({ item, isChecked, onToggle }) {
         {aircraftImage && (
           <img src={aircraftImage} alt={aircraftName || 'Aircraft'} style={{
             width: '100%', height: 160, objectFit: 'contain', display: 'block',
-            ...aircraftImgStyle(),
           }} />
         )}
         {(aircraftName || registration) && (

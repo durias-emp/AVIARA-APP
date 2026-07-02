@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { aircraftImgStyle } from '../../lib/theme'
 import { get, put } from '../../lib/db'
 import { BackButton } from '../../components/Shell'
 import { generateAircraftIcon } from '../../lib/generateIcon'
@@ -438,7 +437,6 @@ export default function Aircraft() {
                   objectFit: 'contain',
                   objectPosition: 'center bottom',
                   display: 'block',
-                  ...aircraftImgStyle(),
                   animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.35s cubic-bezier(0.25,0.46,0.45,0.94) both` : 'none',
                 }}
               />
