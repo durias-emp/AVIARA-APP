@@ -73,6 +73,55 @@ function TextInput({ label, value, onChange, placeholder, type = 'text' }) {
   )
 }
 
+const TAIL_EXAMPLES = [
+  'YS-CNA', 'C-GOPF', 'N34R', 'N172SP', 'C-FXYZ',
+  'XB-PNR', 'N8347Q', 'C-GKWB', 'YS-11A', 'N2264U',
+  'HP-1820', 'N737TW', 'C-FTCO', 'N4521L', 'YS-AXC',
+]
+
+function TailNumberInput({ value, onChange }) {
+  const [phIdx, setPhIdx] = useState(0)
+  const [visible, setVisible] = useState(true)
+
+  useEffect(() => {
+    if (value) return
+    const id = setInterval(() => {
+      setVisible(false)
+      setTimeout(() => {
+        setPhIdx(i => (i + 1) % TAIL_EXAMPLES.length)
+        setVisible(true)
+      }, 300)
+    }, 3000)
+    return () => clearInterval(id)
+  }, [value])
+
+  return (
+    <Field label="Tail number">
+      <div style={{ position: 'relative' }}>
+        <input
+          type="text"
+          value={value}
+          onChange={e => onChange(e.target.value.toUpperCase())}
+          placeholder=""
+          style={{ ...INPUT_BASE, color: 'var(--text)', background: 'transparent', position: 'relative', zIndex: 1 }}
+        />
+        {!value && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            padding: '11px 13px', fontSize: 15,
+            color: 'var(--text-tertiary)',
+            pointerEvents: 'none', zIndex: 0,
+            opacity: visible ? 1 : 0,
+            transition: 'opacity 0.28s ease',
+          }}>
+            {TAIL_EXAMPLES[phIdx]}
+          </div>
+        )}
+      </div>
+    </Field>
+  )
+}
+
 function DateField({ label, value, onChange }) {
   const display = value
     ? new Date(value + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -815,7 +864,7 @@ function Step4({ draft, update, onNext, onBack, onSkip }) {
           </div>
         )}
 
-        <TextInput label="Tail number" value={draft.tailNumber ?? ''} onChange={v => update({ tailNumber: v })} placeholder="C-GXYZ or N12345" />
+        <TailNumberInput value={draft.tailNumber ?? ''} onChange={v => update({ tailNumber: v })} />
         <Field label="Fuel type">
           <SegControl options={['AVGAS 100LL', 'JET-A']} value={draft.fuelType ?? 'AVGAS 100LL'} onChange={v => update({ fuelType: v })} />
         </Field>
