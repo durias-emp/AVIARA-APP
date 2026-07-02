@@ -1,33 +1,19 @@
 import { get, put } from './db'
 
-const AWC = 'https://aviationweather.gov/api/data'
-const PROXIES = [
-  'https://api.allorigins.win/raw?url=',
-  'https://corsproxy.io/?url=',
-]
-const TIMEOUT = 15000
+function awcUrl(endpoint, params = {}) {
+  const qs = new URLSearchParams({ path: endpoint, ...params }).toString()
+  return `/api/awc?${qs}`
+}
 
-async function tryFetch(url) {
-  for (const proxy of PROXIES) {
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), TIMEOUT)
-    try {
-      const res = await fetch(proxy + encodeURIComponent(url), { signal: ctrl.signal })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      clearTimeout(timer)
-      return data
-    } catch {
-      clearTimeout(timer)
-      // try next proxy
-    }
-  }
-  throw new Error('All proxies failed')
+async function awcFetch(endpoint, params) {
+  const res = await fetch(awcUrl(endpoint, params), { signal: AbortSignal.timeout(12000) })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
 }
 
 export async function fetchMetar(icao) {
   const id = icao.toUpperCase()
-  const data = await tryFetch(`${AWC}/metar?ids=${id}&format=json&hours=3`)
+  const data = await awcFetch('metar', { ids: id, format: 'json', hours: '3' })
   if (!Array.isArray(data) || !data.length) throw new Error('No METAR data for ' + id)
   return data[0]
 }
@@ -35,11 +21,11 @@ export async function fetchMetar(icao) {
 export async function fetchTaf(icao) {
   const id = icao.toUpperCase()
   try {
-    const data = await tryFetch(`${AWC}/taf?ids=${id}&format=json`)
+    const data = await awcFetch('taf', { ids: id, format: 'json' })
     if (!Array.isArray(data) || !data.length) return null
     return data[0]
   } catch {
-    return null // TAF is optional — don't fail the whole load
+    return null
   }
 }
 

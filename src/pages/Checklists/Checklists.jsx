@@ -1852,8 +1852,8 @@ function DensityAltItem({ item, isChecked, onToggle }) {
     if (!icao) return
     try {
       const [apt, metar] = await Promise.allSettled([
-        proxyJSON(`${AWC}/airport?ids=${icao}&format=json`),
-        proxyJSON(`${AWC}/metar?ids=${icao}&format=json`),
+        proxyJSON(awcUrl('airport', { ids: icao, format: 'json' })),
+        proxyJSON(awcUrl('metar', { ids: icao, format: 'json' })),
       ])
       let autoElev = '', autoAlt = '', autoOat = ''
       if (apt.status === 'fulfilled' && apt.value?.[0]) {
@@ -2189,8 +2189,8 @@ function PerfDistItem({ item, isChecked, onToggle }) {
     setter(prev => ({ ...prev, loading: true }))
     try {
       const [aptRes, metarRes] = await Promise.allSettled([
-        proxyJSON(`${AWC}/airport?ids=${icao}&format=json`),
-        proxyJSON(`${AWC}/metar?ids=${icao}&format=json`),
+        proxyJSON(awcUrl('airport', { ids: icao, format: 'json' })),
+        proxyJSON(awcUrl('metar', { ids: icao, format: 'json' })),
       ])
       const patch = { icao: icao.toUpperCase(), loading: false }
       // Elevation
@@ -2840,7 +2840,7 @@ function CruiseItem({ item, isChecked, onToggle }) {
     ;(async () => {
       let text = null
       for (const fcst of ['06', '12', '24']) {
-        const url = `${AWC}/windtemp?region=us&fcst=${fcst}`
+        const url = awcUrl('windtemp', { region: 'us', fcst })
         try {
           const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
           if (res.ok) { text = await res.text(); break }
@@ -3342,7 +3342,7 @@ function MetarItem({ item, isChecked, onToggle }) {
   const fetchMetar = async icao => {
     if (!icao) return null
     try {
-      const data = await proxyJSON(`${AWC}/metar?ids=${icao}&format=json&hours=3`)
+      const data = await proxyJSON(awcUrl('metar', { ids: icao, format: 'json', hours: '3' }))
       const raw  = Array.isArray(data) && data.length ? data[0].rawOb || data[0].rawob || '' : ''
       return raw ? { raw, decoded: parseMetar(raw) } : null
     } catch { return null }
@@ -3913,7 +3913,7 @@ function AltitudeItem({ item, isChecked, onToggle }) {
     if (!tfrs) {
       try {
         const res = await fetch(
-          `${AWC}/notam?format=json&hazard=tfr`,
+          awcUrl('notam', { format: 'json', hazard: 'tfr' }),
           { signal: AbortSignal.timeout(8000) }
         )
         if (res.ok) {
@@ -5581,7 +5581,7 @@ function AirportItem({ item, isChecked, onToggle }) {
 
   useEffect(() => {
     if (!open || !destIcao) return
-    proxyJSON(`${AWC}/metar?ids=${destIcao}&format=json&hours=3`)
+    proxyJSON(awcUrl('metar', { ids: destIcao, format: 'json', hours: '3' }))
       .then(data => {
         const m = Array.isArray(data) ? data[0] : null
         if (m?.wdir != null && m?.wspd != null) setAptWind({ dir: m.wdir, spd: m.wspd })
