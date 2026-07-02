@@ -73,16 +73,43 @@ function TextInput({ label, value, onChange, placeholder, type = 'text' }) {
   )
 }
 
-function DateField({ label, value, onChange, placeholder }) {
+function DateField({ label, value, onChange }) {
+  const ref = useRef(null)
+
+  const display = value
+    ? new Date(value + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null
+
+  function open() {
+    const el = ref.current
+    if (!el) return
+    if (el.showPicker) el.showPicker()
+    else el.focus()
+  }
+
   return (
     <Field label={label}>
-      <input
-        type="date"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        style={{ ...INPUT_BASE, color: value ? 'var(--text)' : 'var(--text-tertiary)' }}
-      />
+      <div onClick={open} style={{
+        ...INPUT_BASE,
+        cursor: 'pointer',
+        display: 'flex', alignItems: 'center',
+        color: display ? 'var(--text)' : 'var(--text-tertiary)',
+        position: 'relative',
+      }}>
+        {display || 'Date'}
+        <input
+          ref={ref}
+          type="date"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          style={{
+            position: 'absolute', inset: 0, opacity: 0,
+            width: '100%', height: '100%',
+            pointerEvents: 'none',
+          }}
+          tabIndex={-1}
+        />
+      </div>
     </Field>
   )
 }
