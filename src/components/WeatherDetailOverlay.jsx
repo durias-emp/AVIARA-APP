@@ -157,7 +157,7 @@ export default function WeatherDetailOverlay({
       }}
     >
       {/* Content wrapper — matches app shell width */}
-      <div className="overlay-content">
+      <div style={{ width: '100%', minHeight: '100%', position: 'relative' }}>
 
         {/* Sky backdrop inside the content wrapper so it expands with content height */}
         <div style={{
