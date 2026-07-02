@@ -326,7 +326,7 @@ function Step2({ draft, update, onNext, onBack }) {
                   <div key={i} style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     padding: '8px 0',
-                    borderTop: i > 0 ? '0.5px solid var(--border)' : 'none',
+                    borderTop: 'none',
                   }}>
                     <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{row.label}</span>
                     <span style={{ fontSize: 13, fontWeight: 600, color: row.ok ? 'var(--ok)' : 'var(--warn)' }}>
