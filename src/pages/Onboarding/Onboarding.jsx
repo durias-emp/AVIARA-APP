@@ -80,41 +80,44 @@ function DateField({ label, value, onChange }) {
 
   return (
     <Field label={label}>
-      {/* Outer wrapper clips any overflow the native date chrome might cause */}
       <div style={{
-        position: 'relative',
+        display: 'grid',
+        width: '100%',
+        maxWidth: '100%',
+        boxSizing: 'border-box',
         borderRadius: 'var(--r-sm)',
         border: '0.5px solid var(--border)',
         background: 'var(--bg-card-2)',
         overflow: 'hidden',
       }}>
-        {/* Visible display — pointer-events off so taps go to the input below */}
         <div style={{
+          gridColumn: 1, gridRow: 1,
           padding: '11px 13px',
           fontSize: 15,
           color: display ? 'var(--text)' : 'var(--text-tertiary)',
           pointerEvents: 'none',
           userSelect: 'none',
+          zIndex: 1,
         }}>
           {display || 'Date'}
         </div>
-        {/* Fully interactive input covering the whole area, invisible */}
         <input
           type="date"
           value={value}
           onChange={e => onChange(e.target.value)}
           style={{
-            position: 'absolute',
-            top: 0, left: 0, right: 0, bottom: 0,
-            width: '100%', height: '100%',
+            gridColumn: 1, gridRow: 1,
+            width: '100%',
+            maxWidth: '100%',
+            boxSizing: 'border-box',
             opacity: 0,
             cursor: 'pointer',
             fontSize: 16,
             border: 'none',
             background: 'transparent',
             padding: 0, margin: 0,
-            boxSizing: 'border-box',
             WebkitAppearance: 'none',
+            appearance: 'none',
           }}
         />
       </div>
