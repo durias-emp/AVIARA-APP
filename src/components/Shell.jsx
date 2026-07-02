@@ -1,4 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useOverlayClose } from '../context/OverlayClose'
 
 function IconChevronLeft({ size = 20 }) {
   return (
@@ -9,10 +10,18 @@ function IconChevronLeft({ size = 20 }) {
 }
 
 export function BackButton({ onBack }) {
-  const navigate = useNavigate()
+  const navigate      = useNavigate()
+  const closeOverlay  = useOverlayClose()
+
+  function handleBack() {
+    if (onBack)        { onBack();        return }
+    if (closeOverlay)  { closeOverlay();  return }
+    navigate('/')
+  }
+
   return (
     <button
-      onClick={() => onBack ? onBack() : navigate('/')}
+      onClick={handleBack}
       style={{
         width: 36,
         height: 36,
@@ -37,7 +46,7 @@ export default function Shell({ children }) {
   const isHome = location.pathname === '/'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
+    <div className="app-shell">
       <main style={{ flex: 1, overflowY: isHome ? 'hidden' : 'auto' }}>
         {children}
       </main>

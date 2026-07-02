@@ -1,6 +1,124 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { get, put } from '../../lib/db'
 import { BackButton } from '../../components/Shell'
+import { generateAircraftIcon } from '../../lib/generateIcon'
+
+function AircraftPlaceholder() {
+  return (
+    <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg"
+      style={{ width: '100%', height: '100%', opacity: 0.18 }}>
+      {/* Fuselage */}
+      <ellipse cx="100" cy="105" rx="10" ry="52" fill="currentColor" />
+      {/* Wings */}
+      <path d="M100 95 L28 130 L38 134 L100 108 L162 134 L172 130 Z" fill="currentColor" />
+      {/* Horizontal stabilizer */}
+      <path d="M100 150 L72 162 L76 165 L100 155 L124 165 L128 162 Z" fill="currentColor" />
+      {/* Vertical stabilizer */}
+      <path d="M100 148 L95 135 L105 135 Z" fill="currentColor" />
+      {/* Nose */}
+      <ellipse cx="100" cy="55" rx="7" ry="10" fill="currentColor" />
+    </svg>
+  )
+}
+
+function GenerateIconButton({ aircraftName, onGenerated }) {
+  const [open, setOpen]         = useState(false)
+  const [name, setName]         = useState(aircraftName ?? '')
+  const [generating, setGenerating] = useState(false)
+  const [error, setError]       = useState(null)
+
+  useEffect(() => { setName(aircraftName ?? '') }, [aircraftName])
+
+  async function generate() {
+    if (!name.trim()) return
+    setGenerating(true)
+    setError(null)
+    try {
+      const image = await generateAircraftIcon(name.trim())
+      onGenerated(image)
+      setOpen(false)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.15)',
+          borderRadius: 10, padding: '7px 14px', cursor: 'pointer',
+          color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500,
+        }}
+      >
+        <svg width={13} height={13} viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+            stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        Generate icon
+      </button>
+    )
+  }
+
+  return (
+    <div style={{
+      background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+      borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Generate aircraft icon</div>
+      <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: -4 }}>
+        Describe your aircraft — model name is enough, add details if you want.
+      </div>
+      <input
+        autoFocus
+        value={name}
+        onChange={e => setName(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && generate()}
+        placeholder="e.g. Cirrus Vision Jet SF50"
+        maxLength={80}
+        style={{
+          padding: '9px 12px', borderRadius: 9,
+          border: '0.5px solid var(--border-strong)',
+          background: 'var(--bg-card-2)', color: 'var(--text)',
+          fontSize: 14, outline: 'none', fontFamily: 'inherit',
+        }}
+      />
+      {error && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={generate}
+          disabled={!name.trim() || generating}
+          style={{
+            flex: 1, padding: '9px 0', borderRadius: 9, border: 'none',
+            background: 'var(--accent)', color: 'var(--accent-fg)',
+            fontWeight: 700, fontSize: 14, cursor: generating ? 'default' : 'pointer',
+            opacity: !name.trim() || generating ? 0.5 : 1,
+          }}
+        >
+          {generating ? 'Generating…' : 'Generate'}
+        </button>
+        <button
+          onClick={() => { setOpen(false); setError(null) }}
+          disabled={generating}
+          style={{
+            padding: '9px 14px', borderRadius: 9, border: 'none',
+            background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
+            fontSize: 14, cursor: 'pointer',
+          }}
+        >Cancel</button>
+      </div>
+      {generating && (
+        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', textAlign: 'center' }}>
+          This takes about 15 seconds…
+        </div>
+      )}
+    </div>
+  )
+}
 
 /* ── Aircraft library ────────────────────────────────────── */
 export const TEMPLATES = [
@@ -179,8 +297,6 @@ function deepMerge(base, overrides) {
   return out
 }
 
-/* Aircraft category labels */
-const CAT_LABELS = { trainer: 'Trainer', touring: 'Touring', multi: 'Multi', turboprop: 'Turboprop', custom: 'Custom' }
 
 /* ── Main component ──────────────────────────────────────── */
 export default function Aircraft() {
@@ -259,7 +375,7 @@ export default function Aircraft() {
 
   const activeTemplate = TEMPLATES.find(t => t.fullName === profile.fullName)
   const activeTemplateId = activeTemplate?.id ?? (profile.category === 'custom' ? 'custom' : null)
-  const heroImage = activeTemplate?.image ?? '/avion.png'
+  const heroImage = profile.image ?? activeTemplate?.image ?? null
   const reg = profile.registration?.trim()
   const displayName = profile.fullName || profile.label || '—'
   const isHelicopter = profile.category === 'helicopter'
@@ -311,19 +427,29 @@ export default function Aircraft() {
 
           {/* Aircraft image */}
           <div style={{ position: 'relative', width: '100%', height: 280, marginBottom: -20, overflow: 'hidden' }}>
-            <img
-              key={slideKey}
-              src={heroImage}
-              alt=""
-              style={{
+            {heroImage ? (
+              <img
+                key={slideKey}
+                src={heroImage}
+                alt=""
+                style={{
+                  width: '100%', height: '100%',
+                  objectFit: 'contain',
+                  objectPosition: 'center bottom',
+                  display: 'block',
+                  mixBlendMode: 'screen',
+                  animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.35s cubic-bezier(0.25,0.46,0.45,0.94) both` : 'none',
+                }}
+              />
+            ) : (
+              <div style={{
                 width: '100%', height: '100%',
-                objectFit: 'contain',
-                objectPosition: 'center bottom',
-                display: 'block',
-                mixBlendMode: 'screen',
-                animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.35s cubic-bezier(0.25,0.46,0.45,0.94) both` : 'none',
-              }}
-            />
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--text)',
+              }}>
+                <AircraftPlaceholder />
+              </div>
+            )}
             <div style={{
               position: 'absolute', bottom: 0, left: 0, right: 0, height: '40%',
               background: 'linear-gradient(to bottom, transparent 0%, var(--bg) 100%)',
@@ -356,6 +482,18 @@ export default function Aircraft() {
             </div>
           </div>
           </div>{/* end hover/swipe zone */}
+
+          {/* Generate icon button — only when no built-in template image exists */}
+          {!activeTemplate?.image && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10, marginBottom: 4 }}>
+              <GenerateIconButton
+                aircraftName={profile.fullName || profile.label || ''}
+                onGenerated={dataUrl => {
+                  patch(null, 'image', dataUrl)
+                }}
+              />
+            </div>
+          )}
 
           {/* Name + reg — centered */}
           <div key={slideKey} style={{ position: 'relative', zIndex: 1, textAlign: 'center', marginBottom: 14, animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.35s cubic-bezier(0.25,0.46,0.45,0.94) both` : 'none' }}>

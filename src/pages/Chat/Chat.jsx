@@ -40,15 +40,6 @@ function IconSend({ size = 16 }) {
   )
 }
 
-function IconKey({ size = 16 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <circle cx="7.5" cy="15.5" r="5.5" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M21 2l-9.6 9.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      <path d="M15 8l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-    </svg>
-  )
-}
 
 export default function Chat() {
   const [messages, setMessages] = useState([])

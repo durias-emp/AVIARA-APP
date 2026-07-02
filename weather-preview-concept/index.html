@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PQRH Weather Preview</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="phone-frame" aria-label="Weather preview">
+        <div class="home-screen app-view is-active">
+          <header class="home-header">
+            <div>
+              <p>Good morning,</p>
+              <h1>James McBride</h1>
+            </div>
+            <span class="role-pill">Pilot</span>
+          </header>
+
+          <button class="home-weather-card" type="button" aria-label="Open full weather view" data-open-weather>
+            <div class="home-weather-sky">
+              <div class="home-cloud home-cloud-one"></div>
+              <div class="home-cloud home-cloud-two"></div>
+              <div class="home-rain"></div>
+            </div>
+            <div class="home-weather-main">
+              <strong>24°</strong>
+              <div>
+                <span>KMIA</span>
+                <span class="home-cat">MVFR</span>
+              </div>
+              <p>Miami Intl, FL, US</p>
+            </div>
+            <div class="home-weather-meta">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 7v5h-5M4 17v-5h5" />
+                <path d="M18.1 9A7 7 0 0 0 6 6.7L4 12m2 3a7 7 0 0 0 12.1 2.3L20 12" />
+              </svg>
+              <span>Light rain</span>
+              <span>BKN 2,500</span>
+              <span>7 SM vis</span>
+            </div>
+          </button>
+
+          <section class="aircraft-card glass-panel">
+            <div>
+              <p><span></span> Active Aircraft</p>
+              <h2>Bell 206B-3 JetRanger III</h2>
+              <small>YS-CNA</small>
+            </div>
+            <div class="heli-shape" aria-hidden="true">
+              <span></span>
+            </div>
+          </section>
+
+          <section class="home-grid">
+            <article class="home-tile">
+              <span class="tile-icon">▦</span>
+              <h2>Flight Planning</h2>
+              <p>Pre-flight · Briefing</p>
+              <small>12 / 15 items</small>
+            </article>
+            <article class="home-tile">
+              <span class="tile-icon">◎</span>
+              <h2>Calculators</h2>
+              <p>PA · DA · V-REF</p>
+              <small>4 calculators</small>
+            </article>
+            <article class="home-tile">
+              <span class="tile-icon">✓</span>
+              <h2>Currency</h2>
+              <p>IM SAFE · IM CURRENT</p>
+              <small>Set up required</small>
+            </article>
+            <article class="home-tile">
+              <span class="tile-icon">▤</span>
+              <h2>Reference</h2>
+              <p>Air law · Signals</p>
+              <small>14 sections</small>
+            </article>
+          </section>
+        </div>
+
+        <div class="weather-screen theme-rain app-view detail-view">
+          <div class="sky">
+            <canvas class="sky-canvas" aria-hidden="true"></canvas>
+            <div class="sky-glow"></div>
+            <div class="light-shelf"></div>
+            <div class="cloud-bank bank-back"></div>
+            <div class="cloud-bank bank-mid"></div>
+            <div class="cloud-bank bank-front"></div>
+            <div class="cloud-wisp wisp-one"></div>
+            <div class="cloud-wisp wisp-two"></div>
+            <div class="rain-curtain"></div>
+            <div class="rain-sheet"></div>
+            <div class="atmospheric-haze haze-high"></div>
+            <div class="atmospheric-haze haze-low"></div>
+          </div>
+
+          <header class="top-bar">
+            <button class="icon-button" type="button" aria-label="Back to home" data-back-home>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15 18 9 12l6-6" />
+              </svg>
+            </button>
+            <div>
+              <p class="eyebrow">Home airport</p>
+              <h1>KMIA</h1>
+            </div>
+            <button class="icon-button refresh" aria-label="Refresh weather">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 7v5h-5M4 17v-5h5" />
+                <path d="M18.1 9A7 7 0 0 0 6 6.7L4 12m2 3a7 7 0 0 0 12.1 2.3L20 12" />
+              </svg>
+            </button>
+          </header>
+
+          <section class="hero">
+            <div class="hero-copy">
+              <p class="airport">Miami Intl</p>
+              <div class="temp-row">
+                <span class="temperature">24°</span>
+                <span class="condition">Light rain</span>
+              </div>
+              <div class="status-line">
+                <span class="flight-pill mvfr">MVFR</span>
+                <span>Ceiling is the limiting factor</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="compact-card" aria-label="Home weather card">
+            <div>
+              <p class="card-label">Now</p>
+              <strong>24°</strong>
+              <span>KMIA · MVFR</span>
+            </div>
+            <div class="compact-list">
+              <span>150° 12G18 kt</span>
+              <span>BKN 2,500 ft</span>
+              <span>7 SM visibility</span>
+            </div>
+          </section>
+
+          <section class="glass-panel decision-panel">
+            <div>
+              <p class="panel-kicker">Pilot readout</p>
+              <h2>Marginal VFR, trending wet</h2>
+            </div>
+            <span class="fresh">Updated 2 min ago</span>
+            <p class="decision-copy">
+              Light rain with a broken layer at 2,500 ft. Watch for lowered ceilings near showers; latest observation is current.
+            </p>
+          </section>
+
+          <section class="metric-grid" aria-label="Weather metrics">
+            <article class="metric-card accent-green">
+              <p>Wind</p>
+              <strong>150° 12G18</strong>
+              <span>kt · crosswind 8</span>
+            </article>
+            <article class="metric-card accent-blue">
+              <p>Visibility</p>
+              <strong>7 SM</strong>
+              <span>rain, unrestricted</span>
+            </article>
+            <article class="metric-card accent-amber">
+              <p>Ceiling</p>
+              <strong>BKN 2,500</strong>
+              <span>MVFR limiter</span>
+            </article>
+            <article class="metric-card accent-silver">
+              <p>Altimeter</p>
+              <strong>29.92</strong>
+              <span>inHg</span>
+            </article>
+          </section>
+
+          <section class="hazard-row" aria-label="Weather hazards">
+            <span>RA</span>
+            <span>GUSTS</span>
+            <span>LOW CIG</span>
+          </section>
+
+          <section class="timeline glass-panel" aria-label="TAF outlook">
+            <div class="section-head">
+              <h2>TAF Outlook</h2>
+              <span>Next 12 hr</span>
+            </div>
+            <div class="taf-track">
+              <article>
+                <time>Now</time>
+                <strong>MVFR</strong>
+                <span>RA</span>
+              </article>
+              <article>
+                <time>15Z</time>
+                <strong>VFR</strong>
+                <span>SCT</span>
+              </article>
+              <article>
+                <time>18Z</time>
+                <strong>VFR</strong>
+                <span>G18</span>
+              </article>
+              <article>
+                <time>21Z</time>
+                <strong>MVFR</strong>
+                <span>SHRA</span>
+              </article>
+            </div>
+          </section>
+
+          <section class="metar-panel">
+            <div class="section-head">
+              <h2>Raw METAR</h2>
+              <button class="copy-button">Copy</button>
+            </div>
+            <p>KMIA 011253Z 15012G18KT 7SM -RA BKN025 24/21 A2992 RMK AO2 RAB12 SLP132</p>
+          </section>
+        </div>
+      </section>
+
+      <aside class="design-notes">
+        <p class="eyebrow">Concept preview</p>
+        <h2>Apple Weather feel, pilot brain.</h2>
+        <p>
+          This version keeps the animated sky, but makes the information calmer, deeper, and more operational. The first read is visual. The second read tells the pilot why the category matters.
+        </p>
+        <div class="note-grid">
+          <span>Glass panels</span>
+          <span>Hazard chips</span>
+          <span>TAF timeline</span>
+          <span>Limiter logic</span>
+        </div>
+      </aside>
+    </main>
+    <script src="./sky.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

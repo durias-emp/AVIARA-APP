@@ -126,8 +126,50 @@ body {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  max-width: 428px;
+}
+
+/* ── Responsive app shell ──────────────────────────────────── */
+.app-shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  width: 100%;
+}
+
+/* Tablet: fill most of the screen, no border treatment */
+@media (min-width: 600px) {
+  .app-shell {
+    max-width: 700px;
+    margin: 0 auto;
+  }
+}
+
+/* Desktop: comfortable reading width, still no borders */
+@media (min-width: 1024px) {
+  .app-shell {
+    max-width: 780px;
+  }
+}
+
+/* ── Overlay content column (responsive) ───────────────────── */
+.overlay-content {
+  width: 100%;
   margin: 0 auto;
+  min-height: 100%;
+  position: relative;
+}
+
+@media (min-width: 600px) {
+  .overlay-content {
+    max-width: 700px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .overlay-content {
+    max-width: 780px;
+  }
 }
 
 /* ── Input reset ───────────────────────────────────────────── */
@@ -254,3 +296,159 @@ input[type="number"]::-webkit-outer-spin-button {
 
 /* Sectional chart tiles — multiply blend removes grey no-coverage areas on light base */
 .sectional-layer { mix-blend-mode: multiply; }
+
+/* ── Weather detail overlay — CSS sky layers ─────────────────── */
+
+/* Cloud banks — pure CSS radial gradients, no canvas */
+.wd-cloud-bank {
+  position: absolute;
+  left: -24%;
+  width: 148%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 8% 64%, rgba(255,255,255,0.42) 0 13%, transparent 31%),
+    radial-gradient(ellipse at 23% 42%, rgba(250,253,255,0.58) 0 16%, transparent 36%),
+    radial-gradient(ellipse at 41% 54%, rgba(236,245,250,0.48) 0 19%, transparent 40%),
+    radial-gradient(ellipse at 61% 38%, rgba(255,255,255,0.42) 0 15%, transparent 35%),
+    radial-gradient(ellipse at 79% 58%, rgba(219,233,240,0.44) 0 17%, transparent 39%),
+    radial-gradient(ellipse at 96% 46%, rgba(255,255,255,0.36) 0 12%, transparent 32%),
+    linear-gradient(180deg, rgba(255,255,255,0.08), rgba(91,111,123,0.28) 72%, rgba(31,44,61,0.32));
+  filter: blur(7px) saturate(1.05);
+  pointer-events: none;
+  mask-image: linear-gradient(90deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+}
+.wd-bank-back  { top: 52px;  height: 290px; opacity: 0.22; animation: wdCloudBankSlow 66s ease-in-out infinite alternate; }
+.wd-bank-mid   { top: 148px; height: 330px; opacity: 0.26; animation: wdCloudBankMid  48s ease-in-out infinite alternate; }
+.wd-bank-front { top: 280px; height: 320px; opacity: 0.18; filter: blur(10px) saturate(0.95); animation: wdCloudBankFront 34s ease-in-out infinite alternate; }
+
+.wd-cloud-wisp {
+  position: absolute;
+  left: -10%;
+  width: 120%;
+  height: 170px;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 12% 48%, rgba(255,255,255,0.2), transparent 28%),
+    radial-gradient(ellipse at 34% 54%, rgba(255,255,255,0.24), transparent 30%),
+    radial-gradient(ellipse at 58% 44%, rgba(221,236,244,0.2), transparent 32%),
+    radial-gradient(ellipse at 82% 55%, rgba(255,255,255,0.18), transparent 28%);
+  filter: blur(12px);
+  pointer-events: none;
+  mask-image: linear-gradient(90deg, transparent 0%, #000 16%, #000 84%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 16%, #000 84%, transparent 100%);
+}
+.wd-wisp-one { top: 78px;  opacity: 0.22; animation: wdWispSlide 54s ease-in-out infinite alternate; }
+.wd-wisp-two { top: 430px; opacity: 0.18; animation: wdWispSlide 42s ease-in-out infinite alternate-reverse; }
+
+/* Rain — seamless CSS background-position animation, three depth layers */
+.wd-rain-curtain {
+  position: absolute;
+  inset: -12% -28%;
+  background:
+    linear-gradient(103deg, transparent 0 18%, rgba(207,229,242,0.075) 24% 28%, transparent 36% 48%, rgba(206,229,242,0.07) 56% 60%, transparent 70%),
+    repeating-linear-gradient(104deg, transparent 0 62px, rgba(184,216,235,0.055) 65px 68px, transparent 72px 134px);
+  background-size: 320px 520px, 260px 420px;
+  filter: blur(3px);
+  opacity: 0.44;
+  pointer-events: none;
+  animation: wdRainVeil 16s linear infinite;
+}
+
+.wd-rain-sheet {
+  position: absolute;
+  overflow: hidden;
+  inset: -18% -20%;
+  background:
+    repeating-linear-gradient(108deg, transparent 0 24px, rgba(226,246,255,0.22) 26px 27px, transparent 30px 72px),
+    repeating-linear-gradient(108deg, transparent 0 86px, rgba(207,233,255,0.18) 88px 89px, transparent 92px 154px),
+    linear-gradient(180deg, rgba(255,255,255,0.04), transparent 42%, rgba(255,255,255,0.025));
+  background-size: 128px 210px, 220px 320px, 100% 100%;
+  opacity: 0.3;
+  filter: blur(0.2px);
+  pointer-events: none;
+  animation: wdRainFine 1.8s linear infinite;
+}
+.wd-rain-sheet::before {
+  position: absolute;
+  inset: -10%;
+  content: "";
+  background:
+    repeating-linear-gradient(108deg, transparent 0 118px, rgba(255,255,255,0.32) 120px 121px, transparent 124px 192px),
+    repeating-linear-gradient(108deg, transparent 0 172px, rgba(220,242,255,0.22) 174px 175px, transparent 178px 260px);
+  background-size: 240px 360px, 310px 430px;
+  opacity: 0.52;
+  filter: blur(0.35px);
+  animation: wdRainNear 1.05s linear infinite;
+}
+.wd-rain-sheet::after {
+  position: absolute;
+  inset: -10%;
+  content: "";
+  background:
+    radial-gradient(ellipse at 30% 18%, rgba(255,255,255,0.1), transparent 34%),
+    radial-gradient(ellipse at 70% 70%, rgba(196,224,236,0.08), transparent 40%);
+  filter: blur(18px);
+  opacity: 0.58;
+  animation: wdRainMist 9s ease-in-out infinite alternate;
+}
+
+.wd-atmospheric-haze {
+  position: absolute;
+  left: -24%;
+  width: 148%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 36% 50%, rgba(255,255,255,0.2), transparent 46%),
+    radial-gradient(ellipse at 76% 48%, rgba(195,219,231,0.18), transparent 42%);
+  filter: blur(16px);
+  pointer-events: none;
+  animation: wdHazeDrift 26s ease-in-out infinite alternate;
+}
+.wd-haze-high { top: 220px;  height: 170px; opacity: 0.32; }
+.wd-haze-low  { bottom: 42px; height: 180px; opacity: 0.24; animation-delay: -9s; }
+
+/* Home card rain — compact card background rain effect */
+.home-card-rain {
+  position: absolute;
+  inset: -20px;
+  overflow: hidden;
+  opacity: 0.28;
+  background:
+    repeating-linear-gradient(108deg, transparent 0 28px, rgba(255,255,255,0.2) 30px 31px, transparent 34px 72px),
+    repeating-linear-gradient(108deg, transparent 0 78px, rgba(225,246,255,0.22) 80px 81px, transparent 84px 142px);
+  background-size: 140px 220px, 210px 280px;
+  pointer-events: none;
+  animation: wdHomeRainFine 2.2s linear infinite;
+}
+.home-card-rain::after {
+  position: absolute;
+  inset: -12%;
+  content: "";
+  background: repeating-linear-gradient(108deg, transparent 0 92px, rgba(255,255,255,0.34) 94px 95px, transparent 98px 152px);
+  background-size: 220px 320px;
+  filter: blur(0.4px);
+  animation: wdHomeRainNear 1.4s linear infinite;
+}
+
+/* ── Weather sky keyframes ────────────────────────────────────── */
+@keyframes wdCloudBankSlow  { 0% { transform: translate3d(-4%,0,0) scale(1.08); }  100% { transform: translate3d(4%,-10px,0) scale(1.12); } }
+@keyframes wdCloudBankMid   { 0% { transform: translate3d(4%,0,0) scale(1.02); }   100% { transform: translate3d(-5%,12px,0) scale(1.07); } }
+@keyframes wdCloudBankFront { 0% { transform: translate3d(-6%,8px,0) scale(1.05); } 100% { transform: translate3d(5%,-8px,0) scale(1.12); } }
+@keyframes wdWispSlide      { 0% { transform: translate3d(-6%,0,0) scaleX(1); }    100% { transform: translate3d(7%,-12px,0) scaleX(1.08); } }
+
+@keyframes wdRainVeil  { from { background-position: 0 0, 0 0; }     to { background-position: -320px 520px, -260px 420px; } }
+@keyframes wdRainFine  { from { background-position: 0 0, 0 0, 0 0; } to { background-position: -128px 210px, -220px 320px, 0 0; } }
+@keyframes wdRainNear  { from { background-position: 0 0, 0 0; }     to { background-position: -240px 360px, -310px 430px; } }
+@keyframes wdRainMist  { 0% { transform: translate3d(-2%,0,0); opacity: 0.42; } 100% { transform: translate3d(3%,-2%,0); opacity: 0.62; } }
+@keyframes wdHazeDrift { 0% { transform: translate3d(-4%,0,0); } 100% { transform: translate3d(5%,-10px,0); } }
+@keyframes wdHomeRainFine { from { background-position: 0 0, 0 0; } to { background-position: -140px 220px, -210px 280px; } }
+@keyframes wdHomeRainNear { from { background-position: 0 0; }       to { background-position: -220px 320px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .wd-cloud-bank, .wd-cloud-wisp,
+  .wd-rain-curtain, .wd-rain-sheet, .wd-rain-sheet::before, .wd-rain-sheet::after,
+  .wd-atmospheric-haze, .home-card-rain, .home-card-rain::after {
+    animation: none;
+  }
+}

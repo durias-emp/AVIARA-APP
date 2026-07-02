@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { get } from '../../lib/db'
 import { getWBConfig } from '../../lib/aircraftWB'
 import { BackButton } from '../../components/Shell'
@@ -390,7 +389,6 @@ function NoConfig({ aircraftLabel }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function WeightBalance() {
-  const navigate = useNavigate()
   const [aircraftProfile, setAircraftProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [metric, setMetric] = useState(false)

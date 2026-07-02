@@ -1,19 +1,14 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { get, put } from '../lib/db'
+import AirportPickerModal from './AirportPickerModal'
 import {
   loadWeather, parseFltCat, parseWind, parseVisib, parseCeiling,
   parseTemp, parseDewp, parseAltim, parseWx, parseObsAge, parseFetchAge, parseAirportName,
 } from '../lib/weather'
 import WeatherAnimation, { getCondition, textColor } from './WeatherAnimation'
 import { IconRefresh } from './Icons'
-function IconEdit({ size = 14 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  )
-}
+import WeatherDetailOverlay from './WeatherDetailOverlay'
 
 const GRID_ICONS = {
   wind: (
@@ -30,14 +25,38 @@ const GRID_ICONS = {
   ),
 }
 
-export default function WeatherCard({ compact = false }) {
-  const [icao, setIcao]       = useState('')
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft]     = useState('')
-  const [wx, setWx]           = useState(null)
+export default function WeatherCard({ compact = false, onOpenChange }) {
+  const [icao, setIcao]         = useState('')
+  const [pickerOpen, setPicker] = useState(false)
+  const [wx, setWx]             = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState(null)
   const [copied, setCopied]   = useState(false)
+
+  // Overlay open state
+  const cardRef   = useRef(null)
+  const [overlayOpen, setOverlayOpen] = useState(false)
+  const [overlayClosing, setOverlayClosing] = useState(false)
+  const [cardRect, setCardRect] = useState(null)
+
+  function handleCardOpen() {
+    if (cardRef.current) {
+      const r = cardRef.current.getBoundingClientRect()
+      setCardRect({ top: r.top, left: r.left, width: r.width, height: r.height })
+    }
+    setOverlayClosing(false)
+    setOverlayOpen(true)
+    onOpenChange?.(true)
+  }
+
+  function handleOverlayClose() {
+    setOverlayClosing(true)
+    onOpenChange?.(false)
+    setTimeout(() => {
+      setOverlayOpen(false)
+      setOverlayClosing(false)
+    }, 320)
+  }
 
   function copyMetar(text) {
     const doFallback = () => {
@@ -51,7 +70,7 @@ export default function WeatherCard({ compact = false }) {
         document.body.removeChild(el)
         setCopied(true)
         setTimeout(() => setCopied(false), 1800)
-      } catch {}
+      } catch { /* clipboard fallback failed silently */ }
     }
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).then(() => {
@@ -66,7 +85,7 @@ export default function WeatherCard({ compact = false }) {
   useEffect(() => {
     get('settings', 'homeAirport').then(row => {
       if (row?.value) setIcao(row.value)
-      else setEditing(true)
+      else setPicker(true)
     })
   }, [])
 
@@ -99,167 +118,162 @@ export default function WeatherCard({ compact = false }) {
     })
   }, [icao, refresh])
 
-  async function saveAirport() {
-    const id = draft.trim().toUpperCase()
-    if (id.length < 3) return
+  async function confirmAirport(id) {
     await put('settings', { key: 'homeAirport', value: id })
     setIcao(id)
-    setEditing(false)
-    setDraft('')
+    setPicker(false)
   }
 
   const { type, isNight } = getCondition(wx?.metar ?? null)
   const fg = textColor(type, isNight)
   const fgMuted = fg === '#ffffff' ? 'rgba(255,255,255,0.65)' : 'rgba(20,40,60,0.55)'
   const cat = wx?.metar ? parseFltCat(wx.metar) : null
+  // eslint-disable-next-line react-hooks/purity
   const isStale = wx?.error || (wx?.fetchedAt && Date.now() - wx.fetchedAt > 3600000)
-
-  // ── Airport picker ──────────────────────────────────────────
-  if (editing) {
-    return (
-      <div style={{
-        borderRadius: 'var(--r-xl)',
-        boxShadow: 'var(--shadow-md)',
-        background: 'var(--bg-card)',
-        display: 'flex', flexDirection: 'column',
-        justifyContent: 'center',
-        padding: '28px 20px',
-      }}>
-        <div>
-          <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Set Home Airport</p>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 14 }}>
-            Enter an ICAO code to see live weather here.
-          </p>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input
-              autoFocus maxLength={4}
-              placeholder="e.g. KLAX"
-              value={draft}
-              onChange={e => setDraft(e.target.value.toUpperCase())}
-              onKeyDown={e => e.key === 'Enter' && saveAirport()}
-              style={{
-                flex: 1, padding: '11px 14px',
-                borderRadius: 10,
-                border: '1px solid var(--border-strong)',
-                background: 'var(--bg-card-2)',
-                color: 'var(--text)',
-                fontSize: 17,
-                fontFamily: 'monospace',
-                letterSpacing: '0.12em',
-                outline: 'none',
-              }}
-            />
-            <button
-              onClick={saveAirport}
-              disabled={draft.trim().length < 3}
-              style={{
-                padding: '11px 20px', borderRadius: 10, border: 'none',
-                background: 'var(--accent)',
-                color: '#fff', fontWeight: 700, fontSize: 15,
-                cursor: draft.trim().length < 3 ? 'default' : 'pointer',
-                opacity: draft.trim().length < 3 ? 0.45 : 1,
-              }}
-            >Set</button>
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   // ── Compact banner ───────────────────────────────────────────
   if (compact) {
-    if (editing) {
+    // No airport yet: show placeholder card
+    if (!icao && !pickerOpen) {
       return (
-        <div style={{
-          borderRadius: 16, background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-          height: 72, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 10,
-        }}>
-          <input
-            autoFocus maxLength={4} placeholder="ICAO (e.g. KMIA)"
-            value={draft} onChange={e => setDraft(e.target.value.toUpperCase())}
-            onKeyDown={e => e.key === 'Enter' && saveAirport()}
-            style={{
-              flex: 1, padding: '8px 12px', borderRadius: 8,
-              border: '1px solid var(--border-strong)', background: 'var(--bg-card-2)',
-              color: 'var(--text)', fontSize: 15, fontFamily: 'monospace',
-              letterSpacing: '0.1em', outline: 'none',
-            }}
-          />
-          <button onClick={saveAirport} disabled={draft.trim().length < 3} style={{
-            padding: '8px 16px', borderRadius: 8, border: 'none',
-            background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 14,
-            cursor: draft.trim().length < 3 ? 'default' : 'pointer',
-            opacity: draft.trim().length < 3 ? 0.4 : 1,
-          }}>Set</button>
+        <div
+          onClick={() => setPicker(true)}
+          style={{
+            borderRadius: 22, background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+            height: 72, display: 'flex', alignItems: 'center', padding: '0 20px', gap: 12,
+            cursor: 'pointer',
+          }}
+        >
+          <div style={{ fontSize: 22 }}>⛅</div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Set Home Airport</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>Tap to add live weather</div>
+          </div>
+          {pickerOpen && <AirportPickerModal current={icao} onConfirm={confirmAirport} onClose={() => setPicker(false)} />}
         </div>
       )
     }
+
+    const { type: cType } = getCondition(wx?.metar ?? null)
+    const showCardRain = cType === 'rain' || cType === 'storm'
+
     return (
-      <div style={{
-        position: 'relative', overflow: 'hidden', borderRadius: 20,
-        boxShadow: 'var(--shadow-sm)',
-      }}>
-        <WeatherAnimation metar={wx?.metar ?? null} />
-        {/* Readability overlay — dark on left where text lives */}
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 0,
-          background: 'linear-gradient(105deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.3) 55%, rgba(0,0,0,0.05) 100%)',
-        }} />
-        <div style={{ position: 'relative', zIndex: 1 }}>
+      <>
+        {/* Compact clickable card */}
+        <div
+          ref={cardRef}
+          onClick={handleCardOpen}
+          style={{
+            position: 'relative', overflow: 'hidden', borderRadius: 22,
+            boxShadow: '0 18px 38px rgba(0,0,0,0.22)',
+            cursor: 'pointer',
+            minHeight: 136,
+            WebkitTapHighlightColor: 'transparent',
+            userSelect: 'none',
+          }}
+        >
+          <WeatherAnimation metar={wx?.metar ?? null} />
 
-          {/* Card body */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', padding: '16px 18px 18px' }}>
+          {/* CSS rain layer for rain/storm conditions */}
+          {showCardRain && <div className="home-card-rain" />}
 
-            {/* Left — temp on top, then airport */}
-            <div>
-              <div style={{ fontSize: 52, fontWeight: 700, color: fg, letterSpacing: '-2px', lineHeight: 1 }}>
-                {wx?.metar ? parseTemp(wx.metar) : loading ? '…' : '—'}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                <span
-                  onClick={() => { setEditing(true); setDraft(icao) }}
-                  style={{ fontSize: 14, fontWeight: 700, color: fg, fontFamily: 'monospace', letterSpacing: '0.06em', cursor: 'pointer' }}>
-                  {icao || '—'}
-                </span>
-                {cat && (
-                  <span style={{
-                    fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', color: '#fff',
-                    background: cat.color, padding: '3px 9px', borderRadius: 20,
-                    boxShadow: `0 2px 6px ${cat.color}55`,
-                  }}>{cat.label}</span>
+          {/* Readability scrim */}
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 0,
+            background: 'linear-gradient(108deg, rgba(0,0,0,0.52) 0%, rgba(0,0,0,0.28) 55%, rgba(0,0,0,0.04) 100%)',
+          }} />
+
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between',
+              alignItems: 'flex-end', padding: '20px 18px 20px',
+            }}>
+              {/* Left — temp + airport */}
+              <div>
+                <div style={{ fontSize: 52, fontWeight: 180, color: fg, letterSpacing: '-2px', lineHeight: 0.9 }}>
+                  {wx?.metar ? parseTemp(wx.metar) : loading ? '…' : '—'}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                  <span
+                    onClick={e => { e.stopPropagation(); setPicker(true) }}
+                    style={{
+                      fontSize: 14, fontWeight: 800, color: fg,
+                      fontFamily: 'monospace', letterSpacing: '0.06em', cursor: 'pointer',
+                    }}
+                  >
+                    {icao || '—'}
+                  </span>
+                  {cat && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', color: 'rgba(255,255,255,0.9)',
+                      background: 'rgba(15,24,34,0.34)',
+                      border: '1px solid rgba(255,255,255,0.22)',
+                      boxShadow: 'inset 0 1px rgba(255,255,255,0.14)',
+                      backdropFilter: 'blur(8px)',
+                      padding: '4px 9px', borderRadius: 20,
+                    }}>{cat.label}</span>
+                  )}
+                </div>
+                {wx?.metar && parseAirportName(wx.metar) && (
+                  <div style={{ fontSize: 12, fontWeight: 600, color: fgMuted, marginTop: 6 }}>
+                    {parseAirportName(wx.metar)}
+                  </div>
                 )}
               </div>
-              {wx?.metar && parseAirportName(wx.metar) && (
-                <div style={{ fontSize: 11, color: fgMuted, marginTop: 3 }}>
-                  {parseAirportName(wx.metar)}
-                </div>
-              )}
-            </div>
 
-            {/* Right — stats + refresh */}
-            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-              <button onClick={() => refresh(icao)} disabled={loading} style={{
-                background: 'none', border: 'none', padding: 4, cursor: 'pointer',
-                color: fgMuted, display: 'flex', alignItems: 'center',
-                animation: loading ? 'spin-ccw 1s linear infinite' : 'none', marginBottom: 6,
+              {/* Right — wind/ceiling/vis */}
+              <div style={{
+                textAlign: 'right', display: 'flex',
+                flexDirection: 'column', alignItems: 'flex-end', gap: 4,
               }}>
-                <IconRefresh size={14} />
-              </button>
-              {wx?.metar ? (
-                <>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: fg }}>{parseWind(wx.metar)}</div>
-                  <div style={{ fontSize: 11, color: fgMuted }}>{parseCeiling(wx.metar)}</div>
-                  <div style={{ fontSize: 11, color: fgMuted }}>{parseVisib(wx.metar)} vis</div>
-                </>
-              ) : loading ? (
-                <div style={{ fontSize: 12, color: fgMuted }}>Loading…</div>
-              ) : null}
+                <button
+                  onClick={e => { e.stopPropagation(); refresh(icao) }}
+                  disabled={loading}
+                  style={{
+                    background: 'none', border: 'none', padding: 4, cursor: 'pointer',
+                    color: fgMuted, display: 'flex', alignItems: 'center',
+                    animation: loading ? 'spin-ccw 1s linear infinite' : 'none',
+                    marginBottom: 4,
+                  }}
+                >
+                  <IconRefresh size={14} />
+                </button>
+                {wx?.metar ? (
+                  <>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: fg }}>{parseWind(wx.metar)}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: fgMuted }}>{parseCeiling(wx.metar)}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: fgMuted }}>{parseVisib(wx.metar)} vis</div>
+                  </>
+                ) : loading ? (
+                  <div style={{ fontSize: 12, color: fgMuted }}>Loading…</div>
+                ) : null}
+              </div>
             </div>
-
           </div>
-
         </div>
-      </div>
+
+        {/* Full-screen overlay portal */}
+        {overlayOpen && createPortal(
+          <WeatherDetailOverlay
+            wx={wx}
+            icao={icao}
+            loading={loading}
+            error={error}
+            isStale={isStale}
+            closing={overlayClosing}
+            cardRect={cardRect}
+            onClose={handleOverlayClose}
+            onRefresh={() => refresh(icao)}
+            onCopyMetar={copyMetar}
+            copied={copied}
+            onOpenPicker={() => setPicker(true)}
+          />,
+          document.body
+        )}
+
+        {/* Airport picker modal */}
+        {pickerOpen && <AirportPickerModal current={icao} onConfirm={confirmAirport} onClose={() => setPicker(false)} />}
+      </>
     )
   }
 
@@ -282,7 +296,7 @@ export default function WeatherCard({ compact = false }) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span
-                onClick={() => { setEditing(true); setDraft(icao) }}
+                onClick={() => setPicker(true)}
                 style={{ fontSize: 24, fontWeight: 800, letterSpacing: '0.06em', color: fg, fontFamily: 'monospace', cursor: 'pointer' }}>
                 {icao}
               </span>

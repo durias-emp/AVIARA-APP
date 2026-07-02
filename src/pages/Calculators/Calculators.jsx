@@ -201,7 +201,7 @@ function FuelTable() {
   ]
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, borderRadius: 10, overflow: 'hidden', background: 'var(--bg-card)' }}>
-      {rows.map(([name, a, b], i) => (
+      {rows.map(([name, a, b]) => (
         <div key={name} style={{
           display: 'flex',
           justifyContent: 'space-between',

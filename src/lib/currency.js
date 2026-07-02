@@ -185,14 +185,17 @@ export function getCurrencyStatus(data = {}, warnDays = 30) {
   }
 
   // ── MEDICAL VALIDITY ─────────────────────────────────────────────────────
-  let valid = { status: 'incomplete', detail: 'Enter medical info', expiresOn: null }
+  let valid = { status: 'incomplete', detail: 'Enter medical info', expiresOn: null, tiers: [] }
   if (data.medical?.examDate && data.medical?.dob && data.medical?.medClass) {
     const age = ageAt(data.medical.dob, data.medical.examDate)
     const rows = medicalExpiryRows(Number(data.medical.medClass), age)
-    const statuses = rows.map(r => statusFromExpiry(calendarMonthExpiry(data.medical.examDate, r.months), warnDays))
+    const tiers = rows.map(r => {
+      const expiresOn = calendarMonthExpiry(data.medical.examDate, r.months)
+      return { ...r, expiresOn, ...statusFromExpiry(expiresOn, warnDays) }
+    })
     const rank = { expired: 3, expiring: 2, valid: 1, unknown: 0 }
-    const worst = statuses.reduce((w, s) => (rank[s.status] ?? 0) > (rank[w.status] ?? 0) ? s : w, statuses[0] ?? { status: 'incomplete' })
-    valid = { ...worst, detail: `Class ${data.medical.medClass} medical` }
+    const worst = tiers.reduce((w, t) => (rank[t.status] ?? 0) > (rank[w.status] ?? 0) ? t : w, tiers[0] ?? { status: 'incomplete' })
+    valid = { status: worst.status, expiresOn: worst.expiresOn, detail: `Class ${data.medical.medClass} medical`, tiers }
   }
 
   // ── IM AIRWORTHY ─────────────────────────────────────────────────────────

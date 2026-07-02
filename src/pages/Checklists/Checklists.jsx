@@ -3,7 +3,8 @@ import FAA_CHARTS_DATA from '../../data/faa_charts.json'
 import { BackButton } from '../../components/Shell'
 import WBChecklistItem from './WBChecklistItem'
 import { get, put } from '../../lib/db'
-import { MapContainer, TileLayer, Marker, Polyline, Polygon, CircleMarker, Popup, useMap, Pane } from 'react-leaflet'
+import { getCurrencyStatus, fmtDate, fmtDaysLeft, calendarMonthExpiry, daysCurrencyExpiry, statusFromExpiry } from '../../lib/currency'
+import { MapContainer, TileLayer, Marker, Polyline, Polygon, CircleMarker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -324,10 +325,10 @@ async function proxyFetch(url, timeout = 8000) {
       if (!res.ok) continue
       const text = await res.text()
       if (wrap) {
-        try { const env = JSON.parse(text); if (env?.contents) return env.contents } catch {}
+        try { const env = JSON.parse(text); if (env?.contents) return env.contents } catch { /* not JSON-wrapped */ }
       }
       return text
-    } catch {}
+    } catch { /* fetch failed, try next URL */ }
   }
   throw new Error('All proxies failed')
 }
@@ -428,14 +429,14 @@ async function fetchAWC(id) {
   try {
     const data = await proxyJSON(`${AWC}/airport?ids=${id}&format=json`)
     if (Array.isArray(data) && data.length) return data[0]
-  } catch {}
+  } catch { /* ignore */ }
   try {
     const metar = await proxyJSON(`${AWC}/metar?ids=${id}&format=json&hours=3`)
     if (Array.isArray(metar) && metar.length) {
       const m = metar[0]
       return { icaoId: m.icaoId || id, faaId: m.stationId || id, name: m.site, lat: m.lat, lon: m.lon, elev: m.elev, state: m.state, country: m.country, tower: null, rwyNum: null }
     }
-  } catch {}
+  } catch { /* ignore */ }
   return null
 }
 
@@ -530,8 +531,11 @@ const CHECKLISTS = [
         title: 'PILOT',
         num: 5,
         items: [
-          { id: 'pilot-imsafe', label: 'IM SAFE / CURRENT / VALID / AIRWORTHY' },
-          { id: 'pilot-fp',     label: 'Flight Plan Filed' },
+          { id: 'pilot-imsafe',    label: 'IM SAFE',      sub: 'Illness · Medication · Stress · Alcohol · Fatigue · Eating', expand: 'imsafe' },
+          { id: 'pilot-imcurrent', label: 'IM CURRENT',   sub: 'Flight review · Passenger currency · IFR currency',          expand: 'imcurrent' },
+          { id: 'pilot-imvalid',   label: 'IM VALID',     sub: 'Medical certificate validity',                               expand: 'imvalid' },
+          { id: 'pilot-airworthy', label: 'IM AIRWORTHY', sub: 'Annual · Transponder · Pitot-static',                        expand: 'imairworthy' },
+          { id: 'pilot-fp',        label: 'Flight Plan Filed' },
         ],
       },
     ],
@@ -550,6 +554,221 @@ function flattenIds(items) {
 
 function allIds(checklist) {
   return checklist.sections.flatMap(s => flattenIds(s.items))
+}
+
+/* ── IM SAFE / CURRENT / VALID / AIRWORTHY checklist cards ──── */
+const IMSAFE_ITEMS = [
+  { key: 'illness',    letter: 'I', label: 'Illness',    detail: 'No symptoms affecting performance' },
+  { key: 'medication', letter: 'M', label: 'Medication', detail: 'None affecting performance or judgment' },
+  { key: 'stress',     letter: 'S', label: 'Stress',     detail: 'Psychological pressure manageable' },
+  { key: 'alcohol',    letter: 'A', label: 'Alcohol',    detail: '8 hrs bottle-to-throttle · BAC < 0.04%' },
+  { key: 'fatigue',    letter: 'F', label: 'Fatigue',    detail: 'Rested and alert' },
+  { key: 'eating',     letter: 'E', label: 'Eating',     detail: 'Adequately nourished and hydrated' },
+]
+
+function imStatusColor(status) {
+  if (status === 'valid')     return 'var(--ok)'
+  if (status === 'expiring')  return '#f59e0b'
+  if (status === 'expired')   return 'var(--danger)'
+  return 'var(--text-tertiary)'
+}
+
+function imStatusLabel(status) {
+  if (status === 'valid')      return 'Current'
+  if (status === 'expiring')   return 'Expiring'
+  if (status === 'expired')    return 'Expired'
+  if (status === 'incomplete') return 'Incomplete'
+  return 'Not set'
+}
+
+function IMStatusRow({ label, detail, status, extra }) {
+  const color = imStatusColor(status)
+  return (
+    <div style={{ padding: '9px 16px', borderBottom: '0.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{label}</div>
+        {detail && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{detail}</div>}
+      </div>
+      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color }}>{imStatusLabel(status)}</div>
+        {extra && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 1 }}>{extra}</div>}
+      </div>
+    </div>
+  )
+}
+
+function IMChecklistItem({ item, isChecked, onToggle, statusKey }) {
+  const [open, setOpen]       = useState(false)
+  const [currData, setCurrData] = useState(null)
+
+  useEffect(() => {
+    get('currency', 'profile').then(d => setCurrData(d ?? {}))
+  }, [open])
+
+  const cs = currData ? getCurrencyStatus(currData) : null
+  const overallStatus = cs?.[statusKey]?.status ?? 'incomplete'
+  const okColor = imStatusColor(overallStatus)
+
+  // ── card content per statusKey ────────────────────────────────
+  function renderContent() {
+    if (!currData || !cs) {
+      return <div style={{ padding: '16px', fontSize: 13, color: 'var(--text-tertiary)', textAlign: 'center' }}>Loading...</div>
+    }
+
+    if (statusKey === 'safe') {
+      return IMSAFE_ITEMS.map(it => {
+        const checked = currData.safe?.[it.key] === true
+        return (
+          <IMStatusRow
+            key={it.key}
+            label={`${it.letter} — ${it.label}`}
+            detail={it.detail}
+            status={checked ? 'valid' : 'incomplete'}
+          />
+        )
+      })
+    }
+
+    if (statusKey === 'current') {
+      const c = currData.current ?? {}
+      const frExp  = c.flightReviewDate  ? calendarMonthExpiry(c.flightReviewDate, 24)  : null
+      const dayExp = c.dayLandingsDate   ? daysCurrencyExpiry(c.dayLandingsDate, 90)    : null
+      const nigExp = c.nightLandingsDate ? daysCurrencyExpiry(c.nightLandingsDate, 90)  : null
+      const ifrExp = c.ifrDate           ? calendarMonthExpiry(c.ifrDate, 6)            : null
+      const fr  = frExp  ? statusFromExpiry(frExp,  30) : { status: 'incomplete' }
+      const day = dayExp ? statusFromExpiry(dayExp, 30) : { status: 'incomplete' }
+      const nig = nigExp ? statusFromExpiry(nigExp, 30) : { status: 'incomplete' }
+      const ifr = ifrExp ? statusFromExpiry(ifrExp, 30) : { status: 'incomplete' }
+      return (<>
+        <IMStatusRow label="Flight Review" detail="FAR 61.56 · 24 calendar months" status={fr.status}
+          extra={frExp ? `Exp ${fmtDate(frExp)} · ${fmtDaysLeft(fr.daysLeft)}` : null} />
+        <IMStatusRow label="Day Passenger Currency" detail="FAR 61.57(a) · 90 days" status={day.status}
+          extra={dayExp ? `Exp ${fmtDate(dayExp)} · ${fmtDaysLeft(day.daysLeft)}` : null} />
+        <IMStatusRow label="Night Passenger Currency" detail="FAR 61.57(b) · 90 days" status={nig.status}
+          extra={nigExp ? `Exp ${fmtDate(nigExp)} · ${fmtDaysLeft(nig.daysLeft)}` : null} />
+        <IMStatusRow label="IFR Currency" detail="FAR 61.57(c) · 6 months" status={ifr.status}
+          extra={ifrExp ? `Exp ${fmtDate(ifrExp)} · ${fmtDaysLeft(ifr.daysLeft)}` : null} />
+      </>)
+    }
+
+    if (statusKey === 'valid') {
+      const m = currData.medical ?? {}
+      if (!m.examDate || !m.dob || !m.medClass) {
+        return <div style={{ padding: '16px', fontSize: 13, color: 'var(--text-tertiary)', textAlign: 'center' }}>Set up medical info in the Currency section.</div>
+      }
+      const examLabel = `FAR 61.23(d) · Exam ${fmtDate(new Date(m.examDate))}`
+      return cs.valid.tiers.map(t => (
+        <IMStatusRow
+          key={t.tier}
+          label={t.label}
+          detail={examLabel}
+          status={t.status}
+          extra={t.expiresOn ? `Exp ${fmtDate(t.expiresOn)} · ${fmtDaysLeft(t.daysLeft)}` : null}
+        />
+      ))
+    }
+
+    if (statusKey === 'airworthy') {
+      const a = currData.airworthy ?? {}
+      const annExp = a.annualDate      ? calendarMonthExpiry(a.annualDate, 12)      : null
+      const trExp  = a.transponderDate ? calendarMonthExpiry(a.transponderDate, 24) : null
+      const ptExp  = a.pitotDate       ? calendarMonthExpiry(a.pitotDate, 24)       : null
+      const ann = annExp ? statusFromExpiry(annExp, 30) : { status: 'incomplete' }
+      const tr  = trExp  ? statusFromExpiry(trExp,  30) : { status: 'incomplete' }
+      const pt  = ptExp  ? statusFromExpiry(ptExp,  30) : { status: 'incomplete' }
+      return (<>
+        <IMStatusRow label="Annual Inspection" detail="FAR 91.409 · 12 calendar months" status={ann.status}
+          extra={annExp ? `Exp ${fmtDate(annExp)} · ${fmtDaysLeft(ann.daysLeft)}` : null} />
+        <IMStatusRow label="Transponder" detail="FAR 91.413 · 24 calendar months" status={tr.status}
+          extra={trExp ? `Exp ${fmtDate(trExp)} · ${fmtDaysLeft(tr.daysLeft)}` : null} />
+        <IMStatusRow label="Pitot-Static" detail="FAR 91.411 · 24 calendar months" status={pt.status}
+          extra={ptExp ? `Exp ${fmtDate(ptExp)} · ${fmtDaysLeft(pt.daysLeft)}` : null} />
+      </>)
+    }
+    return null
+  }
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      {/* Card header */}
+      <div style={{
+        background: 'var(--bg-card)',
+        border: '0.5px solid var(--border)',
+        borderRadius: open ? '14px 14px 0 0' : 14,
+        overflow: 'hidden',
+        boxShadow: 'var(--shadow-sm)',
+      }}>
+        <button
+          onClick={() => setOpen(o => !o)}
+          style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '13px 14px', textAlign: 'left' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{
+                fontSize: 15, fontWeight: 600, letterSpacing: '-0.2px',
+                color: isChecked ? 'var(--text-tertiary)' : 'var(--text)',
+                textDecoration: isChecked ? 'line-through' : 'none',
+              }}>{item.label}</div>
+              {item.sub && !isChecked && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 3 }}>{item.sub}</div>}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              {/* Live status dot from currency data */}
+              <div style={{
+                width: 7, height: 7, borderRadius: '50%',
+                background: currData ? okColor : 'transparent',
+                border: `1.5px solid ${currData ? okColor : 'var(--border-strong)'}`,
+                flexShrink: 0,
+              }} />
+              {/* Checkmark toggle */}
+              <div
+                onClick={e => { e.stopPropagation(); onToggle(item.id) }}
+                style={{
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: isChecked ? 'var(--text)' : 'transparent',
+                  border: `1.5px solid ${isChecked ? 'var(--text)' : 'var(--border-strong)'}`,
+                  transition: 'all 0.2s', cursor: 'pointer', flexShrink: 0,
+                }}
+              />
+              <div style={{ color: 'var(--text-tertiary)', transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </button>
+      </div>
+
+      {/* Expanded body */}
+      {open && (
+        <div style={{
+          background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+          borderTop: 'none', borderRadius: '0 0 14px 14px', overflow: 'hidden',
+        }}>
+          {renderContent()}
+          {/* Status banner */}
+          <div style={{
+            margin: 12, padding: '10px 14px', borderRadius: 10,
+            background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, color: okColor }}>
+              {overallStatus === 'valid'
+                ? <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                : <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+              }
+            </svg>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
+              {overallStatus === 'valid'    ? `${item.label} confirmed` :
+               overallStatus === 'expiring' ? `${item.label} — expiring soon` :
+               overallStatus === 'expired'  ? `${item.label} — action required` :
+               `${item.label} — data incomplete`}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 /* ── Shared expandable card wrapper ─────────────────────────── */
@@ -635,37 +854,69 @@ export default function Checklists() {
 
 /* ── Checklist detail — MTA Metro layout ────────────────────── */
 function ChecklistDetail({ checklist, onBack }) {
-  const [checked, setChecked] = useState(new Set())
-  const total = allIds(checklist).length
+  const [checked, setChecked]         = useState(new Set())
+  const [customItems, setCustomItems] = useState({ PILOT: [] })
+  const [addingTo, setAddingTo]       = useState(null)
+  const [draftLabel, setDraftLabel]   = useState('')
   const trackRef = useRef(null)
-  const circleRefs = useRef([])   // ref each station circle div, not the whole section
+  const circleRefs = useRef([])
+
+  const customTotal = Object.values(customItems).reduce((sum, arr) => sum + arr.length, 0)
+  const total = allIds(checklist).length + customTotal
 
   useEffect(() => {
     get('checklists', checklist.id).then(saved => {
       if (saved?.checked) setChecked(new Set(saved.checked))
+      if (saved?.custom)  setCustomItems(saved.custom)
     })
   }, [checklist.id])
+
+  function save(nextChecked, nextCustom) {
+    put('checklists', { id: checklist.id, checked: [...nextChecked], custom: nextCustom })
+  }
 
   function toggle(id) {
     setChecked(prev => {
       const next = new Set(prev)
       next.has(id) ? next.delete(id) : next.add(id)
-      put('checklists', { id: checklist.id, checked: [...next] })
+      save(next, customItems)
       return next
     })
   }
 
   function reset() {
     setChecked(new Set())
-    put('checklists', { id: checklist.id, checked: [] })
+    save(new Set(), customItems)   // custom items persist across resets — they're a template
   }
 
-  const done  = checked.size
-  const pct   = total > 0 ? done / total : 0
+  function addCustomItem(sectionTitle) {
+    const label = draftLabel.trim()
+    if (!label) return
+    const item = { id: `custom-${Date.now()}`, label }
+    const next = { ...customItems, [sectionTitle]: [...(customItems[sectionTitle] ?? []), item] }
+    setCustomItems(next)
+    save(checked, next)
+    setDraftLabel('')
+    setAddingTo(null)
+  }
+
+  function deleteCustomItem(sectionTitle, itemId) {
+    const next = { ...customItems, [sectionTitle]: customItems[sectionTitle].filter(i => i.id !== itemId) }
+    const nextChecked = new Set(checked)
+    nextChecked.delete(itemId)
+    setCustomItems(next)
+    setChecked(nextChecked)
+    save(nextChecked, next)
+  }
+
+  const done     = checked.size
+  const pct      = total > 0 ? done / total : 0
   const complete = done === total
 
   function isSectionDone(section) {
-    return flattenIds(section.items).every(id => checked.has(id))
+    const builtIn = flattenIds(section.items).every(id => checked.has(id))
+    const custom  = (customItems[section.title] ?? []).every(i => checked.has(i.id))
+    return builtIn && custom
   }
 
   // Active section = first incomplete
@@ -830,6 +1081,81 @@ function ChecklistDetail({ checklist, onBack }) {
               {/* Items — indented past the station circle */}
               <div style={{ paddingLeft: 44, paddingBottom: isLast ? 0 : 20 }}>
                 <MetroItems items={section.items} checked={checked} onToggle={toggle} depth={0} />
+
+                {/* Custom items — PILOT section only */}
+                {section.title === 'PILOT' && (
+                  <>
+                    {(customItems.PILOT ?? []).map(ci => (
+                      <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', minHeight: 36 }}>
+                        <button
+                          onClick={() => toggle(ci.id)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0 }}
+                        >
+                          <div style={{
+                            width: 7, height: 7, marginTop: 1, borderRadius: '50%', flexShrink: 0,
+                            background: checked.has(ci.id) ? 'var(--text)' : 'transparent',
+                            border: `1.5px solid ${checked.has(ci.id) ? 'var(--text)' : 'var(--border-strong)'}`,
+                            transition: 'all 0.2s',
+                          }} />
+                          <span style={{
+                            fontSize: 14, fontWeight: 500, lineHeight: 1.35,
+                            color: checked.has(ci.id) ? 'var(--text-tertiary)' : 'var(--text)',
+                            textDecoration: checked.has(ci.id) ? 'line-through' : 'none',
+                            transition: 'color 0.2s',
+                          }}>{ci.label}</span>
+                        </button>
+                        <button
+                          onClick={() => deleteCustomItem('PILOT', ci.id)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: '2px 4px', flexShrink: 0, display: 'flex', alignItems: 'center' }}
+                        >
+                          <svg width={11} height={11} viewBox="0 0 24 24" fill="none">
+                            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+
+                    {addingTo === 'PILOT' ? (
+                      <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                        <input
+                          autoFocus
+                          value={draftLabel}
+                          onChange={e => setDraftLabel(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter')  addCustomItem('PILOT')
+                            if (e.key === 'Escape') { setAddingTo(null); setDraftLabel('') }
+                          }}
+                          placeholder="Step description"
+                          maxLength={80}
+                          style={{
+                            flex: 1, padding: '7px 10px', borderRadius: 8,
+                            border: '1px solid var(--border-strong)',
+                            background: 'var(--bg-card-2)', color: 'var(--text)',
+                            fontSize: 13, outline: 'none',
+                          }}
+                        />
+                        <button
+                          onClick={() => addCustomItem('PILOT')}
+                          style={{ padding: '7px 12px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'var(--accent-fg)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                        >Add</button>
+                        <button
+                          onClick={() => { setAddingTo(null); setDraftLabel('') }}
+                          style={{ padding: '7px 8px', borderRadius: 8, border: 'none', background: 'var(--bg-card-2)', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}
+                        >Cancel</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setAddingTo('PILOT')}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, background: 'none', border: 'none', cursor: 'pointer', padding: '3px 0', color: 'var(--text-tertiary)' }}
+                      >
+                        <svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                          <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span style={{ fontSize: 12, fontWeight: 500 }}>Add step</span>
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           )
@@ -1042,7 +1368,7 @@ function AlternatesItem({ item, isChecked, onToggle }) {
         const mRes  = await fetch(`https://aviationweather.gov/api/data/metar?ids=${ids}&format=json&hours=3`, { signal: AbortSignal.timeout(8000) })
         const mData = await mRes.json()
         if (Array.isArray(mData)) mData.forEach(m => { metars[m.station_id || m.icaoId] = m.raw_text || '' })
-      } catch {}
+      } catch { /* ignore */ }
       const withWx = nearby.map(a => ({ ...a, wx: metars[a.icao] ? parseMetar(metars[a.icao]) : null }))
       const catOrder = { VFR: 0, MVFR: 1, IFR: 2, LIFR: 3, null: 4 }
       withWx.sort((a, b) => {
@@ -1050,7 +1376,7 @@ function AlternatesItem({ item, isChecked, onToggle }) {
         return catOrder[ca] !== catOrder[cb] ? catOrder[ca] - catOrder[cb] : a.dist - b.dist
       })
       setSugg(withWx.slice(0, 5))
-    } catch {} finally { setLoad(false) }
+    } catch { /* ignore */ } finally { setLoad(false) }
   }
 
   useEffect(() => {
@@ -1530,7 +1856,7 @@ function DensityAltItem({ item, isChecked, onToggle }) {
         if (tabKey === 'dep')  setDep(update)
         else                   setDest(update)
       }
-    } catch {}
+    } catch { /* ignore */ }
   }, [])
 
   // On open: restore saved, then refresh both tabs from live METARs
@@ -2503,8 +2829,8 @@ function CruiseItem({ item, isChecked, onToggle }) {
         try {
           const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
           if (res.ok) { text = await res.text(); break }
-        } catch {}
-        try { text = await proxyFetch(url, 8000); break } catch {}
+        } catch { /* ignore */ }
+        try { text = await proxyFetch(url, 8000); break } catch { /* ignore */ }
       }
 
       if (!text || text.length < 50) {
@@ -3289,7 +3615,7 @@ function AltitudeItem({ item, isChecked, onToggle }) {
           const d = await res.json()
           elevations = (d.results || []).map(r => r.elevation ?? 0)
         }
-      } catch {}
+      } catch { /* ignore */ }
 
       if (cancelled) return
 
@@ -3340,7 +3666,7 @@ function AltitudeItem({ item, isChecked, onToggle }) {
             return false
           })
         }
-      } catch {}
+      } catch { /* ignore */ }
 
       if (hasAero) det.push('aero')
       if (hasAero) det.push('builtup')
@@ -3372,7 +3698,7 @@ function AltitudeItem({ item, isChecked, onToggle }) {
             const hit = rings.some(r => routeIntersectsPoly(waypoints, ringToPoly(r)))
             if (hit) parkNames.push(f.attributes?.UNIT_NAME || 'National Park')
           }
-        } catch {}
+        } catch { /* ignore */ }
       }
       if (parkNames.length) det.push('parks')
       setDetectedParkNames(parkNames)
@@ -3394,7 +3720,7 @@ function AltitudeItem({ item, isChecked, onToggle }) {
               }
             }
           }
-        } catch {}
+        } catch { /* ignore */ }
       }
       if (suaNames.length) det.push('sua')
       setDetectedSUANames(suaNames)
@@ -3489,7 +3815,7 @@ function AltitudeItem({ item, isChecked, onToggle }) {
         setTfrLoad(false)
         return
       }
-    } catch {}
+    } catch { /* ignore */ }
 
     // Parse GeoRSS XML — returns TFRs with polygon/point geometry for map rendering
     const parseGeoRss = xml => {
@@ -3565,7 +3891,7 @@ function AltitudeItem({ item, isChecked, onToggle }) {
           const parsed = parseGeoRss(raw)
           if (parsed.length) { tfrs = parsed; break }
         }
-      } catch {}
+      } catch { /* ignore */ }
     }
 
     // 2. AWC NOTAM API — CORS-friendly, no proxy needed
@@ -3590,7 +3916,7 @@ function AltitudeItem({ item, isChecked, onToggle }) {
             }).filter(t => t.lat !== null)
           }
         }
-      } catch {}
+      } catch { /* ignore */ }
     }
 
     // 3. tfr2 JSON fallback (list only, no map geometry)
@@ -3598,7 +3924,7 @@ function AltitudeItem({ item, isChecked, onToggle }) {
       try {
         const raw = await proxyFetch('https://tfr.faa.gov/tfr2/list.json', 15000)
         tfrs = parseTfr2Json(raw)
-      } catch {}
+      } catch { /* ignore */ }
     }
 
     setTfrData(tfrs ?? [])
@@ -3631,7 +3957,7 @@ function AltitudeItem({ item, isChecked, onToggle }) {
         )
         const d = await r.json()
         magVar = d.result?.[0]?.declination ?? 0
-      } catch {}
+      } catch { /* ignore */ }
 
       const mc = ((tc - magVar) + 360) % 360
       const mcRounded = Math.round(mc)
@@ -5746,7 +6072,7 @@ function AircraftItem({ item, isChecked, onToggle }) {
     try {
       const saved = localStorage.getItem('cruise_fuel_state')
       if (saved) setFuelState(JSON.parse(saved))
-    } catch {}
+    } catch { /* ignore */ }
   }, [open])
 
   // Map Aircraft checklist row IDs -> currency data fields
@@ -6231,7 +6557,11 @@ function MetroItems({ items, checked, onToggle, depth }) {
 
         // Special expandable items
         const EXPAND_MAP = {
-          wb:         (props) => <WBChecklistItem {...props} ExpandableCard={ExpandableCard} />,
+          wb:          (props) => <WBChecklistItem {...props} ExpandableCard={ExpandableCard} />,
+          imsafe:      (props) => <IMChecklistItem {...props} statusKey="safe" />,
+          imcurrent:   (props) => <IMChecklistItem {...props} statusKey="current" />,
+          imvalid:     (props) => <IMChecklistItem {...props} statusKey="valid" />,
+          imairworthy: (props) => <IMChecklistItem {...props} statusKey="airworthy" />,
           metar:      MetarItem,
           altitude:   AltitudeItem,
           densityalt: DensityAltItem,

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { usePilotProfile } from '../../context/PilotProfile'
+import { generateAircraftIcon } from '../../lib/generateIcon'
 import { medicalExpiryRows, ageAt, fmtDate, calendarMonthExpiry, statusFromExpiry } from '../../lib/currency'
 import { TEMPLATES } from '../Aircraft/Aircraft'
 import { put } from '../../lib/db'
@@ -41,17 +42,6 @@ function Label({ children }) {
   )
 }
 
-function FakeInput({ children, muted }) {
-  return (
-    <div style={{
-      background: 'var(--bg-card-2)', borderRadius: 'var(--r-sm)',
-      padding: '11px 13px', fontSize: 15,
-      color: muted ? 'var(--text-tertiary)' : 'var(--text)',
-      border: '0.5px solid var(--border)',
-    }}>{children}</div>
-  )
-}
-
 function Field({ label, children }) {
   return (
     <div>
@@ -59,6 +49,14 @@ function Field({ label, children }) {
       {children}
     </div>
   )
+}
+
+const INPUT_BASE = {
+  width: '100%', maxWidth: '100%', boxSizing: 'border-box',
+  padding: '11px 13px', borderRadius: 'var(--r-sm)',
+  border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+  fontSize: 15, outline: 'none', fontFamily: 'inherit',
+  display: 'block',
 }
 
 function TextInput({ label, value, onChange, placeholder, type = 'text' }) {
@@ -69,12 +67,7 @@ function TextInput({ label, value, onChange, placeholder, type = 'text' }) {
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder ?? ''}
-        style={{
-          width: '100%', padding: '11px 13px', borderRadius: 'var(--r-sm)',
-          border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
-          color: 'var(--text)', fontSize: 15, outline: 'none',
-          fontFamily: 'inherit',
-        }}
+        style={{ ...INPUT_BASE, color: 'var(--text)' }}
       />
     </Field>
   )
@@ -88,30 +81,7 @@ function DateField({ label, value, onChange, placeholder }) {
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        style={{
-          width: '100%', padding: '11px 13px', borderRadius: 'var(--r-sm)',
-          border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
-          color: value ? 'var(--text)' : 'var(--text-tertiary)', fontSize: 15,
-          outline: 'none', fontFamily: 'inherit',
-        }}
-      />
-    </Field>
-  )
-}
-
-function MonthField({ label, value, onChange }) {
-  return (
-    <Field label={label}>
-      <input
-        type="month"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        style={{
-          width: '100%', padding: '11px 13px', borderRadius: 'var(--r-sm)',
-          border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
-          color: value ? 'var(--text)' : 'var(--text-tertiary)', fontSize: 15,
-          outline: 'none', fontFamily: 'inherit',
-        }}
+        style={{ ...INPUT_BASE, color: value ? 'var(--text)' : 'var(--text-tertiary)' }}
       />
     </Field>
   )
@@ -166,7 +136,12 @@ function TagGrid({ options, selected, onToggle }) {
 
 function NavButtons({ onBack, onNext, onSkip, nextLabel = 'Continue', step }) {
   return (
-    <div style={{ marginTop: 24 }}>
+    <div style={{
+      position: 'sticky', bottom: 0,
+      paddingTop: 16, paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
+      marginTop: 24,
+      background: 'linear-gradient(to bottom, transparent 0%, var(--bg) 28%)',
+    }}>
       <div style={{ display: 'flex', gap: 8 }}>
         {step > 1 && (
           <button onClick={onBack} style={{
@@ -379,10 +354,9 @@ function SelectField({ label, value, onChange, options }) {
           value={value ?? ''}
           onChange={e => onChange(e.target.value)}
           style={{
-            width: '100%', padding: '11px 36px 11px 13px', borderRadius: 'var(--r-sm)',
-            border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
-            color: value ? 'var(--text)' : 'var(--text-tertiary)', fontSize: 15,
-            outline: 'none', fontFamily: 'inherit', appearance: 'none', cursor: 'pointer',
+            ...INPUT_BASE, padding: '11px 36px 11px 13px',
+            color: value ? 'var(--text)' : 'var(--text-tertiary)',
+            appearance: 'none', cursor: 'pointer',
           }}
         >
           <option value="" disabled>Select…</option>
@@ -428,10 +402,9 @@ export function FlightReviewSection({ value = {}, onChange }) {
             value={value.flightReviewType ?? ''}
             onChange={e => setType(e.target.value)}
             style={{
-              width: '100%', padding: '11px 36px 11px 13px', borderRadius: 'var(--r-sm)',
-              border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
-              color: value.flightReviewType ? 'var(--text)' : 'var(--text-tertiary)', fontSize: 15,
-              outline: 'none', fontFamily: 'inherit', appearance: 'none', cursor: 'pointer',
+              ...INPUT_BASE, padding: '11px 36px 11px 13px',
+              color: value.flightReviewType ? 'var(--text)' : 'var(--text-tertiary)',
+              appearance: 'none', cursor: 'pointer',
             }}
           >
             <option value="" disabled>Select…</option>
@@ -520,16 +493,22 @@ function Step3({ draft, update, onNext, onBack, onSkip }) {
 // Step 4 — Aircraft
 // ---------------------------------------------------------------------------
 
-function AircraftHeroPicker({ selectedId, onSelect }) {
+// Sentinel index for the "not finding yours?" custom slide
+const CUSTOM_IDX = TEMPLATES.length
+
+function AircraftHeroPicker({ selectedId, onSelect, onCustomName }) {
   const [slideKey, setSlideKey] = useState(0)
   const [slideDir, setSlideDir] = useState(1)
   const [showArrows, setShowArrows] = useState(false)
   const touchStartX = useRef(null)
   const arrowTimer = useRef(null)
 
-  const currentIdx = TEMPLATES.findIndex(t => t.id === selectedId)
-  const idx = currentIdx >= 0 ? currentIdx : 0
-  const tpl = TEMPLATES[idx]
+  const currentIdx = selectedId === 'custom'
+    ? CUSTOM_IDX
+    : Math.max(0, TEMPLATES.findIndex(t => t.id === selectedId))
+  const idx = currentIdx
+  const isCustomSlide = idx === CUSTOM_IDX
+  const tpl = isCustomSlide ? null : TEMPLATES[idx]
 
   function flashArrows() {
     setShowArrows(true)
@@ -538,10 +517,14 @@ function AircraftHeroPicker({ selectedId, onSelect }) {
   }
 
   function goTo(nextIdx) {
-    if (nextIdx < 0 || nextIdx >= TEMPLATES.length) return
+    if (nextIdx < 0 || nextIdx > CUSTOM_IDX) return
     setSlideDir(nextIdx > idx ? 1 : -1)
     setSlideKey(k => k + 1)
-    onSelect(TEMPLATES[nextIdx])
+    if (nextIdx === CUSTOM_IDX) {
+      onSelect(null)
+    } else {
+      onSelect(TEMPLATES[nextIdx])
+    }
   }
 
   function onTouchStart(e) { touchStartX.current = e.touches[0].clientX; flashArrows() }
@@ -555,7 +538,7 @@ function AircraftHeroPicker({ selectedId, onSelect }) {
 
   return (
     <div>
-      {/* Dots */}
+      {/* Dots — templates + one dot for custom */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 8, opacity: showArrows ? 1 : 0.35, transition: 'opacity 0.3s ease' }}>
         {TEMPLATES.map((t, i) => (
           <div key={t.id} onClick={() => goTo(i)} style={{
@@ -564,9 +547,16 @@ function AircraftHeroPicker({ selectedId, onSelect }) {
             transition: 'width 0.2s, background 0.2s', cursor: 'pointer',
           }} />
         ))}
+        {/* Custom slide dot */}
+        <div onClick={() => goTo(CUSTOM_IDX)} style={{
+          width: isCustomSlide ? 16 : 5, height: 5, borderRadius: 3,
+          background: isCustomSlide ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.10)',
+          transition: 'width 0.2s, background 0.2s', cursor: 'pointer',
+          border: isCustomSlide ? 'none' : '0.5px dashed rgba(255,255,255,0.25)',
+        }} />
       </div>
 
-      {/* Hero image */}
+      {/* Hero image / custom slide */}
       <div
         onMouseEnter={() => setShowArrows(true)}
         onMouseLeave={() => setShowArrows(false)}
@@ -574,34 +564,78 @@ function AircraftHeroPicker({ selectedId, onSelect }) {
         onTouchEnd={onTouchEnd}
         style={{ position: 'relative', width: '100%', height: 220, marginBottom: 0, overflow: 'hidden' }}
       >
-        <img
-          key={slideKey}
-          src={tpl.image}
-          alt=""
-          style={{
-            width: '100%', height: '100%',
-            objectFit: 'contain', objectPosition: 'center bottom',
-            display: 'block', mixBlendMode: 'screen',
-            animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.3s cubic-bezier(0.25,0.46,0.45,0.94) both` : 'none',
-          }}
-        />
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '45%', background: 'linear-gradient(to bottom, transparent 0%, var(--bg) 100%)', pointerEvents: 'none' }} />
+        {isCustomSlide ? (
+          <div
+            key={slideKey}
+            style={{
+              width: '100%', height: '100%',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16,
+              animation: `slide-in-right 0.3s cubic-bezier(0.25,0.46,0.45,0.94) both`,
+            }}
+          >
+            <div style={{ width: 120, height: 120, color: 'var(--text)', opacity: 0.18 }}>
+              <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
+                <ellipse cx="100" cy="105" rx="10" ry="52" fill="currentColor" />
+                <path d="M100 95 L28 130 L38 134 L100 108 L162 134 L172 130 Z" fill="currentColor" />
+                <path d="M100 150 L72 162 L76 165 L100 155 L124 165 L128 162 Z" fill="currentColor" />
+                <path d="M100 148 L95 135 L105 135 Z" fill="currentColor" />
+                <ellipse cx="100" cy="55" rx="7" ry="10" fill="currentColor" />
+              </svg>
+            </div>
+            <input
+              placeholder="Type your aircraft model…"
+              maxLength={60}
+              autoFocus={false}
+              onChange={e => onCustomName && onCustomName(e.target.value)}
+              style={{
+                padding: '9px 14px', borderRadius: 10,
+                border: '0.5px solid rgba(255,255,255,0.2)',
+                background: 'rgba(255,255,255,0.07)', color: 'var(--text)',
+                fontSize: 15, outline: 'none', fontFamily: 'inherit',
+                width: '75%', textAlign: 'center',
+              }}
+            />
+          </div>
+        ) : (
+          <>
+            <img
+              key={slideKey}
+              src={tpl.image}
+              alt=""
+              style={{
+                width: '100%', height: '100%',
+                objectFit: 'contain', objectPosition: 'center bottom',
+                display: 'block', mixBlendMode: 'screen',
+                animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.3s cubic-bezier(0.25,0.46,0.45,0.94) both` : 'none',
+              }}
+            />
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '45%', background: 'linear-gradient(to bottom, transparent 0%, var(--bg) 100%)', pointerEvents: 'none' }} />
+          </>
+        )}
 
         {/* Arrows */}
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 6px', opacity: showArrows ? 1 : 0, transition: 'opacity 0.4s ease', pointerEvents: showArrows ? 'auto' : 'none' }}>
           <button onClick={() => goTo(idx - 1)} style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: idx === 0 ? 0.3 : 1 }}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 12L6 8l4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
-          <button onClick={() => goTo(idx + 1)} style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: idx === TEMPLATES.length - 1 ? 0.3 : 1 }}>
+          <button onClick={() => goTo(idx + 1)} style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isCustomSlide ? 0.3 : 1 }}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 12l4-4-4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
         </div>
       </div>
 
       {/* Name + subtitle */}
-      <div key={tpl.id} style={{ textAlign: 'center', marginBottom: 6, animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.25s ease` : 'none' }}>
-        <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.4px', color: 'var(--text)' }}>{tpl.fullName}</div>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{tpl.fuel?.type ?? tpl.fuel} · {tpl.category}</div>
+      <div key={isCustomSlide ? 'custom' : tpl.id} style={{ textAlign: 'center', marginBottom: 6, animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.25s ease` : 'none' }}>
+        {isCustomSlide ? (
+          <div style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>
+            Not seeing yours? Add it above and generate an icon later.
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.4px', color: 'var(--text)' }}>{tpl.fullName}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{tpl.fuel?.type ?? tpl.fuel} · {tpl.category}</div>
+          </>
+        )}
       </div>
     </div>
   )
@@ -609,19 +643,132 @@ function AircraftHeroPicker({ selectedId, onSelect }) {
 
 function Step4({ draft, update, onNext, onBack, onSkip }) {
   const selectedId = draft.aircraftTemplateId ?? TEMPLATES[0].id
+  const [generating, setGenerating] = useState(false)
+  const [genOpen, setGenOpen]       = useState(false)
+  const [genName, setGenName]       = useState('')
+  const [genError, setGenError]     = useState(null)
+
+  const isCustom = selectedId === 'custom'
+  const currentTpl = TEMPLATES.find(t => t.id === selectedId)
+  const initialName = draft.aircraftModel ?? currentTpl?.fullName ?? ''
 
   function onSelect(tpl) {
+    if (!tpl) {
+      // custom slide
+      update({ aircraftTemplateId: 'custom', aircraftModel: draft.aircraftModel ?? '' })
+      return
+    }
     const rawFuel = tpl.fuel?.type ?? tpl.fuel ?? ''
     const fuelType = rawFuel.toLowerCase().includes('100') ? 'AVGAS 100LL' : 'JET-A'
     const engineType = tpl.category === 'helicopter' || fuelType === 'JET-A' ? 'Turbine' : 'Piston'
     update({ aircraftTemplateId: tpl.id, aircraftModel: tpl.fullName, fuelType, engineType })
+    setGenName(tpl.fullName)
+  }
+
+  function onCustomName(name) {
+    update({ aircraftTemplateId: 'custom', aircraftModel: name })
+    setGenName(name)
+  }
+
+  async function generate() {
+    const name = genName.trim() || initialName
+    if (!name) return
+    setGenerating(true)
+    setGenError(null)
+    try {
+      const image = await generateAircraftIcon(name)
+      update({ aircraftImage: image })
+      setGenOpen(false)
+    } catch (e) {
+      setGenError(e.message)
+    } finally {
+      setGenerating(false)
+    }
   }
 
   return (
     <div>
       <StepHeader step={4} title="Primary aircraft" sub="Pre loads fuel type and engine defaults. V speeds and W&B you can fill in later." />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <AircraftHeroPicker selectedId={selectedId} onSelect={onSelect} />
+        <AircraftHeroPicker selectedId={selectedId} onSelect={onSelect} onCustomName={onCustomName} />
+
+        {/* Generate custom icon — only show when custom aircraft selected */}
+        {isCustom && (!genOpen ? (
+          <button
+            onClick={() => { setGenOpen(true); setGenName(initialName) }}
+            style={{
+              alignSelf: 'center', display: 'flex', alignItems: 'center', gap: 6,
+              background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.15)',
+              borderRadius: 10, padding: '7px 14px', cursor: 'pointer',
+              color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500,
+            }}
+          >
+            <svg width={13} height={13} viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {draft.aircraftImage ? 'Regenerate icon' : 'Generate custom icon'}
+          </button>
+        ) : (
+          <div style={{
+            background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+            borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Generate aircraft icon</div>
+            <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: -4 }}>
+              Describe your aircraft — model name is enough.
+            </div>
+            <input
+              autoFocus
+              value={genName}
+              onChange={e => setGenName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && generate()}
+              placeholder={initialName || 'e.g. Cirrus Vision Jet SF50'}
+              maxLength={80}
+              style={{
+                padding: '9px 12px', borderRadius: 9,
+                border: '0.5px solid var(--border-strong)',
+                background: 'var(--bg-card-2)', color: 'var(--text)',
+                fontSize: 14, outline: 'none', fontFamily: 'inherit',
+              }}
+            />
+            {genError && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{genError}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={generate}
+                disabled={generating}
+                style={{
+                  flex: 1, padding: '9px 0', borderRadius: 9, border: 'none',
+                  background: 'var(--accent)', color: 'var(--accent-fg)',
+                  fontWeight: 700, fontSize: 14, cursor: generating ? 'default' : 'pointer',
+                  opacity: generating ? 0.5 : 1,
+                }}
+              >{generating ? 'Generating…' : 'Generate'}</button>
+              <button
+                onClick={() => { setGenOpen(false); setGenError(null) }}
+                disabled={generating}
+                style={{
+                  padding: '9px 14px', borderRadius: 9, border: 'none',
+                  background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
+                  fontSize: 14, cursor: 'pointer',
+                }}
+              >Cancel</button>
+            </div>
+            {generating && (
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', textAlign: 'center' }}>
+                This takes about 15 seconds…
+              </div>
+            )}
+          </div>
+        ))}
+
+        {isCustom && draft.aircraftImage && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg-card)', borderRadius: 10 }}>
+            <img src={draft.aircraftImage} alt="" style={{ width: 48, height: 48, objectFit: 'contain', mixBlendMode: 'screen' }} />
+            <div style={{ fontSize: 13, color: 'var(--ok)' }}>Icon ready</div>
+          </div>
+        )}
+
         <TextInput label="Tail number" value={draft.tailNumber ?? ''} onChange={v => update({ tailNumber: v })} placeholder="C-GXYZ or N12345" />
         <Field label="Fuel type">
           <SegControl options={['AVGAS 100LL', 'JET-A']} value={draft.fuelType ?? 'AVGAS 100LL'} onChange={v => update({ fuelType: v })} />
@@ -709,7 +856,7 @@ function Step5({ draft, update, onNext, onBack }) {
           <div style={{ padding: '14px 16px 4px' }}>
             <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Units</span>
           </div>
-          {UNIT_ROWS.map((row, i) => (
+          {UNIT_ROWS.map((row) => (
             <div key={row.key} style={{
               padding: '10px 16px',
               borderBottom: 'none',
@@ -808,12 +955,13 @@ export default function Onboarding() {
     }
 
     // Write selected aircraft template to aircraft store so Aircraft page loads it immediately
-    const tpl = TEMPLATES.find(t => t.id === draft.aircraftTemplateId) ?? TEMPLATES[0]
+    const tpl = TEMPLATES.find(t => t.id === draft.aircraftTemplateId)
     await put('aircraft', {
-      ...tpl,
+      ...(tpl ?? { category: 'custom', fullName: draft.aircraftModel ?? 'My Aircraft' }),
       id: 'profile',
       registration: draft.tailNumber ?? '',
       pilotName: draft.name ?? '',
+      ...(draft.aircraftImage ? { image: draft.aircraftImage } : {}),
     })
 
     // Seed currency store with onboarding data so Currency page shows correct status on first open
@@ -836,10 +984,10 @@ export default function Onboarding() {
   return (
     <div style={{
       minHeight: '100dvh', background: 'var(--bg)',
-      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-      overflow: 'hidden',
+      display: 'flex', justifyContent: 'center',
+      overflowY: 'auto', overflowX: 'hidden',
     }}>
-      <div style={{ width: '100%', maxWidth: 480, padding: '48px 20px 40px' }}>
+      <div style={{ width: '100%', maxWidth: 480, padding: '48px 20px 0', display: 'flex', flexDirection: 'column' }}>
         <ProgressDots step={step} />
 
         <div key={step} style={{ animation: anim }}>

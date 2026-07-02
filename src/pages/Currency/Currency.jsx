@@ -69,20 +69,6 @@ function FarLink({ far }) {
   )
 }
 
-function SectionLabel({ children }) {
-  return (
-    <div style={{
-      fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)',
-      letterSpacing: '0.5px', textTransform: 'uppercase',
-      padding: '10px 14px 0',
-    }}>{children}</div>
-  )
-}
-
-function Divider() {
-  return <div style={{ height: '0.5px', background: 'var(--border)', margin: '0 14px' }} />
-}
-
 function DateInput({ label, value, onChange, hint }) {
   const inputRef = useRef(null)
 
@@ -125,24 +111,6 @@ function DateInput({ label, value, onChange, hint }) {
         style={{ position: 'absolute', top: 0, left: 0, width: 0, height: 0, opacity: 0, pointerEvents: 'none' }}
       />
       {hint && <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>{hint}</div>}
-    </div>
-  )
-}
-
-function ResultRow({ label, value, sub, accent }) {
-  return (
-    <div style={{
-      display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-      padding: '9px 14px',
-    }}>
-      <div>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{label}</div>
-        {sub && <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 1 }}>{sub}</div>}
-      </div>
-      <div style={{
-        fontSize: 13, fontWeight: 700, color: accent ?? 'var(--text)',
-        textAlign: 'right', flexShrink: 0, marginLeft: 12,
-      }}>{value}</div>
     </div>
   )
 }
@@ -246,7 +214,7 @@ const SAFE_ITEMS = [
   { key: 'eating',     label: 'Eating (adequately nourished and hydrated)' },
 ]
 
-function ImSafeCard({ data, onChange, warnDays }) {
+function ImSafeCard({ data, onChange }) {
   const checks = data?.safe ?? {}
   const doneCount = SAFE_ITEMS.filter(i => checks[i.key] === true).length
   const total = SAFE_ITEMS.length
@@ -340,10 +308,7 @@ function ImCurrentCard({ data, onChange, warnDays }) {
   const totalFields = 4
   const currentFrac = filledFields / totalFields
 
-  const worstStatus = [frStatus, dayStatus, nightStatus].reduce((worst, s) => {
-    const rank = { expired: 3, expiring: 2, unknown: 1, valid: 0 }
-    return (rank[s.status] ?? 0) > (rank[worst.status] ?? 0) ? s : worst
-  }, { status: 'valid' })
+
 
   const currentProgressBtn = currentFrac >= 1
     ? <CardPill status="valid" />
