@@ -432,12 +432,12 @@ export default function Aircraft() {
                 key={slideKey}
                 src={heroImage}
                 alt=""
+                className="aircraft-hero-img"
                 style={{
                   width: '100%', height: '100%',
                   objectFit: 'contain',
                   objectPosition: 'center bottom',
                   display: 'block',
-                  mixBlendMode: 'screen',
                   animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.35s cubic-bezier(0.25,0.46,0.45,0.94) both` : 'none',
                 }}
               />

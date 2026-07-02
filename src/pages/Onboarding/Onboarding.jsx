@@ -859,7 +859,7 @@ function Step4({ draft, update, onNext, onBack, onSkip }) {
 
         {isCustom && draft.aircraftImage && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg-card)', borderRadius: 10 }}>
-            <img src={draft.aircraftImage} alt="" style={{ width: 48, height: 48, objectFit: 'contain', mixBlendMode: 'screen' }} />
+            <img src={draft.aircraftImage} alt="" className="aircraft-hero-img" style={{ width: 48, height: 48, objectFit: 'contain' }} />
             <div style={{ fontSize: 13, color: 'var(--ok)' }}>Icon ready</div>
           </div>
         )}
