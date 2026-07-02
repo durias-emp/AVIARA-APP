@@ -177,6 +177,14 @@ export default function Home() {
   }
 
   function closeCard() {
+    if (openSection === 'aircraft') {
+      get('aircraft', 'profile').then(p => {
+        if (p?.registration) setRegistration(p.registration)
+        if (p?.pilotName)    setPilotName(p.pilotName)
+        if (p?.fullName)     setAircraftName(p.fullName)
+        if (p?.image)        setAircraftImage(p.image)
+      })
+    }
     setOpenSection(null)
     setSectionRect(null)
   }
