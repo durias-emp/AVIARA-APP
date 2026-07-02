@@ -74,40 +74,48 @@ function TextInput({ label, value, onChange, placeholder, type = 'text' }) {
 }
 
 function DateField({ label, value, onChange }) {
-  const ref = useRef(null)
-
   const display = value
     ? new Date(value + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : null
 
-  function open() {
-    const el = ref.current
-    if (!el) return
-    if (el.showPicker) el.showPicker()
-    else el.focus()
-  }
-
   return (
     <Field label={label}>
-      <div onClick={open} style={{
-        ...INPUT_BASE,
-        cursor: 'pointer',
-        display: 'flex', alignItems: 'center',
-        color: display ? 'var(--text)' : 'var(--text-tertiary)',
+      {/* Outer wrapper clips any overflow the native date chrome might cause */}
+      <div style={{
         position: 'relative',
+        borderRadius: 'var(--r-sm)',
+        border: '0.5px solid var(--border)',
+        background: 'var(--bg-card-2)',
+        overflow: 'hidden',
       }}>
-        {display || 'Date'}
+        {/* Visible display — pointer-events off so taps go to the input below */}
+        <div style={{
+          padding: '11px 13px',
+          fontSize: 15,
+          color: display ? 'var(--text)' : 'var(--text-tertiary)',
+          pointerEvents: 'none',
+          userSelect: 'none',
+        }}>
+          {display || 'Date'}
+        </div>
+        {/* Fully interactive input covering the whole area, invisible */}
         <input
-          ref={ref}
           type="date"
           value={value}
           onChange={e => onChange(e.target.value)}
           style={{
-            position: 'absolute', inset: 0, opacity: 0,
+            position: 'absolute',
+            top: 0, left: 0, right: 0, bottom: 0,
             width: '100%', height: '100%',
-            pointerEvents: 'none',
+            opacity: 0,
+            cursor: 'pointer',
+            fontSize: 16,
+            border: 'none',
+            background: 'transparent',
+            padding: 0, margin: 0,
+            boxSizing: 'border-box',
+            WebkitAppearance: 'none',
           }}
-          tabIndex={-1}
         />
       </div>
     </Field>
