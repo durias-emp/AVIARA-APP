@@ -36,26 +36,15 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
   // Overlay open state
   const cardRef   = useRef(null)
   const [overlayOpen, setOverlayOpen] = useState(false)
-  const [overlayClosing, setOverlayClosing] = useState(false)
-  const [cardRect, setCardRect] = useState(null)
 
   function handleCardOpen() {
-    if (cardRef.current) {
-      const r = cardRef.current.getBoundingClientRect()
-      setCardRect({ top: r.top, left: r.left, width: r.width, height: r.height })
-    }
-    setOverlayClosing(false)
     setOverlayOpen(true)
     onOpenChange?.(true)
   }
 
   function handleOverlayClose() {
-    setOverlayClosing(true)
+    setOverlayOpen(false)
     onOpenChange?.(false)
-    setTimeout(() => {
-      setOverlayOpen(false)
-      setOverlayClosing(false)
-    }, 210)
   }
 
   function copyMetar(text) {
@@ -260,8 +249,6 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
             loading={loading}
             error={error}
             isStale={isStale}
-            closing={overlayClosing}
-            cardRect={cardRect}
             onClose={handleOverlayClose}
             onRefresh={() => refresh(icao)}
             onCopyMetar={copyMetar}

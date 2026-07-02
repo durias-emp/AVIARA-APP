@@ -112,7 +112,6 @@ function TailNumberInput({ value, onChange }) {
             color: 'var(--text-tertiary)',
             pointerEvents: 'none', zIndex: 0,
             opacity: visible ? 1 : 0,
-            transition: 'opacity 0.28s ease',
           }}>
             {TAIL_EXAMPLES[phIdx]}
           </div>

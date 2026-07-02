@@ -203,13 +203,6 @@ export default function Home() {
     <>
       <div style={{
         padding: '0 0 32px',
-        transition: anyExpanded
-          ? 'transform 280ms cubic-bezier(0.16, 1, 0.3, 1), opacity 200ms ease'
-          : 'transform 200ms cubic-bezier(0.4, 0, 1, 1), opacity 180ms ease',
-        transform: anyExpanded ? 'scale(0.96)' : 'scale(1)',
-        opacity: anyExpanded ? 0.45 : 1,
-        pointerEvents: anyExpanded ? 'none' : 'auto',
-        transformOrigin: 'center top',
       }}>
 
         {/* ── Header ── */}

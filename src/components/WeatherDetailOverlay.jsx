@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react'
 import {
   parseFltCat, parseWind, parseVisib, parseCeiling,
   parseTemp, parseAltim, parseWx, parseObsAge, parseFetchAge, parseAirportName,
@@ -137,16 +136,6 @@ export default function WeatherDetailOverlay({
   closing, cardRect,
   onClose, onRefresh, onCopyMetar, copied, onOpenPicker,
 }) {
-  // Double rAF: first frame paints initial clip, second fires the transition
-  const [visible, setVisible] = useState(false)
-  useEffect(() => {
-    let id2
-    const id1 = requestAnimationFrame(() => {
-      id2 = requestAnimationFrame(() => setVisible(true))
-    })
-    return () => { cancelAnimationFrame(id1); cancelAnimationFrame(id2) }
-  }, [])
-
   const metar = wx?.metar ?? null
   const { type, isNight } = getCondition(metar)
   const cat = metar ? parseFltCat(metar) : null
@@ -154,22 +143,13 @@ export default function WeatherDetailOverlay({
   const summary = pilotSummary(metar, cat)
   const tafPeriods = parseTafPeriods(wx?.taf)
 
-  const isOpen = visible && !closing
-
-  // Build clip-path that matches the card's position when collapsed
   const conditionLabel = parseWx(metar) ?? (type.charAt(0).toUpperCase() + type.slice(1))
 
   return (
     <div
       style={{
         position: 'fixed', inset: 0, zIndex: 200,
-        opacity: isOpen ? 1 : 0,
-        transform: isOpen ? 'translateY(0) scale(1)' : 'translateY(16px) scale(0.97)',
-        transition: isOpen
-          ? 'opacity 240ms ease, transform 260ms cubic-bezier(0.16, 1, 0.3, 1)'
-          : 'opacity 200ms ease, transform 200ms cubic-bezier(0.4, 0, 1, 1)',
-        pointerEvents: isOpen ? 'auto' : 'none',
-        overflowY: isOpen ? 'auto' : 'hidden',
+        overflowY: 'auto',
         overflowX: 'hidden',
         WebkitOverflowScrolling: 'touch',
         overscrollBehavior: 'none',
@@ -511,7 +491,6 @@ export default function WeatherDetailOverlay({
                           ? 'rgba(255,255,255,0.25)'
                           : 'rgba(255,255,255,0.14)',
                         cursor: 'pointer', fontFamily: 'inherit',
-                        transition: 'background 0.2s',
                       }}
                     >
                       {copied ? 'Copied' : 'Copy'}
