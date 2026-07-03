@@ -282,7 +282,7 @@ export default function Home() {
               section="reference"
               onOpen={openCard}
               icon="/libros.png"
-              label="Reference"
+              label="Quick Reference"
               desc="Air law · Signals"
               stat="14 sections"
             />
