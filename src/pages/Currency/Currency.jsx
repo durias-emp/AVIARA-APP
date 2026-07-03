@@ -887,7 +887,6 @@ export default function Currency() {
       </div>
 
       <div style={{ padding: '0 16px' }}>
-        <ImSafeCard      data={data} onChange={handleChange} warnDays={warnDays} />
         <ImCurrentCard   data={data} onChange={handleChange} warnDays={warnDays} />
         <ImValidCard     data={data} onChange={handleChange} warnDays={warnDays} />
         <ImAirworthyCard data={data} onChange={handleChange} warnDays={warnDays} />
