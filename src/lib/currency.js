@@ -79,6 +79,20 @@ export function statusFromExpiry(expiry, warnDays = 30) {
   return { status, expiresOn: exp, daysLeft }
 }
 
+/**
+ * Compute status for an hour-based item (e.g. Oil Change, 100-hr Inspection)
+ * from its next-due hour reading and the aircraft's current Hobbs time.
+ * Returns: { status: 'valid'|'expiring'|'expired'|'unknown', hoursLeft: number|null }
+ */
+export function statusFromHours(nextDueHours, currentHobbs, warnHours = 10) {
+  if (nextDueHours == null || nextDueHours === '' || currentHobbs == null) {
+    return { status: 'unknown', hoursLeft: null }
+  }
+  const hoursLeft = Number(nextDueHours) - Number(currentHobbs)
+  const status = hoursLeft < 0 ? 'expired' : hoursLeft <= warnHours ? 'expiring' : 'valid'
+  return { status, hoursLeft }
+}
+
 // ---------------------------------------------------------------------------
 // Medical duration matrix — 14 CFR 61.23(d)
 // Auditable single source of truth. A row applies when medicalClass <= classMax.
@@ -157,20 +171,16 @@ export function getCurrencyStatus(data = {}, warnDays = 30) {
     currentChecks.push({ status: 'unknown' })
   }
 
-  // Day passenger currency — 90 days
-  if (data.current?.dayLandingsDate) {
-    const exp = daysCurrencyExpiry(data.current.dayLandingsDate, 90)
-    currentChecks.push(statusFromExpiry(exp, warnDays))
-  } else {
-    currentChecks.push({ status: 'unknown' })
-  }
+  // Day passenger currency — 90 days, self-reported acknowledgment (no date tracked)
+  currentChecks.push({ status: data.current?.dayCurrent === true ? 'valid' : 'unknown' })
 
-  // IFR — 6 calendar months
-  if (data.current?.ifrDate) {
-    const exp = calendarMonthExpiry(data.current.ifrDate, 6)
+  // IFR — 6 calendar months; IPC date still decays on a calendar-month basis,
+  // otherwise fall back to the self-reported acknowledgment checkbox
+  if (data.current?.ipcDate) {
+    const exp = calendarMonthExpiry(data.current.ipcDate, 6)
     currentChecks.push(statusFromExpiry(exp, warnDays))
   } else {
-    currentChecks.push({ status: 'unknown' })
+    currentChecks.push({ status: data.current?.ifrCurrent === true ? 'valid' : 'unknown' })
   }
 
   const worstCurrent = currentChecks.reduce((worst, c) => {

@@ -1,3 +1,33 @@
+// Shared "copy to clipboard" button using the archivos icon. Pass `onDark`
+// when the surrounding surface is dark (glass panels, photos, dark cards) so
+// the icon inverts to white; leave it off on light/card backgrounds so it
+// stays dark and keeps contrast either way.
+export function CopyIconButton({ onCopy, copied, onDark = false, size = 16 }) {
+  return (
+    <button
+      onClick={onCopy}
+      aria-label={copied ? 'Copied' : 'Copy'}
+      style={{
+        borderRadius: 999, padding: '7px 10px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: onDark
+          ? (copied ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.14)')
+          : (copied ? 'var(--accent-light)' : 'var(--bg-card-2)'),
+        border: onDark ? 'none' : '0.5px solid var(--border)',
+        cursor: 'pointer',
+      }}
+    >
+      <img
+        src="/archivos.png" alt="" width={size} height={size}
+        style={{
+          filter: onDark ? 'brightness(0) invert(1)' : 'var(--icon-filter)',
+          opacity: copied ? 1 : 0.85,
+        }}
+      />
+    </button>
+  )
+}
+
 export function IconClock({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -40,11 +70,14 @@ export function IconChevronRight({ size = 16 }) {
   )
 }
 
-export function IconRefresh({ size = 16 }) {
+// Same idea as CopyIconButton: `onDark` inverts to white on dark surfaces
+// (glass panels, photo-like weather cards); leave it off on light surfaces
+// so the icon stays dark and keeps contrast either way.
+export function IconRefresh({ size = 16, onDark = true }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <path d="M1 4v6h6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M3.51 15a9 9 0 1 0 .49-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
+    <img
+      src="/refresh.png" alt="" width={size} height={size}
+      style={{ display: 'block', filter: onDark ? 'brightness(0) invert(1)' : 'var(--icon-filter)' }}
+    />
   )
 }

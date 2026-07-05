@@ -1,14 +1,37 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { get, getAll } from '../../lib/db'
+import { get, getAll, put } from '../../lib/db'
 import WeatherCard   from '../../components/WeatherCard'
 import CardOverlay   from '../../components/CardOverlay'
-import { IconChevronRight, IconPlane } from '../../components/Icons'
+import FlightDetailDrawer from '../../components/FlightDetailDrawer'
+import { IconChevronRight } from '../../components/Icons'
 import Checklists  from '../Checklists/Checklists'
 import Calculators from '../Calculators/Calculators'
 import Currency    from '../Currency/Currency'
 import Reference   from '../Reference/Reference'
 import Aircraft    from '../Aircraft/Aircraft'
+
+/* ── Flight record formatting ────────────────────────────── */
+function fmtFlightRoute(flight) {
+  if (flight.route) return flight.route
+  if (flight.dep && flight.dest) return `${flight.dep} → ${flight.dest}`
+  return flight.dep || flight.dest || 'Flight logged'
+}
+
+function fmtFlightDate(flight) {
+  if (flight.date) return flight.date
+  const iso = flight.savedAt
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function fmtFlightDuration(flight) {
+  if (flight.duration) return flight.duration
+  const h = flight.flightTimeH
+  if (h == null) return '—'
+  const totalMin = Math.round(h * 60)
+  return `${Math.floor(totalMin / 60)}h ${String(totalMin % 60).padStart(2, '0')}m`
+}
 
 /* ── Module card ─────────────────────────────────────────── */
 function ModuleCard({ section, onOpen, icon, label, desc, stat, statColor, badge }) {
@@ -30,6 +53,7 @@ function ModuleCard({ section, onOpen, icon, label, desc, stat, statColor, badge
       display: 'flex',
       flexDirection: 'column',
       padding: 14,
+      minWidth: 0,
       WebkitTapHighlightColor: 'transparent',
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -39,7 +63,7 @@ function ModuleCard({ section, onOpen, icon, label, desc, stat, statColor, badge
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {label}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.35 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {desc}
           </div>
         </div>
@@ -69,8 +93,61 @@ function ModuleCard({ section, onOpen, icon, label, desc, stat, statColor, badge
   )
 }
 
+/* ── Hobbs quick-input — matches the registration text's size/style,
+   sits inline on the same row instead of its own boxed chip ────── */
+const REG_TEXT_STYLE = {
+  fontSize: 11, fontWeight: 600, fontFamily: 'monospace',
+  color: 'var(--text-secondary)', letterSpacing: '1.5px',
+}
+
+function HobbsInput({ hobbsTime, onSave }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft]     = useState('')
+  const inputRef = useRef(null)
+
+  function startEdit(e) {
+    e.stopPropagation()
+    setDraft(hobbsTime != null ? String(hobbsTime) : '')
+    setEditing(true)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  function commit() {
+    setEditing(false)
+    const val = parseFloat(draft)
+    if (!Number.isNaN(val) && val !== hobbsTime) onSave(val)
+  }
+
+  return (
+    <span onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ ...REG_TEXT_STYLE, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Hobbs</span>
+      {editing ? (
+        <input
+          ref={inputRef}
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => e.key === 'Enter' && inputRef.current?.blur()}
+          placeholder={hobbsTime != null ? String(hobbsTime) : '0.0'}
+          style={{
+            ...REG_TEXT_STYLE, width: 54,
+            background: 'none', border: 'none', outline: 'none', padding: 0,
+          }}
+        />
+      ) : (
+        <span onClick={startEdit} style={{ ...REG_TEXT_STYLE, cursor: 'text' }}>
+          {hobbsTime != null ? hobbsTime.toFixed(1) : 'Set'}
+        </span>
+      )}
+    </span>
+  )
+}
+
 /* ── Aircraft card ──────────────────────────────────────── */
-function AircraftCard({ aircraftName, registration, aircraftImage, onOpen }) {
+function AircraftCard({ aircraftName, registration, aircraftImage, hobbsTime, onSaveHobbs, onOpen }) {
   const ref = useRef(null)
 
   function handleClick() {
@@ -86,7 +163,7 @@ function AircraftCard({ aircraftName, registration, aircraftImage, onOpen }) {
         background: 'var(--bg-card)', borderRadius: 20,
         border: '0.5px solid var(--border)',
         display: 'flex', alignItems: 'stretch',
-        overflow: 'hidden', height: 90,
+        overflow: 'hidden', minHeight: 90,
         cursor: 'pointer',
         WebkitTapHighlightColor: 'transparent',
       }}>
@@ -98,11 +175,14 @@ function AircraftCard({ aircraftName, registration, aircraftImage, onOpen }) {
           <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.3px', lineHeight: 1.15 }}>
             {aircraftName || 'No aircraft set'}
           </div>
-          {registration && (
-            <div style={{ fontSize: 11, fontWeight: 600, fontFamily: 'monospace', color: 'var(--text-secondary)', letterSpacing: '1.5px', marginTop: 2 }}>
-              {registration}
-            </div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+            {registration && (
+              <span style={{ fontSize: 11, fontWeight: 600, fontFamily: 'monospace', color: 'var(--text-secondary)', letterSpacing: '1.5px' }}>
+                {registration}
+              </span>
+            )}
+            <HobbsInput hobbsTime={hobbsTime} onSave={onSaveHobbs} />
+          </div>
         </div>
         <div style={{ width: 150, position: 'relative', flexShrink: 0 }}>
           {aircraftImage && (
@@ -134,15 +214,13 @@ export default function Home() {
   const [pilotName, setPilotName]         = useState('')
   const [aircraftName, setAircraftName]   = useState('')
   const [aircraftImage, setAircraftImage] = useState('')
+  const [hobbsTime, setHobbsTime]         = useState(null)
   const [clChecked, setClChecked]         = useState(null)
   const [weatherExpanded, setWeatherExpanded] = useState(false)
   const [openSection, setOpenSection]     = useState(null)
   const [sectionRect, setSectionRect]     = useState(null)
-  const [flights, setFlights] = useState([
-    { id: 3, route: 'KFLL → KMIA', date: 'Jun 17, 2026', duration: '0h 42m', aircraft: 'N4723A' },
-    { id: 2, route: 'KOPF → KFLL', date: 'Jun 10, 2026', duration: '0h 28m', aircraft: 'N4723A' },
-    { id: 1, route: 'KMIA → KFXE', date: 'Jun 5,  2026', duration: '1h 05m', aircraft: 'N4723A' },
-  ])
+  const [flights, setFlights] = useState([])
+  const [selectedFlight, setSelectedFlight] = useState(null)
 
   const CL_TOTAL = 15
 
@@ -152,6 +230,7 @@ export default function Home() {
       if (p?.pilotName)    setPilotName(p.pilotName)
       if (p?.fullName)     setAircraftName(p.fullName)
       if (p?.image)        setAircraftImage(p.image)
+      if (p?.hobbsTime != null) setHobbsTime(p.hobbsTime)
     })
     get('checklists', 'flight-plan').then(saved => {
       if (saved?.checked) setClChecked(saved.checked.length)
@@ -180,10 +259,17 @@ export default function Home() {
         if (p?.pilotName)    setPilotName(p.pilotName)
         if (p?.fullName)     setAircraftName(p.fullName)
         if (p?.image)        setAircraftImage(p.image)
+        if (p?.hobbsTime != null) setHobbsTime(p.hobbsTime)
       })
     }
     setOpenSection(null)
     setSectionRect(null)
+  }
+
+  async function saveHobbs(val) {
+    setHobbsTime(val)
+    const p = await get('aircraft', 'profile')
+    await put('aircraft', { ...(p ?? {}), id: 'profile', hobbsTime: val, hobbsUpdatedAt: Date.now() })
   }
 
   const clDone     = clChecked ?? 0
@@ -242,6 +328,8 @@ export default function Home() {
           aircraftName={aircraftName}
           registration={registration}
           aircraftImage={aircraftImage}
+          hobbsTime={hobbsTime}
+          onSaveHobbs={saveHobbs}
           onOpen={openCard}
         />
 
@@ -274,7 +362,7 @@ export default function Home() {
               onOpen={openCard}
               icon="/cheque.png"
               label="Currency"
-              desc="IM SAFE · IM CURRENT"
+              desc="IM CURRENT · IM VALID"
               stat="Set up required"
             />
 
@@ -306,35 +394,42 @@ export default function Home() {
             overflow: 'hidden',
           }}>
             {flights.map((flight) => (
-              <div key={flight.id} style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '11px 16px',
-                borderTop: '0.5px solid var(--border)',
-              }}>
+              <div
+                key={flight.id}
+                onClick={() => setSelectedFlight(flight)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '11px 16px',
+                  borderTop: '0.5px solid var(--border)',
+                  cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+                }}>
                 <div style={{
                   width: 38, height: 38, borderRadius: 11, flexShrink: 0,
                   background: 'var(--accent-light)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'var(--text-secondary)',
                 }}>
-                  <IconPlane size={18} />
+                  <img
+                    src={flight.category === 'helicopter' ? '/helicopter.png' : '/modo-avion.png'}
+                    width={18} height={18} alt=""
+                    style={{ objectFit: 'contain', filter: 'var(--icon-filter)' }}
+                  />
                 </div>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.3px', lineHeight: 1.2 }}>
-                    {flight.route}
+                    {fmtFlightRoute(flight)}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    {flight.date}
+                    {fmtFlightDate(flight)}
                   </div>
                 </div>
 
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.3px', lineHeight: 1.2 }}>
-                    {flight.duration}
+                    {fmtFlightDuration(flight)}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    {flight.aircraft}
+                    {flight.registration || flight.aircraft || '—'}
                   </div>
                 </div>
 
@@ -367,6 +462,10 @@ export default function Home() {
         <CardOverlay cardRect={sectionRect} onClose={closeCard}>
           <SectionContent section={openSection} />
         </CardOverlay>
+      )}
+
+      {selectedFlight && (
+        <FlightDetailDrawer flight={selectedFlight} onClose={() => setSelectedFlight(null)} />
       )}
     </>
   )

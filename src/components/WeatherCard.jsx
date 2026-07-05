@@ -7,8 +7,10 @@ import {
   parseTemp, parseDewp, parseAltim, parseWx, parseObsAge, parseFetchAge, parseAirportName,
 } from '../lib/weather'
 import WeatherAnimation, { getCondition, textColor } from './WeatherAnimation'
+import LottieWeather, { USE_LOTTIE_WEATHER } from './LottieWeather'
 import { IconRefresh } from './Icons'
 import WeatherDetailOverlay from './WeatherDetailOverlay'
+import { usePilotProfile } from '../context/PilotProfile'
 
 const GRID_ICONS = {
   wind: (
@@ -25,7 +27,23 @@ const GRID_ICONS = {
   ),
 }
 
+// One right-aligned metric row (wind / ceiling / visibility) with a tiny icon.
+// The icon is tinted to match the card's foreground text so it always contrasts
+// with whatever weather background is behind it (white on dark skies, dark on
+// light snow/fog days).
+function WxMetric({ icon, value, fg, color, weight, size }) {
+  const filter = fg === '#ffffff' ? 'brightness(0) invert(1)' : 'brightness(0)'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5 }}>
+      <span style={{ fontSize: size, fontWeight: weight, color }}>{value}</span>
+      <img src={icon} alt="" width={size} height={size} style={{ filter, opacity: 0.9, flexShrink: 0 }} />
+    </div>
+  )
+}
+
 export default function WeatherCard({ compact = false, onOpenChange }) {
+  const { profile } = usePilotProfile()
+  const units = profile ?? {}
   const [icao, setIcao]         = useState('')
   const [pickerOpen, setPicker] = useState(false)
   const [wx, setWx]             = useState(null)
@@ -107,6 +125,30 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
     })
   }, [icao, refresh])
 
+  // Keep weather from ever going stale for hours: re-fetch on a timer while the
+  // app is open, and immediately on return to foreground if the last fetch is
+  // older than the interval (covers the phone being locked/backgrounded).
+  useEffect(() => {
+    if (!icao) return
+    const REFRESH_MS = 30 * 60 * 1000 // 30 min — METARs update hourly, this stays ahead of it
+
+    const id = setInterval(() => refresh(icao), REFRESH_MS)
+
+    function onVisible() {
+      if (document.visibilityState !== 'visible') return
+      get('weather', icao).then(cached => {
+        const stale = !cached?.fetchedAt || Date.now() - cached.fetchedAt > REFRESH_MS
+        if (stale) refresh(icao)
+      })
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [icao, refresh])
+
   async function confirmAirport(id) {
     await put('settings', { key: 'homeAirport', value: id })
     setIcao(id)
@@ -161,7 +203,9 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
             userSelect: 'none',
           }}
         >
-          <WeatherAnimation metar={wx?.metar ?? null} />
+          {USE_LOTTIE_WEATHER
+            ? <LottieWeather metar={wx?.metar ?? null} />
+            : <WeatherAnimation metar={wx?.metar ?? null} />}
 
           {/* CSS rain layer for rain/storm conditions */}
           {showCardRain && <div className="home-card-rain" />}
@@ -173,14 +217,24 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
           }} />
 
           <div style={{ position: 'relative', zIndex: 1 }}>
+            {/* VFR pill — top-right of the card */}
+            {cat && (
+              <span style={{
+                position: 'absolute', top: 16, right: 18, zIndex: 2,
+                fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', color: '#fff',
+                background: cat.color,
+                boxShadow: `0 2px 8px ${cat.color}66`,
+                padding: '4px 9px', borderRadius: 20,
+              }}>{cat.label}</span>
+            )}
             <div style={{
               display: 'flex', justifyContent: 'space-between',
               alignItems: 'flex-end', padding: '20px 18px 20px',
             }}>
               {/* Left — temp + airport */}
               <div>
-                <div style={{ fontSize: 52, fontWeight: 180, color: fg, letterSpacing: '-2px', lineHeight: 0.9 }}>
-                  {wx?.metar ? parseTemp(wx.metar) : loading ? '…' : '—'}
+                <div style={{ fontSize: 52, fontWeight: 800, color: fg, letterSpacing: '-2px', lineHeight: 0.9 }}>
+                  {wx?.metar ? parseTemp(wx.metar, units) : loading ? '…' : '—'}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
                   <span
@@ -192,16 +246,6 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
                   >
                     {icao || '—'}
                   </span>
-                  {cat && (
-                    <span style={{
-                      fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', color: 'rgba(255,255,255,0.9)',
-                      background: 'rgba(15,24,34,0.34)',
-                      border: '1px solid rgba(255,255,255,0.22)',
-                      boxShadow: 'inset 0 1px rgba(255,255,255,0.14)',
-                      backdropFilter: 'blur(8px)',
-                      padding: '4px 9px', borderRadius: 20,
-                    }}>{cat.label}</span>
-                  )}
                 </div>
                 {wx?.metar && parseAirportName(wx.metar) && (
                   <div style={{ fontSize: 12, fontWeight: 600, color: fgMuted, marginTop: 6 }}>
@@ -215,23 +259,11 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
                 textAlign: 'right', display: 'flex',
                 flexDirection: 'column', alignItems: 'flex-end', gap: 4,
               }}>
-                <button
-                  onClick={e => { e.stopPropagation(); refresh(icao) }}
-                  disabled={loading}
-                  style={{
-                    background: 'none', border: 'none', padding: 4, cursor: 'pointer',
-                    color: fgMuted, display: 'flex', alignItems: 'center',
-                    animation: loading ? 'spin-ccw 1s linear infinite' : 'none',
-                    marginBottom: 4,
-                  }}
-                >
-                  <IconRefresh size={14} />
-                </button>
                 {wx?.metar ? (
                   <>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: fg }}>{parseWind(wx.metar)}</div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: fgMuted }}>{parseCeiling(wx.metar)}</div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: fgMuted }}>{parseVisib(wx.metar)} vis</div>
+                    <WxMetric icon="/wind.png"       value={parseWind(wx.metar, units)}        fg={fg} color={fg} weight={700} size={13} />
+                    <WxMetric icon="/cloud.png"      value={parseCeiling(wx.metar, units)}     fg={fg} color={fgMuted} weight={600} size={12} />
+                    <WxMetric icon="/visibility.png" value={`${parseVisib(wx.metar, units)} vis`} fg={fg} color={fgMuted} weight={600} size={12} />
                   </>
                 ) : loading ? (
                   <div style={{ fontSize: 12, color: fgMuted }}>Loading…</div>
@@ -293,7 +325,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
                   cursor: loading ? 'default' : 'pointer', color: fgMuted,
                   animation: loading ? 'spin-ccw 1s linear infinite' : 'none',
                 }}>
-                <IconRefresh size={15} />
+                <IconRefresh size={15} onDark={fg === '#ffffff'} />
               </button>
             </div>
             {wx?.metar && parseAirportName(wx.metar) && (
@@ -333,7 +365,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
                   color: fg, lineHeight: 1,
                   fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
                 }}>
-                  {parseTemp(wx.metar).replace('°C', '')}
+                  {parseTemp(wx.metar, units).replace(units.unitTemperature ?? '°C', '')}
                 </span>
                 <div style={{ paddingBottom: 10, marginLeft: 4 }}>
                   <span style={{ fontSize: 28, fontWeight: 300, color: fg }}>°C</span>
@@ -344,7 +376,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
               </div>
               <div style={{ marginTop: 4 }}>
                 <span style={{ fontSize: 12, color: fgMuted }}>Dewpoint </span>
-                <span style={{ fontSize: 14, fontWeight: 500, color: fg }}>{parseDewp(wx.metar)}</span>
+                <span style={{ fontSize: 14, fontWeight: 500, color: fg }}>{parseDewp(wx.metar, units)}</span>
               </div>
             </div>
 
@@ -357,10 +389,10 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
               {/* Data row */}
               <div style={{ display: 'flex', marginBottom: 12, gap: 4 }}>
                 {[
-                  { icon: GRID_ICONS.wind,  label: 'WIND',    value: parseWind(wx.metar) },
-                  { icon: GRID_ICONS.eye,   label: 'VIS',     value: parseVisib(wx.metar) },
-                  { icon: GRID_ICONS.cloud, label: 'CEILING', value: parseCeiling(wx.metar) },
-                  { icon: GRID_ICONS.therm, label: 'ALT',     value: parseAltim(wx.metar) },
+                  { icon: GRID_ICONS.wind,  label: 'WIND',    value: parseWind(wx.metar, units) },
+                  { icon: GRID_ICONS.eye,   label: 'VIS',     value: parseVisib(wx.metar, units) },
+                  { icon: GRID_ICONS.cloud, label: 'CEILING', value: parseCeiling(wx.metar, units) },
+                  { icon: GRID_ICONS.therm, label: 'ALT',     value: parseAltim(wx.metar, units) },
                 ].map(({ icon, label, value }) => (
                   <div key={label} style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2, color: fgMuted }}>

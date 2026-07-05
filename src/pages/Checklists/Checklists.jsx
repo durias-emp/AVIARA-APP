@@ -2,9 +2,10 @@ import 'leaflet/dist/leaflet.css'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import FAA_CHARTS_DATA from '../../data/faa_charts.json'
 import { BackButton } from '../../components/Shell'
+import { IconRefresh } from '../../components/Icons'
 import WBChecklistItem from './WBChecklistItem'
 import { get, put } from '../../lib/db'
-import { getCurrencyStatus, fmtDate, fmtDaysLeft, calendarMonthExpiry, daysCurrencyExpiry, statusFromExpiry } from '../../lib/currency'
+import { getCurrencyStatus, fmtDate, fmtDaysLeft, calendarMonthExpiry, statusFromExpiry } from '../../lib/currency'
 import { MapContainer, TileLayer, Marker, Polyline, Polygon, CircleMarker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 
@@ -313,6 +314,11 @@ const FAA_AIRPORTS = [
 /* ── Airport lookup — AWC proxy + SkyVector scraper ─────────── */
 const AWC = '/api/awc'  // Vercel serverless proxy — no CORS issues
 
+// FAA AIRAC chart cycle — updates every 28 days. Single source of truth for
+// every d-tpp URL and the bundled chart index; bump this one string per cycle.
+const FAA_CHART_CYCLE = '2606'
+const FAA_DTPP_BASE = `https://aeronav.faa.gov/d-tpp/${FAA_CHART_CYCLE}/`
+
 // Build URL for our proxy: /api/awc?path=airport&ids=KJFK&format=json
 function awcUrl(endpoint, params = {}) {
   const qs = new URLSearchParams({ path: endpoint, ...params }).toString()
@@ -524,8 +530,8 @@ const CHECKLISTS = [
         items: [
           { id: 'wb',         label: 'Weight & Balance', sub: 'CG envelope · Longitudinal & lateral', expand: 'wb' },
           { id: 'perf-da',    label: 'Density Altitude', sub: 'Pressure Alt · ISA Deviation · Performance Impact', expand: 'densityalt' },
-          { id: 'perf-dist',  label: 'Takeoff / Landing / Accelerate-Stop Distances', sub: 'POH · Wind · Surface · Slope corrections', expand: 'perfdist' },
-          { id: 'perf-cruise',label: 'Cruise Speed / Time / Fuel Required / Endurance', sub: 'GS · Winds Aloft · Fuel State · Go/No-Go', expand: 'cruise' },
+          { id: 'perf-dist',  label: 'Distances', sub: 'Takeoff · Landing · Accelerate-Stop · POH · Wind · Surface · Slope corrections', expand: 'perfdist' },
+          { id: 'perf-cruise',label: 'Cruise & Fuel', sub: 'Speed · Time · Fuel Required · Endurance · GS · Winds Aloft · Go/No-Go', expand: 'cruise' },
         ],
       },
       {
@@ -550,7 +556,7 @@ const CHECKLISTS = [
           { id: 'pilot-imcurrent', label: 'IM CURRENT',   sub: 'Flight review · Passenger currency · IFR currency',          expand: 'imcurrent' },
           { id: 'pilot-imvalid',   label: 'IM VALID',     sub: 'Medical certificate validity',                               expand: 'imvalid' },
           { id: 'pilot-airworthy', label: 'IM AIRWORTHY', sub: 'Annual · Transponder · Pitot-static',                        expand: 'imairworthy' },
-          { id: 'pilot-fp',        label: 'Flight Plan Filed' },
+          { id: 'pilot-fp',        label: 'Flight Plan Filed', sub: 'Recap · Route · Weather · Performance · Pilot status', expand: 'recap' },
         ],
       },
     ],
@@ -596,6 +602,36 @@ function imStatusLabel(status) {
   return 'Not set'
 }
 
+function IMSafeRow({ letter, label, detail, checked, onToggle }) {
+  return (
+    <div
+      onClick={onToggle}
+      style={{
+        padding: '9px 16px', display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', gap: 8, cursor: 'pointer',
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{letter} {label}</div>
+        {detail && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{detail}</div>}
+      </div>
+      <div style={{
+        width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: checked ? 'var(--text)' : 'transparent',
+        border: `1.5px solid ${checked ? 'var(--text)' : 'var(--border-strong)'}`,
+        transition: 'all 0.2s',
+      }}>
+        {checked && (
+          <svg width={11} height={11} viewBox="0 0 24 24" fill="none" style={{ color: 'var(--bg-card)' }}>
+            <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function IMStatusRow({ label, detail, status, extra }) {
   const color = imStatusColor(status)
   return (
@@ -624,6 +660,14 @@ function IMChecklistItem({ item, isChecked, onToggle, statusKey }) {
   const overallStatus = cs?.[statusKey]?.status ?? 'incomplete'
   const okColor = imStatusColor(overallStatus)
 
+  function toggleSafeItem(key) {
+    setCurrData(prev => {
+      const next = { ...prev, safe: { ...prev.safe, [key]: !(prev.safe?.[key] === true) } }
+      put('currency', { ...next, id: 'profile' }).catch(() => {})
+      return next
+    })
+  }
+
   // ── card content per statusKey ────────────────────────────────
   function renderContent() {
     if (!currData || !cs) {
@@ -634,11 +678,13 @@ function IMChecklistItem({ item, isChecked, onToggle, statusKey }) {
       return IMSAFE_ITEMS.map(it => {
         const checked = currData.safe?.[it.key] === true
         return (
-          <IMStatusRow
+          <IMSafeRow
             key={it.key}
-            label={`${it.letter} — ${it.label}`}
+            letter={it.letter}
+            label={it.label}
             detail={it.detail}
-            status={checked ? 'valid' : 'incomplete'}
+            checked={checked}
+            onToggle={() => toggleSafeItem(it.key)}
           />
         )
       })
@@ -646,23 +692,21 @@ function IMChecklistItem({ item, isChecked, onToggle, statusKey }) {
 
     if (statusKey === 'current') {
       const c = currData.current ?? {}
-      const frExp  = c.flightReviewDate  ? calendarMonthExpiry(c.flightReviewDate, 24)  : null
-      const dayExp = c.dayLandingsDate   ? daysCurrencyExpiry(c.dayLandingsDate, 90)    : null
-      const nigExp = c.nightLandingsDate ? daysCurrencyExpiry(c.nightLandingsDate, 90)  : null
-      const ifrExp = c.ifrDate           ? calendarMonthExpiry(c.ifrDate, 6)            : null
+      const frExp  = c.flightReviewDate ? calendarMonthExpiry(c.flightReviewDate, 24) : null
+      const ipcExp = c.ipcDate          ? calendarMonthExpiry(c.ipcDate, 6)            : null
       const fr  = frExp  ? statusFromExpiry(frExp,  30) : { status: 'incomplete' }
-      const day = dayExp ? statusFromExpiry(dayExp, 30) : { status: 'incomplete' }
-      const nig = nigExp ? statusFromExpiry(nigExp, 30) : { status: 'incomplete' }
-      const ifr = ifrExp ? statusFromExpiry(ifrExp, 30) : { status: 'incomplete' }
+      const day = { status: c.dayCurrent   === true ? 'valid' : 'incomplete' }
+      const nig = { status: c.nightCurrent === true ? 'valid' : 'incomplete' }
+      const ifr = c.ipcDate
+        ? statusFromExpiry(ipcExp, 30)
+        : { status: c.ifrCurrent === true ? 'valid' : 'incomplete' }
       return (<>
         <IMStatusRow label="Flight Review" detail="FAR 61.56 · 24 calendar months" status={fr.status}
           extra={frExp ? `Exp ${fmtDate(frExp)} · ${fmtDaysLeft(fr.daysLeft)}` : null} />
-        <IMStatusRow label="Day Passenger Currency" detail="FAR 61.57(a) · 90 days" status={day.status}
-          extra={dayExp ? `Exp ${fmtDate(dayExp)} · ${fmtDaysLeft(day.daysLeft)}` : null} />
-        <IMStatusRow label="Night Passenger Currency" detail="FAR 61.57(b) · 90 days" status={nig.status}
-          extra={nigExp ? `Exp ${fmtDate(nigExp)} · ${fmtDaysLeft(nig.daysLeft)}` : null} />
+        <IMStatusRow label="Day Passenger Currency" detail="FAR 61.57(a) · 90 days" status={day.status} />
+        <IMStatusRow label="Night Passenger Currency" detail="FAR 61.57(b) · 90 days" status={nig.status} />
         <IMStatusRow label="IFR Currency" detail="FAR 61.57(c) · 6 months" status={ifr.status}
-          extra={ifrExp ? `Exp ${fmtDate(ifrExp)} · ${fmtDaysLeft(ifr.daysLeft)}` : null} />
+          extra={ipcExp ? `Exp ${fmtDate(ipcExp)} · ${fmtDaysLeft(ifr.daysLeft)}` : null} />
       </>)
     }
 
@@ -722,7 +766,6 @@ function IMChecklistItem({ item, isChecked, onToggle, statusKey }) {
               <div style={{
                 fontSize: 15, fontWeight: 600, letterSpacing: '-0.2px',
                 color: isChecked ? 'var(--text-tertiary)' : 'var(--text)',
-                textDecoration: isChecked ? 'line-through' : 'none',
               }}>{item.label}</div>
               {item.sub && !isChecked && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 3 }}>{item.sub}</div>}
             </div>
@@ -738,16 +781,18 @@ function IMChecklistItem({ item, isChecked, onToggle, statusKey }) {
               <div
                 onClick={e => { e.stopPropagation(); onToggle(item.id) }}
                 style={{
-                  width: 8, height: 8, borderRadius: '50%',
+                  width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: isChecked ? 'var(--text)' : 'transparent',
                   border: `1.5px solid ${isChecked ? 'var(--text)' : 'var(--border-strong)'}`,
-                  transition: 'all 0.2s', cursor: 'pointer', flexShrink: 0,
+                  transition: 'all 0.2s', cursor: 'pointer',
                 }}
-              />
-              <div style={{ color: 'var(--text-tertiary)', transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+              >
+                {isChecked && (
+                  <svg width={11} height={11} viewBox="0 0 24 24" fill="none" style={{ color: 'var(--bg-card)' }}>
+                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
               </div>
             </div>
           </div>
@@ -761,25 +806,25 @@ function IMChecklistItem({ item, isChecked, onToggle, statusKey }) {
           borderTop: 'none', borderRadius: '0 0 14px 14px', overflow: 'hidden',
         }}>
           {renderContent()}
-          {/* Status banner */}
-          <div style={{
-            margin: 12, padding: '10px 14px', borderRadius: 10,
-            background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-            display: 'flex', alignItems: 'center', gap: 10,
-          }}>
-            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, color: okColor }}>
-              {overallStatus === 'valid'
-                ? <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                : <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-              }
-            </svg>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
-              {overallStatus === 'valid'    ? `${item.label} confirmed` :
-               overallStatus === 'expiring' ? `${item.label} — expiring soon` :
-               overallStatus === 'expired'  ? `${item.label} — action required` :
-               `${item.label} — data incomplete`}
-            </span>
-          </div>
+          {statusKey === 'safe' ? (
+            <DoneButton
+              isChecked={isChecked}
+              onDone={() => { onToggle(item.id); setOpen(false) }}
+              checkedIds={new Set(IMSAFE_ITEMS.filter(it => currData?.safe?.[it.key] === true).map(it => it.key))}
+              subIds={IMSAFE_ITEMS.map(it => it.key)}
+            />
+          ) : (
+            /* Source of truth lives in the Currency section — header
+               checkmark auto-fills the moment that data reads as valid. */
+            <DoneButton
+              isChecked={isChecked}
+              onDone={() => { if (!isChecked) onToggle(item.id); setOpen(false) }}
+              checkedIds={overallStatus === 'valid' ? new Set(['ok']) : new Set()}
+              subIds={['ok']}
+              autoCheck
+              onAutoComplete={() => onToggle(item.id)}
+            />
+          )}
         </div>
       )}
     </div>
@@ -809,27 +854,22 @@ function ExpandableCard({ item, isChecked, onToggle, open, setOpen, children }) 
             <span style={{
               fontSize: 15, fontWeight: 600, letterSpacing: '-0.2px',
               color: isChecked ? 'var(--text-tertiary)' : 'var(--text)',
-              textDecoration: isChecked ? 'line-through' : 'none',
             }}>{item.label}</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-              <div
-                onClick={e => { e.stopPropagation(); onToggle(item.id) }}
-                style={{
-                  width: 8, height: 8, borderRadius: '50%',
-                  background: isChecked ? 'var(--text)' : 'transparent',
-                  border: `1.5px solid ${isChecked ? 'var(--text)' : 'var(--border-strong)'}`,
-                  transition: 'all 0.2s', cursor: 'pointer', flexShrink: 0,
-                }}
-              />
-              <div style={{
-                color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center',
-                transition: 'transform 0.2s',
-                transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
-              }}>
-                <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <div
+              onClick={e => { e.stopPropagation(); onToggle(item.id) }}
+              style={{
+                width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: isChecked ? 'var(--text)' : 'transparent',
+                border: `1.5px solid ${isChecked ? 'var(--text)' : 'var(--border-strong)'}`,
+                transition: 'all 0.2s', cursor: 'pointer',
+              }}
+            >
+              {isChecked && (
+                <svg width={11} height={11} viewBox="0 0 24 24" fill="none" style={{ color: 'var(--bg-card)' }}>
+                  <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
-              </div>
+              )}
             </div>
           </div>
         </button>
@@ -940,6 +980,7 @@ function ChecklistDetail({ checklist, onBack }) {
   // Compute fill height by measuring actual DOM positions of each station circle.
   // Uses getBoundingClientRect so it's correct regardless of scroll, nesting, or card expansion.
   const [trainRatio, setTrainRatio] = useState(0)
+  const [trackGeom, setTrackGeom] = useState({ top: 0, height: 0 })
 
   const recalcTrain = useCallback(() => {
     const track = trackRef.current
@@ -955,13 +996,12 @@ function ChecklistDetail({ checklist, onBack }) {
       const r = el.getBoundingClientRect()
       return r.top + r.height / 2 - trackTop
     })
-    const trackH = track.getBoundingClientRect().height
-    if (!trackH) return
-
-    // The visual line spans from center of circle[0] to center of circle[n-1]
+    // The visual line spans from center of circle[0] to center of circle[n-1] —
+    // it should not extend above the first circle or below the last one.
     const lineStart = centerYs[0]
     const lineEnd   = centerYs[n - 1]
     const lineH     = lineEnd - lineStart
+    setTrackGeom({ top: lineStart, height: lineH })
     if (lineH <= 0) return
 
     // Find last fully-done section
@@ -990,8 +1030,8 @@ function ChecklistDetail({ checklist, onBack }) {
       targetY = fromY + (toY - fromY) * nextFrac
     }
 
-    // Convert targetY to a ratio of the full track container height
-    setTrainRatio(Math.min(Math.max(targetY / trackH, 0), 1))
+    // Convert targetY to a ratio of the line segment (circle[0] to circle[n-1])
+    setTrainRatio(Math.min(Math.max((targetY - lineStart) / lineH, 0), 1))
   }, [checked, checklist])
 
   useEffect(() => {
@@ -1009,44 +1049,27 @@ function ChecklistDetail({ checklist, onBack }) {
           {checklist.title}
         </h2>
         <button onClick={reset} style={{
-          fontSize: 13, color: 'var(--text-tertiary)',
-          background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', flexShrink: 0,
+          fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
+          background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+          borderRadius: 20, cursor: 'pointer', padding: '6px 14px', flexShrink: 0,
         }}>Reset</button>
-      </div>
-
-      {/* Progress strip */}
-      <div style={{ padding: '10px 16px 0' }}>
-        <div style={{ height: 2, borderRadius: 1, background: 'var(--border)', overflow: 'hidden' }}>
-          <div style={{
-            height: '100%', borderRadius: 1, background: 'var(--text)',
-            width: `${pct * 100}%`, transition: 'width 0.4s ease',
-          }} />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
-          <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-            {complete ? 'All complete' : `${done} of ${total}`}
-          </span>
-          <span style={{ fontSize: 11, color: complete ? 'var(--ok)' : 'var(--text-tertiary)' }}>
-            {Math.round(pct * 100)}%
-          </span>
-        </div>
       </div>
 
       {/* MTA Metro timeline */}
       <div ref={trackRef} style={{ padding: '24px 16px 0 16px', position: 'relative' }}>
 
-        {/* Track — spans center of first circle to center of last (top:15 = 24px padding + 15 = circle center) */}
+        {/* Track — spans exactly from center of first circle to center of last */}
         <div style={{
-          position: 'absolute', left: 30, top: 0, bottom: 0,
+          position: 'absolute', left: 30, top: trackGeom.top, height: trackGeom.height,
           width: 2, background: 'var(--border)', borderRadius: 1,
           marginLeft: -1,
         }} />
 
         {/* Fill — height driven by measured circle positions */}
         <div style={{
-          position: 'absolute', left: 30, top: 0,
+          position: 'absolute', left: 30, top: trackGeom.top,
           width: 2, marginLeft: -1,
-          height: `${trainRatio * 100}%`,
+          height: `${trainRatio * trackGeom.height}px`,
           background: 'var(--text)', borderRadius: 1,
           transition: 'height 0.55s cubic-bezier(0.4,0,0.2,1)',
         }} />
@@ -1084,18 +1107,11 @@ function ChecklistDetail({ checklist, onBack }) {
                     transition: 'all 0.35s',
                   }}>{section.title}</span>
                 </div>
-
-                {/* Done check */}
-                {secDone && (
-                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" style={{ color: 'var(--text)', flexShrink: 0 }}>
-                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
               </div>
 
               {/* Items — indented past the station circle */}
               <div style={{ paddingLeft: 44, paddingBottom: isLast ? 0 : 20 }}>
-                <MetroItems items={section.items} checked={checked} onToggle={toggle} depth={0} />
+                <MetroItems items={section.items} checked={checked} onToggle={toggle} depth={0} total={total} />
 
                 {/* Custom items — PILOT section only */}
                 {section.title === 'PILOT' && (
@@ -1198,21 +1214,24 @@ function CompleteButton({ pct, complete, checklist, onComplete }) {
 
     try {
       // Pull everything the pilot filled in
-      const [route, cruise, preset] = await Promise.all([
+      const [route, cruise, preset, acProfile] = await Promise.all([
         get('settings', 'route'),
         get('settings', 'cruise'),
         get('settings', 'aircraft_preset'),
+        get('aircraft', 'profile'),
       ])
 
       const dep  = route?.dep  || ''
       const dest = route?.dest || ''
-      const distNm      = route?.dist ?? null
+      const distNm      = route?.distNm ?? null
       const cruiseAlt   = cruise?.cruiseAlt ?? route?.cruiseAlt ?? null
       const flightRules = cruise?.flightRules || 'VFR'
       const tas         = parseFloat(cruise?.tas)   || null
       const burnRate    = parseFloat(cruise?.burnRate) || null
       const fuelOnBoard = parseFloat(cruise?.fuelOnBoard) || null
-      const aircraft    = preset?.label || ''
+      const aircraft    = preset?.label || acProfile?.fullName || acProfile?.registration || ''
+      const registration = acProfile?.registration || ''
+      const category      = acProfile?.category === 'helicopter' ? 'helicopter' : 'airplane'
 
       // Flight time from cruise calculation
       let flightTimeH = null
@@ -1237,6 +1256,8 @@ function CompleteButton({ pct, complete, checklist, onComplete }) {
         fuelRequired,
         flightTimeH:  flightTimeH ? parseFloat(flightTimeH.toFixed(2)) : null,
         aircraft,
+        registration,
+        category,
       }
 
       await put('flights', record)
@@ -1346,7 +1367,7 @@ function AlternatesItem({ item, isChecked, onToggle }) {
   const [ldSuggestions, setLdSuggestions] = useState([])
   const [ldSuggestLoad, setLdSuggestLoad] = useState(false)
 
-  const FAA_PDF_BASE = 'https://aeronav.faa.gov/d-tpp/2606/'
+  const FAA_PDF_BASE = FAA_DTPP_BASE
 
   function altMinUrl(icao) {
     if (!icao) return null
@@ -1774,12 +1795,18 @@ function parseMetar(raw) {
 }
 
 /* ── Shared Done button ──────────────────────────────────────── */
-function DoneButton({ isChecked, onDone, checkedIds, subIds }) {
+function DoneButton({ isChecked, onDone, checkedIds, subIds, autoCheck, onAutoComplete }) {
   const hasChecklist = subIds && subIds.length > 0
   const pct = hasChecklist
     ? subIds.filter(id => checkedIds?.has(id)).length / subIds.length
     : 1
   const complete = isChecked || pct >= 1
+
+  // Auto-mark complete once the card's own content is fully filled —
+  // does not close the card, so the header checkmark can still be tapped to override.
+  useEffect(() => {
+    if (autoCheck && !isChecked && pct >= 1) onAutoComplete?.()
+  }, [autoCheck, isChecked, pct])
 
   return (
     <div style={{ padding: '10px 14px 12px' }}>
@@ -2080,7 +2107,8 @@ function DensityAltItem({ item, isChecked, onToggle }) {
         </div>
       )}
       {(bothValid || isChecked) && (
-        <DoneButton isChecked={isChecked} onDone={() => { onToggle(item.id); setOpen(false) }} />
+        <DoneButton isChecked={isChecked} onDone={() => { if (!isChecked) onToggle(item.id); setOpen(false) }}
+          autoCheck onAutoComplete={() => onToggle(item.id)} />
       )}
     </ExpandableCard>
   )
@@ -2663,7 +2691,8 @@ function PerfDistItem({ item, isChecked, onToggle }) {
         </div>
       )}
       {(allFilled || isChecked) && (
-        <DoneButton isChecked={isChecked} onDone={() => { onToggle(item.id); setOpen(false) }} />
+        <DoneButton isChecked={isChecked} onDone={() => { if (!isChecked) onToggle(item.id); setOpen(false) }}
+          autoCheck onAutoComplete={() => onToggle(item.id)} />
       )}
     </ExpandableCard>
   )
@@ -3318,7 +3347,8 @@ function CruiseItem({ item, isChecked, onToggle }) {
         </div>
       )}
       {(hasAll || isChecked) && (
-        <DoneButton isChecked={isChecked} onDone={() => { onToggle(item.id); setOpen(false) }} />
+        <DoneButton isChecked={isChecked} onDone={() => { if (!isChecked) onToggle(item.id); setOpen(false) }}
+          autoCheck onAutoComplete={() => onToggle(item.id)} />
       )}
     </ExpandableCard>
   )
@@ -3468,12 +3498,14 @@ function MetarItem({ item, isChecked, onToggle }) {
             fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
           }}>aviationweather.gov</a>
           <button onClick={() => { setDepData(null); setDestData(null); doFetch(dep, dest) }} style={{
-            flex: 1, textAlign: 'center', padding: '8px 0',
+            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '8px 0',
             borderRadius: 9, border: '0.5px solid var(--border)',
             background: 'var(--bg-card-2)',
-            fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
             cursor: 'pointer',
-          }}>Refresh</button>
+          }}>
+            <IconRefresh size={14} onDark={false} />
+          </button>
         </div>
       </div>
 
@@ -4812,8 +4844,7 @@ const CHART_META = {
   HOT:   { label: 'Hot Spots',        order: 6 },
   LAHSO: { label: 'LAHSO',            order: 7 },
 }
-// Bundled FAA charts index (cycle 2606, ~1MB, updates with each airac cycle)
-const FAA_CHART_CYCLE = '2606'
+// Bundled FAA charts index (~1MB, keyed to FAA_CHART_CYCLE, updates each airac cycle)
 
 function ChartsItem({ item, isChecked, onToggle }) {
   const [open, setOpen]           = useState(false)
@@ -5824,7 +5855,7 @@ function AirportItem({ item, isChecked, onToggle }) {
         {(() => {
           const ident = icao.replace(/^K/, '').toUpperCase()
           const apdChart = (FAA_CHARTS_DATA[ident] || []).find(([code]) => code === 'APD')
-          const apdUrl = apdChart ? `https://aeronav.faa.gov/d-tpp/2606/${apdChart[2]}` : null
+          const apdUrl = apdChart ? `${FAA_DTPP_BASE}${apdChart[2]}` : null
           const gridBtn = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center',
             gap: 6, padding: '13px 12px', borderRadius: 11,
             background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
@@ -6057,9 +6088,10 @@ function AirportItem({ item, isChecked, onToggle }) {
       <div style={{ borderTop: '0.5px solid var(--border)', height: 4 }} />
       <DoneButton
         isChecked={isChecked}
-        onDone={() => { onToggle(item.id); setOpen(false) }}
+        onDone={() => { if (!isChecked) onToggle(item.id); setOpen(false) }}
         checkedIds={checkedIds}
         subIds={['apt-cfs','apt-vtpc','apt-hours','apt-notam','apt-taxi','apt-taxi-a','apt-taxi-b','apt-light','apt-sat','apt-svc-a','apt-caution','apt-fbo','apt-fbo-a']}
+        autoCheck onAutoComplete={() => onToggle(item.id)}
       />
     </ExpandableCard>
   )
@@ -6414,9 +6446,10 @@ function AircraftItem({ item, isChecked, onToggle }) {
 
       <DoneButton
         isChecked={isChecked}
-        onDone={() => { onToggle(item.id); setOpen(false) }}
+        onDone={() => { if (!isChecked) onToggle(item.id); setOpen(false) }}
         checkedIds={checkedIds}
         subIds={subIds}
+        autoCheck onAutoComplete={() => onToggle(item.id)}
       />
     </ExpandableCard>
   )
@@ -6562,40 +6595,144 @@ function OxygenItem({ item, isChecked, onToggle }) {
   )
 }
 
+/* ── Recap row ────────────────────────────────────────────────── */
+function RecapRow({ label, value }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10,
+      padding: '7px 0', borderBottom: '0.5px solid var(--border)',
+    }}>
+      <span style={{ fontSize: 12, color: 'var(--text-tertiary)', flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', textAlign: 'right' }}>{value}</span>
+    </div>
+  )
+}
+
+function RecapSection({ title }) {
+  return (
+    <div style={{
+      fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+      color: 'var(--text-tertiary)', margin: '14px 0 4px',
+    }}>{title}</div>
+  )
+}
+
+/* ── Flight Plan Filed — one-page recap of everything filled in ─ */
+function RecapItem({ item, isChecked, onToggle, checked, total }) {
+  const [open, setOpen]             = useState(false)
+  const [route, setRoute]           = useState(null)
+  const [perfdist, setPerfdist]     = useState(null)
+  const [cruise, setCruise]         = useState(null)
+  const [homeAirport, setHomeAirport] = useState(null)
+  const [aircraft, setAircraft]     = useState(null)
+  const [currData, setCurrData]     = useState(null)
+
+  useEffect(() => {
+    if (!open) return
+    Promise.all([
+      get('settings', 'route'),
+      get('settings', 'perfdist'),
+      get('settings', 'cruise'),
+      get('settings', 'homeAirport'),
+      get('aircraft', 'profile'),
+      get('currency', 'profile'),
+    ]).then(([r, pd, cr, ha, ac, cur]) => {
+      setRoute(r ?? null); setPerfdist(pd ?? null); setCruise(cr ?? null)
+      setHomeAirport(ha ?? null); setAircraft(ac ?? null); setCurrData(cur ?? null)
+    })
+  }, [open])
+
+  // Auto-complete once every other checklist item is done — still
+  // overridable any time via the header checkmark.
+  const othersDone = typeof total === 'number' && checked
+    ? checked.size >= (isChecked ? total : total - 1)
+    : false
+  useEffect(() => {
+    if (othersDone && !isChecked) onToggle(item.id)
+  }, [othersDone])
+
+  const cs = currData ? getCurrencyStatus(currData) : null
+  const pilotTiers = cs
+    ? [cs.safe, cs.current, ...(cs.valid?.tiers ?? []), cs.airworthy].filter(Boolean)
+    : []
+  const worstPilot = pilotTiers.reduce((worst, t) => {
+    const rank = { expired: 3, expiring: 2, incomplete: 1, valid: 0 }
+    return (rank[t.status] ?? 1) > (rank[worst?.status] ?? -1) ? t : worst
+  }, null)
+
+  return (
+    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
+      <div style={{ padding: '4px 14px 12px' }}>
+
+        <RecapSection title="Route" />
+        <RecapRow label="Departure → Destination" value={route ? `${route.dep} → ${route.dest}` : '—'} />
+        <RecapRow label="True / Mag Course" value={route ? `${route.tc}° / ${route.mc}°` : '—'} />
+        <RecapRow label="Distance" value={route ? `${route.distNm} NM` : '—'} />
+
+        <RecapSection title="Performance" />
+        <RecapRow label="TAS / Fuel Burn" value={cruise ? `${cruise.tas ?? '—'} kt · ${cruise.burnRate ?? '—'} gph` : '—'} />
+        <RecapRow label="Fuel On Board" value={cruise?.fuelOnBoard ? `${cruise.fuelOnBoard} gal` : '—'} />
+        <RecapRow label="Takeoff Roll / Over 50ft" value={perfdist ? `${perfdist.toGR ?? '—'} / ${perfdist.toOver ?? '—'} ft` : '—'} />
+        <RecapRow label="Landing Roll / Over 50ft" value={perfdist ? `${perfdist.ldgGR ?? '—'} / ${perfdist.ldgOver ?? '—'} ft` : '—'} />
+
+        <RecapSection title="Aircraft" />
+        <RecapRow label="Aircraft" value={aircraft?.fullName || aircraft?.registration || '—'} />
+        <RecapRow label="Home Base" value={homeAirport?.value || '—'} />
+
+        <RecapSection title="Pilot" />
+        <RecapRow label="Overall Status" value={worstPilot ? imStatusLabel(worstPilot.status) : '—'} />
+      </div>
+      <DoneButton isChecked={isChecked} onDone={() => { onToggle(item.id); setOpen(false) }} />
+    </ExpandableCard>
+  )
+}
+
+/* ── Stable wrapper components for expand types that need extra
+   fixed props — defined once at module scope so React preserves
+   component identity (and local state like `open`) across renders.
+   Redefining these inline on every render would remount the card
+   on every unrelated re-render, wiping its open/closed state. ── */
+function WBExpand(props)          { return <WBChecklistItem {...props} ExpandableCard={ExpandableCard} /> }
+function IMSafeExpand(props)      { return <IMChecklistItem {...props} statusKey="safe" /> }
+function IMCurrentExpand(props)   { return <IMChecklistItem {...props} statusKey="current" /> }
+function IMValidExpand(props)     { return <IMChecklistItem {...props} statusKey="valid" /> }
+function IMAirworthyExpand(props) { return <IMChecklistItem {...props} statusKey="airworthy" /> }
+
+const EXPAND_MAP = {
+  wb:          WBExpand,
+  imsafe:      IMSafeExpand,
+  imcurrent:   IMCurrentExpand,
+  imvalid:     IMValidExpand,
+  imairworthy: IMAirworthyExpand,
+  metar:      MetarItem,
+  altitude:   AltitudeItem,
+  densityalt: DensityAltItem,
+  perfdist:   PerfDistItem,
+  cruise:     CruiseItem,
+  charts:     ChartsItem,
+  alternates: AlternatesItem,
+  notam:      NotamItem,
+  overflight: OverflightItem,
+  airport:    AirportItem,
+  aircraft:   AircraftItem,
+  oxygen:     OxygenItem,
+  recap:      RecapItem,
+}
+
 /* ── Metro item rows ─────────────────────────────────────────── */
-function MetroItems({ items, checked, onToggle, depth }) {
+function MetroItems({ items, checked, onToggle, depth, total }) {
   return (
     <>
       {items.map(item => {
         const isChecked = checked.has(item.id)
 
-        // Special expandable items
-        const EXPAND_MAP = {
-          wb:          (props) => <WBChecklistItem {...props} ExpandableCard={ExpandableCard} />,
-          imsafe:      (props) => <IMChecklistItem {...props} statusKey="safe" />,
-          imcurrent:   (props) => <IMChecklistItem {...props} statusKey="current" />,
-          imvalid:     (props) => <IMChecklistItem {...props} statusKey="valid" />,
-          imairworthy: (props) => <IMChecklistItem {...props} statusKey="airworthy" />,
-          metar:      MetarItem,
-          altitude:   AltitudeItem,
-          densityalt: DensityAltItem,
-          perfdist:   PerfDistItem,
-          cruise:     CruiseItem,
-          charts:     ChartsItem,
-          alternates: AlternatesItem,
-          notam:      NotamItem,
-          overflight: OverflightItem,
-          airport:    AirportItem,
-          aircraft:   AircraftItem,
-          oxygen:     OxygenItem,
-        }
         if (item.expand && EXPAND_MAP[item.expand]) {
           const ExpandComp = EXPAND_MAP[item.expand]
           return (
             <div key={item.id}>
-              <ExpandComp item={item} isChecked={isChecked} onToggle={onToggle} />
+              <ExpandComp item={item} isChecked={isChecked} onToggle={onToggle} checked={checked} total={total} />
               {item.items && (
-                <MetroItems items={item.items} checked={checked} onToggle={onToggle} depth={0} />
+                <MetroItems items={item.items} checked={checked} onToggle={onToggle} depth={0} total={total} />
               )}
             </div>
           )
@@ -6632,7 +6769,7 @@ function MetroItems({ items, checked, onToggle, depth }) {
               </div>
             </button>
             {item.items && (
-              <MetroItems items={item.items} checked={checked} onToggle={onToggle} depth={0} />
+              <MetroItems items={item.items} checked={checked} onToggle={onToggle} depth={0} total={total} />
             )}
           </div>
         )

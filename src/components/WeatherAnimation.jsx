@@ -31,7 +31,7 @@ const THEMES = {
   fog:       { day:  ['#7a8c98','#8e9faa','#a2b2bc'], night: ['#181e24','#222830','#2c343e'] },
 }
 
-function gradient(type, isNight) {
+export function gradient(type, isNight) {
   const t = THEMES[type] || THEMES.clear
   const s = isNight ? t.night : t.day
   return `linear-gradient(180deg, ${s[0]} 0%, ${s[1]} 55%, ${s[2]} 100%)`

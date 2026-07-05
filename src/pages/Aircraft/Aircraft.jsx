@@ -371,6 +371,15 @@ export default function Aircraft() {
     })
   }
 
+  function patchHobbs(value) {
+    const val = value === '' ? null : parseFloat(value)
+    setProfile(prev => {
+      const next = { ...prev, hobbsTime: Number.isNaN(val) ? null : val, hobbsUpdatedAt: Date.now() }
+      save(next)
+      return next
+    })
+  }
+
   if (!profile) return null
 
   const activeTemplate = TEMPLATES.find(t => t.fullName === profile.fullName)
@@ -529,6 +538,8 @@ export default function Aircraft() {
               onChange={v => patch(null, 'registration', v.toUpperCase())} placeholder="e.g. N4723A" />
             <Field label="Aircraft type" value={profile.fullName ?? ''}
               onChange={v => patch(null, 'fullName', v)} placeholder="e.g. Cessna 172S" />
+            <Field label="Hobbs" value={profile.hobbsTime ?? ''}
+              onChange={patchHobbs} placeholder="e.g. 1234.5" type="number" />
           </div>
         </Section>
 
@@ -730,14 +741,16 @@ function Section({ title, children }) {
   )
 }
 
-function Field({ label, value, onChange, placeholder }) {
+function Field({ label, value, onChange, placeholder, type = 'text' }) {
   return (
     <div>
       <label style={{ display: 'block', fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 500 }}>
         {label}
       </label>
       <input
-        type="text"
+        type={type}
+        inputMode={type === 'number' ? 'decimal' : undefined}
+        step={type === 'number' ? '0.1' : undefined}
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}

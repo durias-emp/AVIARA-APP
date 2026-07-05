@@ -4,7 +4,8 @@ import {
   FLTCAT,
 } from '../lib/weather'
 import { getCondition } from './WeatherAnimation'
-import { IconRefresh } from './Icons'
+import { IconRefresh, CopyIconButton } from './Icons'
+import { usePilotProfile } from '../context/PilotProfile'
 
 // ── Sky gradient per condition (matches WeatherAnimation themes) ──
 const SKY = {
@@ -130,12 +131,51 @@ function GlassPill({ children, style }) {
   )
 }
 
+// ── Raw text row — one METAR or TAF block within the shared card ──
+function RawTextRow({ title, text, onCopy, copied, last }) {
+  if (!text) return null
+  return (
+    <div style={{ marginBottom: last ? 0 : 16 }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between',
+        alignItems: 'center', marginBottom: 10,
+      }}>
+        <div style={{ fontSize: 17, fontWeight: 700, color: '#fff' }}>
+          {title}
+        </div>
+        <CopyIconButton onCopy={() => onCopy(text)} copied={copied} onDark />
+      </div>
+      <p style={{
+        margin: 0, fontSize: 12,
+        color: 'rgba(255,255,255,0.72)',
+        fontFamily: '"SF Mono", ui-monospace, Menlo, Consolas, monospace',
+        lineHeight: 1.55, wordBreak: 'break-all',
+      }}>
+        {text}
+      </p>
+    </div>
+  )
+}
+
+// ── Combined METAR + TAF card ────────────────────────────────────
+function RawTextCard({ metarText, tafText, onCopy, copied }) {
+  if (!metarText && !tafText) return null
+  return (
+    <div style={{ ...GLASS, padding: '16px 18px', marginBottom: 12 }}>
+      <RawTextRow title="Raw METAR" text={metarText} onCopy={onCopy} copied={copied} last={!tafText} />
+      <RawTextRow title="Raw TAF" text={tafText} onCopy={onCopy} copied={copied} last />
+    </div>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────
 export default function WeatherDetailOverlay({
   wx, icao, loading, error, isStale,
   closing, cardRect,
   onClose, onRefresh, onCopyMetar, copied, onOpenPicker,
 }) {
+  const { profile } = usePilotProfile()
+  const units = profile ?? {}
   const metar = wx?.metar ?? null
   const { type, isNight } = getCondition(metar)
   const cat = metar ? parseFltCat(metar) : null
@@ -249,41 +289,50 @@ export default function WeatherDetailOverlay({
           {/* ── Hero ── */}
           <div style={{
             minHeight: 210, display: 'flex', flexDirection: 'column',
-            justifyContent: 'flex-end', paddingBottom: 18, paddingTop: 18,
+            alignItems: 'center', textAlign: 'center',
+            justifyContent: 'flex-end', paddingBottom: 26, paddingTop: 18,
           }}>
             {metar ? (
               <>
-                {/* Airport name row with VFR pill on the right */}
-                <div style={{
-                  display: 'flex', alignItems: 'center',
-                  justifyContent: 'space-between', marginBottom: 6,
-                }}>
-                  <div style={{
-                    fontSize: 20, fontWeight: 600,
-                    color: 'rgba(255,255,255,0.72)',
-                  }}>
-                    {parseAirportName(metar) ?? icao}
+                {/* Flight category pill sits above the temperature — color-coded
+                    per the standard VFR/MVFR/IFR/LIFR scheme so it reads at a glance */}
+                {cat && (
+                  <div style={{ marginBottom: 16 }}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      minHeight: 28, borderRadius: 999, padding: '0 14px',
+                      fontSize: 13, fontWeight: 800, letterSpacing: '0.06em',
+                      color: '#fff', background: cat.color,
+                      boxShadow: `0 2px 10px ${cat.color}66`,
+                    }}>{cat.label}</span>
                   </div>
-                  {cat && <GlassPill>{cat.label}</GlassPill>}
-                </div>
+                )}
 
-                {/* Temp row */}
-                <div style={{ marginBottom: 4 }}>
+                {/* Temp — the headline number, bold and tight */}
+                <div style={{ marginBottom: 8 }}>
                   <span style={{
-                    fontSize: 108, fontWeight: 200, lineHeight: 0.88,
-                    letterSpacing: '-3px', color: '#fff',
+                    fontSize: 108, fontWeight: 800, lineHeight: 0.85,
+                    letterSpacing: '-5px', color: '#fff',
                     fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
                   }}>
-                    {parseTemp(metar).replace('°C', '')}°
+                    {parseTemp(metar, units).replace(units.unitTemperature ?? '°C', '')}°
                   </span>
                 </div>
 
-                {/* Condition label sits below temperature */}
+                {/* Condition label right below temperature */}
                 <div style={{
-                  fontSize: 22, fontWeight: 600, marginBottom: 18,
+                  fontSize: 22, fontWeight: 600, marginBottom: 14,
                   color: 'rgba(255,255,255,0.82)',
                 }}>
                   {conditionLabel}
+                </div>
+
+                {/* Airport name below condition */}
+                <div style={{
+                  fontSize: 20, fontWeight: 600,
+                  color: 'rgba(255,255,255,0.72)',
+                }}>
+                  {parseAirportName(metar) ?? icao}
                 </div>
               </>
             ) : loading ? (
@@ -297,6 +346,9 @@ export default function WeatherDetailOverlay({
 
           {metar && (
             <>
+              {/* ── Raw METAR / Raw TAF — first cards below the hero ── */}
+              <RawTextCard metarText={metar.rawOb} tafText={wx?.taf?.rawTAF} onCopy={onCopyMetar} copied={copied} />
+
               {/* ── Pilot readout ── */}
               {summary && (
                 <div style={{ ...GLASS, padding: '11px 14px', marginBottom: 12 }}>
@@ -310,9 +362,9 @@ export default function WeatherDetailOverlay({
                       {decisionHeadline(cat)}
                     </div>
                     {parseObsAge(metar) && (
-                      <GlassPill style={{ fontSize: 11, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                         {parseObsAge(metar)}
-                      </GlassPill>
+                      </span>
                     )}
                   </div>
                   <div style={{
@@ -320,82 +372,6 @@ export default function WeatherDetailOverlay({
                   }}>
                     {summary}
                   </div>
-                </div>
-              )}
-
-              {/* ── Metric grid ── */}
-              <div style={{
-                display: 'grid', gridTemplateColumns: '1fr 1fr',
-                gap: 10, marginBottom: 12,
-              }}>
-                {[
-                  {
-                    label: 'Wind',
-                    value: parseWind(metar),
-                    sub: metar.wgst ? `${metar.wgst} kt gusts` : 'steady',
-                  },
-                  {
-                    label: 'Visibility',
-                    value: parseVisib(metar),
-                    sub: parseWx(metar) ?? 'unrestricted',
-                  },
-                  {
-                    label: 'Ceiling',
-                    value: parseCeiling(metar),
-                    sub: cat?.label === 'MVFR' ? 'MVFR limiter'
-                       : cat?.label === 'IFR'  ? 'IFR limiter'
-                       : cat?.label === 'LIFR' ? 'LIFR limiter'
-                       : 'above minimums',
-                  },
-                  {
-                    label: 'Altimeter',
-                    value: parseAltim(metar),
-                    sub: 'inHg · local QNH',
-                  },
-                ].map(({ label, value, sub }) => (
-                  <div key={label} style={{
-                    ...GLASS,
-                    minHeight: 100, borderRadius: 20,
-                    padding: '14px 16px',
-                    display: 'flex', flexDirection: 'column',
-                  }}>
-                    <div style={{
-                      fontSize: 11, fontWeight: 700,
-                      color: 'rgba(255,255,255,0.56)',
-                      textTransform: 'uppercase', letterSpacing: '0.06em',
-                    }}>
-                      {label}
-                    </div>
-                    <div style={{
-                      fontSize: 20, fontWeight: 700, color: '#fff',
-                      lineHeight: 1, marginTop: 'auto', paddingTop: 10,
-                      letterSpacing: '-0.3px',
-                    }}>
-                      {value}
-                    </div>
-                    {sub && (
-                      <div style={{
-                        fontSize: 12, fontWeight: 600,
-                        color: 'rgba(255,255,255,0.5)', marginTop: 5,
-                      }}>
-                        {sub}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* ── Hazard pills ── */}
-              {hazards.length > 0 && (
-                <div style={{
-                  display: 'flex', gap: 8, marginBottom: 12,
-                  flexWrap: 'wrap',
-                }}>
-                  {hazards.map(h => (
-                    <GlassPill key={h} style={{ padding: '0 14px', letterSpacing: '0.04em' }}>
-                      {h}
-                    </GlassPill>
-                  ))}
                 </div>
               )}
 
@@ -453,6 +429,82 @@ export default function WeatherDetailOverlay({
                 </div>
               )}
 
+              {/* ── Metric grid ── */}
+              <div style={{
+                display: 'grid', gridTemplateColumns: '1fr 1fr',
+                gap: 10, marginBottom: 12,
+              }}>
+                {[
+                  {
+                    label: 'Wind',
+                    value: parseWind(metar, units),
+                    sub: metar.wgst ? `${metar.wgst} kt gusts` : 'steady',
+                  },
+                  {
+                    label: 'Visibility',
+                    value: parseVisib(metar, units),
+                    sub: parseWx(metar) ?? 'unrestricted',
+                  },
+                  {
+                    label: 'Ceiling',
+                    value: parseCeiling(metar, units),
+                    sub: cat?.label === 'MVFR' ? 'MVFR limiter'
+                       : cat?.label === 'IFR'  ? 'IFR limiter'
+                       : cat?.label === 'LIFR' ? 'LIFR limiter'
+                       : 'above minimums',
+                  },
+                  {
+                    label: 'Altimeter',
+                    value: parseAltim(metar, units),
+                    sub: 'inHg · local QNH',
+                  },
+                ].map(({ label, value, sub }) => (
+                  <div key={label} style={{
+                    ...GLASS,
+                    minHeight: 100, borderRadius: 20,
+                    padding: '14px 16px',
+                    display: 'flex', flexDirection: 'column',
+                  }}>
+                    <div style={{
+                      fontSize: 11, fontWeight: 700,
+                      color: 'rgba(255,255,255,0.56)',
+                      textTransform: 'uppercase', letterSpacing: '0.06em',
+                    }}>
+                      {label}
+                    </div>
+                    <div style={{
+                      fontSize: 20, fontWeight: 700, color: '#fff',
+                      lineHeight: 1, marginTop: 'auto', paddingTop: 10,
+                      letterSpacing: '-0.3px',
+                    }}>
+                      {value}
+                    </div>
+                    {sub && (
+                      <div style={{
+                        fontSize: 12, fontWeight: 600,
+                        color: 'rgba(255,255,255,0.5)', marginTop: 5,
+                      }}>
+                        {sub}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Hazard pills ── */}
+              {hazards.length > 0 && (
+                <div style={{
+                  display: 'flex', gap: 8, marginBottom: 12,
+                  flexWrap: 'wrap',
+                }}>
+                  {hazards.map(h => (
+                    <GlassPill key={h} style={{ padding: '0 14px', letterSpacing: '0.04em' }}>
+                      {h}
+                    </GlassPill>
+                  ))}
+                </div>
+              )}
+
               {/* ── Stale warning ── */}
               {isStale && (
                 <div style={{
@@ -472,40 +524,6 @@ export default function WeatherDetailOverlay({
                 </div>
               )}
 
-              {/* ── Raw METAR ── */}
-              {metar.rawOb && (
-                <div style={{ ...GLASS, padding: '16px 18px' }}>
-                  <div style={{
-                    display: 'flex', justifyContent: 'space-between',
-                    alignItems: 'center', marginBottom: 14,
-                  }}>
-                    <div style={{ fontSize: 17, fontWeight: 700, color: '#fff' }}>
-                      Raw METAR
-                    </div>
-                    <button
-                      onClick={() => onCopyMetar(metar.rawOb)}
-                      style={{
-                        border: 'none', borderRadius: 999, padding: '7px 14px',
-                        color: 'white', fontWeight: 700, fontSize: 12,
-                        background: copied
-                          ? 'rgba(255,255,255,0.25)'
-                          : 'rgba(255,255,255,0.14)',
-                        cursor: 'pointer', fontFamily: 'inherit',
-                      }}
-                    >
-                      {copied ? 'Copied' : 'Copy'}
-                    </button>
-                  </div>
-                  <p style={{
-                    margin: 0, fontSize: 12,
-                    color: 'rgba(255,255,255,0.72)',
-                    fontFamily: '"SF Mono", ui-monospace, Menlo, Consolas, monospace',
-                    lineHeight: 1.55, wordBreak: 'break-all',
-                  }}>
-                    {metar.rawOb}
-                  </p>
-                </div>
-              )}
             </>
           )}
         </div>

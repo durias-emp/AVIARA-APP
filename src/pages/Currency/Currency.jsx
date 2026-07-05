@@ -4,7 +4,7 @@ import { get, put } from '../../lib/db'
 import { usePilotProfile } from '../../context/PilotProfile'
 import {
   FAR,
-  calendarMonthExpiry, daysCurrencyExpiry, statusFromExpiry,
+  calendarMonthExpiry, statusFromExpiry, statusFromHours,
   medicalExpiryRows, ageAt,
   fmtDate, fmtDaysLeft,
 } from '../../lib/currency'
@@ -14,6 +14,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const WARN_DAYS_DEFAULT = 30
+const WARN_HOURS_DEFAULT = 10 // hrs before an hour-based inspection is "expiring"
 
 // Single pill used by ALL four cards — fixed 72×28, never auto-sizes
 function CardPill({ status }) {
@@ -66,6 +67,48 @@ function FarLink({ far }) {
       background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
       flexShrink: 0,
     }}>{far.label}</a>
+  )
+}
+
+/* Pill that alternates between the FAR reference and days-left every 5s
+   (once a days-left value exists). Always tap-through to the FAR text. */
+// Derived from wall-clock time (not a per-instance counter) so every pill on
+// screen — regardless of when it mounted — flips on the same 5s boundary.
+function wallClockShowDays() {
+  return Math.floor(Date.now() / 5000) % 2 === 1
+}
+
+function FarCyclePill({ far, daysLeft }) {
+  const [showDays, setShowDays] = useState(() => daysLeft != null && wallClockShowDays())
+
+  useEffect(() => {
+    if (daysLeft == null) { setShowDays(false); return }
+    const tick = () => setShowDays(prev => {
+      const next = wallClockShowDays()
+      return prev === next ? prev : next
+    })
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [daysLeft])
+
+  if (!far) return null
+  const label = daysLeft != null && showDays
+    ? (daysLeft < 0 ? 'Expired' : `${daysLeft}d left`)
+    : far.label
+
+  return (
+    <a
+      href={far.url} target="_blank" rel="noreferrer"
+      onClick={e => e.stopPropagation()}
+      style={{
+        fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)',
+        textDecoration: 'none',
+        padding: '3px 8px', borderRadius: 20,
+        background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
+        flexShrink: 0, transition: 'opacity 0.2s',
+      }}
+    >{label}</a>
   )
 }
 
@@ -159,6 +202,40 @@ function CurrencyCard({ title, subtitle, status, rightEl, farRefs, children }) {
         </div>
       )}
     </div>
+  )
+}
+
+/* Checkbox row for longer acknowledgment text that needs to wrap onto
+   multiple lines (unlike CheckRowSimple, which truncates to one line). */
+function CheckRowWrap({ checked, onChange, title, detail }) {
+  return (
+    <button
+      onClick={() => onChange(!checked)}
+      style={{
+        width: '100%', display: 'flex', alignItems: 'flex-start', gap: 11,
+        padding: '10px 14px', background: 'transparent', border: 'none',
+        cursor: 'pointer', textAlign: 'left',
+      }}
+    >
+      <div style={{
+        width: 16, height: 16, borderRadius: 4, flexShrink: 0, marginTop: 2,
+        background: checked ? 'var(--accent)' : 'transparent',
+        border: `1.5px solid ${checked ? 'var(--accent)' : 'var(--border-strong)'}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'all 0.18s',
+      }}>
+        {checked && (
+          <svg width={10} height={10} viewBox="0 0 12 12" fill="none">
+            <polyline points="2,6 5,9 10,3" stroke="var(--accent-fg)" strokeWidth="1.8"
+              strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px' }}>{title}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.4 }}>{detail}</div>
+      </div>
+    </button>
   )
 }
 
@@ -281,29 +358,22 @@ function ImCurrentCard({ data, onChange, warnDays }) {
     ? calendarMonthExpiry(current.flightReviewDate, 24) : null
   const frStatus = statusFromExpiry(frExp, warnDays)
 
-  // Day passenger — 90 days
-  const dayExp = current.dayLandingsDate
-    ? daysCurrencyExpiry(current.dayLandingsDate, 90) : null
-  const dayStatus = statusFromExpiry(dayExp, warnDays)
+  // Day / Night passenger currency — 90 days, self-reported acknowledgment (no date)
+  const dayCurrent   = current.dayCurrent === true
+  const nightCurrent = current.nightCurrent === true
 
-  // Night passenger — 90 days
-  const nightExp = current.nightLandingsDate
-    ? daysCurrencyExpiry(current.nightLandingsDate, 90) : null
-  const nightStatus = statusFromExpiry(nightExp, warnDays)
+  // IFR — 6 calendar months via IPC date if present, else self-reported acknowledgment
+  const ifrExp = current.ipcDate ? calendarMonthExpiry(current.ipcDate, 6) : null
+  const ifrStatus = current.ipcDate
+    ? statusFromExpiry(ifrExp, warnDays)
+    : { status: current.ifrCurrent === true ? 'valid' : 'unknown', expiresOn: null, daysLeft: null }
 
-  // IFR — 6 calendar months (or IPC date)
-  const ifrBase = current.ipcDate && current.ifrDate
-    ? (new Date(current.ipcDate) > new Date(current.ifrDate) ? current.ipcDate : current.ifrDate)
-    : (current.ipcDate || current.ifrDate)
-  const ifrExp = ifrBase ? calendarMonthExpiry(ifrBase, 6) : null
-  const ifrStatus = statusFromExpiry(ifrExp, warnDays)
-
-  // Progress pill — count filled date fields (flight review, day, night, IFR)
+  // Progress pill — count filled/confirmed fields (flight review, day, night, IFR)
   const filledFields = [
     current.flightReviewDate,
-    current.dayLandingsDate,
-    current.nightLandingsDate,
-    current.ifrDate || current.ipcDate,
+    dayCurrent,
+    nightCurrent,
+    current.ipcDate || current.ifrCurrent,
   ].filter(Boolean).length
   const totalFields = 4
   const currentFrac = filledFields / totalFields
@@ -314,21 +384,15 @@ function ImCurrentCard({ data, onChange, warnDays }) {
     ? <CardPill status="valid" />
     : <FillBar frac={currentFrac} />
 
-  function StatusLine({ s, far }) {
+  function StatusLine({ s }) {
     if (!s.expiresOn) return null
     const color = s.status === 'expired' ? 'var(--danger)' : s.status === 'expiring' ? 'var(--warn)' : 'var(--ok)'
     return (
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <div style={{ width: 6, height: 6, borderRadius: 3, background: color, flexShrink: 0 }} />
-          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-            {s.status === 'expired' ? 'Expired' : 'Valid'} through {fmtDate(s.expiresOn)}
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 10, color }}>{fmtDaysLeft(s.daysLeft)}</span>
-          {far && <FarLink far={far} />}
-        </div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
+        <div style={{ width: 6, height: 6, borderRadius: 3, background: color, flexShrink: 0 }} />
+        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          {s.status === 'expired' ? 'Expired' : 'Valid'} through {fmtDate(s.expiresOn)}
+        </span>
       </div>
     )
   }
@@ -342,8 +406,9 @@ function ImCurrentCard({ data, onChange, warnDays }) {
           background: 'var(--bg-card-2)', borderRadius: 10, padding: '12px',
           marginBottom: 10,
         }}>
-          <div style={{ marginBottom: 8 }}>
+          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Flight Review</span>
+            <FarCyclePill far={FAR.flightReview} daysLeft={frStatus.daysLeft ?? null} />
           </div>
           <DateInput
             label="Date of last flight review (or PPC / flight test)"
@@ -428,7 +493,7 @@ function ImCurrentCard({ data, onChange, warnDays }) {
             </div>
           </div>
 
-          <StatusLine s={frStatus} far={FAR.flightReview} />
+          <StatusLine s={frStatus} />
         </div>
 
         {/* Passenger Currency */}
@@ -439,48 +504,53 @@ function ImCurrentCard({ data, onChange, warnDays }) {
           <div style={{ marginBottom: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Passenger Currency</span>
           </div>
-          <DateInput
-            label="Date of 3rd qualifying day takeoff &amp; landing"
-            value={current.dayLandingsDate}
-            onChange={v => patch('dayLandingsDate', v)}
-            hint="3 T&Ls same category/class/type within preceding 90 days"
-          />
-          <StatusLine s={dayStatus} far={FAR.passenger90} />
+          <div style={{ background: 'var(--bg-card)', borderRadius: 9 }}>
+            <CheckRowWrap
+              checked={dayCurrent}
+              onChange={v => patch('dayCurrent', v)}
+              title="Day"
+              detail="3 takeoffs & landings (same category/class/type) within the preceding 90 days"
+            />
+          </div>
 
           <div style={{ height: '0.5px', background: 'var(--border)', margin: '10px 0' }} />
 
           <div style={{ marginBottom: 8 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>Night currency (passengers)</span>
           </div>
-          <DateInput
-            label="Date of 3rd qualifying night full-stop landing"
-            value={current.nightLandingsDate}
-            onChange={v => patch('nightLandingsDate', v)}
-            hint="3 full-stop landings at night within preceding 90 days"
-          />
-          <StatusLine s={nightStatus} far={FAR.night90} />
+          <div style={{ background: 'var(--bg-card)', borderRadius: 9 }}>
+            <CheckRowWrap
+              checked={nightCurrent}
+              onChange={v => patch('nightCurrent', v)}
+              title="Night"
+              detail="3 full-stop landings at night within the preceding 90 days"
+            />
+          </div>
         </div>
 
         {/* IFR Currency */}
         <div style={{
           background: 'var(--bg-card-2)', borderRadius: 10, padding: '12px',
         }}>
-          <div style={{ marginBottom: 8 }}>
+          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>IFR Currency</span>
+            <FarCyclePill far={FAR.ifrCurrency} daysLeft={ifrStatus.daysLeft ?? null} />
           </div>
-          <DateInput
-            label="Date of last IFR currency event"
-            value={current.ifrDate}
-            onChange={v => patch('ifrDate', v)}
-            hint="6 approaches + holding + tracking within preceding 6 calendar months"
-          />
+          <div style={{ background: 'var(--bg-card)', borderRadius: 9, marginBottom: 10 }}>
+            <CheckRowWrap
+              checked={current.ifrCurrent === true}
+              onChange={v => patch('ifrCurrent', v)}
+              title="IFR Currency"
+              detail="6 approaches, holding, and intercepting/tracking courses completed within the preceding 6 calendar months"
+            />
+          </div>
           <DateInput
             label="IPC date (if applicable)"
             value={current.ipcDate}
             onChange={v => patch('ipcDate', v)}
             hint="Instrument Proficiency Check — resets the 6-month window"
           />
-          <StatusLine s={ifrStatus} far={FAR.ifrCurrency} />
+          <StatusLine s={ifrStatus} />
           {ifrStatus.status === 'expired' && (
             <div style={{
               marginTop: 8, padding: '8px 10px', borderRadius: 8,
@@ -667,11 +737,13 @@ const INSPECTIONS = [
   { key: 'hundredHrHours',  label: '100-hr Inspection',        months: null, far: FAR.hundredHour, unit: 'hours', hint: null },
 ]
 
-function InspectionRow({ insp, value, onDateChange, warnDays }) {
+function InspectionRow({ insp, value, onDateChange, warnDays, currentHobbs }) {
   const inputRef = useRef(null)
-  let s = { status: 'unknown', expiresOn: null, daysLeft: null }
-  if (value && insp.months != null) {
-    s = statusFromExpiry(calendarMonthExpiry(value, insp.months), warnDays)
+  let s = { status: 'unknown', expiresOn: null, daysLeft: null, hoursLeft: null }
+  if (insp.unit === 'hours') {
+    s = { ...s, ...statusFromHours(value, currentHobbs, WARN_HOURS_DEFAULT) }
+  } else if (value && insp.months != null) {
+    s = { ...s, ...statusFromExpiry(calendarMonthExpiry(value, insp.months), warnDays) }
   }
   const color = s.status === 'expired' ? 'var(--danger)' : s.status === 'expiring' ? 'var(--warn)' : s.status === 'valid' ? 'var(--ok)' : 'var(--text-tertiary)'
 
@@ -738,10 +810,20 @@ function InspectionRow({ insp, value, onDateChange, warnDays }) {
         />
       )}
 
+      {insp.unit === 'hours' && (
+        <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>
+          {currentHobbs != null ? `Current Hobbs: ${currentHobbs.toFixed(1)} hrs` : 'Set current Hobbs on the Home screen to track this'}
+        </div>
+      )}
       {insp.hint && <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>{insp.hint}</div>}
       {s.expiresOn && (
         <div style={{ fontSize: 10, color, marginTop: 4, fontWeight: 600 }}>
           {s.status === 'expired' ? 'Expired' : 'Due'} {fmtDate(s.expiresOn)} · {fmtDaysLeft(s.daysLeft)}
+        </div>
+      )}
+      {s.hoursLeft != null && (
+        <div style={{ fontSize: 10, color, marginTop: 4, fontWeight: 600 }}>
+          {s.status === 'expired' ? `Overdue by ${Math.abs(s.hoursLeft).toFixed(1)} hrs` : `Due in ${s.hoursLeft.toFixed(1)} hrs`}
         </div>
       )}
     </div>
@@ -751,6 +833,11 @@ function InspectionRow({ insp, value, onDateChange, warnDays }) {
 function ImAirworthyCard({ data, onChange, warnDays }) {
   const airworthy = data?.airworthy ?? {}
   const docs = airworthy.docs ?? {}
+  const [currentHobbs, setCurrentHobbs] = useState(null)
+
+  useEffect(() => {
+    get('aircraft', 'profile').then(p => setCurrentHobbs(p?.hobbsTime ?? null))
+  }, [])
 
   const patchDocs = (key, val) =>
     onChange({ ...data, airworthy: { ...airworthy, docs: { ...docs, [key]: val } } })
@@ -759,10 +846,15 @@ function ImAirworthyCard({ data, onChange, warnDays }) {
 
   const docsComplete = ARROW_DOCS.filter(d => !d.key.includes('insurance')).every(d => docs[d.key])
 
-  // Compute worst inspection status
+  // Compute worst inspection status — date-based items via calendar-month
+  // expiry, hour-based items (Oil Change, 100-hr) via current Hobbs reading
   const inspStatuses = INSPECTIONS
-    .filter(i => i.months != null && airworthy[i.key])
-    .map(i => statusFromExpiry(calendarMonthExpiry(airworthy[i.key], i.months), warnDays))
+    .map(i => {
+      if (i.unit === 'hours') return statusFromHours(airworthy[i.key], currentHobbs, WARN_HOURS_DEFAULT)
+      if (i.months != null && airworthy[i.key]) return statusFromExpiry(calendarMonthExpiry(airworthy[i.key], i.months), warnDays)
+      return null
+    })
+    .filter(s => s && s.status !== 'unknown')
 
   const worstInsp = inspStatuses.reduce((worst, s) => {
     const rank = { expired: 3, expiring: 2, unknown: 1, valid: 0 }
@@ -809,6 +901,7 @@ function ImAirworthyCard({ data, onChange, warnDays }) {
                 value={airworthy[insp.key]}
                 onDateChange={v => patchInsp(insp.key, v)}
                 warnDays={warnDays}
+                currentHobbs={currentHobbs}
               />
             ))}
             {/* Airworthiness Directives — compliance checkbox */}

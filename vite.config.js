@@ -3,8 +3,51 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Dev-only middleware mirroring api/awc.js — Vite's dev server doesn't run
+// Vercel serverless functions, so /api/awc 404s under `npm run dev` even
+// though it works fine once deployed. Without this, every airport lookup
+// looks "broken" locally regardless of the actual proxy's health.
+function awcDevProxy() {
+  return {
+    name: 'awc-dev-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/awc', async (req, res) => {
+        const { searchParams } = new URL(req.url, 'http://localhost')
+        const path = searchParams.get('path')
+        searchParams.delete('path')
+
+        if (!path) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'path required' }))
+          return
+        }
+
+        const qs = searchParams.toString()
+        const url = `https://aviationweather.gov/api/data/${path}${qs ? '?' + qs : ''}`
+
+        try {
+          const upstream = await fetch(url, {
+            headers: { 'User-Agent': 'PQRH-App/1.0' },
+            signal: AbortSignal.timeout(10000),
+          })
+          const text = await upstream.text()
+          res.statusCode = upstream.status
+          res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
+          res.end(text)
+        } catch (err) {
+          res.statusCode = 502
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'upstream fetch failed', detail: err.message }))
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
+    awcDevProxy(),
     react(),
     tailwindcss(),
     VitePWA({
