@@ -1,9 +1,11 @@
+import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 import {
   parseFltCat, parseWind, parseVisib, parseCeiling,
   parseTemp, parseAltim, parseWx, parseObsAge, parseFetchAge, parseAirportName,
   FLTCAT,
 } from '../lib/weather'
 import { getCondition } from './WeatherAnimation'
+import { lottieForCondition } from './LottieWeather'
 import { IconRefresh, CopyIconButton } from './Icons'
 import { usePilotProfile } from '../context/PilotProfile'
 
@@ -288,60 +290,82 @@ export default function WeatherDetailOverlay({
 
           {/* ── Hero ── */}
           <div style={{
+            position: 'relative',
             minHeight: 210, display: 'flex', flexDirection: 'column',
             alignItems: 'center', textAlign: 'center',
             justifyContent: 'flex-end', paddingBottom: 26, paddingTop: 18,
           }}>
-            {metar ? (
-              <>
-                {/* Flight category pill sits above the temperature — color-coded
-                    per the standard VFR/MVFR/IFR/LIFR scheme so it reads at a glance */}
-                {cat && (
-                  <div style={{ marginBottom: 16 }}>
-                    <span style={{
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      minHeight: 28, borderRadius: 999, padding: '0 14px',
-                      fontSize: 13, fontWeight: 800, letterSpacing: '0.06em',
-                      color: '#fff', background: cat.color,
-                      boxShadow: `0 2px 10px ${cat.color}66`,
-                    }}>{cat.label}</span>
-                  </div>
-                )}
-
-                {/* Temp — the headline number, bold and tight */}
-                <div style={{ marginBottom: 8 }}>
-                  <span style={{
-                    fontSize: 108, fontWeight: 800, lineHeight: 0.85,
-                    letterSpacing: '-5px', color: '#fff',
-                    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
-                  }}>
-                    {parseTemp(metar, units).replace(units.unitTemperature ?? '°C', '')}°
-                  </span>
-                </div>
-
-                {/* Condition label right below temperature */}
-                <div style={{
-                  fontSize: 22, fontWeight: 600, marginBottom: 14,
-                  color: 'rgba(255,255,255,0.82)',
-                }}>
-                  {conditionLabel}
-                </div>
-
-                {/* Airport name below condition */}
-                <div style={{
-                  fontSize: 20, fontWeight: 600,
-                  color: 'rgba(255,255,255,0.72)',
-                }}>
-                  {parseAirportName(metar) ?? icao}
-                </div>
-              </>
-            ) : loading ? (
-              <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 15 }}>
-                Fetching weather…
+            {/* Weather icon animation — sits behind the temperature as a soft
+                background flourish, same idea as the compact card's preview,
+                not a foreground graphic competing with the numbers */}
+            {metar && (
+              <div style={{
+                position: 'absolute', top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: 220, height: 220, zIndex: 0,
+                pointerEvents: 'none', opacity: 0.85,
+              }}>
+                <DotLottieReact
+                  key={lottieForCondition(type, isNight)}
+                  src={lottieForCondition(type, isNight)}
+                  loop autoplay
+                  style={{ width: '100%', height: '100%' }}
+                />
               </div>
-            ) : error ? (
-              <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 15 }}>{error}</div>
-            ) : null}
+            )}
+
+            <div style={{ position: 'relative', zIndex: 1 }}>
+              {metar ? (
+                <>
+                  {/* Flight category pill sits above the temperature — color-coded
+                      per the standard VFR/MVFR/IFR/LIFR scheme so it reads at a glance */}
+                  {cat && (
+                    <div style={{ marginBottom: 16 }}>
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        minHeight: 28, borderRadius: 999, padding: '0 14px',
+                        fontSize: 13, fontWeight: 800, letterSpacing: '0.06em',
+                        color: '#fff', background: cat.color,
+                        boxShadow: `0 2px 10px ${cat.color}66`,
+                      }}>{cat.label}</span>
+                    </div>
+                  )}
+
+                  {/* Temp — the headline number, bold and tight */}
+                  <div style={{ marginBottom: 8 }}>
+                    <span style={{
+                      fontSize: 108, fontWeight: 800, lineHeight: 0.85,
+                      letterSpacing: '-5px', color: '#fff',
+                      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
+                    }}>
+                      {parseTemp(metar, units).replace(units.unitTemperature ?? '°C', '')}°
+                    </span>
+                  </div>
+
+                  {/* Condition label right below temperature */}
+                  <div style={{
+                    fontSize: 22, fontWeight: 600, marginBottom: 14,
+                    color: 'rgba(255,255,255,0.82)',
+                  }}>
+                    {conditionLabel}
+                  </div>
+
+                  {/* Airport name below condition */}
+                  <div style={{
+                    fontSize: 20, fontWeight: 600,
+                    color: 'rgba(255,255,255,0.72)',
+                  }}>
+                    {parseAirportName(metar) ?? icao}
+                  </div>
+                </>
+              ) : loading ? (
+                <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 15 }}>
+                  Fetching weather…
+                </div>
+              ) : error ? (
+                <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 15 }}>{error}</div>
+              ) : null}
+            </div>
           </div>
 
           {metar && (

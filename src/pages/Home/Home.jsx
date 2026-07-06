@@ -34,7 +34,7 @@ function fmtFlightDuration(flight) {
 }
 
 /* ── Module card ─────────────────────────────────────────── */
-function ModuleCard({ section, onOpen, icon, label, desc, stat, statColor, badge }) {
+function ModuleCard({ section, onOpen, icon, label }) {
   const ref = useRef(null)
 
   function handleClick() {
@@ -52,42 +52,22 @@ function ModuleCard({ section, onOpen, icon, label, desc, stat, statColor, badge
       border: '0.5px solid var(--border)',
       display: 'flex',
       flexDirection: 'column',
-      padding: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      textAlign: 'center',
+      gap: 8,
+      height: 108,
+      padding: '14px 10px',
       minWidth: 0,
       WebkitTapHighlightColor: 'transparent',
     }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        <img src={icon} width={28} height={28}
-          style={{ objectFit: 'contain', flexShrink: 0, marginTop: 1, filter: 'var(--icon-filter)' }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {label}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {desc}
-          </div>
-        </div>
-        <div style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }}>
-          <IconChevronRight size={14} />
-        </div>
-      </div>
-
+      <img src={icon} width={28} height={28}
+        style={{ objectFit: 'contain', flexShrink: 0, filter: 'var(--icon-filter)' }} />
       <div style={{
-        marginTop: 'auto', paddingTop: 10,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        fontSize: 14, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px',
+        overflowWrap: 'break-word', lineHeight: 1.25,
       }}>
-        <span style={{ fontSize: 11, fontWeight: 500, color: statColor || 'var(--text-tertiary)' }}>
-          {stat}
-        </span>
-        {badge && (
-          <span style={{
-            fontSize: 10, fontWeight: 700, letterSpacing: '0.2px',
-            color: badge.color, background: badge.bg,
-            padding: '2px 7px', borderRadius: 10,
-          }}>
-            {badge.label}
-          </span>
-        )}
+        {label}
       </div>
     </div>
   )
@@ -215,14 +195,11 @@ export default function Home() {
   const [aircraftName, setAircraftName]   = useState('')
   const [aircraftImage, setAircraftImage] = useState('')
   const [hobbsTime, setHobbsTime]         = useState(null)
-  const [clChecked, setClChecked]         = useState(null)
   const [weatherExpanded, setWeatherExpanded] = useState(false)
   const [openSection, setOpenSection]     = useState(null)
   const [sectionRect, setSectionRect]     = useState(null)
   const [flights, setFlights] = useState([])
   const [selectedFlight, setSelectedFlight] = useState(null)
-
-  const CL_TOTAL = 15
 
   useEffect(() => {
     get('aircraft', 'profile').then(p => {
@@ -231,9 +208,6 @@ export default function Home() {
       if (p?.fullName)     setAircraftName(p.fullName)
       if (p?.image)        setAircraftImage(p.image)
       if (p?.hobbsTime != null) setHobbsTime(p.hobbsTime)
-    })
-    get('checklists', 'flight-plan').then(saved => {
-      if (saved?.checked) setClChecked(saved.checked.length)
     })
     getAll('flights').then(stored => {
       if (stored.length > 0) setFlights([...stored].sort((a, b) => b.id - a.id))
@@ -271,17 +245,6 @@ export default function Home() {
     const p = await get('aircraft', 'profile')
     await put('aircraft', { ...(p ?? {}), id: 'profile', hobbsTime: val, hobbsUpdatedAt: Date.now() })
   }
-
-  const clDone     = clChecked ?? 0
-  const clComplete = clDone >= CL_TOTAL
-  const clStarted  = clDone > 0 && !clComplete
-  const clStat     = clChecked === null ? '1 checklist' : `${clDone} / ${CL_TOTAL} items`
-  const clColor    = clComplete ? 'var(--ok)' : clStarted ? 'var(--warn)' : 'var(--text-tertiary)'
-  const clBadge    = clComplete
-    ? { label: 'Complete', color: 'var(--ok)',   bg: 'var(--ok-light)' }
-    : clStarted
-    ? { label: 'In progress', color: 'var(--warn)', bg: 'var(--warn-light)' }
-    : null
 
   const anyExpanded = weatherExpanded || !!openSection
 
@@ -342,10 +305,6 @@ export default function Home() {
               onOpen={openCard}
               icon="/clipboard.png"
               label="Flight Planning"
-              desc="Pre-flight · Briefing"
-              stat={clStat}
-              statColor={clColor}
-              badge={clBadge}
             />
 
             <ModuleCard
@@ -353,8 +312,6 @@ export default function Home() {
               onOpen={openCard}
               icon="/E6B CALC.svg"
               label="Calculators"
-              desc="PA · DA · V-REF · XW"
-              stat="4 calculators"
             />
 
             <ModuleCard
@@ -362,8 +319,6 @@ export default function Home() {
               onOpen={openCard}
               icon="/cheque.png"
               label="Currency"
-              desc="IM CURRENT · IM VALID"
-              stat="Set up required"
             />
 
             <ModuleCard
@@ -371,8 +326,6 @@ export default function Home() {
               onOpen={openCard}
               icon="/libros.png"
               label="Quick Reference"
-              desc="Air law · Signals"
-              stat="14 sections"
             />
 
           </div>
