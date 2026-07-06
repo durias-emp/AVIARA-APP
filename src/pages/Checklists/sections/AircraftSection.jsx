@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { get } from '../../../lib/db'
-import { ExpandableCard, DoneButton } from '../shared/ui'
+import { ExpandableCard, DoneButton, CheckRow as SharedCheckRow } from '../shared/ui'
 
 /* ── Aircraft checklist ──────────────────────────────────────── */
 export function AircraftItem({ item, isChecked, onToggle }) {
@@ -124,72 +124,14 @@ export function AircraftItem({ item, isChecked, onToggle }) {
   }
 
   const CheckRow = ({ id, label }) => {
-    const done = checkedIds.has(id)
     const fromCurrency = isCurrencyCompleted(id)
-    const [hovered, setHovered] = useState(false)
-    const tip = TOOLTIPS[id]
     return (
-      <div style={{ position: 'relative' }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}>
-        <button onClick={() => !fromCurrency && toggleSub(id)} style={{
-          width: '100%', textAlign: 'left', background: 'transparent',
-          border: 'none', cursor: fromCurrency ? 'default' : 'pointer',
-          display: 'flex', alignItems: 'center', gap: 11,
-          padding: '9px 14px', borderRadius: 8,
-        }}>
-          {!fromCurrency && (
-            <div style={{
-              width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-              background: done ? 'var(--accent)' : 'transparent',
-              border: `1.5px solid ${done ? 'var(--accent)' : 'var(--border-strong)'}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'all 0.18s',
-            }}>
-              {done && (
-                <svg width={10} height={10} viewBox="0 0 12 12" fill="none">
-                  <polyline points="2,6 5,9 10,3" stroke="var(--accent-fg)" strokeWidth="1.8"
-                    strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              )}
-            </div>
-          )}
-          <span style={{ flex: 1, textDecoration: done && !fromCurrency ? 'line-through' : 'none', transition: 'color 0.18s' }}>
-            {label.includes(' — ') ? (
-              <>
-                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.2px' }}>
-                  {label.split(' — ')[0]}
-                </span>
-                <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-secondary)' }}>
-                  {' '}{label.split(' — ')[1]}
-                </span>
-              </>
-            ) : (
-              <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{label}</span>
-            )}
-          </span>
-          {fromCurrency && (
-            <div style={{
-              fontSize: 10, fontWeight: 700, color: '#fff',
-              background: 'var(--ok)', borderRadius: 20,
-              padding: '3px 10px', flexShrink: 0,
-            }}>Completed</div>
-          )}
-        </button>
-        {hovered && tip && (
-          <div style={{
-            position: 'fixed', zIndex: 9999,
-            fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5,
-            background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px',
-            border: '0.5px solid var(--border-strong)',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-            width: 220, pointerEvents: 'none',
-            top: 'auto', left: 14,
-          }}>
-            {tip}
-          </div>
-        )}
-      </div>
+      <SharedCheckRow
+        id={id} label={label}
+        checked={checkedIds.has(id)} onToggle={toggleSub}
+        disabled={fromCurrency} completedLabel={fromCurrency ? 'Completed' : undefined}
+        tooltip={TOOLTIPS[id]}
+      />
     )
   }
 

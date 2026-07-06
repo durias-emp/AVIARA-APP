@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
 import { get } from '../../../lib/db'
-import { ExpandableCard, DoneButton } from '../shared/ui'
+import { ExpandableCard, DoneButton, CheckRow as SharedCheckRow } from '../shared/ui'
 import { FAA_DTPP_BASE } from '../shared/faaData'
 import { awcUrl, proxyJSON, lookupAirport } from '../shared/awc'
 
@@ -303,45 +303,9 @@ export function AirportItem({ item, isChecked, onToggle }) {
     'apt-fbo-a':  'Note the FBO ground frequency so you can call them on the radio during taxi-in for marshallers or parking guidance.',
   }
 
-  const CheckRow = ({ id, label }) => {
-    const done = checkedIds.has(id)
-    const [hovered, setHovered] = useState(false)
-    const tip = TOOLTIPS[id]
-    return (
-      <div style={{ position: 'relative' }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}>
-        <button onClick={() => toggleSub(id)} style={{
-          width: '100%', textAlign: 'left', background: 'transparent',
-          border: 'none', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: 11,
-          padding: '9px 14px', borderRadius: 8, transition: 'background 0.15s',
-        }}>
-          {/* Notion-style square checkbox */}
-          <div style={{
-            width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-            background: done ? 'var(--accent)' : 'transparent',
-            border: `1.5px solid ${done ? 'var(--accent)' : 'var(--border-strong)'}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'all 0.18s',
-          }}>
-            {done && (
-              <svg width={10} height={10} viewBox="0 0 12 12" fill="none">
-                <polyline points="2,6 5,9 10,3" stroke="var(--accent-fg)" strokeWidth="1.8"
-                  strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            )}
-          </div>
-          <span style={{
-            fontSize: 13, fontWeight: 500,
-            color: 'var(--text)',
-            textDecoration: done ? 'line-through' : 'none',
-            transition: 'color 0.18s', flex: 1,
-          }}>{label}</span>
-        </button>
-      </div>
-    )
-  }
+  const CheckRow = ({ id, label }) => (
+    <SharedCheckRow id={id} label={label} checked={checkedIds.has(id)} onToggle={toggleSub} tooltip={TOOLTIPS[id]} />
+  )
 
   const SectionCard = ({ title, children }) => (
     <div style={{ borderTop: '0.5px solid var(--border)' }}>

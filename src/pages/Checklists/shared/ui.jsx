@@ -1,9 +1,23 @@
-import { useEffect } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 /* ── Expandable card shell — used by every checklist item ────── */
 export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, children }) {
+  const rootRef = useRef(null)
+  const wasOpenRef = useRef(open)
+
+  // Collapsing (e.g. via the Done button inside `children`) shrinks the page's
+  // total height. Left alone, the browser clamps scroll position toward the new,
+  // shorter bottom — which reads as "jumping to the end of the list" rather than
+  // staying on the step the user was just working on. Recenter on this card instead.
+  useLayoutEffect(() => {
+    if (wasOpenRef.current && !open && rootRef.current) {
+      rootRef.current.scrollIntoView({ block: 'center' })
+    }
+    wasOpenRef.current = open
+  }, [open])
+
   return (
-    <div style={{ marginBottom: 8 }}>
+    <div ref={rootRef} style={{ marginBottom: 8 }}>
       <div style={{
         background: 'var(--bg-card)',
         border: '0.5px solid var(--border)',
@@ -22,7 +36,7 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{
               fontSize: 15, fontWeight: 600, letterSpacing: '-0.2px',
-              color: isChecked ? 'var(--text-tertiary)' : 'var(--text)',
+              color: isChecked ? 'var(--text)' : 'var(--text-tertiary)',
             }}>{item.label}</span>
             <div
               onClick={e => { e.stopPropagation(); onToggle(item.id) }}
@@ -113,6 +127,76 @@ export function DoneButton({ isChecked, onDone, checkedIds, subIds, autoCheck, o
           ) : 'Done'}
         </span>
       </button>
+    </div>
+  )
+}
+
+/* ── Shared checklist row — square checkbox + label + optional
+   tooltip / disabled-with-badge state (used by section-specific
+   checklist groups, e.g. Aircraft's currency-completed rows). ── */
+export function CheckRow({ id, label, checked, onToggle, disabled = false, completedLabel, tooltip }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div style={{ position: 'relative' }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}>
+      <button onClick={() => !disabled && onToggle(id)} style={{
+        width: '100%', textAlign: 'left', background: 'transparent',
+        border: 'none', cursor: disabled ? 'default' : 'pointer',
+        display: 'flex', alignItems: 'center', gap: 11,
+        padding: '9px 14px', borderRadius: 8, transition: 'background 0.15s',
+      }}>
+        {!disabled && (
+          <div style={{
+            width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+            background: checked ? 'var(--accent)' : 'transparent',
+            border: `1.5px solid ${checked ? 'var(--accent)' : 'var(--border-strong)'}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 0.18s',
+          }}>
+            {checked && (
+              <svg width={10} height={10} viewBox="0 0 12 12" fill="none">
+                <polyline points="2,6 5,9 10,3" stroke="var(--accent-fg)" strokeWidth="1.8"
+                  strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </div>
+        )}
+        <span style={{ flex: 1, textDecoration: checked && !disabled ? 'line-through' : 'none', transition: 'color 0.18s' }}>
+          {label.includes(' — ') ? (
+            <>
+              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.2px' }}>
+                {label.split(' — ')[0]}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-secondary)' }}>
+                {' '}{label.split(' — ')[1]}
+              </span>
+            </>
+          ) : (
+            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{label}</span>
+          )}
+        </span>
+        {disabled && completedLabel && (
+          <div style={{
+            fontSize: 10, fontWeight: 700, color: '#fff',
+            background: 'var(--ok)', borderRadius: 20,
+            padding: '3px 10px', flexShrink: 0,
+          }}>{completedLabel}</div>
+        )}
+      </button>
+      {hovered && tooltip && (
+        <div style={{
+          position: 'fixed', zIndex: 9999,
+          fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5,
+          background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px',
+          border: '0.5px solid var(--border-strong)',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+          width: 220, pointerEvents: 'none',
+          top: 'auto', left: 14,
+        }}>
+          {tooltip}
+        </div>
+      )}
     </div>
   )
 }

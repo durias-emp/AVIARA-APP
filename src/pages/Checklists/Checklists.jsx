@@ -253,6 +253,20 @@ function ChecklistDetail({ checklist, onBack }) {
     return () => cancelAnimationFrame(id)
   }, [recalcTrain])
 
+  // Expanding/collapsing any card inside the track (or its content loading in)
+  // changes the track's height without changing `checked`/`checklist`, which
+  // are the only things recalcTrain normally re-runs on. Without this, the
+  // line's measured length goes stale and visually stops short of a circle
+  // whose card is currently expanded. A ResizeObserver catches any such
+  // layout change directly, regardless of what caused it.
+  useEffect(() => {
+    const track = trackRef.current
+    if (!track || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => recalcTrain())
+    observer.observe(track)
+    return () => observer.disconnect()
+  }, [recalcTrain])
+
   return (
     <div style={{ paddingBottom: 64 }}>
       {/* Header */}

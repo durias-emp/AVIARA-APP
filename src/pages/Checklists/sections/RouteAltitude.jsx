@@ -272,6 +272,17 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     else setDestErr('Airport not found')
   }
 
+  // ICAO codes are always exactly 4 characters (maxLength on both inputs) —
+  // once a field reaches that length, validate immediately so the field
+  // flips to the "found" pill without waiting for Enter/blur.
+  useEffect(() => {
+    if (dep.trim().length === 4 && !depValidated && !depChecking) validateDep()
+  }, [dep])
+
+  useEffect(() => {
+    if (dest.trim().length === 4 && !destValidated && !destChecking) validateDest()
+  }, [dest])
+
   // Editable waypoints — dep + optional intermediates + dest
   const [waypoints, setWaypoints] = useState([])
   useEffect(() => {
