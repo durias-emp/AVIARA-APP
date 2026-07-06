@@ -43,10 +43,10 @@ function NumberInput({ value, onChange, unit, max }) {
 }
 
 // ── Table rows ────────────────────────────────────────────────────────────────
-function TableRow({ label, sub, weight, longArm, latArm, highlight, dim }) {
+function TableRow({ label, sub, weight, longArm, latArm, highlight, dim, showLat = true }) {
   return (
     <div style={{
-      display: 'grid', gridTemplateColumns: '1fr 56px 56px 56px', padding: '7px 12px',
+      display: 'grid', gridTemplateColumns: showLat ? '1fr 56px 56px 56px' : '1fr 56px 56px', padding: '7px 12px',
       borderBottom: '0.5px solid var(--border)',
       opacity: dim ? 0.5 : 1,
       background: highlight ? 'var(--bg-card-2)' : 'transparent',
@@ -57,13 +57,18 @@ function TableRow({ label, sub, weight, longArm, latArm, highlight, dim }) {
       </div>
       <div style={{ fontSize: 10, textAlign: 'right', alignSelf: 'center', color: 'var(--text-secondary)' }}>{weight}</div>
       <div style={{ fontSize: 10, textAlign: 'right', alignSelf: 'center', color: 'var(--text-tertiary)' }}>{longArm}</div>
-      <div style={{ fontSize: 10, textAlign: 'right', alignSelf: 'center', color: 'var(--text-tertiary)' }}>{latArm}</div>
+      {showLat && <div style={{ fontSize: 10, textAlign: 'right', alignSelf: 'center', color: 'var(--text-tertiary)' }}>{latArm}</div>}
     </div>
   )
 }
 
-function SummaryRow({ label, weight, longCG, latCG, longOK, latOK, overweight, isAllUp, unit }) {
-  const cgOK = longOK && latOK && !overweight
+function SummaryRow({ label, weight, longCG, latCG, longOK, latOK, overweight, isAllUp, unit, showLat = true }) {
+  const cgOK = longOK && (showLat ? latOK : true) && !overweight
+  const cols = [
+    { label: 'Weight', value: weight, unit: unit.w, ok: !overweight },
+    { label: 'Long CG', value: longCG, unit: unit.a, ok: longOK },
+  ]
+  if (showLat) cols.push({ label: 'Lat CG', value: latCG, unit: unit.a, ok: latOK })
   return (
     <div style={{
       padding: '9px 12px',
@@ -80,12 +85,8 @@ function SummaryRow({ label, weight, longCG, latCG, longOK, latOK, overweight, i
           {cgOK ? 'OK' : overweight ? 'OVERWEIGHT' : 'OUT OF LIMITS'}
         </span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-        {[
-          { label: 'Weight', value: weight, unit: unit.w, ok: !overweight },
-          { label: 'Long CG', value: longCG, unit: unit.a, ok: longOK },
-          { label: 'Lat CG',  value: latCG,  unit: unit.a, ok: latOK },
-        ].map(col => (
+      <div style={{ display: 'grid', gridTemplateColumns: cols.map(() => '1fr').join(' '), gap: 6 }}>
+        {cols.map(col => (
           <div key={col.label}>
             <div style={{ fontSize: 8, color: 'var(--text-tertiary)', marginBottom: 1 }}>{col.label}</div>
             <div style={{ fontSize: 11, fontWeight: 700, color: col.ok ? 'var(--text)' : 'var(--danger)' }}>
@@ -196,7 +197,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
 
   useEffect(() => {
     get('aircraft', 'profile').then(p => {
-      const config = p ? getWBConfig(p.label) : null
+      const config = p ? getWBConfig(p) : null
       setCfg(config)
       if (config) {
         const blank = {}
@@ -227,9 +228,13 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
 
         {/* No config state */}
         {!cfg && (
-          <div style={{ padding: '16px 14px', textAlign: 'center' }}>
-            <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>W&B not configured for this aircraft.</div>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, opacity: 0.6 }}>Supported: Bell 206B-3 JetRanger</div>
+          <div style={{ padding: '20px 14px', textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Weight &amp; Balance is not configured for this aircraft.
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', marginTop: 8 }}>
+              Set up Weight &amp; Balance in Aircraft Profile.
+            </div>
           </div>
         )}
 
@@ -337,38 +342,38 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                   </div>
                   <div style={{ border: '0.5px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
                     {/* Header */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 56px 56px 56px', padding: '5px 12px', background: 'var(--bg-card-2)', borderBottom: '0.5px solid var(--border)' }}>
-                      {['Item', wU, `Arm ${aU}`, `Lat ${aU}`].map((h, i) => (
+                    <div style={{ display: 'grid', gridTemplateColumns: cfg.hasLateral ? '1fr 56px 56px 56px' : '1fr 56px 56px', padding: '5px 12px', background: 'var(--bg-card-2)', borderBottom: '0.5px solid var(--border)' }}>
+                      {(cfg.hasLateral ? ['Item', wU, `Arm ${aU}`, `Lat ${aU}`] : ['Item', wU, `Arm ${aU}`]).map((h, i) => (
                         <div key={h} style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: i > 0 ? 'right' : 'left' }}>{h}</div>
                       ))}
                     </div>
                     <TableRow label="Basic Empty Wt" sub={`Long CG ${toDisplay(cfg.bew.longArm, 'arm', metric)} ${aU}`}
                       weight={toDisplay(result.adjBEW.weight, 'weight', metric)}
                       longArm={toDisplay(cfg.bew.longArm, 'arm', metric)}
-                      latArm={toDisplay(cfg.bew.latArm, 'arm', metric)} highlight />
+                      latArm={toDisplay(cfg.bew.latArm, 'arm', metric)} highlight showLat={cfg.hasLateral} />
                     {result.removedDoors.map(d => (
                       <TableRow key={d.label} label={`− ${d.label}`} sub="Door off"
                         weight={toDisplay(d.weight, 'weight', metric)}
                         longArm={toDisplay(d.longArm, 'arm', metric)}
-                        latArm={toDisplay(d.latArm, 'arm', metric)} dim />
+                        latArm={toDisplay(d.latArm, 'arm', metric)} dim showLat={cfg.hasLateral} />
                     ))}
                     {result.items.map(item => (
                       <TableRow key={item.label} label={item.label} sub={item.sub}
                         weight={toDisplay(item.weight, 'weight', metric)}
                         longArm={toDisplay(item.longArm, 'arm', metric)}
-                        latArm={toDisplay(item.latArm, 'arm', metric)} />
+                        latArm={toDisplay(item.latArm, 'arm', metric)} showLat={cfg.hasLateral} />
                     ))}
                     <SummaryRow label="Zero Fuel Weight"
                       weight={toDisplay(result.zeroFuel.weight, 'weight', metric)}
                       longCG={toDisplay(result.zeroFuel.longCG, 'cg', metric)}
                       latCG={toDisplay(result.zeroFuel.latCG, 'cg', metric)}
                       longOK={result.status.zfLongOK} latOK={result.status.zfLatOK}
-                      unit={{ w: wU, a: aU }} />
+                      unit={{ w: wU, a: aU }} showLat={cfg.hasLateral} />
                     {result.fuel && (
                       <TableRow label={result.fuel.label} sub="Main tank"
                         weight={toDisplay(result.fuel.weight, 'weight', metric)}
                         longArm={toDisplay(result.fuel.longArm, 'arm', metric)}
-                        latArm={toDisplay(result.fuel.latArm, 'arm', metric)} />
+                        latArm={toDisplay(result.fuel.latArm, 'arm', metric)} showLat={cfg.hasLateral} />
                     )}
                     <SummaryRow label="All Up Weight" isAllUp
                       weight={toDisplay(result.allUp.weight, 'weight', metric)}
@@ -376,7 +381,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                       latCG={toDisplay(result.allUp.latCG, 'cg', metric)}
                       longOK={result.status.auLongOK} latOK={result.status.auLatOK}
                       overweight={result.status.overweight}
-                      unit={{ w: wU, a: aU }} />
+                      unit={{ w: wU, a: aU }} showLat={cfg.hasLateral} />
                   </div>
                 </div>
 
@@ -395,20 +400,22 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                   </div>
                 </div>
 
-                {/* Lateral chart */}
-                <div style={{ padding: '0 14px 10px' }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>
-                    CG Envelope — Lateral vs Longitudinal
-                  </div>
-                  <div style={{ border: '0.5px solid var(--border)', borderRadius: 12, padding: 10 }}>
-                    <LatCGChart cfg={cfg} result={result} ok={overallOK} />
-                    <div style={{ display: 'flex', gap: 12, marginTop: 6, paddingLeft: 2 }}>
-                      <Legend color="#60a5fa" label="Zero Fuel" />
-                      <Legend color="#a78bfa" label="All Up" />
-                      <Legend color={overallOK ? 'rgba(34,197,94,0.6)' : 'rgba(239,68,68,0.6)'} label="Envelope" isRect />
+                {/* Lateral chart — only for aircraft with lateral CG data */}
+                {cfg.hasLateral && (
+                  <div style={{ padding: '0 14px 10px' }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>
+                      CG Envelope — Lateral vs Longitudinal
+                    </div>
+                    <div style={{ border: '0.5px solid var(--border)', borderRadius: 12, padding: 10 }}>
+                      <LatCGChart cfg={cfg} result={result} ok={overallOK} />
+                      <div style={{ display: 'flex', gap: 12, marginTop: 6, paddingLeft: 2 }}>
+                        <Legend color="#60a5fa" label="Zero Fuel" />
+                        <Legend color="#a78bfa" label="All Up" />
+                        <Legend color={overallOK ? 'rgba(34,197,94,0.6)' : 'rgba(239,68,68,0.6)'} label="Envelope" isRect />
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Status banner — bottom, charcoal card, only checkmark is colored */}
                 <div style={{ margin: '0 14px 10px' }}>
@@ -442,8 +449,9 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                   </div>
                 </div>
 
-                <div style={{ padding: '0 14px', fontSize: 8, color: 'var(--text-tertiary)', textAlign: 'center', lineHeight: 1.5 }}>
-                  {cfg.ref} · For planning purposes only · PIC is responsible for W&B verification
+                <div style={{ padding: '0 14px', fontSize: 8, color: 'var(--text-tertiary)', textAlign: 'center', lineHeight: 1.6 }}>
+                  {cfg.ref} · For planning purposes only. PIC is responsible for verifying W&amp;B against
+                  the aircraft POH/AFM and latest W&amp;B report. Use actual aircraft values, not generic model values.
                 </div>
               </>
             )}

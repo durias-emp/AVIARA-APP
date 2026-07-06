@@ -44,3 +44,7 @@ export async function put(store, value) {
 export async function getAll(store) {
   return (await db()).getAll(store)
 }
+
+export async function del(store, key) {
+  return (await db()).delete(store, key)
+}
