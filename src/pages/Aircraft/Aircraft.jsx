@@ -3,6 +3,7 @@ import { get, put } from '../../lib/db'
 import { BackButton } from '../../components/Shell'
 import { generateAircraftIcon } from '../../lib/generateIcon'
 import { normalizeUserWBConfig, validateWBConfig } from '../../lib/aircraftWB'
+import { FAR, calendarMonthExpiry, statusFromExpiry, statusFromHours, fmtDate, fmtDaysLeft } from '../../lib/currency'
 
 function AircraftPlaceholder() {
   return (
@@ -395,6 +396,202 @@ function deepMerge(base, overrides) {
 }
 
 
+/* ── Airworthiness — documents + inspections, moved here from Currency so
+   it lives alongside the aircraft it describes. Still reads/writes the same
+   currency/profile.airworthy data other parts of the app depend on
+   (getCurrencyStatus, the Checklists "IM AIRWORTHY" item). ── */
+const WARN_DAYS_DEFAULT = 30
+const WARN_HOURS_DEFAULT = 10 // hrs before an hour-based inspection is "expiring"
+
+const ARROW_DOCS = [
+  { key: 'crew',      label: 'C — Crew documents (license · photo ID · medical)', far: FAR.crewDocs },
+  { key: 'airworth',  label: 'A — Certificate of Airworthiness',                  far: FAR.airworthCert },
+  { key: 'reg',       label: 'R — Certificate of Registration',                   far: FAR.registration },
+  { key: 'radio',     label: 'R — Radio License (FCC / international)',            far: null },
+  { key: 'oplim',     label: 'O — Operating Limitations (AFM / POH)',             far: FAR.opLimitations },
+  { key: 'wb',        label: 'W — Weight &amp; Balance data',                     far: FAR.weightBalance },
+  { key: 'insurance', label: 'Insurance current',                                  far: null },
+]
+
+// Inspections with calendar-month expiry
+const INSPECTIONS = [
+  { key: 'annualDate',      label: 'Annual Inspection',        months: 12, far: FAR.annual,      unit: 'date',  hint: '12 calendar months' },
+  { key: 'transponderDate', label: 'Transponder (24-mo)',       months: 24, far: FAR.transponder, unit: 'date',  hint: '24 calendar months — FAR 91.413' },
+  { key: 'pitotDate',       label: 'Pitot-Static / Altimeter', months: 24, far: FAR.pitotStatic, unit: 'date',  hint: '24 calendar months — IFR required — FAR 91.411' },
+  { key: 'eltDate',         label: 'ELT Battery',              months: null, far: FAR.elt,         unit: 'date',  hint: 'Per manufacturer / FAR 91.207 — enter expiry date' },
+  { key: 'oilDate',         label: 'Oil Change',               months: null, far: null,            unit: 'hours', hint: 'Per manufacturer — enter next-due hours' },
+  { key: 'hundredHrHours',  label: '100-hr Inspection',        months: null, far: FAR.hundredHour, unit: 'hours', hint: null },
+]
+
+function FarLink({ far }) {
+  if (!far) return null
+  return (
+    <a href={far.url} target="_blank" rel="noreferrer" style={{
+      fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)',
+      textDecoration: 'none',
+      padding: '3px 8px', borderRadius: 20,
+      background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+      flexShrink: 0,
+    }}>{far.label}</a>
+  )
+}
+
+function AirworthinessBadge({ status }) {
+  const map = {
+    valid:      { bg: 'var(--ok-light)',      fg: 'var(--ok)',      label: 'Current'  },
+    expiring:   { bg: 'rgba(234,179,8,0.15)', fg: 'var(--warn)',    label: 'Expiring' },
+    expired:    { bg: 'var(--danger-light)',  fg: 'var(--danger)',  label: 'Expired'  },
+    incomplete: { bg: 'var(--bg-card-2)',     fg: 'var(--text-tertiary)', label: 'Incomplete' },
+  }
+  const { bg, fg, label } = map[status] ?? map.incomplete
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20,
+      background: bg, color: fg,
+      border: status === 'incomplete' ? '0.5px solid var(--border)' : 'none',
+    }}>{label}</span>
+  )
+}
+
+function CheckRowSimple({ checked, onChange, label, far, padding = '10px 14px' }) {
+  return (
+    <button onClick={() => onChange(!checked)} style={{
+      width: '100%', display: 'flex', alignItems: 'center', gap: 11,
+      padding, background: 'transparent', border: 'none', cursor: 'pointer',
+      textAlign: 'left',
+    }}>
+      <div style={{
+        width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+        background: checked ? 'var(--accent)' : 'transparent',
+        border: `1.5px solid ${checked ? 'var(--accent)' : 'var(--border-strong)'}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'all 0.18s',
+      }}>
+        {checked && (
+          <svg width={10} height={10} viewBox="0 0 12 12" fill="none">
+            <polyline points="2,6 5,9 10,3" stroke="var(--accent-fg)" strokeWidth="1.8"
+              strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+      </div>
+      <span style={{ flex: 1, display: 'flex', alignItems: 'baseline', gap: 5, minWidth: 0 }}>
+        {label.includes(' — ') ? (
+          <>
+            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.2px', flexShrink: 0 }}>
+              {label.split(' — ')[0]}
+            </span>
+            <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {label.split(' — ')[1]}
+            </span>
+          </>
+        ) : (
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap' }}>{label}</span>
+        )}
+      </span>
+      {far && <FarLink far={far} />}
+    </button>
+  )
+}
+
+function InspectionRow({ insp, value, onDateChange, warnDays, currentHobbs }) {
+  const inputRef = useRef(null)
+  let s = { status: 'unknown', expiresOn: null, daysLeft: null, hoursLeft: null }
+  if (insp.unit === 'hours') {
+    s = { ...s, ...statusFromHours(value, currentHobbs, WARN_HOURS_DEFAULT) }
+  } else if (value && insp.months != null) {
+    s = { ...s, ...statusFromExpiry(calendarMonthExpiry(value, insp.months), warnDays) }
+  }
+  const color = s.status === 'expired' ? 'var(--danger)' : s.status === 'expiring' ? 'var(--warn)' : s.status === 'valid' ? 'var(--ok)' : 'var(--text-tertiary)'
+
+  const isDate = insp.unit === 'date'
+  const displayDate = isDate && value
+    ? new Date(value + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null
+
+  const openPicker = () => {
+    const el = inputRef.current
+    if (!el) return
+    if (el.showPicker) el.showPicker()
+    else el.focus()
+  }
+
+  return (
+    <div style={{ padding: '10px 0' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{insp.label}</span>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {insp.far && <FarLink far={insp.far} />}
+        </div>
+      </div>
+
+      {isDate ? (
+        <>
+          <div
+            onClick={openPicker}
+            style={{
+              background: 'var(--bg-card)', borderRadius: 12, padding: '13px 16px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              border: '0.5px solid var(--border)', cursor: 'pointer',
+            }}
+          >
+            <span style={{
+              fontSize: 17, fontWeight: 400, letterSpacing: '-0.2px',
+              color: displayDate ? 'var(--text)' : 'var(--text-tertiary)',
+            }}>
+              {displayDate || 'Date'}
+            </span>
+            <img src="/calendario.png" width={18} height={18} alt="" className="icon-themed" />
+          </div>
+          <input
+            ref={inputRef}
+            type="date"
+            value={value || ''}
+            onChange={e => onDateChange(e.target.value)}
+            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+          />
+        </>
+      ) : (
+        <input
+          ref={inputRef}
+          type="number"
+          defaultValue={value || ''}
+          onChange={e => onDateChange(e.target.value)}
+          placeholder="Next due (hours)"
+          style={{
+            width: '100%', boxSizing: 'border-box',
+            background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+            borderRadius: 8, padding: '8px 10px',
+            fontSize: 12, color: 'var(--text)', outline: 'none',
+          }}
+        />
+      )}
+
+      {insp.unit === 'hours' && (
+        <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>
+          {currentHobbs != null ? `Current Hobbs: ${currentHobbs.toFixed(1)} hrs` : 'Set Hobbs Time above to track this'}
+        </div>
+      )}
+      {insp.hint && <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>{insp.hint}</div>}
+      {s.expiresOn && (
+        <div style={{ fontSize: 10, color, marginTop: 4, fontWeight: 600 }}>
+          {s.status === 'expired' ? 'Expired' : 'Due'} {fmtDate(s.expiresOn)} · {fmtDaysLeft(s.daysLeft)}
+        </div>
+      )}
+      {s.hoursLeft != null && (
+        <div style={{ fontSize: 10, color, marginTop: 4, fontWeight: 600 }}>
+          {s.status === 'expired' ? `Overdue by ${Math.abs(s.hoursLeft).toFixed(1)} hrs` : `Due in ${s.hoursLeft.toFixed(1)} hrs`}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Strips units/commas from a spec string like "2,580 lb" down to "2580",
+// so it can be shown as a numeric placeholder in the W&B Setup fields.
+function weightNum(str) {
+  return str ? str.replace(/[^0-9.]/g, '') : ''
+}
+
 /* ── Main component ──────────────────────────────────────── */
 export default function Aircraft() {
   const [profile, setProfile] = useState(null)
@@ -402,6 +599,7 @@ export default function Aircraft() {
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [customName, setCustomName] = useState('')
   const [hobbsModalOpen, setHobbsModalOpen] = useState(false)
+  const [currencyData, setCurrencyData] = useState(null)
   const touchStartX = useRef(null)
   const [showArrows, setShowArrows] = useState(false)
   const arrowTimer = useRef(null)
@@ -424,7 +622,32 @@ export default function Aircraft() {
         setProfile({ ...TEMPLATES[1], id: 'profile', registration: '', pilotName: '' })
       }
     })
+    get('currency', 'profile').then(saved => setCurrencyData(saved ?? {}))
   }, [])
+
+  // Airworthiness — patches only the `airworthy` key of the shared currency
+  // record, leaving `safe`/`current`/`medical` (owned by the Currency page)
+  // untouched.
+  function patchAirworthyDocs(key, val) {
+    setCurrencyData(prev => {
+      const base = prev ?? {}
+      const airworthy = base.airworthy ?? {}
+      const docs = airworthy.docs ?? {}
+      const next = { ...base, airworthy: { ...airworthy, docs: { ...docs, [key]: val } } }
+      put('currency', { ...next, id: 'profile' })
+      return next
+    })
+  }
+
+  function patchAirworthyInsp(key, val) {
+    setCurrencyData(prev => {
+      const base = prev ?? {}
+      const airworthy = base.airworthy ?? {}
+      const next = { ...base, airworthy: { ...airworthy, [key]: val } }
+      put('currency', { ...next, id: 'profile' })
+      return next
+    })
+  }
 
   const save = useCallback(async (updated) => {
     setSaving(true)
@@ -569,6 +792,27 @@ export default function Aircraft() {
   const wbStationSuggestions = isHelicopter
     ? ['Pilot', 'Front Pax', 'Rear Pax', 'Baggage']
     : ['Pilot & Front Pax', 'Rear Pax', 'Baggage']
+
+  // Airworthiness — worst status across docs + inspections
+  const airworthy = currencyData?.airworthy ?? {}
+  const airworthyDocs = airworthy.docs ?? {}
+  const docsComplete = ARROW_DOCS.filter(d => !d.key.includes('insurance')).every(d => airworthyDocs[d.key])
+  const inspStatuses = INSPECTIONS
+    .map(i => {
+      if (i.unit === 'hours') return statusFromHours(airworthy[i.key], profile.hobbsTime, WARN_HOURS_DEFAULT)
+      if (i.months != null && airworthy[i.key]) return statusFromExpiry(calendarMonthExpiry(airworthy[i.key], i.months), WARN_DAYS_DEFAULT)
+      return null
+    })
+    .filter(s => s && s.status !== 'unknown')
+  const worstInsp = inspStatuses.reduce((worst, s) => {
+    const rank = { expired: 3, expiring: 2, unknown: 1, valid: 0 }
+    return (rank[s.status] ?? 0) > (rank[worst.status] ?? 0) ? s : worst
+  }, { status: inspStatuses.length === 0 ? 'incomplete' : 'valid' })
+  const airworthyStatus = !docsComplete ? 'incomplete'
+    : worstInsp.status === 'expired' ? 'expired'
+    : worstInsp.status === 'expiring' ? 'expiring'
+    : worstInsp.status === 'incomplete' ? 'incomplete'
+    : 'valid'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
@@ -742,17 +986,42 @@ export default function Aircraft() {
           </div>
         </Section>
 
-        {/* Weights */}
-        <Section title="Weights">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <Field label="BEW (empty)" value={profile.weights?.bew ?? ''}
-              onChange={v => patch('weights', 'bew', v)} placeholder="e.g. 1,663 lb" />
-            <Field label="MTOW" value={profile.weights?.mtow ?? ''}
-              onChange={v => patch('weights', 'mtow', v)} placeholder="e.g. 2,550 lb" />
-            <Field label="Useful load" value={profile.weights?.usefulLoad ?? ''}
-              onChange={v => patch('weights', 'usefulLoad', v)} placeholder="e.g. 887 lb" />
-            <Field label="Baggage limit" value={profile.weights?.baggage ?? ''}
-              onChange={v => patch('weights', 'baggage', v)} placeholder="e.g. 120 lb" />
+        {/* Airworthiness */}
+        <Section title="Airworthiness">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: -6 }}>
+            <AirworthinessBadge status={airworthyStatus} />
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+              Documents: CARROW
+            </div>
+            <div style={{ background: 'var(--bg-card-2)', borderRadius: 10, overflow: 'hidden' }}>
+              {ARROW_DOCS.map(doc => (
+                <CheckRowSimple key={doc.key} checked={!!airworthyDocs[doc.key]}
+                  onChange={v => patchAirworthyDocs(doc.key, v)} label={doc.label} far={doc.far} />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 2 }}>
+              Inspections
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+              Enter the date the inspection was last completed.
+            </div>
+            <div style={{ background: 'var(--bg-card-2)', borderRadius: 10, padding: '0 12px 4px' }}>
+              {INSPECTIONS.map(insp => (
+                <InspectionRow key={insp.key} insp={insp} value={airworthy[insp.key]}
+                  onDateChange={v => patchAirworthyInsp(insp.key, v)}
+                  warnDays={WARN_DAYS_DEFAULT} currentHobbs={profile.hobbsTime} />
+              ))}
+              <div style={{ paddingBottom: 6 }}>
+                <CheckRowSimple checked={!!airworthyDocs.ads} onChange={v => patchAirworthyDocs('ads', v)}
+                  label="Airworthiness Directives" far={FAR.ads} padding="10px 0" />
+              </div>
+            </div>
           </div>
         </Section>
 
@@ -784,13 +1053,13 @@ export default function Aircraft() {
           {/* Basic Empty Weight + Max Weight */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <Field label="Basic Empty Weight (lb)" type="number" value={profile.wbConfig?.bew?.weight ?? ''}
-              onChange={v => patchWB(['bew', 'weight'], v)} placeholder="1663" />
+              onChange={v => patchWB(['bew', 'weight'], v)} placeholder={weightNum(profile.weights?.bew) || '1663'} />
             <Field label="Empty CG and Long Arm (in)" type="number" value={profile.wbConfig?.bew?.longArm ?? ''}
               onChange={v => patchWB(['bew', 'longArm'], v)} placeholder="39.3" />
             <Field label="Empty Lateral Arm (in), optional" type="number" value={profile.wbConfig?.bew?.latArm ?? ''}
               onChange={v => patchWB(['bew', 'latArm'], v)} placeholder="0.0" />
             <Field label="Max Takeoff and Gross Weight (lb)" type="number" value={profile.wbConfig?.maxTOW ?? ''}
-              onChange={v => patchWB(['maxTOW'], v)} placeholder="2550" />
+              onChange={v => patchWB(['maxTOW'], v)} placeholder={weightNum(profile.weights?.mtow) || '2550'} />
           </div>
 
           {/* Fuel */}

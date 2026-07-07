@@ -4,7 +4,7 @@ import { get, put } from '../../lib/db'
 import { usePilotProfile } from '../../context/PilotProfile'
 import {
   FAR,
-  calendarMonthExpiry, statusFromExpiry, statusFromHours,
+  calendarMonthExpiry, statusFromExpiry,
   medicalExpiryRows, ageAt,
   fmtDate, fmtDaysLeft,
 } from '../../lib/currency'
@@ -14,7 +14,6 @@ import {
 // ---------------------------------------------------------------------------
 
 const WARN_DAYS_DEFAULT = 30
-const WARN_HOURS_DEFAULT = 10 // hrs before an hour-based inspection is "expiring"
 
 // Single pill used by ALL four cards — fixed 72×28, never auto-sizes
 function CardPill({ status }) {
@@ -715,214 +714,11 @@ function ImValidCard({ data, onChange, warnDays }) {
 }
 
 // ---------------------------------------------------------------------------
-// Card 4 — IM AIRWORTHY
-// ---------------------------------------------------------------------------
-const ARROW_DOCS = [
-  { key: 'crew',      label: 'C — Crew documents (license · photo ID · medical)', far: FAR.crewDocs },
-  { key: 'airworth',  label: 'A — Certificate of Airworthiness',                  far: FAR.airworthCert },
-  { key: 'reg',       label: 'R — Certificate of Registration',                   far: FAR.registration },
-  { key: 'radio',     label: 'R — Radio License (FCC / international)',            far: null },
-  { key: 'oplim',     label: 'O — Operating Limitations (AFM / POH)',             far: FAR.opLimitations },
-  { key: 'wb',        label: 'W — Weight &amp; Balance data',                     far: FAR.weightBalance },
-  { key: 'insurance', label: 'Insurance current',                                  far: null },
-]
-
-// Inspections with calendar-month expiry
-const INSPECTIONS = [
-  { key: 'annualDate',      label: 'Annual Inspection',        months: 12, far: FAR.annual,      unit: 'date',  hint: '12 calendar months' },
-  { key: 'transponderDate', label: 'Transponder (24-mo)',       months: 24, far: FAR.transponder, unit: 'date',  hint: '24 calendar months — FAR 91.413' },
-  { key: 'pitotDate',       label: 'Pitot-Static / Altimeter', months: 24, far: FAR.pitotStatic, unit: 'date',  hint: '24 calendar months — IFR required — FAR 91.411' },
-  { key: 'eltDate',         label: 'ELT Battery',              months: null, far: FAR.elt,         unit: 'date',  hint: 'Per manufacturer / FAR 91.207 — enter expiry date' },
-  { key: 'oilDate',         label: 'Oil Change',               months: null, far: null,            unit: 'hours', hint: 'Per manufacturer — enter next-due hours' },
-  { key: 'hundredHrHours',  label: '100-hr Inspection',        months: null, far: FAR.hundredHour, unit: 'hours', hint: null },
-]
-
-function InspectionRow({ insp, value, onDateChange, warnDays, currentHobbs }) {
-  const inputRef = useRef(null)
-  let s = { status: 'unknown', expiresOn: null, daysLeft: null, hoursLeft: null }
-  if (insp.unit === 'hours') {
-    s = { ...s, ...statusFromHours(value, currentHobbs, WARN_HOURS_DEFAULT) }
-  } else if (value && insp.months != null) {
-    s = { ...s, ...statusFromExpiry(calendarMonthExpiry(value, insp.months), warnDays) }
-  }
-  const color = s.status === 'expired' ? 'var(--danger)' : s.status === 'expiring' ? 'var(--warn)' : s.status === 'valid' ? 'var(--ok)' : 'var(--text-tertiary)'
-
-  const isDate = insp.unit === 'date'
-  const displayDate = isDate && value
-    ? new Date(value + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : null
-
-  const openPicker = () => {
-    const el = inputRef.current
-    if (!el) return
-    if (el.showPicker) el.showPicker()
-    else el.focus()
-  }
-
-  return (
-    <div style={{ padding: '10px 0' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{insp.label}</span>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          {insp.far && <FarLink far={insp.far} />}
-        </div>
-      </div>
-
-      {isDate ? (
-        <>
-          <div
-            onClick={openPicker}
-            style={{
-              background: 'var(--bg-card)', borderRadius: 12, padding: '13px 16px',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              border: '0.5px solid var(--border)', cursor: 'pointer',
-            }}
-          >
-            <span style={{
-              fontSize: 17, fontWeight: 400, letterSpacing: '-0.2px',
-              color: displayDate ? 'var(--text)' : 'var(--text-tertiary)',
-            }}>
-              {displayDate || 'Date'}
-            </span>
-            <img src="/calendario.png" width={18} height={18} alt="" className="icon-themed" />
-          </div>
-          <input
-            ref={inputRef}
-            type="date"
-            value={value || ''}
-            onChange={e => onDateChange(e.target.value)}
-            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
-          />
-        </>
-      ) : (
-        <input
-          ref={inputRef}
-          type="number"
-          defaultValue={value || ''}
-          onChange={e => onDateChange(e.target.value)}
-          placeholder="Next due (hours)"
-          style={{
-            width: '100%', boxSizing: 'border-box',
-            background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-            borderRadius: 8, padding: '8px 10px',
-            fontSize: 12, color: 'var(--text)', outline: 'none',
-          }}
-        />
-      )}
-
-      {insp.unit === 'hours' && (
-        <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>
-          {currentHobbs != null ? `Current Hobbs: ${currentHobbs.toFixed(1)} hrs` : 'Set current Hobbs on the Home screen to track this'}
-        </div>
-      )}
-      {insp.hint && <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>{insp.hint}</div>}
-      {s.expiresOn && (
-        <div style={{ fontSize: 10, color, marginTop: 4, fontWeight: 600 }}>
-          {s.status === 'expired' ? 'Expired' : 'Due'} {fmtDate(s.expiresOn)} · {fmtDaysLeft(s.daysLeft)}
-        </div>
-      )}
-      {s.hoursLeft != null && (
-        <div style={{ fontSize: 10, color, marginTop: 4, fontWeight: 600 }}>
-          {s.status === 'expired' ? `Overdue by ${Math.abs(s.hoursLeft).toFixed(1)} hrs` : `Due in ${s.hoursLeft.toFixed(1)} hrs`}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ImAirworthyCard({ data, onChange, warnDays }) {
-  const airworthy = data?.airworthy ?? {}
-  const docs = airworthy.docs ?? {}
-  const [currentHobbs, setCurrentHobbs] = useState(null)
-
-  useEffect(() => {
-    get('aircraft', 'profile').then(p => setCurrentHobbs(p?.hobbsTime ?? null))
-  }, [])
-
-  const patchDocs = (key, val) =>
-    onChange({ ...data, airworthy: { ...airworthy, docs: { ...docs, [key]: val } } })
-  const patchInsp = (key, val) =>
-    onChange({ ...data, airworthy: { ...airworthy, [key]: val } })
-
-  const docsComplete = ARROW_DOCS.filter(d => !d.key.includes('insurance')).every(d => docs[d.key])
-
-  // Compute worst inspection status — date-based items via calendar-month
-  // expiry, hour-based items (Oil Change, 100-hr) via current Hobbs reading
-  const inspStatuses = INSPECTIONS
-    .map(i => {
-      if (i.unit === 'hours') return statusFromHours(airworthy[i.key], currentHobbs, WARN_HOURS_DEFAULT)
-      if (i.months != null && airworthy[i.key]) return statusFromExpiry(calendarMonthExpiry(airworthy[i.key], i.months), warnDays)
-      return null
-    })
-    .filter(s => s && s.status !== 'unknown')
-
-  const worstInsp = inspStatuses.reduce((worst, s) => {
-    const rank = { expired: 3, expiring: 2, unknown: 1, valid: 0 }
-    return (rank[s.status] ?? 0) > (rank[worst.status] ?? 0) ? s : worst
-  }, { status: inspStatuses.length === 0 ? 'incomplete' : 'valid' })
-
-  const overallStatus = !docsComplete ? 'incomplete'
-    : worstInsp.status === 'expired' ? 'expired'
-    : worstInsp.status === 'expiring' ? 'expiring'
-    : worstInsp.status === 'incomplete' ? 'incomplete'
-    : 'valid'
-
-  return (
-    <CurrencyCard title="AIRCRAFT AIRWORTHINESS" subtitle="Documents & inspections" rightEl={<CardPill status={overallStatus} />} farRefs={[FAR.opLimitations, FAR.requiredEquip]}>
-      <div style={{ padding: '14px' }}>
-
-        {/* Documents: CARROW */}
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 6 }}>Documents: CARROW</div>
-          <div style={{ background: 'var(--bg-card-2)', borderRadius: 10, overflow: 'hidden' }}>
-            {ARROW_DOCS.map((doc) => (
-              <CheckRowSimple
-                key={doc.key}
-                checked={!!docs[doc.key]}
-                onChange={v => patchDocs(doc.key, v)}
-                label={doc.label}
-                far={doc.far}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Inspections */}
-        <div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 6 }}>Inspections</div>
-          <div style={{ background: 'var(--bg-card-2)', borderRadius: 10, padding: '0 12px 10px' }}>
-            <div style={{ fontSize: 10, color: 'var(--text-tertiary)', padding: '10px 0 4px' }}>
-              Enter the date the inspection was last completed.
-            </div>
-            {INSPECTIONS.map(insp => (
-              <InspectionRow
-                key={insp.key}
-                insp={insp}
-                value={airworthy[insp.key]}
-                onDateChange={v => patchInsp(insp.key, v)}
-                warnDays={warnDays}
-                currentHobbs={currentHobbs}
-              />
-            ))}
-            {/* Airworthiness Directives — compliance checkbox */}
-            <div style={{ paddingTop: 4 }}>
-              <CheckRowSimple
-                checked={!!docs.ads}
-                onChange={v => patchDocs('ads', v)}
-                label="Airworthiness Directives"
-                far={FAR.ads}
-                padding="10px 0"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    </CurrencyCard>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Root — Currency page
+// Note: the "IM AIRWORTHY" card (aircraft documents + inspections) now lives
+// on the Aircraft page as the "Airworthiness" section — it still reads/writes
+// the same currency/profile.airworthy data, so getCurrencyStatus() and the
+// Checklists "IM AIRWORTHY" references keep working unchanged.
 // ---------------------------------------------------------------------------
 export default function Currency() {
   const { profile: pilotProfile } = usePilotProfile()
@@ -982,7 +778,6 @@ export default function Currency() {
       <div style={{ padding: '0 16px' }}>
         <ImCurrentCard   data={data} onChange={handleChange} warnDays={warnDays} />
         <ImValidCard     data={data} onChange={handleChange} warnDays={warnDays} />
-        <ImAirworthyCard data={data} onChange={handleChange} warnDays={warnDays} />
       </div>
 
       <div style={{ padding: '8px 16px 0', textAlign: 'center' }}>
