@@ -121,6 +121,102 @@ function GenerateIconButton({ aircraftName, onGenerated }) {
   )
 }
 
+/* ── Hobbs time entry — cumulative aircraft hours, odometer-style ──
+   Single digit buffer, right-aligned: typing pushes older digits left,
+   same feel as a price/odometer input rather than 6 separately-tabbed boxes. ── */
+function HobbsTimeModal({ onCancel, onConfirm, initialValue }) {
+  const initRaw = () => {
+    if (initialValue == null) return ''
+    const rounded = Math.round(initialValue * 10) / 10
+    const whole = Math.floor(rounded)
+    const tenths = Math.round((rounded - whole) * 10)
+    return `${whole}${tenths}`.slice(-6)
+  }
+
+  const [raw, setRaw] = useState(initRaw)
+
+  function handleChange(e) {
+    setRaw(e.target.value.replace(/[^0-9]/g, '').slice(-6))
+  }
+
+  const padded = raw.padStart(6, '0')
+  const digits = padded.split('')
+  const whole = parseInt(padded.slice(0, 5), 10)
+  const tenths = parseInt(padded.slice(5), 10)
+  const value = whole + tenths / 10
+  const isValid = raw.length > 0 && value > 0
+
+  const digitBoxStyle = {
+    width: 32, height: 42, borderRadius: 8, fontSize: 16, fontWeight: 700,
+    color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontVariantNumeric: 'tabular-nums',
+    background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
+    boxSizing: 'border-box',
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 600,
+      background: 'rgba(0,0,0,0.55)',
+      backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px',
+    }} onClick={onCancel}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: '100%', maxWidth: 320,
+        background: 'var(--bg-card)', borderRadius: 16,
+        padding: '16px 14px 14px',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+      }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginTop: 0, marginBottom: 12, textAlign: 'center' }}>
+          Hobbs Time
+        </h3>
+
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 10 }}>
+          {digits.map((d, i) => (
+            <div key={i} style={digitBoxStyle}>{d}</div>
+          ))}
+          <input
+            type="text" inputMode="numeric" value={raw} onChange={handleChange}
+            autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+            autoFocus
+            style={{
+              position: 'absolute', inset: 0, width: '100%', height: '100%',
+              opacity: 0, border: 'none', outline: 'none', padding: 0, cursor: 'pointer',
+            }}
+          />
+        </div>
+
+        {isValid && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: 'var(--bg-card-2)', borderRadius: 10, padding: '7px 11px', marginBottom: 10,
+          }}>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Total</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
+              {value.toFixed(1)}h
+            </span>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onCancel} style={{
+            flex: 1, padding: 10, borderRadius: 'var(--r-md)', border: '0.5px solid var(--border)',
+            background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
+            fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+          }}>Cancel</button>
+          <button disabled={!isValid} onClick={() => onConfirm(value)} style={{
+            flex: 1, padding: 10, borderRadius: 'var(--r-md)', border: 'none',
+            background: isValid ? 'var(--accent)' : 'var(--bg-card-2)',
+            color: isValid ? 'var(--accent-fg)' : 'var(--text-tertiary)',
+            fontSize: 14, fontWeight: 700, cursor: isValid ? 'pointer' : 'default',
+            fontFamily: 'inherit',
+          }}>Confirm</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── Aircraft library ────────────────────────────────────── */
 export const TEMPLATES = [
   // ── Fixed-wing ──────────────────────────────────────────
@@ -305,6 +401,7 @@ export default function Aircraft() {
   const [saving, setSaving] = useState(false)
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [customName, setCustomName] = useState('')
+  const [hobbsModalOpen, setHobbsModalOpen] = useState(false)
   const touchStartX = useRef(null)
   const [showArrows, setShowArrows] = useState(false)
   const arrowTimer = useRef(null)
@@ -613,6 +710,26 @@ export default function Aircraft() {
       {/* ── Editable fields ── */}
       <div style={{ padding: '0 16px 40px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
+        {/* Maintenance / Hobbs Time */}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button style={{
+            flex: 1, padding: '9px 12px', borderRadius: 'var(--r-lg)',
+            background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+            boxShadow: 'var(--shadow-sm)', cursor: 'pointer', fontFamily: 'inherit',
+            fontSize: 14, fontWeight: 700, color: 'var(--text)',
+          }}>
+            Maintenance
+          </button>
+          <button onClick={() => setHobbsModalOpen(true)} style={{
+            flex: 1, padding: '9px 12px', borderRadius: 'var(--r-lg)',
+            background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+            boxShadow: 'var(--shadow-sm)', cursor: 'pointer', fontFamily: 'inherit',
+            fontSize: 14, fontWeight: 700, color: 'var(--text)',
+          }}>
+            {profile.hobbsTime != null ? `${profile.hobbsTime.toFixed(1)} hrs` : 'Hobbs Time'}
+          </button>
+        </div>
+
         {/* Identity */}
         <Section title="Identity">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -622,9 +739,174 @@ export default function Aircraft() {
               onChange={v => patch(null, 'registration', v.toUpperCase())} placeholder="e.g. N4723A" />
             <Field label="Aircraft type" value={profile.fullName ?? ''}
               onChange={v => patch(null, 'fullName', v)} placeholder="e.g. Cessna 172S" />
-            <Field label="Hobbs" value={profile.hobbsTime ?? ''}
-              onChange={patchHobbs} placeholder="e.g. 1234.5" type="number" />
           </div>
+        </Section>
+
+        {/* Weights */}
+        <Section title="Weights">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Field label="BEW (empty)" value={profile.weights?.bew ?? ''}
+              onChange={v => patch('weights', 'bew', v)} placeholder="e.g. 1,663 lb" />
+            <Field label="MTOW" value={profile.weights?.mtow ?? ''}
+              onChange={v => patch('weights', 'mtow', v)} placeholder="e.g. 2,550 lb" />
+            <Field label="Useful load" value={profile.weights?.usefulLoad ?? ''}
+              onChange={v => patch('weights', 'usefulLoad', v)} placeholder="e.g. 887 lb" />
+            <Field label="Baggage limit" value={profile.weights?.baggage ?? ''}
+              onChange={v => patch('weights', 'baggage', v)} placeholder="e.g. 120 lb" />
+          </div>
+        </Section>
+
+        {/* Weight & Balance Setup */}
+        <Section title="Weight & Balance Setup">
+          {({ close }) => (<>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: -6 }}>
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20,
+              background: wbConfigured ? 'var(--ok-light)' : 'var(--bg-card-2)',
+              color: wbConfigured ? 'var(--ok)' : 'var(--text-tertiary)',
+              border: wbConfigured ? 'none' : '0.5px solid var(--border)',
+            }}>
+              {wbConfigured ? 'Configured' : 'Setup incomplete'}
+            </span>
+          </div>
+
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5, marginTop: -4 }}>
+            Use <em>this aircraft's</em> actual POH and AFM values, not generic model numbers.
+          </div>
+
+          {isBellBuiltIn && !wbConfigured && (
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-card-2)', borderRadius: 10, padding: '9px 11px', lineHeight: 1.5 }}>
+              Using the built in Bell 206B3 reference config. Fill in the fields below to override with this
+              aircraft's actual numbers.
+            </div>
+          )}
+
+          {/* Basic Empty Weight + Max Weight */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Field label="Basic Empty Weight (lb)" type="number" value={profile.wbConfig?.bew?.weight ?? ''}
+              onChange={v => patchWB(['bew', 'weight'], v)} placeholder="1663" />
+            <Field label="Empty CG and Long Arm (in)" type="number" value={profile.wbConfig?.bew?.longArm ?? ''}
+              onChange={v => patchWB(['bew', 'longArm'], v)} placeholder="39.3" />
+            <Field label="Empty Lateral Arm (in), optional" type="number" value={profile.wbConfig?.bew?.latArm ?? ''}
+              onChange={v => patchWB(['bew', 'latArm'], v)} placeholder="0.0" />
+            <Field label="Max Takeoff and Gross Weight (lb)" type="number" value={profile.wbConfig?.maxTOW ?? ''}
+              onChange={v => patchWB(['maxTOW'], v)} placeholder="2550" />
+          </div>
+
+          {/* Fuel */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Fuel</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+              <Field label="Fuel Capacity (gal)" type="number" value={profile.wbConfig?.fuel?.maxGal ?? ''}
+                onChange={v => patchWB(['fuel', 'maxGal'], v)} placeholder="53" />
+              <Field label="Fuel Arm (in)" type="number" value={profile.wbConfig?.fuel?.longArm ?? ''}
+                onChange={v => patchWB(['fuel', 'longArm'], v)} placeholder="48.0" />
+            </div>
+            <label style={{ display: 'block', fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 500 }}>
+              Fuel Density (lb per gal)
+            </label>
+            <div style={{ position: 'relative' }}>
+              <input type="number" step="0.1" inputMode="decimal"
+                value={profile.wbConfig?.fuel?.lbPerGal ?? ''}
+                onChange={e => patchWB(['fuel', 'lbPerGal'], e.target.value)}
+                placeholder="6.0"
+                style={{
+                  width: '100%', padding: '10px 128px 10px 12px', borderRadius: 'var(--r-sm)',
+                  border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+                  color: 'var(--text)', fontSize: 15, outline: 'none', boxSizing: 'border-box',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              />
+              <div style={{
+                position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+                display: 'flex', gap: 4,
+              }}>
+                <FuelDensityTag label="Avgas" active={profile.wbConfig?.fuel?.lbPerGal === '6.0'}
+                  onClick={() => patchWB(['fuel', 'lbPerGal'], '6.0')} />
+                <FuelDensityTag label="Jet A" active={profile.wbConfig?.fuel?.lbPerGal === '6.7'}
+                  onClick={() => patchWB(['fuel', 'lbPerGal'], '6.7')} />
+              </div>
+            </div>
+          </div>
+
+          {/* Loading stations */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+              Loading Stations
+            </div>
+            {wbStations.length === 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+                Add one for each seat or compartment.
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
+              {wbStations.map(s => (
+                <WBStationRow key={s.id} station={s}
+                  onChange={(key, v) => updateWBStation(s.id, key, v)}
+                  onRemove={() => removeWBStation(s.id)} />
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {wbStationSuggestions.map(label => (
+                <Chip key={label} label={`+ ${label}`} onClick={() => addWBStation(label)} />
+              ))}
+              <Chip label="+ Add Station" onClick={() => addWBStation('')} accent />
+            </div>
+          </div>
+
+          {/* Longitudinal envelope */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 2 }}>
+              Longitudinal CG Envelope
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+              From the POH CG envelope chart, at least 3 points.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+              {wbLongPoints.map((p, i) => (
+                <WBPointRow key={i} point={p} fieldA="cg" fieldB="weight" labelA="CG (in)" labelB="Weight (lb)"
+                  onChange={(key, v) => updateWBPoint('longEnvelopePoints', i, key, v)}
+                  onRemove={() => removeWBPoint('longEnvelopePoints', i)} />
+              ))}
+            </div>
+            <Chip label="+ Add Point" onClick={() => addWBPoint('longEnvelopePoints', { cg: '', weight: '' })} accent />
+          </div>
+
+          {/* Lateral envelope — optional */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 2 }}>
+              Lateral CG Limits (optional, mainly helicopters)
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+              Leave empty if this aircraft doesn't track lateral CG.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+              {wbLatPoints.map((p, i) => (
+                <WBPointRow key={i} point={p} fieldA="lat" fieldB="longCG" labelA="Lat CG (in)" labelB="Long CG (in)"
+                  onChange={(key, v) => updateWBPoint('latEnvelopePoints', i, key, v)}
+                  onRemove={() => removeWBPoint('latEnvelopePoints', i)} />
+              ))}
+            </div>
+            <Chip label="+ Add Point" onClick={() => addWBPoint('latEnvelopePoints', { lat: '', longCG: '' })} accent />
+          </div>
+
+          {/* Source */}
+          <Field label="Source and W&B Report Date" value={profile.wbConfig?.source ?? ''}
+            onChange={v => patchWB(['source'], v)} placeholder="POH Rev 3, dated May 1 2024" />
+
+          <div style={{ fontSize: 10, color: 'var(--text-tertiary)', lineHeight: 1.6, textAlign: 'center', paddingTop: 4 }}>
+            For planning purposes only. PIC is responsible for verifying W&amp;B against the aircraft's POH, AFM,
+            and latest W&amp;B report. Use actual aircraft values, not generic model values.
+          </div>
+
+          <button onClick={close} style={{
+            width: '100%', padding: '13px 0', borderRadius: 'var(--r-sm)', border: 'none',
+            background: 'var(--accent)', color: 'var(--accent-fg)',
+            fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+          }}>
+            Done
+          </button>
+          </>)}
         </Section>
 
         {/* V-Speeds */}
@@ -698,160 +980,6 @@ export default function Aircraft() {
               onChange={v => patch('burnRate', 'climb', v)} placeholder="e.g. 10 GPH" />
             <Field label="Cruise burn" value={profile.burnRate?.cruise ?? ''}
               onChange={v => patch('burnRate', 'cruise', v)} placeholder="e.g. 8.5 GPH" />
-          </div>
-        </Section>
-
-        {/* Weights */}
-        <Section title="Weights">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <Field label="BEW (empty)" value={profile.weights?.bew ?? ''}
-              onChange={v => patch('weights', 'bew', v)} placeholder="e.g. 1,663 lb" />
-            <Field label="MTOW" value={profile.weights?.mtow ?? ''}
-              onChange={v => patch('weights', 'mtow', v)} placeholder="e.g. 2,550 lb" />
-            <Field label="Useful load" value={profile.weights?.usefulLoad ?? ''}
-              onChange={v => patch('weights', 'usefulLoad', v)} placeholder="e.g. 887 lb" />
-            <Field label="Baggage limit" value={profile.weights?.baggage ?? ''}
-              onChange={v => patch('weights', 'baggage', v)} placeholder="e.g. 120 lb" />
-          </div>
-        </Section>
-
-        {/* Weight & Balance Setup */}
-        <Section title="Weight & Balance Setup">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: -6 }}>
-            <span style={{
-              fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20,
-              background: wbConfigured ? 'var(--ok-light)' : 'var(--bg-card-2)',
-              color: wbConfigured ? 'var(--ok)' : 'var(--text-tertiary)',
-              border: wbConfigured ? 'none' : '0.5px solid var(--border)',
-            }}>
-              {wbConfigured ? 'Configured' : 'Setup incomplete'}
-            </span>
-          </div>
-
-          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5, marginTop: -4 }}>
-            Every tail number has its own empty weight, arms, and equipment. Enter <em>this aircraft's</em> actual
-            values from its POH/AFM and latest W&amp;B report — not generic model numbers.
-          </div>
-
-          {isBellBuiltIn && !wbConfigured && (
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-card-2)', borderRadius: 10, padding: '9px 11px', lineHeight: 1.5 }}>
-              Using the built-in Bell 206B-3 JetRanger reference config for now. Fill in the fields below only if
-              you want to override it with this specific aircraft's actual W&amp;B report.
-            </div>
-          )}
-
-          {/* Basic Empty Weight + Max Weight */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <Field label="Basic Empty Weight (lb)" type="number" value={profile.wbConfig?.bew?.weight ?? ''}
-              onChange={v => patchWB(['bew', 'weight'], v)} placeholder="e.g. 1663" />
-            <Field label="Empty CG / Long Arm (in)" type="number" value={profile.wbConfig?.bew?.longArm ?? ''}
-              onChange={v => patchWB(['bew', 'longArm'], v)} placeholder="e.g. 39.3" />
-            <Field label="Empty Lateral Arm (in) — optional" type="number" value={profile.wbConfig?.bew?.latArm ?? ''}
-              onChange={v => patchWB(['bew', 'latArm'], v)} placeholder="e.g. 0.0" />
-            <Field label="Max Takeoff / Gross Weight (lb)" type="number" value={profile.wbConfig?.maxTOW ?? ''}
-              onChange={v => patchWB(['maxTOW'], v)} placeholder="e.g. 2550" />
-          </div>
-
-          {/* Fuel */}
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Fuel</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-              <Field label="Fuel Capacity (gal)" type="number" value={profile.wbConfig?.fuel?.maxGal ?? ''}
-                onChange={v => patchWB(['fuel', 'maxGal'], v)} placeholder="e.g. 53" />
-              <Field label="Fuel Arm (in)" type="number" value={profile.wbConfig?.fuel?.longArm ?? ''}
-                onChange={v => patchWB(['fuel', 'longArm'], v)} placeholder="e.g. 48.0" />
-            </div>
-            <label style={{ display: 'block', fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 500 }}>
-              Fuel Density (lb/gal)
-            </label>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <div style={{ flex: 1 }}>
-                <input type="number" step="0.1" inputMode="decimal"
-                  value={profile.wbConfig?.fuel?.lbPerGal ?? ''}
-                  onChange={e => patchWB(['fuel', 'lbPerGal'], e.target.value)}
-                  placeholder="e.g. 6.0"
-                  style={{
-                    width: '100%', padding: '10px 12px', borderRadius: 'var(--r-sm)',
-                    border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
-                    color: 'var(--text)', fontSize: 15, outline: 'none', boxSizing: 'border-box',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                />
-              </div>
-              <Chip label="Avgas 6.0" onClick={() => patchWB(['fuel', 'lbPerGal'], '6.0')} />
-              <Chip label="Jet-A 6.7" onClick={() => patchWB(['fuel', 'lbPerGal'], '6.7')} />
-            </div>
-          </div>
-
-          {/* Loading stations */}
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
-              Loading Stations
-            </div>
-            {wbStations.length === 0 && (
-              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8 }}>
-                No stations yet — add one for each seat/compartment this aircraft's W&amp;B tracks.
-              </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
-              {wbStations.map(s => (
-                <WBStationRow key={s.id} station={s}
-                  onChange={(key, v) => updateWBStation(s.id, key, v)}
-                  onRemove={() => removeWBStation(s.id)} />
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {wbStationSuggestions.map(label => (
-                <Chip key={label} label={`+ ${label}`} onClick={() => addWBStation(label)} />
-              ))}
-              <Chip label="+ Add Station" onClick={() => addWBStation('')} accent />
-            </div>
-          </div>
-
-          {/* Longitudinal envelope */}
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 2 }}>
-              Longitudinal CG Envelope
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>
-              Points from the POH CG envelope chart, in CG (in) / weight (lb) pairs. Needs at least 3 to form a shape.
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-              {wbLongPoints.map((p, i) => (
-                <WBPointRow key={i} point={p} fieldA="cg" fieldB="weight" labelA="CG (in)" labelB="Weight (lb)"
-                  onChange={(key, v) => updateWBPoint('longEnvelopePoints', i, key, v)}
-                  onRemove={() => removeWBPoint('longEnvelopePoints', i)} />
-              ))}
-            </div>
-            <Chip label="+ Add Point" onClick={() => addWBPoint('longEnvelopePoints', { cg: '', weight: '' })} accent />
-          </div>
-
-          {/* Lateral envelope — optional */}
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 2 }}>
-              Lateral CG Limits — optional, mainly helicopters
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>
-              Points in lateral CG (in) / longitudinal CG (in) pairs. Leave empty if this aircraft doesn't track
-              lateral CG — the lateral chart won't be shown and status won't depend on it.
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-              {wbLatPoints.map((p, i) => (
-                <WBPointRow key={i} point={p} fieldA="lat" fieldB="longCG" labelA="Lat CG (in)" labelB="Long CG (in)"
-                  onChange={(key, v) => updateWBPoint('latEnvelopePoints', i, key, v)}
-                  onRemove={() => removeWBPoint('latEnvelopePoints', i)} />
-              ))}
-            </div>
-            <Chip label="+ Add Point" onClick={() => addWBPoint('latEnvelopePoints', { lat: '', longCG: '' })} accent />
-          </div>
-
-          {/* Source */}
-          <Field label="Source / W&B Report Date" value={profile.wbConfig?.source ?? ''}
-            onChange={v => patchWB(['source'], v)} placeholder="e.g. POH Rev 3, dated 2024-05-01" />
-
-          <div style={{ fontSize: 10, color: 'var(--text-tertiary)', lineHeight: 1.6, textAlign: 'center', paddingTop: 4 }}>
-            For planning purposes only. PIC is responsible for verifying W&amp;B against the aircraft POH/AFM and
-            latest W&amp;B report. Use actual aircraft values, not generic model values.
           </div>
         </Section>
 
@@ -930,6 +1058,15 @@ export default function Aircraft() {
         </div>
       )}
 
+      {/* Hobbs time modal */}
+      {hobbsModalOpen && (
+        <HobbsTimeModal
+          initialValue={profile.hobbsTime}
+          onCancel={() => setHobbsModalOpen(false)}
+          onConfirm={value => { patchHobbs(value); setHobbsModalOpen(false) }}
+        />
+      )}
+
     </div>
   )
 }
@@ -951,16 +1088,43 @@ function HeroBadge({ label, value }) {
 }
 
 function Section({ title, children }) {
+  const [open, setOpen] = useState(false)
   return (
     <div style={{
-      background: 'var(--bg-card)', borderRadius: 'var(--r-lg)',
-      padding: 16, boxShadow: 'var(--shadow-sm)',
-      display: 'flex', flexDirection: 'column', gap: 12,
+      background: 'var(--bg-card)',
+      border: '0.5px solid var(--border)',
+      borderRadius: 'var(--r-lg)',
+      boxShadow: 'var(--shadow-sm)',
+      overflow: 'hidden',
     }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-        {title}
-      </span>
-      {children}
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', background: 'none', border: 'none',
+          cursor: 'pointer', padding: '15px 16px', textAlign: 'left',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        }}
+      >
+        <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.2px', color: 'var(--text)' }}>
+          {title}
+        </span>
+        <svg width={18} height={18} viewBox="0 0 24 24" fill="none" style={{
+          flexShrink: 0, color: 'var(--text-tertiary)',
+          transition: 'transform 0.2s ease',
+          transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+        }}>
+          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div style={{
+          padding: '2px 16px 16px',
+          display: 'flex', flexDirection: 'column', gap: 12,
+        }}>
+          {typeof children === 'function' ? children({ close: () => setOpen(false) }) : children}
+        </div>
+      )}
     </div>
   )
 }
@@ -968,7 +1132,10 @@ function Section({ title, children }) {
 function Field({ label, value, onChange, placeholder, type = 'text' }) {
   return (
     <div>
-      <label style={{ display: 'block', fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 500 }}>
+      <label style={{
+        display: 'flex', alignItems: 'flex-end', minHeight: 30, lineHeight: 1.35,
+        fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 500,
+      }}>
         {label}
       </label>
       <input
@@ -1037,6 +1204,20 @@ function Chip({ label, onClick, accent }) {
   )
 }
 
+function FuelDensityTag({ label, active, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      padding: '5px 9px', borderRadius: 7, cursor: 'pointer', whiteSpace: 'nowrap',
+      fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+      border: active ? 'none' : '0.5px solid var(--border-strong)',
+      background: active ? 'var(--accent)' : 'var(--bg-card)',
+      color: active ? 'var(--accent-fg)' : 'var(--text-secondary)',
+    }}>
+      {label}
+    </button>
+  )
+}
+
 function MiniInput({ value, onChange, placeholder }) {
   return (
     <input
@@ -1073,7 +1254,7 @@ function WBStationRow({ station, onChange, onRemove }) {
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <input
           value={station.label} onChange={e => onChange('label', e.target.value)}
-          placeholder="Label — e.g. Pilot"
+          placeholder="Label (Pilot)"
           style={{
             flex: 1, padding: '8px 10px', borderRadius: 8, border: '0.5px solid var(--border)',
             background: 'var(--bg-card)', color: 'var(--text)', fontSize: 13, outline: 'none',
@@ -1084,7 +1265,7 @@ function WBStationRow({ station, onChange, onRemove }) {
       </div>
       <input
         value={station.sub} onChange={e => onChange('sub', e.target.value)}
-        placeholder="Description — e.g. Front Right (optional)"
+        placeholder="Description (Front Right, optional)"
         style={{
           padding: '8px 10px', borderRadius: 8, border: '0.5px solid var(--border)',
           background: 'var(--bg-card)', color: 'var(--text)', fontSize: 12, outline: 'none',
@@ -1094,7 +1275,7 @@ function WBStationRow({ station, onChange, onRemove }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
         <div>
           <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 3 }}>Long Arm (in)</div>
-          <MiniInput value={station.longArm} onChange={v => onChange('longArm', v)} placeholder="e.g. 37.0" />
+          <MiniInput value={station.longArm} onChange={v => onChange('longArm', v)} placeholder="37.0" />
         </div>
         <div>
           <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 3 }}>Lat Arm (in)</div>

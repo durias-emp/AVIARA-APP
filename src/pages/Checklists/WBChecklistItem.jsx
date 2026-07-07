@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { get } from '../../lib/db'
 import { getWBConfig, calculateWB } from '../../lib/aircraftWB'
+import { DoneButton } from './shared/ui'
 
 // ── Unit helpers ──────────────────────────────────────────────────────────────
 const LBS_TO_KG = 0.453592
@@ -47,7 +48,6 @@ function TableRow({ label, sub, weight, longArm, latArm, highlight, dim, showLat
   return (
     <div style={{
       display: 'grid', gridTemplateColumns: showLat ? '1fr 56px 56px 56px' : '1fr 56px 56px', padding: '7px 12px',
-      borderBottom: '0.5px solid var(--border)',
       opacity: dim ? 0.5 : 1,
       background: highlight ? 'var(--bg-card-2)' : 'transparent',
     }}>
@@ -73,7 +73,6 @@ function SummaryRow({ label, weight, longCG, latCG, longOK, latOK, overweight, i
     <div style={{
       padding: '9px 12px',
       background: isAllUp ? 'var(--bg-card-2)' : 'transparent',
-      borderTop: '0.5px solid var(--border)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text)' }}>{label}</div>
@@ -306,10 +305,9 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
               <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>
                 Occupants & Payload
               </div>
-              {cfg.stations.map((s, i) => (
+              {cfg.stations.map(s => (
                 <div key={s.id} style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0',
-                  borderBottom: i < cfg.stations.length - 1 ? '0.5px solid var(--border)' : 'none',
                 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{s.label}</div>
@@ -321,7 +319,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                 </div>
               ))}
               {/* Fuel */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: '0.5px solid var(--border)', marginTop: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', marginTop: 2 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>Fuel</div>
                   <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>{cfg.fuel.label}</div>
@@ -456,10 +454,15 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
               </>
             )}
 
-            {!result?.status.hasData && (
+            {!result?.status.hasData && !isChecked && (
               <div style={{ padding: '12px 14px', textAlign: 'center' }}>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Enter weights above to calculate</div>
               </div>
+            )}
+
+            {(result?.status.hasData || isChecked) && (
+              <DoneButton isChecked={isChecked} onDone={() => { if (!isChecked) onToggle(item.id); setOpen(false) }}
+                autoCheck onAutoComplete={() => onToggle(item.id)} />
             )}
           </>
         )}
