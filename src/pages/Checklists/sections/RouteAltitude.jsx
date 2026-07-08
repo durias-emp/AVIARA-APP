@@ -1094,10 +1094,14 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       {/* Route edit hint — fades after 4s */}
                       <RouteHint />
 
-                      {/* Top bar */}
+                      {/* Top bar — the map behind it extends under the status bar for a true
+                          full-screen feel, but the controls themselves need the safe-area
+                          inset or they'd sit right under (and look cut off by) the status bar */}
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10001,
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '14px 16px', background: 'linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%)',
+                        padding: '14px 16px',
+                        paddingTop: 'calc(14px + env(safe-area-inset-top))',
+                        background: 'linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%)',
                       }}>
                         {/* Layer toggles */}
                         <div style={{ display: 'flex', gap: 7 }}>
