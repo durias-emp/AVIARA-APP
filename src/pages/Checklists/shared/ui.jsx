@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 /* ── Expandable card shell — used by every checklist item ────── */
-export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, children }) {
+export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, children, hideHeaderDivider, forceOpen, hideCheckmark }) {
+  const isOpen = forceOpen || open
   const rootRef = useRef(null)
   const wasOpenRef = useRef(open)
 
@@ -16,21 +17,25 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
     wasOpenRef.current = open
   }, [open])
 
+  const Header = forceOpen ? 'div' : 'button'
+
   return (
     <div ref={rootRef} style={{ marginBottom: 8 }}>
       <div style={{
         background: 'var(--bg-card)',
         border: '0.5px solid var(--border)',
-        borderRadius: open ? '14px 14px 0 0' : 14,
+        borderBottom: isOpen && hideHeaderDivider ? 'none' : '0.5px solid var(--border)',
+        borderRadius: isOpen ? '14px 14px 0 0' : 14,
         boxShadow: 'var(--shadow-sm)',
         overflow: 'hidden',
       }}>
         {/* Tappable header */}
-        <button
-          onClick={() => setOpen(o => !o)}
+        <Header
+          onClick={forceOpen ? undefined : () => setOpen(o => !o)}
           style={{
             width: '100%', background: 'none', border: 'none',
-            cursor: 'pointer', padding: '13px 14px', textAlign: 'left',
+            cursor: forceOpen ? 'default' : 'pointer', padding: '13px 14px', textAlign: 'left',
+            boxSizing: 'border-box', display: 'block',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -38,28 +43,30 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
               fontSize: 15, fontWeight: 600, letterSpacing: '-0.2px',
               color: isChecked ? 'var(--text)' : 'var(--text-tertiary)',
             }}>{item.label}</span>
-            <div
-              onClick={e => { e.stopPropagation(); onToggle(item.id) }}
-              style={{
-                width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: isChecked ? 'var(--text)' : 'transparent',
-                border: `1.5px solid ${isChecked ? 'var(--text)' : 'var(--border-strong)'}`,
-                transition: 'all 0.2s', cursor: 'pointer',
-              }}
-            >
-              {isChecked && (
-                <svg width={11} height={11} viewBox="0 0 24 24" fill="none" style={{ color: 'var(--bg-card)' }}>
-                  <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              )}
-            </div>
+            {!hideCheckmark && (
+              <div
+                onClick={e => { e.stopPropagation(); onToggle(item.id) }}
+                style={{
+                  width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: isChecked ? 'var(--text)' : 'transparent',
+                  border: `1.5px solid ${isChecked ? 'var(--text)' : 'var(--border-strong)'}`,
+                  transition: 'all 0.2s', cursor: 'pointer',
+                }}
+              >
+                {isChecked && (
+                  <svg width={11} height={11} viewBox="0 0 24 24" fill="none" style={{ color: 'var(--bg-card)' }}>
+                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+              </div>
+            )}
           </div>
-        </button>
+        </Header>
       </div>
 
       {/* Expanded content — connects flush to the card header */}
-      {open && (
+      {isOpen && (
         <div style={{
           background: 'var(--bg-card)',
           border: '0.5px solid var(--border)',
@@ -92,40 +99,23 @@ export function DoneButton({ isChecked, onDone, checkedIds, subIds, autoCheck, o
     <div style={{ padding: '10px 14px 12px' }}>
       <button
         onClick={onDone}
+        disabled={!complete}
         style={{
-          position: 'relative', width: '100%', height: 44,
-          borderRadius: 10, border: 'none', cursor: 'pointer',
-          overflow: 'hidden',
+          width: '100%', height: 44,
+          borderRadius: 10, border: 'none', cursor: complete ? 'pointer' : 'default',
           background: complete ? 'var(--text)' : 'var(--bg-card-2)',
-          transition: 'background 0.4s ease', outline: 'none',
-          WebkitTapHighlightColor: 'transparent',
-        }}
-      >
-        {!complete && (
-          <div style={{
-            position: 'absolute', inset: 0,
-            width: `${pct * 100}%`,
-            background: 'var(--border)',
-            transition: 'width 0.4s ease',
-            borderRadius: 10,
-          }} />
-        )}
-        <span style={{
-          position: 'relative', zIndex: 1,
+          outline: 'none', WebkitTapHighlightColor: 'transparent',
           fontSize: 14, fontWeight: 600, letterSpacing: '-0.1px',
           color: complete ? 'var(--bg)' : 'var(--text-tertiary)',
-          transition: 'color 0.4s ease',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-        }}>
-          {complete ? (
-            <>
-              <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Done
-            </>
-          ) : 'Done'}
-        </span>
+        }}
+      >
+        {complete && (
+          <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+            <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+        Done
       </button>
     </div>
   )
@@ -162,7 +152,7 @@ export function CheckRow({ id, label, checked, onToggle, disabled = false, compl
             )}
           </div>
         )}
-        <span style={{ flex: 1, textDecoration: checked && !disabled ? 'line-through' : 'none', transition: 'color 0.18s' }}>
+        <span style={{ flex: 1, transition: 'color 0.18s' }}>
           {label.includes(' — ') ? (
             <>
               <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.2px' }}>
@@ -173,7 +163,7 @@ export function CheckRow({ id, label, checked, onToggle, disabled = false, compl
               </span>
             </>
           ) : (
-            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{label}</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: checked || disabled ? 'var(--text)' : 'var(--text-tertiary)' }}>{label}</span>
           )}
         </span>
         {disabled && completedLabel && (

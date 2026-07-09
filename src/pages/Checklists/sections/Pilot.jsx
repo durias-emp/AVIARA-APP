@@ -61,7 +61,7 @@ function IMSafeRow({ letter, label, detail, checked, onToggle }) {
 function IMStatusRow({ label, detail, status, extra }) {
   const color = imStatusColor(status)
   return (
-    <div style={{ padding: '9px 16px', borderBottom: '0.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+    <div style={{ padding: '9px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
       <div>
         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{label}</div>
         {detail && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{detail}</div>}
@@ -179,6 +179,7 @@ export function IMChecklistItem({ item, isChecked, onToggle, statusKey }) {
       <div style={{
         background: 'var(--bg-card)',
         border: '0.5px solid var(--border)',
+        borderBottom: open ? 'none' : '0.5px solid var(--border)',
         borderRadius: open ? '14px 14px 0 0' : 14,
         overflow: 'hidden',
         boxShadow: 'var(--shadow-sm)',
@@ -296,7 +297,7 @@ export function OverflightItem({ item, isChecked, onToggle }) {
   const activeTerrains = TERRAIN.filter(t => selected.has(t.id))
 
   return (
-    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
+    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen} hideHeaderDivider>
           {/* Terrain type selector */}
           <div style={{ padding: '14px 14px 12px' }}>
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
@@ -367,7 +368,7 @@ const O2_RULES = [
 export function OxygenItem({ item, isChecked, onToggle }) {
   const [open, setOpen] = useState(false)
   return (
-    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
+    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen} hideHeaderDivider>
           <div style={{ padding: '12px 12px 10px' }}>
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
               14 CFR §91.211 — Supplemental Oxygen
@@ -402,10 +403,10 @@ function RecapRow({ label, value }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10,
-      padding: '7px 0', borderBottom: '0.5px solid var(--border)',
+      padding: '7px 0',
     }}>
       <span style={{ fontSize: 12, color: 'var(--text-tertiary)', flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', textAlign: 'right' }}>{value}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', textAlign: 'right' }}>{value === '—' ? '' : value}</span>
     </div>
   )
 }
@@ -420,6 +421,8 @@ function RecapSection({ title }) {
 }
 
 /* ── Flight Plan Filed — one-page recap of everything filled in ─ */
+const PRIOR_PILOT_IDS = ['pilot-imsafe', 'pilot-imcurrent', 'pilot-imvalid', 'pilot-airworthy']
+
 export function RecapItem({ item, isChecked, onToggle, checked, total }) {
   const [open, setOpen]             = useState(false)
   const [route, setRoute]           = useState(null)
@@ -428,6 +431,7 @@ export function RecapItem({ item, isChecked, onToggle, checked, total }) {
   const [homeAirport, setHomeAirport] = useState(null)
   const [aircraft, setAircraft]     = useState(null)
   const [currData, setCurrData]     = useState(null)
+  const [selectedRwy, setSelectedRwy] = useState(null)
 
   useEffect(() => {
     if (!open) return
@@ -438,9 +442,11 @@ export function RecapItem({ item, isChecked, onToggle, checked, total }) {
       get('settings', 'homeAirport'),
       get('aircraft', 'profile'),
       get('currency', 'profile'),
-    ]).then(([r, pd, cr, ha, ac, cur]) => {
+      get('settings', 'selectedRunway'),
+    ]).then(([r, pd, cr, ha, ac, cur, sr]) => {
       setRoute(r ?? null); setPerfdist(pd ?? null); setCruise(cr ?? null)
       setHomeAirport(ha ?? null); setAircraft(ac ?? null); setCurrData(cur ?? null)
+      setSelectedRwy(sr ?? null)
     })
   }, [open])
 
@@ -453,6 +459,13 @@ export function RecapItem({ item, isChecked, onToggle, checked, total }) {
     if (othersDone && !isChecked) onToggle(item.id)
   }, [othersDone])
 
+  // Reveal the recap once the pilot has worked through the rest of step 5 —
+  // still tappable open/closed manually at any time via the header.
+  const reachedPilotStep = Boolean(checked) && PRIOR_PILOT_IDS.every(id => checked.has(id))
+  useEffect(() => {
+    if (reachedPilotStep) setOpen(true)
+  }, [reachedPilotStep])
+
   const cs = currData ? getCurrencyStatus(currData) : null
   const pilotTiers = cs
     ? [cs.safe, cs.current, ...(cs.valid?.tiers ?? []), cs.airworthy].filter(Boolean)
@@ -463,7 +476,7 @@ export function RecapItem({ item, isChecked, onToggle, checked, total }) {
   }, null)
 
   return (
-    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
+    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen} hideHeaderDivider hideCheckmark>
       <div style={{ padding: '4px 14px 12px' }}>
 
         <RecapSection title="Route" />
@@ -480,6 +493,11 @@ export function RecapItem({ item, isChecked, onToggle, checked, total }) {
         <RecapSection title="Aircraft" />
         <RecapRow label="Aircraft" value={aircraft?.fullName || aircraft?.registration || '—'} />
         <RecapRow label="Home Base" value={homeAirport?.value || '—'} />
+        <RecapRow label="Runway" value={
+          selectedRwy && (!route?.dest || selectedRwy.icao === route.dest)
+            ? `${selectedRwy.id} (${String(selectedRwy.hdg).padStart(3, '0')}°)`
+            : '—'
+        } />
 
         <RecapSection title="Pilot" />
         <RecapRow label="Overall Status" value={worstPilot ? imStatusLabel(worstPilot.status) : '—'} />

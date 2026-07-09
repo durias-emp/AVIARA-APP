@@ -2,6 +2,67 @@ import { useState, useEffect } from 'react'
 import { get } from '../../../lib/db'
 import { ExpandableCard, DoneButton, CheckRow as SharedCheckRow } from '../shared/ui'
 
+const DOC_FAR = {
+  'ac-crew':     'FAR 61.3',
+  'ac-airworth': 'FAR 91.203',
+  'ac-reg':      'FAR 91.203',
+  'ac-oplim':    'FAR 91.9',
+  'ac-wb':       'FAR 91.103',
+}
+
+function DocFarBadge({ id }) {
+  const far = DOC_FAR[id]
+  if (!far) return null
+  return (
+    <div style={{
+      fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)',
+      background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+      borderRadius: 20, padding: '3px 10px', flexShrink: 0,
+    }}>{far}</div>
+  )
+}
+
+function GroupRowComp({ title, ids, isCurrencyCompleted: icc, checkedIds, children, defaultOpen = false }) {
+  const [groupOpen, setGroupOpen] = useState(defaultOpen)
+  const allCompleted = ids.every(id => icc(id) || checkedIds.has(id))
+  const currencyDone = ids.some(id => icc(id))
+  return (
+    <div style={{ margin: '4px 14px 0' }}>
+      <button
+        onClick={() => setGroupOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
+          borderRadius: groupOpen ? '11px 11px 0 0' : 11,
+          padding: '11px 14px', cursor: 'pointer', gap: 10,
+          textAlign: 'left', boxSizing: 'border-box',
+        }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.1px', textAlign: 'left' }}>{title}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {allCompleted && (
+            <div style={{
+              fontSize: 10, fontWeight: 700, color: '#fff',
+              background: 'var(--ok)', borderRadius: 20, padding: '3px 10px',
+            }}>Completed</div>
+          )}
+          {!allCompleted && currencyDone && (
+            <div style={{
+              fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)',
+              background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+              borderRadius: 20, padding: '3px 10px',
+            }}>Partial</div>
+          )}
+        </div>
+      </button>
+      {groupOpen && (
+        <div style={{ border: '0.5px solid var(--border)', borderTop: 'none', borderRadius: '0 0 11px 11px', overflow: 'hidden' }}>
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ── Aircraft checklist ──────────────────────────────────────── */
 export function AircraftItem({ item, isChecked, onToggle }) {
   const [open, setOpen] = useState(false)
@@ -35,7 +96,6 @@ export function AircraftItem({ item, isChecked, onToggle }) {
     'ac-radio':     c => c?.airworthy?.docs?.radio,
     'ac-oplim':     c => c?.airworthy?.docs?.oplim,
     'ac-wb':        c => c?.airworthy?.docs?.wb,
-    'ac-insurance': c => c?.airworthy?.docs?.insurance,
   }
   const CURRENCY_INSP_MAP = {
     'ac-annual': c => c?.airworthy?.annualDate,
@@ -43,6 +103,7 @@ export function AircraftItem({ item, isChecked, onToggle }) {
     'ac-xpdr':   c => c?.airworthy?.transponderDate,
     'ac-pitot':  c => c?.airworthy?.pitotDate,
     'ac-oil':    c => c?.airworthy?.oilDate,
+    'ac-100hr':  c => c?.airworthy?.hundredHrHours,
   }
   const isCurrencyCompleted = id => {
     const docFn = CURRENCY_DOCS_MAP[id]
@@ -67,7 +128,6 @@ export function AircraftItem({ item, isChecked, onToggle }) {
     'ac-radio':   'FCC Radio Station License must be aboard for international flights. Domestic VFR: not required but common practice.',
     'ac-oplim':   'Operating Limitations (AFM/POH + placards) must be in the aircraft and complied with. FAR 91.9.',
     'ac-wb':      'Current Weight & Balance data must be in the aircraft. FAR 91.103.',
-    'ac-insurance':'Aircraft insurance current — check policy expiry and coverage for this flight.',
     'ac-annual':  'Annual inspection must be current (within 12 calendar months). FAR 91.409.',
     'ac-100hr':   '100-hour inspection required if aircraft is used for hire or flight instruction for hire. FAR 91.409.',
     'ac-oil':     'Oil change within manufacturer limits. Check oil level and quality before flight.',
@@ -78,53 +138,52 @@ export function AircraftItem({ item, isChecked, onToggle }) {
     'ac-charts-cur':'Charts and plates are current and cover the planned route, alternates, and destination.',
   }
 
-  const GroupRow = ({ title, ids, isCurrencyCompleted: icc, children }) => {
-    const [groupOpen, setGroupOpen] = useState(false)
-    const allCompleted = ids.every(id => icc(id) || checkedIds.has(id))
-    const currencyDone = ids.some(id => icc(id))
-    return (
-      <div style={{ margin: '4px 14px 0' }}>
-        <button
-          onClick={() => setGroupOpen(o => !o)}
-          style={{
-            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-            borderRadius: groupOpen ? '11px 11px 0 0' : 11,
-            padding: '11px 14px', cursor: 'pointer', gap: 10,
-          }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.1px' }}>{title}</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {allCompleted && (
-              <div style={{
-                fontSize: 10, fontWeight: 700, color: '#fff',
-                background: 'var(--ok)', borderRadius: 20, padding: '3px 10px',
-              }}>Completed</div>
-            )}
-            {!allCompleted && currencyDone && (
-              <div style={{
-                fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)',
-                background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-                borderRadius: 20, padding: '3px 10px',
-              }}>Partial</div>
-            )}
-            <svg width={14} height={14} viewBox="0 0 16 16" fill="none"
-              style={{ transform: groupOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s', flexShrink: 0 }}>
-              <polyline points="3,6 8,11 13,6" stroke="var(--text-tertiary)" strokeWidth="1.8"
-                strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
-        </button>
-        {groupOpen && (
-          <div style={{ border: '0.5px solid var(--border)', borderTop: 'none', borderRadius: '0 0 11px 11px', overflow: 'hidden' }}>
-            {children}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  const CheckRow = ({ id, label }) => {
+  const CheckRow = ({ id, label, far }) => {
     const fromCurrency = isCurrencyCompleted(id)
+    if (far) {
+      const checked = checkedIds.has(id)
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 14px' }}>
+          <button
+            onClick={() => toggleSub(id)}
+            style={{
+              width: '100%', textAlign: 'left', background: 'transparent',
+              border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 11, padding: 0, minWidth: 0,
+            }}
+          >
+            <div style={{
+              width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+              background: checked ? 'var(--accent)' : 'transparent',
+              border: `1.5px solid ${checked ? 'var(--accent)' : 'var(--border-strong)'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {checked && (
+                <svg width={10} height={10} viewBox="0 0 12 12" fill="none">
+                  <polyline points="2,6 5,9 10,3" stroke="var(--accent-fg)" strokeWidth="1.8"
+                    strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </div>
+            <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {label.includes(' — ') ? (
+                <>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.2px' }}>
+                    {label.split(' — ')[0]}
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-secondary)' }}>
+                    {' '}{label.split(' — ')[1]}
+                  </span>
+                </>
+              ) : (
+                <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{label}</span>
+              )}
+            </span>
+          </button>
+          <DocFarBadge id={id} />
+        </div>
+      )
+    }
     return (
       <SharedCheckRow
         id={id} label={label}
@@ -141,7 +200,7 @@ export function AircraftItem({ item, isChecked, onToggle }) {
     const done = checkedIds.has(id)
     const fromCurrency = isCurrencyCompleted(id)
     return (
-      <div style={{ borderTop: '0.5px solid var(--border)', padding: '10px 14px' }}>
+      <div style={{ padding: '10px 14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: fromCurrency ? 0 : 6 }}>
           {!fromCurrency && (
             <button onClick={() => toggleSub(id)} style={{
@@ -165,8 +224,8 @@ export function AircraftItem({ item, isChecked, onToggle }) {
             </button>
           )}
           <span style={{
-            fontSize: 13, fontWeight: 500, color: 'var(--text)', flex: 1,
-            textDecoration: done && !fromCurrency ? 'line-through' : 'none',
+            fontSize: 13, fontWeight: 500, color: done || fromCurrency ? 'var(--text)' : 'var(--text-tertiary)', flex: 1,
+            transition: 'color 0.18s',
           }}>{label}</span>
           {fromCurrency && (
             <div style={{
@@ -196,7 +255,7 @@ export function AircraftItem({ item, isChecked, onToggle }) {
   }
 
   const subIds = [
-    'ac-crew','ac-airworth','ac-reg','ac-radio','ac-oplim','ac-wb','ac-insurance',
+    'ac-crew','ac-airworth','ac-reg','ac-radio','ac-oplim','ac-wb',
     'ac-annual','ac-100hr','ac-oil','ac-ads','ac-elt','ac-xpdr','ac-pitot',
     'ac-fuel-req','ac-extra-oil','ac-charts-cur',
   ]
@@ -249,47 +308,47 @@ export function AircraftItem({ item, isChecked, onToggle }) {
         <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.2px' }}>Checklist</span>
       </div>
 
-      {/* Documents: CARROW */}
-      <GroupRow
-        title="CARROW"
-        ids={['ac-crew','ac-airworth','ac-reg','ac-radio','ac-oplim','ac-wb','ac-insurance']}
-        isCurrencyCompleted={isCurrencyCompleted}>
+      {/* Documents: Aircraft Documents Onboard */}
+      <GroupRowComp
+        title="Aircraft Documents Onboard"
+        ids={['ac-crew','ac-airworth','ac-reg','ac-radio','ac-oplim','ac-wb']}
+        isCurrencyCompleted={isCurrencyCompleted} checkedIds={checkedIds}>
 
-        <CheckRow id="ac-crew"      label="C — Crew documents (license · photo ID · medical)" />
-        <CheckRow id="ac-airworth"  label="A — Certificate of Airworthiness" />
-        <CheckRow id="ac-reg"       label="R — Certificate of Registration" />
-        <CheckRow id="ac-radio"     label="R — Radio License (FCC)" />
-        <CheckRow id="ac-oplim"     label="O — Operating Limitations (AFM / POH)" />
-        <CheckRow id="ac-wb"        label="W — Weight &amp; Balance data" />
-        <CheckRow id="ac-insurance" label="Insurance current" />
-      </GroupRow>
+        <CheckRow id="ac-crew"     label="C — Crew documents (license · photo ID · medical)" far />
+        <CheckRow id="ac-airworth" label="A — Certificate of Airworthiness" far />
+        <CheckRow id="ac-reg"      label="R — Certificate of Registration" far />
+        <CheckRow id="ac-radio"    label="R — Radio License (FCC / international)" far />
+        <CheckRow id="ac-oplim"    label="O — Operating Limitations (AFM / POH)" far />
+        <CheckRow id="ac-wb"       label="W — Weight &amp; Balance data" far />
+      </GroupRowComp>
 
       {/* Airworthiness */}
-      <GroupRow
+      <GroupRowComp
         title="Airworthiness"
         ids={['ac-ads','ac-annual','ac-100hr','ac-oil','ac-elt','ac-xpdr','ac-pitot']}
-        isCurrencyCompleted={isCurrencyCompleted}>
+        isCurrencyCompleted={isCurrencyCompleted} checkedIds={checkedIds}>
 
-        <div style={{ padding: '4px 0 0' }}>
-          <CheckRow id="ac-ads" label="Airworthiness Directives reviewed" />
-        </div>
         <MaintRow id="ac-annual" label="Annual Inspection"               placeholder="e.g. 2025-12-01" unit="due date" />
         <MaintRow id="ac-100hr" label="100-hr Inspection"                placeholder="e.g. 1842.3"     unit="due hrs" />
         <MaintRow id="ac-oil"   label="Oil Change"                       placeholder="e.g. 1820.0"     unit="due hrs" />
         <MaintRow id="ac-elt"   label="ELT Battery"                      placeholder="e.g. 2026-03-01" unit="exp date" />
         <MaintRow id="ac-xpdr"  label="Transponder (24-mo)"              placeholder="e.g. 2026-06-01" unit="due date" />
         <MaintRow id="ac-pitot" label="Pitot-Static / Altimeter (24-mo)" placeholder="e.g. 2026-06-01" unit="due date" />
-      </GroupRow>
+        <div style={{ padding: '4px 0' }}>
+          <CheckRow id="ac-ads" label="Airworthiness Directives reviewed" />
+        </div>
+      </GroupRowComp>
 
       {/* Fuel & Equipment */}
-      <div style={{ padding: '10px 14px 0' }}>
-        <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Fuel &amp; Equipment</span>
-      </div>
-      <div style={{ margin: '4px 14px 12px', borderRadius: 11, border: '0.5px solid var(--border)' }}>
+      <GroupRowComp
+        title="Fuel & Equipment"
+        ids={['ac-fuel-req','ac-extra-oil','ac-charts-cur']}
+        isCurrencyCompleted={isCurrencyCompleted} checkedIds={checkedIds}>
+
         <CheckRow id="ac-fuel-req"   label="Fuel meets VFR / IFR reserve requirements" />
         <CheckRow id="ac-extra-oil"  label="Extra oil aboard" />
         <CheckRow id="ac-charts-cur" label="Charts current and aboard" />
-      </div>
+      </GroupRowComp>
 
       <DoneButton
         isChecked={isChecked}

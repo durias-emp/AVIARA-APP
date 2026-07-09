@@ -135,6 +135,7 @@ function HobbsTimeModal({ onCancel, onConfirm, initialValue }) {
   }
 
   const [raw, setRaw] = useState(initRaw)
+  const inputRef = useRef(null)
 
   function handleChange(e) {
     setRaw(e.target.value.replace(/[^0-9]/g, '').slice(-6))
@@ -172,11 +173,15 @@ function HobbsTimeModal({ onCancel, onConfirm, initialValue }) {
           Hobbs Time
         </h3>
 
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 10 }}>
+        <div
+          style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 16 }}
+          onClick={() => inputRef.current?.focus()}
+        >
           {digits.map((d, i) => (
             <div key={i} style={digitBoxStyle}>{d}</div>
           ))}
           <input
+            ref={inputRef}
             type="text" inputMode="numeric" value={raw} onChange={handleChange}
             autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
             autoFocus
@@ -186,18 +191,6 @@ function HobbsTimeModal({ onCancel, onConfirm, initialValue }) {
             }}
           />
         </div>
-
-        {isValid && (
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            background: 'var(--bg-card-2)', borderRadius: 10, padding: '7px 11px', marginBottom: 10,
-          }}>
-            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Total</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
-              {value.toFixed(1)}h
-            </span>
-          </div>
-        )}
 
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={onCancel} style={{
@@ -419,7 +412,7 @@ const INSPECTIONS = [
   { key: 'transponderDate', label: 'Transponder (24-mo)',       months: 24, far: FAR.transponder, unit: 'date',  hint: '24 calendar months — FAR 91.413' },
   { key: 'pitotDate',       label: 'Pitot-Static / Altimeter', months: 24, far: FAR.pitotStatic, unit: 'date',  hint: '24 calendar months — IFR required — FAR 91.411' },
   { key: 'eltDate',         label: 'ELT Battery',              months: null, far: FAR.elt,         unit: 'date',  hint: 'Per manufacturer / FAR 91.207 — enter expiry date' },
-  { key: 'oilDate',         label: 'Oil Change',               months: null, far: null,            unit: 'hours', hint: 'Per manufacturer — enter next-due hours' },
+  { key: 'oilDate',         label: 'Oil Change',               months: null, far: null,            unit: 'hours', hint: null },
   { key: 'hundredHrHours',  label: '100-hr Inspection',        months: null, far: FAR.hundredHour, unit: 'hours', hint: null },
 ]
 
@@ -493,8 +486,38 @@ function CheckRowSimple({ checked, onChange, label, far, padding = '10px 14px' }
   )
 }
 
+// Read-only digit boxes showing the current Hobbs reading — placed above
+// the next-due field so the user has it in view while entering a value.
+function CurrentHobbsBoxes({ value }) {
+  if (value == null) return null
+  const rounded = Math.round(value * 10) / 10
+  const whole = Math.floor(rounded)
+  const tenths = Math.round((rounded - whole) * 10)
+  const digits = `${whole}${tenths}`.slice(-6).padStart(6, '0').split('')
+
+  const boxStyle = {
+    flex: 1, height: 34, borderRadius: 8, fontSize: 13, fontWeight: 700,
+    color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontVariantNumeric: 'tabular-nums',
+    background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+    boxSizing: 'border-box',
+  }
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 4 }}>
+        Current Hobbs
+      </div>
+      <div style={{ display: 'flex', gap: 4 }}>
+        {digits.map((d, i) => <div key={i} style={boxStyle}>{d}</div>)}
+      </div>
+    </div>
+  )
+}
+
 function InspectionRow({ insp, value, onDateChange, warnDays, currentHobbs }) {
   const inputRef = useRef(null)
+  const [shown, setShown] = useState(false)
   let s = { status: 'unknown', expiresOn: null, daysLeft: null, hoursLeft: null }
   if (insp.unit === 'hours') {
     s = { ...s, ...statusFromHours(value, currentHobbs, WARN_HOURS_DEFAULT) }
@@ -504,6 +527,7 @@ function InspectionRow({ insp, value, onDateChange, warnDays, currentHobbs }) {
   const color = s.status === 'expired' ? 'var(--danger)' : s.status === 'expiring' ? 'var(--warn)' : s.status === 'valid' ? 'var(--ok)' : 'var(--text-tertiary)'
 
   const isDate = insp.unit === 'date'
+  const hasHoursValue = insp.unit === 'hours' && value != null && value !== ''
   const displayDate = isDate && value
     ? new Date(value + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : null
@@ -523,6 +547,8 @@ function InspectionRow({ insp, value, onDateChange, warnDays, currentHobbs }) {
           {insp.far && <FarLink far={insp.far} />}
         </div>
       </div>
+
+      {insp.unit === 'hours' && <CurrentHobbsBoxes value={currentHobbs} />}
 
       {isDate ? (
         <>
@@ -550,36 +576,63 @@ function InspectionRow({ insp, value, onDateChange, warnDays, currentHobbs }) {
             style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
           />
         </>
+      ) : shown || hasHoursValue ? (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 4 }}>
+              Due At
+            </div>
+            <div style={{
+              padding: '10px 12px', borderRadius: 10,
+              background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+            }}>
+              <input
+                type="number" step="0.1" inputMode="decimal" value={value ?? ''}
+                onChange={e => onDateChange(e.target.value)}
+                placeholder={currentHobbs != null ? currentHobbs.toFixed(1) : '0.0'}
+                autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+                style={{
+                  width: '100%', fontSize: 15, fontWeight: 700, color: 'var(--text)',
+                  fontVariantNumeric: 'tabular-nums', background: 'transparent',
+                  border: 'none', outline: 'none', padding: 0, fontFamily: 'inherit',
+                }}
+              />
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 4 }}>
+              Remaining
+            </div>
+            <div style={{
+              padding: '10px 12px', borderRadius: 10,
+              background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+            }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color, fontVariantNumeric: 'tabular-nums' }}>
+                {s.hoursLeft != null
+                  ? `${s.status === 'expired' ? `-${Math.abs(s.hoursLeft).toFixed(1)}` : s.hoursLeft.toFixed(1)} h`
+                  : ' '}
+              </div>
+            </div>
+          </div>
+        </div>
       ) : (
-        <input
-          ref={inputRef}
-          type="number"
-          defaultValue={value || ''}
-          onChange={e => onDateChange(e.target.value)}
-          placeholder="Next due (hours)"
-          style={{
-            width: '100%', boxSizing: 'border-box',
-            background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-            borderRadius: 8, padding: '8px 10px',
-            fontSize: 12, color: 'var(--text)', outline: 'none',
-          }}
-        />
+        <button onClick={() => setShown(true)} style={{
+          width: '100%', padding: '11px 0', borderRadius: 10,
+          border: '0.5px solid var(--border-strong)', background: 'var(--bg-card)',
+          color: 'var(--text)', fontSize: 13, fontWeight: 700,
+          cursor: 'pointer', fontFamily: 'inherit',
+        }}>+ Set Next Due</button>
       )}
 
-      {insp.unit === 'hours' && (
+      {insp.unit === 'hours' && currentHobbs == null && (
         <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>
-          {currentHobbs != null ? `Current Hobbs: ${currentHobbs.toFixed(1)} hrs` : 'Set Hobbs Time above to track this'}
+          Set Hobbs Time above to track this
         </div>
       )}
       {insp.hint && <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>{insp.hint}</div>}
       {s.expiresOn && (
         <div style={{ fontSize: 10, color, marginTop: 4, fontWeight: 600 }}>
           {s.status === 'expired' ? 'Expired' : 'Due'} {fmtDate(s.expiresOn)} · {fmtDaysLeft(s.daysLeft)}
-        </div>
-      )}
-      {s.hoursLeft != null && (
-        <div style={{ fontSize: 10, color, marginTop: 4, fontWeight: 600 }}>
-          {s.status === 'expired' ? `Overdue by ${Math.abs(s.hoursLeft).toFixed(1)} hrs` : `Due in ${s.hoursLeft.toFixed(1)} hrs`}
         </div>
       )}
     </div>
@@ -957,7 +1010,7 @@ export default function Aircraft() {
         {/* Maintenance / Hobbs Time */}
         <div style={{ display: 'flex', gap: 10 }}>
           <button style={{
-            flex: 1, padding: '9px 12px', borderRadius: 'var(--r-lg)',
+            flex: 1, padding: '9px 12px', borderRadius: 10,
             background: 'var(--bg-card)', border: '0.5px solid var(--border)',
             boxShadow: 'var(--shadow-sm)', cursor: 'pointer', fontFamily: 'inherit',
             fontSize: 14, fontWeight: 700, color: 'var(--text)',
@@ -965,12 +1018,12 @@ export default function Aircraft() {
             Maintenance
           </button>
           <button onClick={() => setHobbsModalOpen(true)} style={{
-            flex: 1, padding: '9px 12px', borderRadius: 'var(--r-lg)',
+            flex: 1, padding: '9px 12px', borderRadius: 10,
             background: 'var(--bg-card)', border: '0.5px solid var(--border)',
             boxShadow: 'var(--shadow-sm)', cursor: 'pointer', fontFamily: 'inherit',
             fontSize: 14, fontWeight: 700, color: 'var(--text)',
           }}>
-            {profile.hobbsTime != null ? `${profile.hobbsTime.toFixed(1)} hrs` : 'Hobbs Time'}
+            Hobbs Time
           </button>
         </div>
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
-import { get } from '../../../lib/db'
+import { get, put, del } from '../../../lib/db'
 import { ExpandableCard, DoneButton, CheckRow as SharedCheckRow } from '../shared/ui'
 import { FAA_DTPP_BASE } from '../shared/faaData'
 import { awcUrl, proxyJSON, lookupAirport } from '../shared/awc'
@@ -244,18 +244,28 @@ export function AirportItem({ item, isChecked, onToggle }) {
     })
   }
 
-  const [landingRwy, setLandingRwy] = useState(null)
   const [aptWind, setAptWind]       = useState(null) // { dir, spd }
+  const [selectedRwy, setSelectedRwy] = useState(null) // { icao, id, hdg } — pilot's chosen/assigned runway
 
   useEffect(() => {
-    Promise.all([
-      get('settings', 'route'),
-      get('settings', 'perfdist'),
-    ]).then(([r, pd]) => {
+    get('settings', 'route').then(r => {
       if (r?.dest) setDestIcao(r.dest.toUpperCase())
-      if (pd?.arr?.selRwy) setLandingRwy(pd.arr.selRwy)
+    })
+    get('settings', 'selectedRunway').then(sr => {
+      setSelectedRwy(sr ?? null)
     })
   }, [open])
+
+  function toggleRunwaySelection(r) {
+    if (selectedRwy?.id === r.id) {
+      setSelectedRwy(null)
+      del('settings', 'selectedRunway').catch(() => {})
+    } else {
+      const next = { key: 'selectedRunway', icao: destIcao, id: r.id, hdg: r.hdg }
+      setSelectedRwy(next)
+      put('settings', next).catch(() => {})
+    }
+  }
 
   useEffect(() => {
     if (!open || !destIcao) return
@@ -308,7 +318,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
   )
 
   const SectionCard = ({ title, children }) => (
-    <div style={{ borderTop: '0.5px solid var(--border)' }}>
+    <div>
       <div style={{ padding: '11px 14px 0' }}>
         <div style={{ fontSize: 9, color: 'var(--text-tertiary)', fontWeight: 700,
           letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 2 }}>{title}</div>
@@ -318,7 +328,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
   )
 
   return (
-    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
+    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen} hideHeaderDivider>
 
       {/* ── Airport info ── */}
       <div style={{ padding: '14px 14px 0' }}>
@@ -351,10 +361,23 @@ export function AirportItem({ item, isChecked, onToggle }) {
           })
           const others = (aptData.frequencies || []).filter(f => !used.has(f.freq + f.type))
 
-          // Wind component on landing runway
-          const lrwy = landingRwy ? (aptData.runways?.find(rw => rw.id === landingRwy.id) || landingRwy) : null
-          const hwComp = aptWind && lrwy?.hdg != null
-            ? Math.round(aptWind.spd * Math.cos((aptWind.dir - lrwy.hdg) * Math.PI / 180))
+          // Wind components for every runway end — headwind/tailwind + crosswind,
+          // computed independently per direction so each end can be judged on its
+          // own face into the wind. Planning aid only, not a runway assignment.
+          const runwayWinds = aptWind
+            ? (aptData.runways || [])
+                .filter(r => r.hdg != null)
+                .map(r => {
+                  const angle = (aptWind.dir - r.hdg) * Math.PI / 180
+                  return {
+                    ...r,
+                    headwind: Math.round(aptWind.spd * Math.cos(angle)),
+                    crosswind: Math.round(aptWind.spd * Math.sin(angle)),
+                  }
+                })
+            : []
+          const bestRwyId = runwayWinds.length
+            ? runwayWinds.reduce((best, r) => r.headwind > best.headwind ? r : best).id
             : null
 
           return (
@@ -387,54 +410,74 @@ export function AirportItem({ item, isChecked, onToggle }) {
                 </div>
               </div>
 
-              {/* ── Runway display ── */}
+              {/* ── Runway wind analysis ── */}
               {aptData.runways?.length > 0 && (
                 <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)',
-                    textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>
-                    {lrwy ? 'Landing Runway' : 'Runways'}
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)',
+                      textTransform: 'uppercase', letterSpacing: '0.5px' }}>Runways</div>
+                    {aptWind && (
+                      <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                        Wind {String(aptWind.dir).padStart(3, '0')}° / {aptWind.spd}kt
+                      </div>
+                    )}
                   </div>
 
-                  {lrwy ? (
-                    /* Single selected landing runway card */
-                    <div style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-                      borderRadius: 10, padding: '10px 14px',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                        <span style={{ fontSize: 26, fontWeight: 900, fontFamily: 'monospace',
-                          color: 'var(--text)', letterSpacing: '1px', lineHeight: 1 }}>{lrwy.id}</span>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          {lrwy.hdg != null && (
-                            <span style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
-                              {String(lrwy.hdg).padStart(3, '0')}°
-                            </span>
-                          )}
-                          {lrwy.len && (
-                            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{lrwy.len}</span>
-                          )}
-                          {lrwy.sfc && (
-                            <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{lrwy.sfc}</span>
-                          )}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                        {hwComp != null && (
-                          <span style={{ fontSize: 18, fontWeight: 800, fontFamily: 'monospace',
-                            color: hwComp >= 0 ? 'var(--text)' : 'var(--danger)' }}>
-                            {hwComp >= 0 ? '+' : ''}{hwComp}kt {hwComp >= 0 ? 'HW' : 'TW'}
-                          </span>
-                        )}
-                        {aptWind && (
-                          <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                            {aptWind.dir}° / {aptWind.spd}kt
-                          </span>
-                        )}
+                  {runwayWinds.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {runwayWinds.map(r => {
+                        const isBest = r.id === bestRwyId
+                        const isSelected = selectedRwy?.id === r.id
+                        return (
+                          <button key={r.id} onClick={() => toggleRunwaySelection(r)} style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            background: 'var(--bg-card-2)',
+                            border: `0.5px solid ${isSelected ? 'var(--text)' : 'var(--border)'}`,
+                            borderRadius: 10, padding: '8px 12px', gap: 10,
+                            cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: 'inherit',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <span style={{ fontSize: 20, fontWeight: 900, fontFamily: 'monospace',
+                                color: 'var(--text)', letterSpacing: '1px', lineHeight: 1 }}>{r.id}</span>
+                              <span style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                                {String(r.hdg).padStart(3, '0')}°
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, minWidth: 56 }}>
+                                <span style={{ fontSize: 15, fontWeight: 800, fontFamily: 'monospace', color: 'var(--text)', lineHeight: 1 }}>
+                                  {Math.abs(r.headwind)}kt
+                                </span>
+                                <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'monospace', lineHeight: 1 }}>
+                                  {Math.abs(r.crosswind)}kt X{r.crosswind === 0 ? '' : r.crosswind > 0 ? 'R' : 'L'}
+                                </span>
+                              </div>
+                              <span style={{ fontSize: 18, color: 'var(--text-secondary)', lineHeight: 1, flexShrink: 0 }}>
+                                {r.headwind >= 0 ? '↑' : '↓'}
+                              </span>
+                              <div style={{ position: 'relative', width: 7, height: 7, flexShrink: 0 }}>
+                                {isBest && (
+                                  <div style={{
+                                    position: 'absolute', inset: 0, borderRadius: '50%',
+                                    background: 'var(--ok)', animation: 'beep 1.8s ease-out infinite',
+                                  }} />
+                                )}
+                                <div style={{
+                                  position: 'absolute', inset: 0, borderRadius: '50%',
+                                  background: isBest ? 'var(--ok)' : 'transparent',
+                                  border: `1.5px solid ${isBest ? 'var(--ok)' : 'var(--border-strong)'}`,
+                                }} />
+                              </div>
+                            </div>
+                          </button>
+                        )
+                      })}
+                      <div style={{ fontSize: 9.5, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                        Planning aid only. Verify against ATIS/tower assignment before landing.
                       </div>
                     </div>
                   ) : (
-                    /* All runways as pills when no landing runway chosen */
+                    /* No METAR wind yet — headings only */
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 5 }}>
                       {aptData.runways.map(r => (
                         <div key={r.id} style={{
@@ -628,7 +671,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
         <div style={{ padding: '6px 14px 0' }}>
           <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Charts &amp; Diagrams</span>
         </div>
-        <div style={{ margin: '4px 14px 0', borderRadius: 11, border: '0.5px solid var(--border)' }}>
+        <div style={{ padding: '0 14px' }}>
           <CheckRow id="apt-cfs"   label="Chart Supplement reviewed" />
           <CheckRow id="apt-vtpc"  label="Airport Diagram / ATIS checked" />
           <CheckRow id="apt-hours" label="Hours of Operation confirmed" />
@@ -639,7 +682,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
         <div style={{ padding: '10px 14px 0' }}>
           <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Ground Familiarization</span>
         </div>
-        <div style={{ margin: '4px 14px 0', borderRadius: 11, border: '0.5px solid var(--border)' }}>
+        <div style={{ padding: '0 14px' }}>
           <CheckRow id="apt-taxi"   label="Taxi Chart reviewed" />
           <CheckRow id="apt-taxi-a" label="Hotspots identified" />
           <CheckRow id="apt-taxi-b" label="Planned parking noted (FBO / Helipads / Ramps)" />
@@ -651,7 +694,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
         <div style={{ padding: '10px 14px 0' }}>
           <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Services &amp; Ops</span>
         </div>
-        <div style={{ margin: '4px 14px 0', borderRadius: 11, border: '0.5px solid var(--border)' }}>
+        <div style={{ padding: '0 14px' }}>
           <CheckRow id="apt-svc-a"   label="Fuel / oil / parking / amenities confirmed" />
           <CheckRow id="apt-caution" label="Airport cautions reviewed" />
         </div>
@@ -660,8 +703,8 @@ export function AirportItem({ item, isChecked, onToggle }) {
         <div style={{ padding: '10px 14px 0' }}>
           <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.5px', textTransform: 'uppercase' }}>FBO / Arrival</span>
         </div>
-        <div style={{ margin: '4px 14px 12px', borderRadius: 11, border: '0.5px solid var(--border)' }}>
-          <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10, borderBottom: '0.5px solid var(--border)' }}>
+        <div style={{ padding: '0 14px 12px' }}>
+          <div style={{ padding: '10px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div>
               <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 4 }}>FBO Frequency</div>
               <input

@@ -60,7 +60,7 @@ const CHECKLISTS = [
           { id: 'pilot-imcurrent', label: 'IM CURRENT',   sub: 'Flight review · Passenger currency · IFR currency',          expand: 'imcurrent' },
           { id: 'pilot-imvalid',   label: 'IM VALID',     sub: 'Medical certificate validity',                               expand: 'imvalid' },
           { id: 'pilot-airworthy', label: 'IM AIRWORTHY', sub: 'Annual · Transponder · Pitot-static',                        expand: 'imairworthy' },
-          { id: 'pilot-fp',        label: 'Flight Plan Filed', sub: 'Recap · Route · Weather · Performance · Pilot status', expand: 'recap' },
+          { id: 'pilot-fp',        label: 'Flight Itinerary', sub: 'Recap · Route · Weather · Performance · Pilot status', expand: 'recap' },
         ],
       },
     ],
@@ -102,8 +102,6 @@ function ChecklistDetail({ checklist, onBack }) {
   const [checked, setChecked]         = useState(new Set())
   const [customItems, setCustomItems] = useState({ PILOT: [] })
   const [resetKey, setResetKey]       = useState(0)
-  const [addingTo, setAddingTo]       = useState(null)
-  const [draftLabel, setDraftLabel]   = useState('')
   const trackRef = useRef(null)
   const circleRefs = useRef([])
 
@@ -155,17 +153,6 @@ function ChecklistDetail({ checklist, onBack }) {
       const currency = await get('currency', 'profile')
       if (currency) await put('currency', { ...currency, safe: {} })
     } catch { /* ignore */ }
-  }
-
-  function addCustomItem(sectionTitle) {
-    const label = draftLabel.trim()
-    if (!label) return
-    const item = { id: `custom-${Date.now()}`, label }
-    const next = { ...customItems, [sectionTitle]: [...(customItems[sectionTitle] ?? []), item] }
-    setCustomItems(next)
-    save(checked, next)
-    setDraftLabel('')
-    setAddingTo(null)
   }
 
   function deleteCustomItem(sectionTitle, itemId) {
@@ -373,45 +360,6 @@ function ChecklistDetail({ checklist, onBack }) {
                       </div>
                     ))}
 
-                    {addingTo === 'PILOT' ? (
-                      <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-                        <input
-                          autoFocus
-                          value={draftLabel}
-                          onChange={e => setDraftLabel(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter')  addCustomItem('PILOT')
-                            if (e.key === 'Escape') { setAddingTo(null); setDraftLabel('') }
-                          }}
-                          placeholder="Step description"
-                          maxLength={80}
-                          style={{
-                            flex: 1, padding: '7px 10px', borderRadius: 8,
-                            border: '1px solid var(--border-strong)',
-                            background: 'var(--bg-card-2)', color: 'var(--text)',
-                            fontSize: 13, outline: 'none',
-                          }}
-                        />
-                        <button
-                          onClick={() => addCustomItem('PILOT')}
-                          style={{ padding: '7px 12px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'var(--accent-fg)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
-                        >Add</button>
-                        <button
-                          onClick={() => { setAddingTo(null); setDraftLabel('') }}
-                          style={{ padding: '7px 8px', borderRadius: 8, border: 'none', background: 'var(--bg-card-2)', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}
-                        >Cancel</button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setAddingTo('PILOT')}
-                        style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, background: 'none', border: 'none', cursor: 'pointer', padding: '3px 0', color: 'var(--text-tertiary)' }}
-                      >
-                        <svg width={12} height={12} viewBox="0 0 24 24" fill="none">
-                          <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        <span style={{ fontSize: 12, fontWeight: 500 }}>Add step</span>
-                      </button>
-                    )}
                   </>
                 )}
               </div>
@@ -503,14 +451,37 @@ function CompleteButton({ pct, complete, checklist, onComplete }) {
   }
 
   return (
-    <div style={{ padding: '24px 16px 36px' }}>
+    <div style={{ padding: '24px 16px 36px', display: 'flex', gap: 10 }}>
+      {/* Add Step — behavior TBD, style matches Complete button */}
+      <button
+        style={{
+          position: 'relative',
+          flex: 1,
+          height: 52,
+          borderRadius: 14,
+          border: 'none',
+          cursor: 'pointer',
+          overflow: 'hidden',
+          background: 'var(--bg-card-2)',
+          outline: 'none',
+          WebkitTapHighlightColor: 'transparent',
+        }}
+      >
+        <span style={{
+          fontSize: 15, fontWeight: 700, letterSpacing: '-0.2px',
+          color: 'var(--text)',
+        }}>
+          + Add Step
+        </span>
+      </button>
+
       {/* Button shell — always present, bar fills inside it */}
       <button
         onClick={handleComplete}
         disabled={!complete || saving || saved}
         style={{
           position: 'relative',
-          width: '100%',
+          flex: 1,
           height: 52,
           borderRadius: 14,
           border: 'none',
