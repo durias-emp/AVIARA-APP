@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { conv, FUEL, pressureAltitude, densityAltitude, vRef, weightShift } from '../../lib/calculators'
 import { BackButton } from '../../components/Shell'
+import FuelConverter from '../../components/FuelConverter'
 
 const TABS = ['Conversions', 'Performance']
 
@@ -58,78 +59,160 @@ export default function Calculators() {
 
 /* ── Conversions ─────────────────────────────────────── */
 function Conversions() {
+  const [refOpen, setRefOpen] = useState(false)
+
   return (
     <>
       <CX3Button />
-      <SectionCard title="Volume">
-        <BidirCalc aLabel="USG" bLabel="Litres" aToB={conv.usgToL} bToA={conv.lToUsg} aStep="0.1" bStep="0.1" formula="1 USG = 3.785 L" />
-      </SectionCard>
-
-      <SectionCard title="Mass">
-        <BidirCalc aLabel="Pounds" bLabel="Kilograms" aToB={conv.lbsToKg} bToA={conv.kgToLbs} formula="1 lb = 0.454 kg" />
-      </SectionCard>
-
-      <SectionCard title="Temperature">
-        <BidirCalc aLabel="Celsius" bLabel="Fahrenheit" aToB={conv.cToF} bToA={conv.fToC} aStep="0.5" bStep="0.5" formula="°F = (°C × 1.8) + 32" />
-      </SectionCard>
-
-      <SectionCard title="Pressure">
-        <BidirCalc aLabel="Millibars" bLabel="inHg" aToB={conv.mbToInhg} bToA={conv.inhgToMb} aStep="0.1" bStep="0.01" formula="inHg = mb ÷ 33.8639" />
-      </SectionCard>
-
-      <SectionCard title="Distance from NM">
+      <SectionCard title="Distance">
         <NmConverter />
       </SectionCard>
 
-      <SectionCard title="Fuel Weight Reference">
-        <FuelTable />
+      <SectionCard title="Fuel Conversion" headerRight={<ChipButton onClick={() => setRefOpen(true)}>Reference</ChipButton>}>
+        <FuelConverter />
       </SectionCard>
+
+      <SectionCard title="Volume">
+        <UnitConverter placeholder="Volume" units={VOLUME_UNITS} />
+      </SectionCard>
+
+      <SectionCard title="Mass">
+        <UnitConverter placeholder="Mass" units={MASS_UNITS} />
+      </SectionCard>
+
+      <SectionCard title="Temperature">
+        <UnitConverter placeholder="Temperature" units={TEMP_UNITS} />
+      </SectionCard>
+
+      <SectionCard title="Pressure">
+        <UnitConverter placeholder="Pressure" units={PRESSURE_UNITS} />
+      </SectionCard>
+
+      {refOpen && <FuelReferenceModal onClose={() => setRefOpen(false)} />}
     </>
   )
 }
 
-function BidirCalc({ aLabel, bLabel, aToB, bToA, aStep = '1', bStep = '1', formula }) {
-  const [a, setA] = useState('')
-  const [b, setB] = useState('')
-
-  const [swapped, setSwapped] = useState(false)
-
-  const label1 = swapped ? bLabel : aLabel
-  const label2 = swapped ? aLabel : bLabel
-  const step1  = swapped ? bStep  : aStep
-  const step2  = swapped ? aStep  : bStep
-  const conv12 = swapped ? bToA   : aToB
-  const conv21 = swapped ? aToB   : bToA
-
-  function handleField1(v) { setA(v); const n = parseFloat(v); setB(isNaN(n) ? '' : fmt(conv12(n))) }
-  function handleField2(v) { setB(v); const n = parseFloat(v); setA(isNaN(n) ? '' : fmt(conv21(n))) }
-
-  function flip() {
-    const nextSwapped = !swapped
-    setSwapped(nextSwapped)
-    const nextConv = nextSwapped ? bToA : aToB
-    const n = parseFloat(a)
-    setB(a !== '' && !isNaN(n) ? fmt(nextConv(n)) : '')
-  }
-
-  const active = a !== '' || b !== ''
-
+function ChipButton({ onClick, children }) {
   return (
-    <div>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-        <NumField label={label1} value={a} onChange={handleField1} step={step1} />
-        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ height: 19 }} />
-          <button onClick={flip} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-            <img src="/volver-a-publicar.png" width={22} height={22} alt="" className="icon-themed" />
+    <button onClick={onClick} style={{
+      fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)',
+      background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+      borderRadius: 20, padding: '3px 10px', cursor: 'pointer',
+      fontFamily: 'inherit', flexShrink: 0,
+    }}>{children}</button>
+  )
+}
+
+function FuelReferenceModal({ onClose }) {
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 600,
+      background: 'rgba(0,0,0,0.55)',
+      backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 20px',
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: '100%', maxWidth: 360,
+        background: 'var(--bg-card)', borderRadius: 16,
+        padding: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <span style={{ fontSize: 17, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.2px' }}>Fuel Weight Reference</span>
+          <button onClick={onClose} style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+            color: 'var(--text-tertiary)', display: 'flex',
+          }}>
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           </button>
         </div>
-        <NumField label={label2} value={b} onChange={handleField2} step={step2} />
+        <FuelTable />
       </div>
-      {formula && active && (
-        <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 8, fontFamily: 'monospace', letterSpacing: '0.2px' }}>
-          {formula}
-        </p>
+    </div>
+  )
+}
+
+// Each list defines every unit's conversion to/from a shared base unit
+// (liters, kg, °C, or millibars) so any one field can drive all the others —
+// same interaction pattern as the Distance and Fuel Conversion cards.
+const VOLUME_UNITS = [
+  { key: 'usg',    label: 'US Gallons',     toBase: v => conv.usgToL(v),   fromBase: v => conv.lToUsg(v) },
+  { key: 'l',      label: 'Litres',         toBase: v => v,                fromBase: v => v },
+  { key: 'impgal', label: 'Imperial Gallons', toBase: v => v * 4.546,       fromBase: v => v / 4.546 },
+]
+
+const MASS_UNITS = [
+  { key: 'lbs', label: 'Pounds',    toBase: v => conv.lbsToKg(v), fromBase: v => conv.kgToLbs(v) },
+  { key: 'kg',  label: 'Kilograms', toBase: v => v,               fromBase: v => v },
+]
+
+const TEMP_UNITS = [
+  { key: 'c', label: 'Celsius',    toBase: v => v,                 fromBase: v => v },
+  { key: 'f', label: 'Fahrenheit', toBase: v => conv.fToC(v),      fromBase: v => conv.cToF(v) },
+  { key: 'k', label: 'Kelvin',     toBase: v => v - 273.15,        fromBase: v => v + 273.15 },
+]
+
+const PRESSURE_UNITS = [
+  { key: 'mb',  label: 'Millibars', toBase: v => v,                  fromBase: v => v },
+  { key: 'inhg', label: 'inHg',     toBase: v => conv.inhgToMb(v),    fromBase: v => conv.mbToInhg(v) },
+  { key: 'psi', label: 'PSI',       toBase: v => v * 68.9476,        fromBase: v => v / 68.9476 },
+]
+
+function UnitConverter({ units, placeholder }) {
+  const [value, setValue] = useState('')
+  const [unitKey, setUnitKey] = useState(units[0].key)
+
+  const n = parseFloat(value)
+  const valid = !isNaN(n)
+  const activeUnit = units.find(u => u.key === unitKey)
+  const baseVal = valid ? activeUnit.toBase(n) : null
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ flexShrink: 0 }}>
+          <select
+            value={unitKey}
+            onChange={e => setUnitKey(e.target.value)}
+            style={{
+              width: 152, boxSizing: 'border-box',
+              height: 46, padding: '0 32px 0 12px', borderRadius: 'var(--r-sm)',
+              border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+              color: 'var(--text)', fontSize: 14, fontWeight: 500, cursor: 'pointer',
+              appearance: 'none', outline: 'none',
+              backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='3,6 8,11 13,6' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+              backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center',
+            }}
+          >
+            {units.map(u => <option key={u.key} value={u.key}>{u.label}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: 1 }}>
+          <input
+            type="number" inputMode="decimal" step="any"
+            placeholder={placeholder}
+            value={value} onChange={e => setValue(e.target.value)}
+            style={{ width: '100%', height: 46, padding: '0 13px', borderRadius: 'var(--r-sm)', border: '0.5px solid var(--border)', background: 'var(--bg-card-2)', color: 'var(--text)', fontSize: 17, outline: 'none' }}
+          />
+        </div>
+      </div>
+
+      {valid && baseVal !== null && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, borderRadius: 10, overflow: 'hidden', background: 'var(--bg-card)' }}>
+          {units.filter(u => u.key !== unitKey).map(u => (
+            <div key={u.key} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '7px 14px', background: 'var(--bg-card)',
+            }}>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{u.label}</span>
+              <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.2px' }}>
+                {fmt(u.fromBase(baseVal))}
+              </span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -156,11 +239,11 @@ function NmConverter() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', gap: 8 }}>
         <div style={{ flexShrink: 0 }}>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 5 }}>Unit</label>
           <select
             value={unitKey}
             onChange={e => setUnitKey(e.target.value)}
             style={{
+              width: 152, boxSizing: 'border-box',
               height: 46, padding: '0 32px 0 12px', borderRadius: 'var(--r-sm)',
               border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
               color: 'var(--text)', fontSize: 14, fontWeight: 500, cursor: 'pointer',
@@ -173,9 +256,9 @@ function NmConverter() {
           </select>
         </div>
         <div style={{ flex: 1 }}>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 5 }}>Distance</label>
           <input
             type="number" inputMode="decimal" step="any"
+            placeholder="Distance"
             value={value} onChange={e => setValue(e.target.value)}
             style={{ width: '100%', height: 46, padding: '0 13px', borderRadius: 'var(--r-sm)', border: '0.5px solid var(--border)', background: 'var(--bg-card-2)', color: 'var(--text)', fontSize: 17, outline: 'none' }}
           />
@@ -409,7 +492,7 @@ function GlideRatioCalc() {
 }
 
 /* ── Shared atoms ────────────────────────────────────── */
-function SectionCard({ title, formula, children }) {
+function SectionCard({ title, formula, children, headerRight }) {
   return (
     <div style={{
       background: 'var(--bg-card)',
@@ -417,8 +500,9 @@ function SectionCard({ title, formula, children }) {
       padding: 16,
       boxShadow: 'var(--shadow-sm)',
     }}>
-      <div style={{ marginBottom: formula ? 2 : 14 }}>
+      <div style={{ marginBottom: formula ? 2 : 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ fontSize: 17, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.2px' }}>{title}</span>
+        {headerRight}
       </div>
       {formula && (
         <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 14, fontFamily: 'monospace', lineHeight: 1.5 }}>
@@ -430,17 +514,19 @@ function SectionCard({ title, formula, children }) {
   )
 }
 
-function NumField({ label, value, onChange, step = '1', placeholder = '' }) {
+function NumField({ label, value, onChange, step = '1', placeholder = '', noLabel = false }) {
   return (
     <div style={{ flex: 1 }}>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 5, letterSpacing: '-0.1px' }}>
-        {label}
-      </label>
+      {!noLabel && (
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 5, letterSpacing: '-0.1px' }}>
+          {label}
+        </label>
+      )}
       <input
         type="number"
         inputMode="decimal"
         step={step}
-        placeholder={placeholder}
+        placeholder={placeholder || (noLabel ? label : '')}
         value={value}
         onChange={e => onChange(e.target.value)}
         style={{
@@ -468,7 +554,7 @@ function ResultRow({ label, value, accent, noBorder }) {
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
-      padding: '11px 14px',
+      padding: noBorder ? '7px 14px' : '11px 14px',
       background: accent ? 'var(--accent-light)' : 'var(--bg-card)',
       borderBottom: noBorder ? 'none' : '0.5px solid var(--border)',
     }}>

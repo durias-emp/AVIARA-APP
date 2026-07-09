@@ -78,8 +78,8 @@ export function parseWind(metar, units = {}) {
   if (!wspd || wspd === 0) return 'Calm'
   // wdir can be a number or the string "VRB"
   if (!wdir || wdir === 'VRB') return `VRB ${spd}${gst ? `G${gst}` : ''} ${unitLabel}`
-  const dir = bearingToCompass(Number(wdir))
-  return `${dir} ${spd}${gst ? `G${gst}` : ''} ${unitLabel}`
+  const dir = String(Math.round(Number(wdir))).padStart(3, '0')
+  return `${dir}° ${spd}${gst ? `G${gst}` : ''} ${unitLabel}`
 }
 
 export function parseVisib(metar, units = {}) {
@@ -155,9 +155,4 @@ export function parseFetchAge(fetchedAt) {
   if (mins < 1) return 'Just now'
   if (mins < 60) return `${mins} min ago`
   return `${Math.round(mins / 60)}h ago`
-}
-
-function bearingToCompass(deg) {
-  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']
-  return dirs[Math.round(deg / 22.5) % 16]
 }

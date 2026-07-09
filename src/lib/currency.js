@@ -236,6 +236,27 @@ export function getCurrencyStatus(data = {}, warnDays = 30) {
 }
 
 // ---------------------------------------------------------------------------
+// getGlobalCurrencyStatus — single worst-of-all status for the Home icon
+// ---------------------------------------------------------------------------
+
+/**
+ * Rolls the four getCurrencyStatus() cards up into one status for a status-
+ * indicator icon. 'incomplete'/'unknown' (data not entered yet) reads as
+ * 'valid' — the icon should only warn about things actually tracked and
+ * approaching/past their due date, not nag about unfilled fields.
+ * Returns: 'valid' | 'expiring' | 'expired'
+ */
+export function getGlobalCurrencyStatus(data = {}, warnDays = 30) {
+  const cards = getCurrencyStatus(data, warnDays)
+  const rank = { expired: 2, expiring: 1, valid: 0, incomplete: 0, unknown: 0 }
+  const worst = Object.values(cards).reduce(
+    (w, c) => (rank[c.status] ?? 0) > (rank[w] ?? 0) ? c.status : w,
+    'valid'
+  )
+  return rank[worst] ? worst : 'valid'
+}
+
+// ---------------------------------------------------------------------------
 // Formatting helpers
 // ---------------------------------------------------------------------------
 export function fmtDate(date) {
