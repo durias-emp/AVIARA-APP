@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { get, getAll, put } from '../../lib/db'
+import { getGlobalCurrencyStatus } from '../../lib/currency'
 import WeatherCard   from '../../components/WeatherCard'
 import CardOverlay   from '../../components/CardOverlay'
 import FlightDetailDrawer from '../../components/FlightDetailDrawer'
@@ -34,7 +35,7 @@ function fmtFlightDuration(flight) {
 }
 
 /* ── Module card ─────────────────────────────────────────── */
-function ModuleCard({ section, onOpen, icon, label }) {
+function ModuleCard({ section, onOpen, icon, label, tint }) {
   const ref = useRef(null)
 
   function handleClick() {
@@ -61,8 +62,18 @@ function ModuleCard({ section, onOpen, icon, label }) {
       minWidth: 0,
       WebkitTapHighlightColor: 'transparent',
     }}>
-      <img src={icon} width={28} height={28}
-        style={{ objectFit: 'contain', flexShrink: 0, filter: 'var(--icon-filter)' }} />
+      {tint ? (
+        <div style={{
+          width: 28, height: 28, flexShrink: 0, backgroundColor: tint,
+          WebkitMaskImage: `url(${icon})`, maskImage: `url(${icon})`,
+          WebkitMaskSize: 'contain', maskSize: 'contain',
+          WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+          WebkitMaskPosition: 'center', maskPosition: 'center',
+        }} />
+      ) : (
+        <img src={icon} width={28} height={28}
+          style={{ objectFit: 'contain', flexShrink: 0, filter: 'var(--icon-filter)' }} />
+      )}
       <div style={{
         fontSize: 14, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px',
         overflowWrap: 'break-word', lineHeight: 1.25,
@@ -200,6 +211,11 @@ export default function Home() {
   const [sectionRect, setSectionRect]     = useState(null)
   const [flights, setFlights] = useState([])
   const [selectedFlight, setSelectedFlight] = useState(null)
+  const [currencyStatus, setCurrencyStatus] = useState('valid')
+
+  function loadCurrencyStatus() {
+    get('currency', 'profile').then(d => setCurrencyStatus(getGlobalCurrencyStatus(d ?? {})))
+  }
 
   useEffect(() => {
     get('aircraft', 'profile').then(p => {
@@ -212,6 +228,7 @@ export default function Home() {
     getAll('flights').then(stored => {
       if (stored.length > 0) setFlights([...stored].sort((a, b) => b.id - a.id))
     })
+    loadCurrencyStatus()
   }, [])
 
   function greeting() {
@@ -235,6 +252,11 @@ export default function Home() {
         if (p?.image)        setAircraftImage(p.image)
         if (p?.hobbsTime != null) setHobbsTime(p.hobbsTime)
       })
+    }
+    // Airworthiness (on Aircraft) and Checklists (IM SAFE/CURRENT) both write
+    // to the same currency/profile record the Home icon reflects.
+    if (openSection === 'currency' || openSection === 'aircraft' || openSection === 'checklists') {
+      loadCurrencyStatus()
     }
     setOpenSection(null)
     setSectionRect(null)
@@ -317,7 +339,12 @@ export default function Home() {
             <ModuleCard
               section="currency"
               onOpen={openCard}
-              icon="/cheque.png"
+              icon={currencyStatus === 'expired' ? '/cross-circle.svg' : '/cheque.png'}
+              tint={
+                currencyStatus === 'expired'  ? 'var(--danger)' :
+                currencyStatus === 'expiring' ? 'var(--warn)' :
+                'var(--ok)'
+              }
               label="Currency"
             />
 

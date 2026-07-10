@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
-import { get } from '../../lib/db'
+import { get, put } from '../../lib/db'
 import { getWBConfig, calculateWB } from '../../lib/aircraftWB'
 import { DoneButton } from './shared/ui'
+import FuelConverter from '../../components/FuelConverter'
 
 // ── Unit helpers ──────────────────────────────────────────────────────────────
 const LBS_TO_KG = 0.453592
@@ -193,6 +194,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
   const [cfg, setCfg]         = useState(null)
   const [doors, setDoors]     = useState({ frontLeft: true, frontRight: true, rearLeft: true, rearRight: true })
   const [weights, setWeights] = useState({})
+  const [showFuelConv, setShowFuelConv] = useState(false)
 
   useEffect(() => {
     get('aircraft', 'profile').then(p => {
@@ -211,6 +213,14 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
     if (!cfg) return null
     return calculateWB(cfg, weights, doors)
   }, [cfg, weights, doors])
+
+  // Expose the computed takeoff weight so the Performance section's
+  // takeoff/landing distance calculator can use it as a correction factor.
+  useEffect(() => {
+    if (result?.allUp?.weight > 0) {
+      put('settings', { key: 'lastWB', weight: result.allUp.weight, maxTOW: cfg?.maxTOW ?? null }).catch(() => {})
+    }
+  }, [result, cfg])
 
   function setW(id, val) { setWeights(p => ({ ...p, [id]: val })) }
   function toggleDoor(key) { setDoors(p => ({ ...p, [key]: !p[key] })) }
@@ -326,6 +336,21 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                 </div>
                 <NumberInput value={weights.fuel ?? ''} onChange={v => setW('fuel', v)} unit={cfg.fuel.unit} max={cfg.fuel.maxGal} />
               </div>
+              <button
+                onClick={() => setShowFuelConv(v => !v)}
+                style={{
+                  width: '100%', padding: '7px 0', marginTop: 4,
+                  border: '0.5px solid var(--border)', borderRadius: 'var(--r-sm)',
+                  background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
+                  fontSize: 11, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                {showFuelConv ? 'Hide' : 'Show'} Fuel Unit Converter (Jet-A)
+              </button>
+              {showFuelConv && (
+                <div style={{ marginTop: 8 }}>
+                  <FuelConverter />
+                </div>
+              )}
             </div>
 
             {/* Results */}

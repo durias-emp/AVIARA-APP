@@ -96,12 +96,23 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
     })
   }, [])
 
+  // Always shows the spin immediately, even if `id` isn't ready yet (e.g. a
+  // tap right after mount, before the homeAirport lookup resolves) — falls
+  // back to re-reading the saved airport rather than silently no-op'ing.
   const refresh = useCallback(async (id) => {
-    if (!id) return
     setLoading(true)
     setError(null)
     try {
-      const result = await loadWeather(id)
+      let targetId = id
+      if (!targetId) {
+        const row = await get('settings', 'homeAirport')
+        targetId = row?.value
+      }
+      if (!targetId) {
+        setError('No home airport set.')
+        return
+      }
+      const result = await loadWeather(targetId)
       setWx(result)
       if (result.error) setError('Offline — showing cached data')
     } catch {
