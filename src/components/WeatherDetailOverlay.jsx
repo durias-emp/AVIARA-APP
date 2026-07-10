@@ -1,8 +1,8 @@
 import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 import {
-  parseFltCat, parseWind, parseVisib, parseCeiling,
-  parseTemp, parseAltim, parseWx, parseObsAge, parseFetchAge, parseAirportName,
-  FLTCAT,
+  parseFltCat, parseWind, parseVisib, parseCloudLayers,
+  parseTemp, parseDewp, parseAltim, parseWx, parseObsAge, parseFetchAge, parseAirportName,
+  FLTCAT, catFromCeilingVis, colorizeTaf,
 } from '../lib/weather'
 import { getCondition } from './WeatherAnimation'
 import { lottieForCondition } from './LottieWeather'
@@ -96,10 +96,7 @@ function deriveTafCat(f) {
   const ceilFt = cld ? Number(cld.base) : null
   const raw = f.visib ?? '10'
   const visSm = raw === '6+' || raw === 'P6SM' ? 10 : parseFloat(raw) || 10
-  if ((ceilFt !== null && ceilFt < 500) || visSm < 1)  return FLTCAT.LIFR
-  if ((ceilFt !== null && ceilFt < 1000) || visSm < 3) return FLTCAT.IFR
-  if ((ceilFt !== null && ceilFt < 3000) || visSm < 5) return FLTCAT.MVFR
-  return FLTCAT.VFR
+  return catFromCeilingVis(ceilFt, visSm)
 }
 
 function parseTafPeriods(taf) {
@@ -114,6 +111,22 @@ function parseTafPeriods(taf) {
     const wx = f.wxString ?? (topCloud?.cover ?? 'CLR')
     return { label: i === 0 ? 'Now' : label, cat, wx }
   })
+}
+
+// ── Trend — is the TAF outlook improving, deteriorating, or steady
+// compared to current conditions? Ranked by flight-category severity
+// (higher rank = more restrictive), same FLTCAT grading used everywhere else.
+const CAT_RANK = { VFR: 0, MVFR: 1, IFR: 2, LIFR: 3 }
+
+function deriveTrend(currentCat, periods) {
+  const future = periods.filter(p => p.label !== 'Now' && p.cat)
+  if (!currentCat || !future.length) return null
+  const curRank = CAT_RANK[currentCat.label] ?? 0
+  const lastCat = future[future.length - 1].cat
+  const lastRank = CAT_RANK[lastCat.label] ?? 0
+  if (lastRank > curRank) return { label: 'Deteriorating', arrow: '↘', color: lastCat.color }
+  if (lastRank < curRank) return { label: 'Improving', arrow: '↗', color: FLTCAT.VFR.color }
+  return { label: 'Steady', arrow: '→', color: 'rgba(255,255,255,0.72)' }
 }
 
 // ── Glass pill ─────────────────────────────────────────────────
@@ -133,9 +146,36 @@ function GlassPill({ children, style }) {
   )
 }
 
+// ── "Copied" chip — smoothly fades/slides in next to a copy button,
+// then fades back out when `show` flips false (the element stays mounted
+// so the exit gets the same transition as the entrance). ────────────
+function CopiedChip({ show }) {
+  return (
+    <span aria-hidden={!show} style={{
+      display: 'inline-flex', alignItems: 'center',
+      fontSize: 11, fontWeight: 800, letterSpacing: '0.02em',
+      padding: '5px 10px', borderRadius: 999,
+      color: '#fff',
+      background: 'rgba(52,199,89,0.9)',
+      opacity: show ? 1 : 0,
+      transform: show ? 'translateY(0) scale(1)' : 'translateY(-4px) scale(0.94)',
+      transition: 'opacity 0.22s ease, transform 0.22s ease',
+      pointerEvents: 'none',
+      whiteSpace: 'nowrap',
+    }}>
+      Copied
+    </span>
+  )
+}
+
 // ── Raw text row — one METAR or TAF block within the shared card ──
-function RawTextRow({ title, text, onCopy, copied, last }) {
+// `colorize` splits the text into its forecast groups and colors each line
+// by flight category (same grading as the VFR/MVFR/IFR/LIFR chip), matching
+// how apps like ForeFlight color-code raw TAF text.
+function RawTextRow({ title, text, onCopy, copiedText, last, colorize }) {
   if (!text) return null
+  const lines = colorize ? colorizeTaf(text) : null
+  const copied = copiedText === text
   return (
     <div style={{ marginBottom: last ? 0 : 16 }}>
       <div style={{
@@ -145,27 +185,42 @@ function RawTextRow({ title, text, onCopy, copied, last }) {
         <div style={{ fontSize: 17, fontWeight: 700, color: '#fff' }}>
           {title}
         </div>
-        <CopyIconButton onCopy={() => onCopy(text)} copied={copied} onDark />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <CopiedChip show={copied} />
+          <CopyIconButton onCopy={() => onCopy(text)} copied={copied} onDark />
+        </div>
       </div>
-      <p style={{
-        margin: 0, fontSize: 12,
-        color: 'rgba(255,255,255,0.72)',
-        fontFamily: '"SF Mono", ui-monospace, Menlo, Consolas, monospace',
-        lineHeight: 1.55, wordBreak: 'break-all',
-      }}>
-        {text}
-      </p>
+      {lines ? (
+        <div style={{
+          fontSize: 12,
+          fontFamily: '"SF Mono", ui-monospace, Menlo, Consolas, monospace',
+          lineHeight: 1.65, wordBreak: 'break-all',
+        }}>
+          {lines.map((l, i) => (
+            <div key={i} style={{ color: l.color }}>{l.text}</div>
+          ))}
+        </div>
+      ) : (
+        <p style={{
+          margin: 0, fontSize: 12,
+          color: 'rgba(255,255,255,0.72)',
+          fontFamily: '"SF Mono", ui-monospace, Menlo, Consolas, monospace',
+          lineHeight: 1.55, wordBreak: 'break-all',
+        }}>
+          {text}
+        </p>
+      )}
     </div>
   )
 }
 
 // ── Combined METAR + TAF card ────────────────────────────────────
-function RawTextCard({ metarText, tafText, onCopy, copied }) {
+function RawTextCard({ metarText, tafText, onCopy, copiedText }) {
   if (!metarText && !tafText) return null
   return (
     <div style={{ ...GLASS, padding: '16px 18px', marginBottom: 12 }}>
-      <RawTextRow title="Raw METAR" text={metarText} onCopy={onCopy} copied={copied} last={!tafText} />
-      <RawTextRow title="Raw TAF" text={tafText} onCopy={onCopy} copied={copied} last />
+      <RawTextRow title="Raw METAR" text={metarText} onCopy={onCopy} copiedText={copiedText} last={!tafText} />
+      <RawTextRow title="Raw TAF" text={tafText} onCopy={onCopy} copiedText={copiedText} last colorize />
     </div>
   )
 }
@@ -174,7 +229,7 @@ function RawTextCard({ metarText, tafText, onCopy, copied }) {
 export default function WeatherDetailOverlay({
   wx, icao, loading, error, isStale,
   closing, cardRect,
-  onClose, onRefresh, onCopyMetar, copied, onOpenPicker,
+  onClose, onRefresh, onCopyMetar, copiedText, onOpenPicker,
 }) {
   const { profile } = usePilotProfile()
   const units = profile ?? {}
@@ -184,6 +239,8 @@ export default function WeatherDetailOverlay({
   const hazards = getHazards(metar)
   const summary = pilotSummary(metar, cat)
   const tafPeriods = parseTafPeriods(wx?.taf)
+  const trend = deriveTrend(cat, tafPeriods)
+  const cloudLayers = parseCloudLayers(metar, units)
 
   const conditionLabel = parseWx(metar) ?? (type.charAt(0).toUpperCase() + type.slice(1))
 
@@ -371,7 +428,7 @@ export default function WeatherDetailOverlay({
           {metar && (
             <>
               {/* ── Raw METAR / Raw TAF — first cards below the hero ── */}
-              <RawTextCard metarText={metar.rawOb} tafText={wx?.taf?.rawTAF} onCopy={onCopyMetar} copied={copied} />
+              <RawTextCard metarText={metar.rawOb} tafText={wx?.taf?.rawTAF} onCopy={onCopyMetar} copiedText={copiedText} />
 
               {/* ── Pilot readout ── */}
               {summary && (
@@ -409,11 +466,21 @@ export default function WeatherDetailOverlay({
                     <div style={{ fontSize: 17, fontWeight: 700, color: '#fff' }}>
                       TAF Outlook
                     </div>
-                    <div style={{
-                      fontSize: 12, fontWeight: 700,
-                      color: 'rgba(255,255,255,0.56)',
-                    }}>
-                      Next {tafPeriods.length * 3}+ hr
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {trend && (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 3,
+                          fontSize: 11, fontWeight: 800, color: trend.color,
+                        }}>
+                          {trend.arrow} {trend.label}
+                        </span>
+                      )}
+                      <div style={{
+                        fontSize: 12, fontWeight: 700,
+                        color: 'rgba(255,255,255,0.56)',
+                      }}>
+                        Next {tafPeriods.length * 3}+ hr
+                      </div>
                     </div>
                   </div>
                   <div style={{
@@ -470,12 +537,11 @@ export default function WeatherDetailOverlay({
                     sub: parseWx(metar) ?? 'unrestricted',
                   },
                   {
-                    label: 'Ceiling',
-                    value: parseCeiling(metar, units),
-                    sub: cat?.label === 'MVFR' ? 'MVFR limiter'
-                       : cat?.label === 'IFR'  ? 'IFR limiter'
-                       : cat?.label === 'LIFR' ? 'LIFR limiter'
-                       : 'above minimums',
+                    label: 'Dew Point',
+                    value: parseDewp(metar, units),
+                    sub: (metar.temp != null && metar.dewp != null)
+                       ? (metar.temp - metar.dewp <= 3 ? 'near spread — fog risk' : `${(metar.temp - metar.dewp).toFixed(0)}° spread`)
+                       : '—',
                   },
                   {
                     label: 'Altimeter',
@@ -513,6 +579,51 @@ export default function WeatherDetailOverlay({
                     )}
                   </div>
                 ))}
+              </div>
+
+              {/* ── Cloud layers — every reported layer, not just the ceiling ── */}
+              <div style={{ ...GLASS, padding: '16px 18px', marginBottom: 12 }}>
+                <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', marginBottom: 12 }}>
+                  Cloud Layers
+                </div>
+                {cloudLayers.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {cloudLayers.map((l, i) => {
+                      const isCeiling = l.cover === 'BKN' || l.cover === 'OVC'
+                      return (
+                        <div key={i} style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '9px 12px', borderRadius: 12,
+                          background: 'rgba(12,20,30,0.34)',
+                          border: '1px solid rgba(255,255,255,0.14)',
+                        }}>
+                          <span style={{
+                            fontSize: 11, fontWeight: 800, letterSpacing: '0.04em',
+                            color: isCeiling ? cat?.color ?? '#fff' : 'rgba(255,255,255,0.7)',
+                            minWidth: 34,
+                          }}>
+                            {l.cover}
+                          </span>
+                          <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>
+                            {l.label}
+                          </span>
+                          {isCeiling && (
+                            <span style={{
+                              marginLeft: 'auto', fontSize: 10, fontWeight: 700,
+                              color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase',
+                            }}>
+                              ceiling
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)' }}>
+                    {metar?.cover === 'CAVOK' ? 'CAVOK — no significant cloud' : 'Clear — no layers reported'}
+                  </div>
+                )}
               </div>
 
               {/* ── Hazard pills ── */}

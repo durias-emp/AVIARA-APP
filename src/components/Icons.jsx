@@ -10,10 +10,8 @@ export function CopyIconButton({ onCopy, copied, onDark = false, size = 16 }) {
       style={{
         borderRadius: 999, padding: '7px 10px',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: onDark
-          ? (copied ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.14)')
-          : (copied ? 'var(--accent-light)' : 'var(--bg-card-2)'),
-        border: onDark ? 'none' : '0.5px solid var(--border)',
+        background: onDark ? 'rgba(255,255,255,0.14)' : 'var(--bg-card-2)',
+        border: onDark ? '1px solid rgba(255,255,255,0.18)' : '0.5px solid var(--border)',
         cursor: 'pointer',
       }}
     >
@@ -21,7 +19,7 @@ export function CopyIconButton({ onCopy, copied, onDark = false, size = 16 }) {
         src="/archivos.png" alt="" width={size} height={size}
         style={{
           filter: onDark ? 'brightness(0) invert(1)' : 'var(--icon-filter)',
-          opacity: copied ? 1 : 0.85,
+          opacity: 0.85,
         }}
       />
     </button>

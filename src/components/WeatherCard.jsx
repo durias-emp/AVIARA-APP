@@ -49,7 +49,10 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
   const [wx, setWx]             = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState(null)
-  const [copied, setCopied]   = useState(false)
+  // Tracks the exact string last copied (not just a boolean) so the METAR and
+  // TAF copy buttons — which can both be on screen at once — each show their
+  // own "copied" state instead of lighting up together.
+  const [copiedText, setCopiedText] = useState(null)
 
   // Overlay open state
   const cardRef   = useRef(null)
@@ -75,14 +78,14 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
         el.select()
         document.execCommand('copy')
         document.body.removeChild(el)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1800)
+        setCopiedText(text)
+        setTimeout(() => setCopiedText(null), 1800)
       } catch { /* clipboard fallback failed silently */ }
     }
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).then(() => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1800)
+        setCopiedText(text)
+        setTimeout(() => setCopiedText(null), 1800)
       }).catch(doFallback)
     } else {
       doFallback()
@@ -295,7 +298,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
             onClose={handleOverlayClose}
             onRefresh={() => refresh(icao)}
             onCopyMetar={copyMetar}
-            copied={copied}
+            copiedText={copiedText}
             onOpenPicker={() => setPicker(true)}
           />,
           document.body
@@ -432,30 +435,35 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
                   <p style={{ flex: 1, fontSize: 10, color: fgMuted, fontFamily: 'monospace', lineHeight: 1.6, wordBreak: 'break-all', margin: 0 }}>
                     {wx.metar.rawOb}
                   </p>
-                  <button
-                    onClick={() => copyMetar(wx.metar.rawOb)}
-                    title="Copy METAR"
-                    style={{
-                      flexShrink: 0, marginTop: 1,
-                      background: copied ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)',
-                      border: '1px solid rgba(255,255,255,0.2)',
-                      borderRadius: 6, padding: '4px 6px',
-                      cursor: 'pointer', color: copied ? 'rgba(255,255,255,0.9)' : fgMuted,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      transition: 'background 0.2s, color 0.2s',
-                      minWidth: 28,
-                    }}>
-                    {copied ? (
-                      <svg width={12} height={12} viewBox="0 0 24 24" fill="none">
-                        <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    ) : (
-                      <svg width={12} height={12} viewBox="0 0 24 24" fill="none">
-                        <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5"/>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke="currentColor" strokeWidth="1.5"/>
-                      </svg>
-                    )}
-                  </button>
+                  {(() => {
+                    const metarCopied = copiedText === wx.metar.rawOb
+                    return (
+                      <button
+                        onClick={() => copyMetar(wx.metar.rawOb)}
+                        title="Copy METAR"
+                        style={{
+                          flexShrink: 0, marginTop: 1,
+                          background: metarCopied ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)',
+                          border: '1px solid rgba(255,255,255,0.2)',
+                          borderRadius: 6, padding: '4px 6px',
+                          cursor: 'pointer', color: metarCopied ? 'rgba(255,255,255,0.9)' : fgMuted,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          transition: 'background 0.2s, color 0.2s',
+                          minWidth: 28,
+                        }}>
+                        {metarCopied ? (
+                          <svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                            <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        ) : (
+                          <svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                            <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke="currentColor" strokeWidth="1.5"/>
+                          </svg>
+                        )}
+                      </button>
+                    )
+                  })()}
                 </div>
               )}
             </div>

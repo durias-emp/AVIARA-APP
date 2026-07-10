@@ -56,6 +56,54 @@ export function parseFltCat(metar) {
   return FLTCAT[metar?.fltCat] ?? FLTCAT.VFR
 }
 
+// Ceiling/visibility -> flight category. Shared by TAF-period classification
+// (WeatherDetailOverlay's deriveTafCat) and the raw-TAF-text colorizer below,
+// so both always agree with the chip's own color grading.
+export function catFromCeilingVis(ceilFt, visSm) {
+  if ((ceilFt != null && ceilFt < 500) || visSm < 1)  return FLTCAT.LIFR
+  if ((ceilFt != null && ceilFt < 1000) || visSm < 3) return FLTCAT.IFR
+  if ((ceilFt != null && ceilFt < 3000) || visSm < 5) return FLTCAT.MVFR
+  return FLTCAT.VFR
+}
+
+// ── Raw TAF text colorizing ───────────────────────────────────
+// Splits a raw TAF string into its forecast groups (issuance header, then
+// each FM/BECMG/TEMPO/PROB change group) and classifies each group's flight
+// category from its own visibility/ceiling tokens — same color grading as
+// the flight-category chip. A group with no visibility/cloud tokens of its
+// own (e.g. a wind-only BECMG) carries forward the previous group's color,
+// since it doesn't change the flying conditions.
+const TAF_GROUP_RE = /(?=\bFM\d{6}\b|\bBECMG\b|\bTEMPO\b|\bPROB\d{2}\b)/
+
+function tafVisSm(text) {
+  if (/\bP6SM\b/.test(text)) return 10
+  const frac = text.match(/\bM?(\d+)\/(\d+)SM\b/)
+  if (frac) return Number(frac[1]) / Number(frac[2])
+  const whole = text.match(/\b(\d{1,2})SM\b/)
+  if (whole) return Number(whole[1])
+  return null
+}
+
+function tafCeilingFt(text) {
+  const matches = [...text.matchAll(/\b(?:BKN|OVC|VV)(\d{3})\b/g)]
+  if (!matches.length) return null
+  return Math.min(...matches.map(m => Number(m[1]) * 100))
+}
+
+export function colorizeTaf(rawText) {
+  if (!rawText) return []
+  const normalized = rawText.replace(/\s*\n\s*/g, ' ').trim()
+  const groups = normalized.split(TAF_GROUP_RE).map(g => g.trim()).filter(Boolean)
+  let lastCat = FLTCAT.VFR
+  return groups.map(text => {
+    const vis = tafVisSm(text)
+    const ceil = tafCeilingFt(text)
+    const cat = (vis == null && ceil == null) ? lastCat : catFromCeilingVis(ceil, vis ?? 10)
+    lastCat = cat
+    return { text, color: cat.color }
+  })
+}
+
 // ── Unit conversion ──────────────────────────────────────────
 // `units` mirrors the shape of the pilot profile (unitSpeed, unitVisibility,
 // unitAltitude, unitTemperature, unitPressure) so callers can just pass the
@@ -107,6 +155,20 @@ export function parseCeiling(metar, units = {}) {
     return top ? `${top.cover} ${top.base != null ? fmt(top.base) : ''}` : 'CLR'
   }
   return `${ceiling.cover} ${ceiling.base != null ? fmt(ceiling.base) : ''}`
+}
+
+// Every reported cloud layer (not just the ceiling-forming one), lowest
+// first — e.g. [{ cover: 'SCT', label: '6,000 ft' }, { cover: 'SCT', label: '14,000 ft' }].
+// CLR/SKC/CAVOK reports have no layers at all (returns []).
+export function parseCloudLayers(metar, units = {}) {
+  const unit = units.unitAltitude ?? 'FT'
+  const fmt = ft => unit === 'M' ? `${Math.round(ft * 0.3048).toLocaleString()} m` : `${ft.toLocaleString()} ft`
+  if (metar?.cover === 'CAVOK') return []
+  const clouds = metar?.clouds ?? []
+  return clouds
+    .filter(c => c.base != null && !['CLR', 'SKC', 'NSC', 'NCD'].includes(c.cover))
+    .sort((a, b) => a.base - b.base)
+    .map(c => ({ cover: c.cover, label: fmt(c.base) }))
 }
 
 function tempFromC(c, unit) {
