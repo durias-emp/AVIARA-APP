@@ -838,7 +838,6 @@ export default function Aircraft() {
   const isHelicopter = profile.category === 'helicopter'
   const wbNormalized = normalizeUserWBConfig(profile.wbConfig, profile)
   const wbConfigured = validateWBConfig(wbNormalized)
-  const isBellBuiltIn = profile.label === 'Bell 206B'
   const wbStations = profile.wbConfig?.stations ?? []
   const wbLongPoints = profile.wbConfig?.longEnvelopePoints ?? []
   const wbLatPoints  = profile.wbConfig?.latEnvelopePoints ?? []
@@ -1096,10 +1095,10 @@ export default function Aircraft() {
             Use <em>this aircraft's</em> actual POH and AFM values, not generic model numbers.
           </div>
 
-          {isBellBuiltIn && !wbConfigured && (
+          {!wbConfigured && (
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-card-2)', borderRadius: 10, padding: '9px 11px', lineHeight: 1.5 }}>
-              Using the built in Bell 206B3 reference config. Fill in the fields below to override with this
-              aircraft's actual numbers.
+              Not configured yet — the Weight & Balance checklist item won't compute results until you fill in
+              this aircraft's actual numbers below.
             </div>
           )}
 

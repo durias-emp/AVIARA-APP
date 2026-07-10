@@ -1,85 +1,15 @@
 // Weight & Balance configs and calculation.
 //
-// Two sources of a config are supported:
-//  1. The built-in Bell 206B config below (WB_CONFIGS) — verified against
-//     BHT-206B3-FM-1, uses weight-tapered fwd/aft CG limit functions.
-//  2. A user-entered config saved on the aircraft profile (`profile.wbConfig`).
-//     Since every real tail number has different BEW/arms/equipment, we never
-//     guess these — the user enters them once on the Aircraft page (source of
-//     truth: POH/AFM/latest W&B report), and enters a longitudinal CG envelope
-//     as a list of (CG, weight) points (and, optionally, a lateral envelope as
-//     a list of (lateral CG, longitudinal CG) points for helicopters).
-//
-// calculateWB() works with either shape: it detects which kind of CG-limit
-// data a config provides and checks the computed CG against it accordingly.
-// Bell's own code path is unchanged from before this file supported custom
-// configs — the branch it takes has always existed, just extracted so a
-// second (polygon-based) branch could be added alongside it.
-
-// ── Bell 206B-3 JetRanger III ─────────────────────────────────────────────────
-const BELL_206B3 = {
-  name: 'Bell 206B-3 JetRanger III',
-  maxTOW: 3200,
-  bew: { weight: 1976.0, longArm: 115.96, latArm: 0.14 },
-  fuel: { lbPerGal: 6.7, longArm: 110.60, latArm: 0.0, maxGal: 91, label: 'Main tank · 6.7 lbs/USG', unit: 'USG' },
-  stations: [
-    { id: 'pilot',    label: 'Pilot',            sub: 'Front Right',   longArm: 65.0,  latArm:  14.0  },
-    { id: 'pax1',     label: 'Front Left Pax',   sub: 'Front Left',    longArm: 65.0,  latArm: -11.0  },
-    { id: 'pax2',     label: 'Rear Right Pax',   sub: 'Rear Right',    longArm: 104.0, latArm:  16.10 },
-    { id: 'pax3',     label: 'Rear Center Pax',  sub: 'Rear Center',   longArm: 104.0, latArm:   0.0  },
-    { id: 'pax4',     label: 'Rear Left Pax',    sub: 'Rear Left',     longArm: 104.0, latArm: -16.10 },
-    { id: 'baggage',  label: 'Baggage',           sub: 'Compartment',   longArm: 148.0, latArm:   0.0  },
-    { id: 'extender', label: 'Ext. Baggage',      sub: 'Max 42 lbs',    longArm: 185.0, latArm:   0.0, maxWeight: 42 },
-  ],
-  doors: {
-    frontLeft:  { label: 'Fwd Left',  weight: 11, longArm: 66.0,  latArm: -25.0 },
-    frontRight: { label: 'Fwd Right', weight: 11, longArm: 66.0,  latArm:  25.0 },
-    rearLeft:   { label: 'Aft Left',  weight: 15, longArm: 100.0, latArm: -25.0 },
-    rearRight:  { label: 'Aft Right', weight: 15, longArm: 100.0, latArm:  25.0 },
-  },
-  cgLimits: {
-    latLeft: -3.0,
-    latRight: 4.0,
-    // Forward limit: 106" normally, 111.6" if any front door off
-    longFwd: (anyFrontDoorOff) => anyFrontDoorOff ? 111.6 : 106.0,
-    // Aft limit: linear from 114.2" at <=2425 lb to 111.6" at >=3200 lb
-    longAft: (w) => {
-      if (w <= 2425) return 114.2
-      if (w >= 3200) return 111.6
-      return 114.2 - (w - 2425) * 2.6 / 775
-    },
-  },
-  // Chart axis ranges
-  longChart: { cgMin: 105.0, cgMax: 115.0, wtMin: 1800, wtMax: 3400 },
-  latChart:  { longMin: 105.0, longMax: 115.0, latMin: -4.0, latMax: 5.0 },
-  // Longitudinal envelope polygon [cgIn, weightLb]
-  longEnvelope: (cfg) => [
-    [cfg.cgLimits.longFwd(false), 1800],
-    [cfg.cgLimits.longFwd(false), cfg.maxTOW],
-    [cfg.cgLimits.longAft(cfg.maxTOW), cfg.maxTOW],
-    [114.2, 2425],
-    [114.2, 1800],
-  ],
-  // Lateral envelope polygon [latIn, longCgIn] — matches BHT-206B3-FM-1 Fig 1-2
-  latEnvelope: [
-    [-2.3, 106.0],
-    [ 3.0, 106.0],
-    [ 4.0, 108.0],
-    [ 4.0, 114.2],
-    [-3.0, 114.2],
-    [-3.0, 108.0],
-  ],
-  ref: 'BHT-206B3-FM-1',
-  hasDoors: true,
-  hasFrontDoorEffect: true,
-  hasLateral: true,
-}
-
-// ── Registry ──────────────────────────────────────────────────────────────────
-// Keys must match the `label` field in Aircraft.jsx TEMPLATES exactly
-export const WB_CONFIGS = {
-  'Bell 206B': BELL_206B3,
-}
+// The only source of a config is a user-entered config saved on the aircraft
+// profile (`profile.wbConfig`). Since every real tail number has different
+// BEW/arms/equipment, we never guess these — the user enters them once on
+// the Aircraft page (source of truth: POH/AFM/latest W&B report), and enters
+// a longitudinal CG envelope as a list of (CG, weight) points (and,
+// optionally, a lateral envelope as a list of (lateral CG, longitudinal CG)
+// points for helicopters). There is deliberately no generic/template
+// fallback config — an aircraft with incomplete W&B setup has no config at
+// all (getWBConfig returns null) rather than silently computing real numbers
+// from a different aircraft's data.
 
 // ── Generic geometry helper — point-in-polygon (ray casting) ──────────────────
 // Used to test whether a computed (x, y) point — e.g. (CG, weight) or
@@ -202,7 +132,6 @@ export function getWBConfig(profile) {
   if (!profile) return null
   const userCfg = normalizeUserWBConfig(profile.wbConfig, profile)
   if (userCfg && validateWBConfig(userCfg)) return userCfg
-  if (profile.label === 'Bell 206B') return WB_CONFIGS['Bell 206B']
   return null
 }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { get } from '../../lib/db'
+import { get, put } from '../../lib/db'
 import { getWBConfig, calculateWB } from '../../lib/aircraftWB'
 import { DoneButton } from './shared/ui'
 import FuelConverter from '../../components/FuelConverter'
@@ -213,6 +213,14 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
     if (!cfg) return null
     return calculateWB(cfg, weights, doors)
   }, [cfg, weights, doors])
+
+  // Expose the computed takeoff weight so the Performance section's
+  // takeoff/landing distance calculator can use it as a correction factor.
+  useEffect(() => {
+    if (result?.allUp?.weight > 0) {
+      put('settings', { key: 'lastWB', weight: result.allUp.weight, maxTOW: cfg?.maxTOW ?? null }).catch(() => {})
+    }
+  }, [result, cfg])
 
   function setW(id, val) { setWeights(p => ({ ...p, [id]: val })) }
   function toggleDoor(key) { setDoors(p => ({ ...p, [key]: !p[key] })) }

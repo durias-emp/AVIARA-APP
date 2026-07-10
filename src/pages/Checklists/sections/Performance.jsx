@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { get, put } from '../../../lib/db'
 import { ExpandableCard, DoneButton } from '../shared/ui'
 import { awcUrl, proxyFetch, proxyJSON } from '../shared/awc'
+import { getWBConfig } from '../../../lib/aircraftWB'
 import WBChecklistItem from '../WBChecklistItem'
 
 /* ── Density Altitude calculator ────────────────────────────── */
@@ -348,7 +349,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
   const [ldgOver, setLdgOver]= useState('')    // LDG over 50ft
 
   // ── Per-tab conditions (pohBase is per-tab) ───────────────────
-  const ECOND = { da: null, icao: '', runways: [], selRwy: null, windDir: '', windSpd: '', surface: 'dry', slope: '0', pohBase: '0', loading: false }
+  const ECOND = { da: null, icao: '', runways: [], selRwy: null, windDir: '', windSpd: '', surface: 'dry', slope: '0', pohBase: '0', pohWeight: '', actualWeight: '', loading: false }
   const [dep,  setDep]  = useState(ECOND)
   const [arr,  setArr]  = useState(ECOND)
   const cur    = tab === 'dep' ? dep  : arr
@@ -418,7 +419,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
   useEffect(() => {
     if (!open) return
     const parsePerf = v => v ? String(parseFloat(String(v).replace(/,/g, '')) || '') : ''
-    Promise.all([get('settings', 'perfdist'), get('aircraft', 'profile')]).then(([saved, profile]) => {
+    Promise.all([get('settings', 'perfdist'), get('aircraft', 'profile'), get('settings', 'lastWB')]).then(([saved, profile, lastWB]) => {
       if (saved?.dep?.pohBase != null) setDep(prev => ({ ...prev, pohBase: saved.dep.pohBase }))
       if (saved?.arr?.pohBase != null) setArr(prev => ({ ...prev, pohBase: saved.arr.pohBase }))
       if (saved?.toGR     != null) setToGR(saved.toGR)
@@ -432,6 +433,15 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
       if (!saved?.toOver  && profile?.perf?.to50ft)  setToOver(parsePerf(profile.perf.to50ft))
       if (!saved?.ldgGR   && profile?.perf?.ldgRoll) setLdgGR(parsePerf(profile.perf.ldgRoll))
       if (!saved?.ldgOver && profile?.perf?.ldg50ft) setLdgOver(parsePerf(profile.perf.ldg50ft))
+      // Auto-fill the POH chart's baseline weight from the aircraft's max
+      // takeoff weight (the weight most POH takeoff/landing charts are
+      // built around), and the actual weight from the W&B checklist's
+      // computed all-up weight. Both stay editable — the pilot confirms.
+      const cfg = profile ? getWBConfig(profile) : null
+      if (!saved?.dep?.pohWeight && cfg?.maxTOW) setDep(prev => ({ ...prev, pohWeight: String(cfg.maxTOW) }))
+      if (!saved?.arr?.pohWeight && cfg?.maxTOW) setArr(prev => ({ ...prev, pohWeight: String(cfg.maxTOW) }))
+      if (!saved?.dep?.actualWeight && lastWB?.weight) setDep(prev => ({ ...prev, actualWeight: String(Math.round(lastWB.weight)) }))
+      if (!saved?.arr?.actualWeight && lastWB?.weight) setArr(prev => ({ ...prev, actualWeight: String(Math.round(lastWB.weight)) }))
     })
     // Also pull DA from the DA card as a fallback
     get('settings', 'densityalt').then(da => {
@@ -469,8 +479,18 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
   const slopeFactorTO = 1 + Math.max(0, slopePct) * 0.07 - Math.max(0, -slopePct) * 0.02
   const slopeFactorLD = 1 + Math.max(0, -slopePct) * 0.05 - Math.max(0, slopePct) * 0.02
 
-  const combinedTO = daFactor * windFactor * surfFactor * slopeFactorTO
-  const combinedLD = daFactor * windFactor * surfFactor * slopeFactorLD
+  // Weight factor — POH ground-roll/50ft numbers are calibrated at a chart
+  // baseline weight (usually max gross); distance scales roughly with the
+  // square of the weight ratio (lift/energy relationship), clamped so a
+  // missing or clearly-wrong weight entry can't blow up the estimate.
+  const pohW    = parseFloat(cur.pohWeight) || 0
+  const actualW = parseFloat(cur.actualWeight) || 0
+  const weightFactor = (pohW > 0 && actualW > 0)
+    ? Math.min(1.5, Math.max(0.5, (actualW / pohW) ** 2))
+    : 1
+
+  const combinedTO = daFactor * windFactor * surfFactor * slopeFactorTO * weightFactor
+  const combinedLD = daFactor * windFactor * surfFactor * slopeFactorLD * weightFactor
 
   const calc = (base, f) => base && !isNaN(parseFloat(base)) ? Math.round(parseFloat(base) * f) : null
   const isDepTab = tab === 'dep'
@@ -692,6 +712,28 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
           </FieldTip>
         </div>
 
+        {/* Weight — POH chart baseline vs. actual, side by side */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          <FieldTip label="POH Chart Weight" tip="The weight your POH takeoff/landing table is built around — usually max gross. Auto-filled from the Aircraft profile.">
+            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-card-2)',
+              borderRadius: 8, padding: '8px 10px', gap: 3 }}>
+              <input type="number" value={cur.pohWeight} onChange={e => updCur({ pohWeight: e.target.value })}
+                placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
+                  fontSize: 15, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace', width: 0, minWidth: 0 }} />
+              <span style={{ fontSize: 10, color: 'var(--text-tertiary)', flexShrink: 0 }}>lb</span>
+            </div>
+          </FieldTip>
+          <FieldTip label={`Actual ${isDepTab ? 'Takeoff' : 'Landing'} Weight`} tip="Auto-filled from your Weight & Balance checklist — confirm it matches, or edit if this leg's weight is different (e.g. landing weight after fuel burn).">
+            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-card-2)',
+              borderRadius: 8, padding: '8px 10px', gap: 3 }}>
+              <input type="number" value={cur.actualWeight} onChange={e => updCur({ actualWeight: e.target.value })}
+                placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
+                  fontSize: 15, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace', width: 0, minWidth: 0 }} />
+              <span style={{ fontSize: 10, color: 'var(--text-tertiary)', flexShrink: 0 }}>lb</span>
+            </div>
+          </FieldTip>
+        </div>
+
         {/* 2×2 grid: Takeoff left, Landing right */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 16 }}>
           {[
@@ -806,12 +848,13 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
             </div>
 
             {/* Correction summary strip */}
-            <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
+            <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
               {[
                 { label: 'DA',      factor: daFactor,                              tip: 'Effect of density altitude on distances. Higher DA = thinner air = longer roll.' },
                 { label: 'Wind',    factor: windFactor,                            tip: 'Headwind shortens distances (good). Tailwind increases them significantly (bad).' },
                 { label: 'Surface', factor: surfFactor,                            tip: 'Wet runway adds ~20% to landing roll. Dry has no penalty.' },
                 { label: 'Slope',   factor: isDepTab ? slopeFactorTO : slopeFactorLD, tip: 'Uphill takeoff = longer roll. Downhill landing = longer roll.' },
+                { label: 'Weight',  factor: weightFactor,                          tip: 'Lighter than the POH chart weight shortens distances; heavier lengthens them. Enter both weights above to apply.' },
               ].map(({ label, factor, tip }) => (
                 <FieldTip key={label} label={label} tip={tip} style={{ flex: 1, minWidth: 0, textAlign: 'center' }}>
                   <div style={{ background: 'var(--bg-card-2)', borderRadius: 7, padding: '5px 4px' }}>
@@ -829,6 +872,10 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
                   </div>
                 </div>
               </FieldTip>
+            </div>
+
+            <div style={{ fontSize: 10, color: 'var(--text-tertiary)', textAlign: 'center', marginBottom: 14, lineHeight: 1.4 }}>
+              Planning aid only — an estimate, not a substitute for your POH performance charts. Always verify against the POH before flight.
             </div>
           </>
         )}
