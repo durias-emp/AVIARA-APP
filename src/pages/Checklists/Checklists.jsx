@@ -8,6 +8,7 @@ import { WBExpand, DensityAltItem, PerfDistItem, CruiseItem } from './sections/P
 import { AirportItem, NotamItem } from './sections/Airport'
 import { AlternatesItem, MetarItem } from './sections/Weather'
 import { AltitudeItem, ChartsItem } from './sections/RouteAltitude'
+import FlightPlanOnePager from './FlightPlanOnePager'
 
 /* ── Checklist data ──────────────────────────────────────────── */
 const CHECKLISTS = [
@@ -102,6 +103,8 @@ function ChecklistDetail({ checklist, onBack }) {
   const [checked, setChecked]         = useState(new Set())
   const [customItems, setCustomItems] = useState({ PILOT: [] })
   const [resetKey, setResetKey]       = useState(0)
+  const [onePagerOpen, setOnePagerOpen] = useState(false)
+  const [addDrawerOpen, setAddDrawerOpen] = useState(false)
   const trackRef = useRef(null)
   const circleRefs = useRef([])
 
@@ -142,6 +145,9 @@ function ChecklistDetail({ checklist, onBack }) {
       del('settings', 'densityalt'),
       del('settings', 'perfdist'),
       del('settings', 'cruise'),
+      del('settings', 'alternates'),
+      del('settings', 'selectedRunway'),
+      del('settings', 'lastWB'),
     ]).catch(() => {})
 
     ;['cruise_fuel_state', 'apt_fbo_freq', 'apt_fbo_note',
@@ -162,6 +168,23 @@ function ChecklistDetail({ checklist, onBack }) {
     setCustomItems(next)
     setChecked(nextChecked)
     save(nextChecked, next)
+  }
+
+  // type: 'check' | 'text' | 'number'
+  function addCustomItem(sectionTitle, label, type) {
+    const item = { id: `custom-${Date.now()}`, label, type, value: '' }
+    const next = { ...customItems, [sectionTitle]: [...(customItems[sectionTitle] ?? []), item] }
+    setCustomItems(next)
+    save(checked, next)
+  }
+
+  function updateCustomItemValue(sectionTitle, itemId, value) {
+    const next = {
+      ...customItems,
+      [sectionTitle]: customItems[sectionTitle].map(i => i.id === itemId ? { ...i, value } : i),
+    }
+    setCustomItems(next)
+    save(checked, next)
   }
 
   const done     = checked.size
@@ -327,14 +350,14 @@ function ChecklistDetail({ checklist, onBack }) {
               <div style={{ paddingLeft: 44, paddingBottom: isLast ? 0 : 20 }}>
                 <MetroItems items={section.items} checked={checked} onToggle={toggle} depth={0} total={total} />
 
-                {/* Custom items — PILOT section only */}
-                {section.title === 'PILOT' && (
+                {/* Custom items — pilot-added, any section */}
+                {(customItems[section.title] ?? []).length > 0 && (
                   <>
-                    {(customItems.PILOT ?? []).map(ci => (
+                    {customItems[section.title].map(ci => (
                       <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', minHeight: 36 }}>
                         <button
                           onClick={() => toggle(ci.id)}
-                          style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0 }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0, minWidth: 0 }}
                         >
                           <div style={{
                             width: 7, height: 7, marginTop: 1, borderRadius: '50%', flexShrink: 0,
@@ -347,10 +370,26 @@ function ChecklistDetail({ checklist, onBack }) {
                             color: checked.has(ci.id) ? 'var(--text-tertiary)' : 'var(--text)',
                             textDecoration: checked.has(ci.id) ? 'line-through' : 'none',
                             transition: 'color 0.2s',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           }}>{ci.label}</span>
                         </button>
+                        {(ci.type === 'text' || ci.type === 'number') && (
+                          <input
+                            type={ci.type === 'number' ? 'number' : 'text'}
+                            inputMode={ci.type === 'number' ? 'decimal' : undefined}
+                            value={ci.value ?? ''}
+                            onChange={e => updateCustomItemValue(section.title, ci.id, e.target.value)}
+                            placeholder="—"
+                            style={{
+                              width: 84, flexShrink: 0, fontSize: 13, textAlign: 'right',
+                              background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
+                              borderRadius: 8, padding: '5px 8px', color: 'var(--text)',
+                              outline: 'none', fontFamily: 'inherit',
+                            }}
+                          />
+                        )}
                         <button
-                          onClick={() => deleteCustomItem('PILOT', ci.id)}
+                          onClick={() => deleteCustomItem(section.title, ci.id)}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: '2px 4px', flexShrink: 0, display: 'flex', alignItems: 'center' }}
                         >
                           <svg width={11} height={11} viewBox="0 0 24 24" fill="none">
@@ -373,13 +412,33 @@ function ChecklistDetail({ checklist, onBack }) {
         pct={pct}
         complete={complete}
         checklist={checklist}
-        onComplete={reset}
+        onComplete={() => setOnePagerOpen(true)}
+        onAddStep={() => setAddDrawerOpen(true)}
       />
+
+      {/* ── Flight Plan one-pager — shown before the checklist resets, so
+          all the per-flight data it reads is still in IndexedDB. Closing it
+          is what actually resets the checklist for the next flight. ── */}
+      {onePagerOpen && (
+        <FlightPlanOnePager onClose={() => { setOnePagerOpen(false); reset() }} />
+      )}
+
+      {/* ── Add custom item drawer ── */}
+      {addDrawerOpen && (
+        <AddItemDrawer
+          sections={checklist.sections}
+          onClose={() => setAddDrawerOpen(false)}
+          onAdd={(sectionTitle, label, type) => {
+            addCustomItem(sectionTitle, label, type)
+            setAddDrawerOpen(false)
+          }}
+        />
+      )}
     </div>
   )
 }
 
-function CompleteButton({ pct, complete, checklist, onComplete }) {
+function CompleteButton({ pct, complete, checklist, onComplete, onAddStep }) {
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
 
@@ -452,8 +511,9 @@ function CompleteButton({ pct, complete, checklist, onComplete }) {
 
   return (
     <div style={{ padding: '24px 16px 36px', display: 'flex', gap: 10 }}>
-      {/* Add Step — behavior TBD, style matches Complete button */}
+      {/* Add Step — opens the add-custom-item drawer */}
       <button
+        onClick={onAddStep}
         style={{
           position: 'relative',
           flex: 1,
@@ -601,6 +661,102 @@ function MetroItems({ items, checked, onToggle, depth, total }) {
           </div>
         )
       })}
+    </>
+  )
+}
+
+/* ── Add custom item drawer ──────────────────────────────────── */
+const ITEM_TYPES = [
+  { key: 'check',  label: 'Checkbox' },
+  { key: 'text',   label: 'Text' },
+  { key: 'number', label: 'Number' },
+]
+
+function AddItemDrawer({ sections, onClose, onAdd }) {
+  const [sectionTitle, setSectionTitle] = useState(sections[0]?.title ?? '')
+  const [label, setLabel] = useState('')
+  const [type, setType] = useState('check')
+
+  const canAdd = sectionTitle && label.trim().length > 0
+
+  return (
+    <>
+      <div onClick={onClose} style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+        zIndex: 1000, backdropFilter: 'blur(2px)',
+      }} />
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1001, padding: '0 12px 20px' }}>
+        <div style={{ borderRadius: 16, overflow: 'hidden', marginBottom: 8, background: 'var(--bg-card)' }}>
+          <div style={{ padding: '16px 16px 4px' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 14, textAlign: 'center' }}>
+              Add Custom Item
+            </div>
+
+            {/* Section picker */}
+            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 6 }}>
+              Section
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+              {sections.map(s => (
+                <button key={s.title} onClick={() => setSectionTitle(s.title)} style={{
+                  padding: '7px 12px', borderRadius: 20, cursor: 'pointer',
+                  fontSize: 12, fontWeight: 700, border: '0.5px solid',
+                  borderColor: sectionTitle === s.title ? 'var(--text)' : 'var(--border)',
+                  background: sectionTitle === s.title ? 'var(--text)' : 'var(--bg-card-2)',
+                  color: sectionTitle === s.title ? 'var(--bg-card)' : 'var(--text-secondary)',
+                  transition: 'all 0.15s',
+                }}>{s.title}</button>
+              ))}
+            </div>
+
+            {/* Label */}
+            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 6 }}>
+              Item Label
+            </div>
+            <input
+              value={label} onChange={e => setLabel(e.target.value)}
+              placeholder="e.g. Check tie-downs"
+              style={{
+                width: '100%', boxSizing: 'border-box', marginBottom: 14,
+                padding: '10px 12px', borderRadius: 10, border: '0.5px solid var(--border)',
+                background: 'var(--bg-card-2)', color: 'var(--text)', fontSize: 14,
+                outline: 'none', fontFamily: 'inherit',
+              }}
+            />
+
+            {/* Type picker */}
+            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 6 }}>
+              Input Type
+            </div>
+            <div style={{ display: 'flex', background: 'var(--bg-card-2)', borderRadius: 10, padding: 3, marginBottom: 16 }}>
+              {ITEM_TYPES.map(t => (
+                <button key={t.key} onClick={() => setType(t.key)} style={{
+                  flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  fontSize: 12, fontWeight: 700, transition: 'all 0.15s',
+                  background: type === t.key ? 'var(--bg-card)' : 'transparent',
+                  color: type === t.key ? 'var(--text)' : 'var(--text-tertiary)',
+                }}>{t.label}</button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            onClick={() => canAdd && onAdd(sectionTitle, label.trim(), type)}
+            disabled={!canAdd}
+            style={{
+              width: '100%', padding: '14px', border: 'none', cursor: canAdd ? 'pointer' : 'default',
+              background: 'var(--accent)', color: 'var(--accent-fg)',
+              fontSize: 15, fontWeight: 700, opacity: canAdd ? 1 : 0.5,
+              borderTop: '0.5px solid var(--border)',
+            }}
+          >Add Item</button>
+        </div>
+        <button onClick={onClose} style={{
+          width: '100%', padding: '14px', borderRadius: 14,
+          background: 'var(--bg-card)', border: 'none', cursor: 'pointer',
+          fontSize: 15, fontWeight: 700, color: 'var(--danger)',
+        }}>Cancel</button>
+      </div>
     </>
   )
 }

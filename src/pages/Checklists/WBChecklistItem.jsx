@@ -214,14 +214,6 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
     return calculateWB(cfg, weights, doors)
   }, [cfg, weights, doors])
 
-  // Expose the computed takeoff weight so the Performance section's
-  // takeoff/landing distance calculator can use it as a correction factor.
-  useEffect(() => {
-    if (result?.allUp?.weight > 0) {
-      put('settings', { key: 'lastWB', weight: result.allUp.weight, maxTOW: cfg?.maxTOW ?? null }).catch(() => {})
-    }
-  }, [result, cfg])
-
   function setW(id, val) { setWeights(p => ({ ...p, [id]: val })) }
   function toggleDoor(key) { setDoors(p => ({ ...p, [key]: !p[key] })) }
 
@@ -230,6 +222,30 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
   const overallOK = result && !result.status.overweight
     && result.status.zfLongOK && result.status.zfLatOK
     && result.status.auLongOK && result.status.auLatOK
+
+  // Souls on board — pilot-entered headcount, not derivable from station
+  // weights alone (a station can be loaded with baggage, not a person).
+  const [souls, setSouls] = useState('')
+  useEffect(() => {
+    get('settings', 'lastWB').then(saved => { if (saved?.souls != null) setSouls(String(saved.souls)) })
+  }, [])
+
+  // Expose the computed takeoff weight, CG, and envelope status so the
+  // Performance section's distance calculator and the Flight Plan one-pager
+  // can both read the pilot's actual current numbers instead of recomputing.
+  useEffect(() => {
+    if (result?.allUp?.weight > 0) {
+      put('settings', {
+        key: 'lastWB',
+        weight: result.allUp.weight,
+        maxTOW: cfg?.maxTOW ?? null,
+        longCG: isFinite(result.allUp.longCG) ? result.allUp.longCG : null,
+        latCG: isFinite(result.allUp.latCG) ? result.allUp.latCG : null,
+        withinEnvelope: overallOK,
+        souls: souls !== '' ? parseInt(souls, 10) : null,
+      }).catch(() => {})
+    }
+  }, [result, cfg, overallOK, souls])
 
   return (
     <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
@@ -470,6 +486,23 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                       </div>
                     </div>
                   </div>
+                </div>
+
+                {/* Souls on board — used by the Flight Plan one-pager and, if filing,
+                    matches the ICAO flight-plan "persons on board" item. */}
+                <div style={{ margin: '0 14px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  background: 'var(--bg-card-2)', border: '0.5px solid var(--border)', borderRadius: 12, padding: '10px 12px' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>Souls on Board</span>
+                  <input
+                    type="number" inputMode="numeric" min={1} value={souls}
+                    onChange={e => setSouls(e.target.value)}
+                    placeholder="—"
+                    style={{
+                      width: 56, textAlign: 'center', fontSize: 15, fontWeight: 700,
+                      color: 'var(--text)', background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+                      borderRadius: 8, padding: '5px 0', outline: 'none', fontFamily: 'inherit',
+                    }}
+                  />
                 </div>
 
                 <div style={{ padding: '0 14px', fontSize: 8, color: 'var(--text-tertiary)', textAlign: 'center', lineHeight: 1.6 }}>

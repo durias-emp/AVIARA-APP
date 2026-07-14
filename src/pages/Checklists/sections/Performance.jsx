@@ -341,6 +341,10 @@ function PerfSmallInput({ label, value, onChange, unit }) {
 export function PerfDistItem({ item, isChecked, onToggle }) {
   const [open,    setOpen]   = useState(false)
   const [tab,     setTab]    = useState('dep') // 'dep' = Takeoff | 'arr' = Landing
+  // Guards the persist effect below from firing with blank initial state
+  // before the restore effect (which only runs once the card is opened) has
+  // had a chance to load any previously-saved values.
+  const perfRestored = useRef(false)
 
   // ── POH reference ─────────────────────────────────────────────
   const [toGR,    setToGR]   = useState('')    // TO ground roll
@@ -442,6 +446,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
       if (!saved?.arr?.pohWeight && cfg?.maxTOW) setArr(prev => ({ ...prev, pohWeight: String(cfg.maxTOW) }))
       if (!saved?.dep?.actualWeight && lastWB?.weight) setDep(prev => ({ ...prev, actualWeight: String(Math.round(lastWB.weight)) }))
       if (!saved?.arr?.actualWeight && lastWB?.weight) setArr(prev => ({ ...prev, actualWeight: String(Math.round(lastWB.weight)) }))
+      perfRestored.current = true
     })
     // Also pull DA from the DA card as a fallback
     get('settings', 'densityalt').then(da => {
@@ -458,6 +463,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
 
   // ── Persist ───────────────────────────────────────────────────
   useEffect(() => {
+    if (!perfRestored.current) return
     put('settings', { key: 'perfdist', toGR, toOver, ldgGR, ldgOver, dep, arr }).catch(() => {})
   }, [toGR, toOver, ldgGR, ldgOver, dep, arr])
 
@@ -907,6 +913,8 @@ export function CruiseItem({ item, isChecked, onToggle }) {
   const [burnRate,  setBurnRate]  = useState('')   // GPH
   const [fuelOnBoard, setFuelOnBoard] = useState('') // usable gallons
   const [flightRules, setFlightRules] = useState('VFR') // VFR | IFR
+  const [timeOfDay, setTimeOfDay] = useState('day') // day | night — VFR reserve only (91.151)
+  const [isHelicopter, setIsHelicopter] = useState(false)
 
   // Auto-filled
   const [routeDist, setRouteDist] = useState(null) // nm
@@ -921,8 +929,8 @@ export function CruiseItem({ item, isChecked, onToggle }) {
   const cruiseRestored = useRef(false)
   useEffect(() => {
     if (!cruiseRestored.current) return
-    put('settings', { key: 'cruise', tas, burnRate, fuelOnBoard, flightRules, cruiseAlt }).catch(() => {})
-  }, [tas, burnRate, fuelOnBoard, flightRules, cruiseAlt])
+    put('settings', { key: 'cruise', tas, burnRate, fuelOnBoard, flightRules, cruiseAlt, timeOfDay }).catch(() => {})
+  }, [tas, burnRate, fuelOnBoard, flightRules, cruiseAlt, timeOfDay])
 
   useEffect(() => {
     if (!open) return
@@ -940,6 +948,8 @@ export function CruiseItem({ item, isChecked, onToggle }) {
       if (profile?.fullName) setAircraftLabel(profile.fullName)
       if (s?.flightRules) setFlightRules(s.flightRules)
       if (s?.cruiseAlt)   setCruiseAlt(s.cruiseAlt)
+      if (s?.timeOfDay)   setTimeOfDay(s.timeOfDay)
+      setIsHelicopter(profile?.category === 'helicopter')
       cruiseRestored.current = true
     })
 
@@ -1114,7 +1124,19 @@ export function CruiseItem({ item, isChecked, onToggle }) {
   const enduranceH    = (!isNaN(fobN) && !isNaN(burnN) && burnN > 0) ? fobN / burnN : null
   const reserveH      = (enduranceH != null && flightTimeH != null) ? enduranceH - flightTimeH : null
   const reserveMin    = reserveH != null ? Math.round(reserveH * 60) : null
-  const reqReserveMin = flightRules === 'IFR' ? 45 : 30
+  // 91.151 (VFR fuel reserve) applies to airplanes only — 30 min day / 45 min
+  // night — and explicitly excludes rotorcraft. Helicopters have no codified
+  // Part 91 VFR reserve minimum; 20 min is the common operator/industry
+  // standard, not an FAR citation. 91.167 (IFR, 45 min after the alternate)
+  // applies to both categories the same, so only the VFR side differs.
+  const reqReserveMin = flightRules === 'IFR'
+    ? 45
+    : isHelicopter ? 20 : (timeOfDay === 'night' ? 45 : 30)
+  const reserveRuleNote = flightRules === 'IFR'
+    ? 'FAR 91.167 — 45 min after alternate'
+    : isHelicopter
+      ? '20 min — operator standard, no FAR 91.151 minimum for helicopters'
+      : `FAR 91.151 — 30 min day / 45 min night (${timeOfDay})`
   const goNoGo        = reserveMin != null ? reserveMin >= reqReserveMin : null
 
   const fmtTime = (h) => {
@@ -1183,7 +1205,11 @@ export function CruiseItem({ item, isChecked, onToggle }) {
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>ft</span>
             </div>
           </FieldTip>
-          <FieldTip label="Flight Rules" tip="VFR requires 30 min fuel reserve. IFR requires 45 min. This sets your minimum reserve check." style={{ flex: 1 }}>
+          <FieldTip label="Flight Rules" tip={
+            isHelicopter
+              ? 'Helicopters have no FAR 91.151 VFR reserve — 20 min is the common operator standard. IFR still requires 45 min per 91.167.'
+              : 'VFR requires 30 min day / 45 min night fuel reserve (91.151). IFR requires 45 min (91.167). This sets your minimum reserve check.'
+          } style={{ flex: 1 }}>
             <div style={{ display: 'flex', background: 'var(--bg-card-2)', borderRadius: 8, padding: 3 }}>
               {['VFR','IFR'].map(r => (
                 <button key={r} onClick={() => setFlightRules(r)} style={{
@@ -1195,6 +1221,26 @@ export function CruiseItem({ item, isChecked, onToggle }) {
             </div>
           </FieldTip>
         </div>
+
+        {/* Day/Night — only affects the airplane VFR reserve (91.151); not
+            shown for IFR (flat 45 min either way) or helicopters (flat 20 min
+            operator standard, no day/night split in the FARs to model). */}
+        {flightRules === 'VFR' && !isHelicopter && (
+          <div style={{ marginBottom: 12 }}>
+            <FieldTip label="Time of Day" tip="91.151: 30 min reserve required by day, 45 min at night.">
+              <div style={{ display: 'flex', background: 'var(--bg-card-2)', borderRadius: 8, padding: 3 }}>
+                {['day','night'].map(t => (
+                  <button key={t} onClick={() => setTimeOfDay(t)} style={{
+                    flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', cursor: 'pointer',
+                    fontSize: 11, fontWeight: 700, textTransform: 'capitalize',
+                    background: timeOfDay === t ? 'var(--bg-card)' : 'transparent',
+                    color: timeOfDay === t ? 'var(--text)' : 'var(--text-tertiary)', transition: 'all 0.15s',
+                  }}>{t}</button>
+                ))}
+              </div>
+            </FieldTip>
+          </div>
+        )}
 
         {/* ── Winds aloft ── */}
         <div style={{ background: 'var(--bg-card-2)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
@@ -1397,7 +1443,10 @@ export function CruiseItem({ item, isChecked, onToggle }) {
                         <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>min</span>
                       </div>
                       <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                        {flightRules} minimum: {reqReserveMin} min
+                        {flightRules} minimum: {reqReserveMin} min ({isHelicopter ? 'Helicopter' : 'Airplane'})
+                      </div>
+                      <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>
+                        {reserveRuleNote}
                       </div>
                     </div>
                     <div style={{ padding: '8px 18px', borderRadius: 20,

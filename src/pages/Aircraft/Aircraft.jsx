@@ -1035,6 +1035,8 @@ export default function Aircraft() {
               onChange={v => patch(null, 'registration', v.toUpperCase())} placeholder="e.g. N4723A" />
             <Field label="Aircraft type" value={profile.fullName ?? ''}
               onChange={v => patch(null, 'fullName', v)} placeholder="e.g. Cessna 172S" />
+            <Field label="Color" value={profile.color ?? ''}
+              onChange={v => patch(null, 'color', v)} placeholder="e.g. White/Blue" />
           </div>
         </Section>
 

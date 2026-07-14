@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { IconRefresh } from '../../../components/Icons'
-import { get } from '../../../lib/db'
+import { get, put } from '../../../lib/db'
 import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
 import { FAA_AIRPORTS, FAA_DTPP_BASE } from '../shared/faaData'
 import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
@@ -103,7 +103,20 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
       fetchSuggestions(r.depPos,  d, setToSuggestions, setToSuggestLoad)
       fetchSuggestions(r.destPos, x, setLdSuggestions, setLdSuggestLoad)
     }).catch(() => {})
+    get('settings', 'alternates').then(a => {
+      if (a?.toAlts) setToAlts(a.toAlts)
+      if (a?.ldAlts) setLdAlts(a.ldAlts)
+    }).catch(() => {})
   }, [open])
+
+  // Persist chosen alternates so the Flight Plan one-pager can read them —
+  // this list was previously local-only and vanished when the card closed.
+  const altsRestored = useRef(false)
+  useEffect(() => {
+    if (!open) return
+    if (!altsRestored.current) { altsRestored.current = true; return }
+    put('settings', { key: 'alternates', toAlts, ldAlts }).catch(() => {})
+  }, [toAlts, ldAlts, open])
 
   async function addAlt(icao, refPos, refIcao, setAlts, setQuery, setShowList, setLoading, setError) {
     setQuery(''); setShowList(false); setLoading(true); setError(null)
