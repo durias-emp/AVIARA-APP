@@ -429,6 +429,139 @@ function FarLink({ far }) {
   )
 }
 
+// Manufacturer -> Service Bulletin portal search. There's no centralized SB
+// database (SBs are manufacturer-proprietary, unlike ADs), so this points to
+// a search rather than guessing at a specific vendor portal URL that could
+// go stale or be wrong.
+function sbSearchUrl(make) {
+  const q = encodeURIComponent(`${make} aircraft service bulletins`)
+  return `https://www.google.com/search?q=${q}`
+}
+
+// AD lookup — queries the Federal Register's public API (the only official,
+// free, CORS-open source for AD text; FAA's own DRS/registry have no public
+// API) for Final Rule documents mentioning this make/model. This is a
+// keyword match on document titles, not a serial-number eligibility check —
+// always shown with a disclaimer to verify via FAA DRS / an A&P.
+// AD titles never include a model's trailing letter suffix as a literal
+// token (e.g. "King Air 350i" is filed under "350", "172S" under "172") —
+// searching with the suffix attached reliably returns zero results. Strips
+// a letter (or letter+digit, e.g. "G6") tail off the last numeric token.
+function simplifyModel(model) {
+  if (!model) return null
+  const stripped = model.trim().replace(/(\d)[A-Za-z]+$/, '$1').replace(/\s+[A-Za-z]\d*$/, '')
+  return stripped !== model.trim() ? stripped : null
+}
+
+async function fetchAdDocuments(term, signal) {
+  const params = new URLSearchParams({
+    'conditions[term]': term,
+    'conditions[agencies][]': 'federal-aviation-administration',
+    'conditions[type][]': 'RULE',
+    per_page: '8',
+    order: 'relevance',
+  })
+  const res = await fetch(`https://www.federalregister.gov/api/v1/documents.json?${params}`, { signal })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json()
+  return data.results ?? []
+}
+
+function AdSbLookup({ make, model }) {
+  const [results, setResults] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [broadened, setBroadened] = useState(false)
+
+  useEffect(() => {
+    if (!make?.trim()) return
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    setBroadened(false)
+
+    const signal = AbortSignal.timeout(10000)
+    const m = make.trim()
+    const modelTrimmed = model?.trim() || null
+
+    // Try, in order: full model -> numeric-core model (suffix stripped) ->
+    // make alone. Stop at the first query that returns any results, so the
+    // pilot always sees something useful rather than a suffix-related zero.
+    async function run() {
+      const attempts = [modelTrimmed, simplifyModel(modelTrimmed), null].filter((v, i, arr) => arr.indexOf(v) === i)
+      for (let i = 0; i < attempts.length; i++) {
+        const term = `${m}${attempts[i] ? ' ' + attempts[i] : ''} Airworthiness Directive`
+        const docs = await fetchAdDocuments(term, signal)
+        if (cancelled) return
+        if (docs.length > 0 || i === attempts.length - 1) {
+          setResults(docs)
+          setBroadened(i > 0)
+          return
+        }
+      }
+    }
+
+    run()
+      .catch(() => { if (!cancelled) setError('Could not reach the Federal Register — check your connection and try again.') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [make, model])
+
+  if (!make?.trim()) {
+    return (
+      <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+        Enter this aircraft's Make above to look up AD notices and Service Bulletin resources.
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+          Airworthiness Directive Notices
+        </div>
+        {loading && <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Searching the Federal Register…</div>}
+        {error && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{error}</div>}
+        {!loading && !error && results?.length === 0 && (
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>No matching AD notices found by title search.</div>
+        )}
+        {!loading && !error && results?.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {results.map(r => (
+              <a key={r.document_number} href={r.html_url} target="_blank" rel="noreferrer" style={{
+                display: 'block', background: 'var(--bg-card-2)', borderRadius: 10,
+                padding: '11px 12px', textDecoration: 'none',
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.35 }}>{r.title}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{fmtDate(r.publication_date)}</div>
+              </a>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 8, lineHeight: 1.5 }}>
+          Title/keyword search only, not an applicability check — verify with the FAA's DRS or your A&amp;P/IA.
+        </div>
+      </div>
+
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+          Service Bulletins
+        </div>
+        <a href={sbSearchUrl(make)} target="_blank" rel="noreferrer" style={{
+          display: 'block', background: 'var(--bg-card-2)', borderRadius: 10,
+          padding: '11px 12px', textDecoration: 'none',
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Search {make} Service Bulletins</span>
+        </a>
+        <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 8, lineHeight: 1.5 }}>
+          No centralized SB database exists — this searches for the right manufacturer portal.
+        </div>
+      </div>
+    </>
+  )
+}
+
 function AirworthinessBadge({ status }) {
   const map = {
     valid:      { bg: 'var(--ok-light)',      fg: 'var(--ok)',      label: 'Current'  },
@@ -1037,7 +1170,18 @@ export default function Aircraft() {
               onChange={v => patch(null, 'fullName', v)} placeholder="e.g. Cessna 172S" />
             <Field label="Color" value={profile.color ?? ''}
               onChange={v => patch(null, 'color', v)} placeholder="e.g. White/Blue" />
+            <Field label="Make" value={profile.make ?? ''}
+              onChange={v => patch(null, 'make', v)} placeholder="e.g. Cessna" />
+            <Field label="Model" value={profile.model ?? ''}
+              onChange={v => patch(null, 'model', v)} placeholder="e.g. 172S" />
+            <Field label="Year" type="number" value={profile.year ?? ''}
+              onChange={v => patch(null, 'year', v)} placeholder="e.g. 2019" />
           </div>
+        </Section>
+
+        {/* Airworthiness Directives & Service Bulletins */}
+        <Section title="Airworthiness Directives & Service Bulletins">
+          <AdSbLookup make={profile.make} model={profile.model} />
         </Section>
 
         {/* Airworthiness */}
