@@ -60,6 +60,36 @@ export function IconPlane({ size = 24 }) {
   )
 }
 
+export function IconRadioOff({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M12 12v9M8 21h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M8 8a4 4 0 0 1 6.5-3.1M16 9.5A4 4 0 0 1 12 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M5 5a10 10 0 0 1 3-2M19 5a10 10 0 0 1 0 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M3 3l18 18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+export function IconLightGun({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="4" y="10" width="10" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M14 12h3l3-3v8l-3-3h-3" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+      <path d="M2 8v2M2 16v-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+export function IconMarshaller({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="4.5" r="2" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M12 8v7M12 8L6 5M12 8l6-3M12 15l-4 6M12 15l4 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
 export function IconChevronRight({ size = 16 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
