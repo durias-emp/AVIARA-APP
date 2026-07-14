@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { BackButton } from '../../components/Shell'
+import { useBackOverride } from '../../context/BackOverride'
 import { IconRadioOff, IconLightGun, IconMarshaller, IconBook } from '../../components/Icons'
 import LostComm from './topics/LostComm'
 import LightGun from './topics/LightGun'
@@ -50,6 +51,11 @@ function TopicButton({ label, Icon, onClick }) {
 export default function Reference() {
   const [activeKey, setActiveKey] = useState(null)
   const active = TOPICS.find(t => t.key === activeKey)
+
+  // Claims the swipe-back gesture while a topic is open, so it returns to
+  // the topic grid instead of falling through to Shell's navigate('/').
+  const closeTopic = useCallback(() => setActiveKey(null), [])
+  useBackOverride(active ? closeTopic : null)
 
   return (
     <div>

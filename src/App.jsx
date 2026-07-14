@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useTheme } from './hooks/useTheme'
 import { PilotProfileProvider, usePilotProfile } from './context/PilotProfile'
+import BackOverrideProvider from './context/BackOverrideProvider'
 import Shell from './components/Shell'
 
 const Home        = lazy(() => import('./pages/Home/Home'))
@@ -26,21 +27,23 @@ function AppRoutes({ theme }) {
   )
 
   return (
-    <Shell theme={theme}>
-      <Suspense fallback={null}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/calc" element={<Calculators />} />
-          <Route path="/checklists" element={<Checklists />} />
-          <Route path="/aircraft" element={<Aircraft />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/currency" element={<Currency />} />
-          <Route path="/reference" element={<Reference />} />
-          <Route path="/weather" element={<Weather />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
-    </Shell>
+    <BackOverrideProvider>
+      <Shell theme={theme}>
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/calc" element={<Calculators />} />
+            <Route path="/checklists" element={<Checklists />} />
+            <Route path="/aircraft" element={<Aircraft />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/currency" element={<Currency />} />
+            <Route path="/reference" element={<Reference />} />
+            <Route path="/weather" element={<Weather />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </Shell>
+    </BackOverrideProvider>
   )
 }
 

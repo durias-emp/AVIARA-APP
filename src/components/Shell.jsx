@@ -1,5 +1,8 @@
+import { useCallback, useContext } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useOverlayClose } from '../context/OverlayClose'
+import { BackOverrideContext } from '../context/BackOverride'
+import { useSwipeBack } from '../hooks/useSwipeBack'
 
 function IconChevronLeft({ size = 20 }) {
   return (
@@ -43,11 +46,21 @@ export function BackButton({ onBack }) {
 
 export default function Shell({ children }) {
   const location = useLocation()
+  const navigate  = useNavigate()
+  const backOverride = useContext(BackOverrideContext)
   const isHome = location.pathname === '/'
+
+  const handleSwipeBack = useCallback(() => {
+    const override = backOverride?.peek?.()
+    if (override) { override(); return }
+    navigate('/')
+  }, [backOverride, navigate])
+
+  const swipeRef = useSwipeBack(handleSwipeBack, { disabled: isHome })
 
   return (
     <div className="app-shell">
-      <main style={{ flex: 1, overflowY: isHome ? 'hidden' : 'auto' }}>
+      <main ref={swipeRef} style={{ flex: 1, overflowY: isHome ? 'hidden' : 'auto' }}>
         {children}
       </main>
     </div>
