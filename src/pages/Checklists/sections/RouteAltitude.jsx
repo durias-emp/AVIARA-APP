@@ -211,6 +211,109 @@ function RouteHint() {
   )
 }
 
+// Map tile/overlay stack — MUST be a stable, top-level component. Defining
+// this inline inside AltitudeItem's render (as it was before) gives it a new
+// function identity every render, so React treats it as a brand-new component
+// type and tears down + remounts the entire Leaflet layer tree (base tiles,
+// sectional/airspace overlays, TFR markers, waypoint markers) on every single
+// re-render of AltitudeItem — which happens constantly (hovering a chip,
+// toggling a layer, TFR data arriving). That's what read as "the map glitches
+// constantly" and, on iOS, remounting mid-tap can also swallow the tap event
+// on nearby chips/buttons.
+function MapLayers({ fit, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, insertWaypoint, moveWaypoint, removeWaypoint, depPos, destPos }) {
+  return (<>
+    <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+    {layers.sectional && (
+      <TileLayer url="https://vfrmap.com/20260319/tiles/vfrc/{z}/{y}/{x}.jpg"
+        tms={true} opacity={0.9} maxZoom={12}
+        className="sectional-layer"
+        errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+        attribution='&copy; <a href="https://vfrmap.com">VFRMap.com</a>' />
+    )}
+    {layers.airspace && openaipKey && (
+      <TileLayer key={openaipKey}
+        url={`https://api.tiles.openaip.net/api/data/openaip/{z}/{x}/{y}.png?apiKey=${openaipKey}`}
+        opacity={0.9} minZoom={4} maxZoom={17}
+        attribution='&copy; <a href="https://www.openaip.net">openAIP</a>' />
+    )}
+    {layers.tfr && tfrData?.filter(t => t.lat !== null).map((t, i) => {
+      const tfrColor = (() => {
+        const type = (t.type || '').toUpperCase()
+        if (type.includes('VIP') || type.includes('SECURITY') || type.includes('MILITARY')) return '#FF3B30'
+        if (type.includes('HAZARD') || type.includes('WILDFIRE') || type.includes('DISASTER')) return '#FF9500'
+        if (type.includes('AIR SHOW') || type.includes('SPORT')) return '#5AC8FA'
+        if (type.includes('SPACE')) return '#AF52DE'
+        if (type.includes('UAS') || type.includes('DRONE') || type.includes('GATHERING')) return '#FFD60A'
+        return '#FF3B30'
+      })()
+      return t.polygon?.length > 2 ? (
+        <Polygon key={i} positions={t.polygon}
+          pathOptions={{ color: tfrColor, fillColor: tfrColor, fillOpacity: 0.18, weight: 2, opacity: 0.9 }}>
+          <Popup><div style={{ fontSize: 12, lineHeight: 1.5, maxWidth: 200 }}>
+            <strong style={{ color: tfrColor }}>{t.type}</strong> · {t.id}<br/>
+            <span style={{ fontSize: 11 }}>{t.desc.slice(0, 120)}</span>
+          </div></Popup>
+        </Polygon>
+      ) : (
+        <CircleMarker key={i} center={[t.lat, t.lon]} radius={10}
+          pathOptions={{ color: tfrColor, fillColor: tfrColor, fillOpacity: 0.25, weight: 2 }}>
+          <Popup><div style={{ fontSize: 12, lineHeight: 1.5, maxWidth: 200 }}>
+            <strong style={{ color: tfrColor }}>{t.type}</strong> · {t.id}<br/>
+            <span style={{ fontSize: 11 }}>{t.desc.slice(0, 120)}</span>
+          </div></Popup>
+        </CircleMarker>
+      )
+    })}
+    {/* SUA polygons — always shown when detected, no layer toggle needed */}
+    {detectedSUAPolys.map((s, i) => {
+      const tc = s.typeCode.toUpperCase()
+      const suaColor = tc.startsWith('P') ? '#FF3B30'
+        : tc.startsWith('R') ? '#FF9500'
+        : tc.includes('MOA') ? '#FFD60A'
+        : tc.startsWith('W') ? '#5AC8FA'
+        : '#AF52DE' // Alert
+      return (
+        <Polygon key={`sua-${i}`} positions={s.poly}
+          pathOptions={{ color: suaColor, fillColor: suaColor, fillOpacity: 0.15, weight: 1.5, opacity: 0.85, dashArray: '5 4' }}>
+          <Popup><div style={{ fontSize: 12, lineHeight: 1.5, maxWidth: 200 }}>
+            <strong style={{ color: suaColor }}>{s.name}</strong>
+          </div></Popup>
+        </Polygon>
+      )
+    })}
+    {fit && <RouteFitter positions={waypoints.map(w => [w.lat, w.lon])} />}
+    <AirspaceZoomer active={layers.airspace} />
+    <SectionalZoomer active={layers.sectional} />
+    <Marker position={waypoints[0] ? [waypoints[0].lat, waypoints[0].lon] : depPos} icon={airportIcon} />
+    <Marker position={waypoints[waypoints.length-1] ? [waypoints[waypoints.length-1].lat, waypoints[waypoints.length-1].lon] : destPos} icon={airportIcon} />
+    {waypoints.length >= 2 && <PolylineEditor waypoints={waypoints} onInsert={insertWaypoint} />}
+    {waypoints.slice(1, -1).map((w, i) => (
+      <DraggableWaypoint key={w.id} position={[w.lat, w.lon]} index={i + 1} onMove={moveWaypoint} onRemove={removeWaypoint} />
+    ))}
+  </>)
+}
+
+// Departure/destination ICAO chips overlaid on the inline map corners.
+function AirportLabels({ dep, dest, depPos, destPos, onFlyTo }) {
+  return (
+    <div style={{
+      position: 'absolute', bottom: 8, left: 8, right: 8, zIndex: 999,
+      display: 'flex', justifyContent: 'space-between', pointerEvents: 'none',
+    }}>
+      {[
+        { icao: dep,  pos: depPos },
+        { icao: dest, pos: destPos },
+      ].map(({ icao, pos }, i) => (
+        <div key={i}
+          onClick={e => { e.stopPropagation(); onFlyTo(pos) }}
+          style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', borderRadius: 6, padding: '3px 8px', pointerEvents: 'auto', cursor: 'pointer' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', fontFamily: 'monospace' }}>{icao}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /* ── Altitude + Route calculator ─────────────────────────────── */
 export function AltitudeItem({ item, isChecked, onToggle }) {
   const [open, setOpen]           = useState(false)
@@ -940,94 +1043,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 (route.depPos[0] + route.destPos[0]) / 2,
                 (route.depPos[1] + route.destPos[1]) / 2,
               ]
-              const MapLayers = ({ fit }) => (<>
-                <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
-                {layers.sectional && (
-                  <TileLayer url="https://vfrmap.com/20260319/tiles/vfrc/{z}/{y}/{x}.jpg"
-                    tms={true} opacity={0.9} maxZoom={12}
-                    className="sectional-layer"
-                    errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-                    attribution='&copy; <a href="https://vfrmap.com">VFRMap.com</a>' />
-                )}
-                {layers.airspace && openaipKey && (
-                  <TileLayer key={openaipKey}
-                    url={`https://api.tiles.openaip.net/api/data/openaip/{z}/{x}/{y}.png?apiKey=${openaipKey}`}
-                    opacity={0.9} minZoom={4} maxZoom={17}
-                    attribution='&copy; <a href="https://www.openaip.net">openAIP</a>' />
-                )}
-                {layers.tfr && tfrData?.filter(t => t.lat !== null).map((t, i) => {
-                  const tfrColor = (() => {
-                    const type = (t.type || '').toUpperCase()
-                    if (type.includes('VIP') || type.includes('SECURITY') || type.includes('MILITARY')) return '#FF3B30'
-                    if (type.includes('HAZARD') || type.includes('WILDFIRE') || type.includes('DISASTER')) return '#FF9500'
-                    if (type.includes('AIR SHOW') || type.includes('SPORT')) return '#5AC8FA'
-                    if (type.includes('SPACE')) return '#AF52DE'
-                    if (type.includes('UAS') || type.includes('DRONE') || type.includes('GATHERING')) return '#FFD60A'
-                    return '#FF3B30'
-                  })()
-                  return t.polygon?.length > 2 ? (
-                    <Polygon key={i} positions={t.polygon}
-                      pathOptions={{ color: tfrColor, fillColor: tfrColor, fillOpacity: 0.18, weight: 2, opacity: 0.9 }}>
-                      <Popup><div style={{ fontSize: 12, lineHeight: 1.5, maxWidth: 200 }}>
-                        <strong style={{ color: tfrColor }}>{t.type}</strong> · {t.id}<br/>
-                        <span style={{ fontSize: 11 }}>{t.desc.slice(0, 120)}</span>
-                      </div></Popup>
-                    </Polygon>
-                  ) : (
-                    <CircleMarker key={i} center={[t.lat, t.lon]} radius={10}
-                      pathOptions={{ color: tfrColor, fillColor: tfrColor, fillOpacity: 0.25, weight: 2 }}>
-                      <Popup><div style={{ fontSize: 12, lineHeight: 1.5, maxWidth: 200 }}>
-                        <strong style={{ color: tfrColor }}>{t.type}</strong> · {t.id}<br/>
-                        <span style={{ fontSize: 11 }}>{t.desc.slice(0, 120)}</span>
-                      </div></Popup>
-                    </CircleMarker>
-                  )
-                })}
-                {/* SUA polygons — always shown when detected, no layer toggle needed */}
-                {detectedSUAPolys.map((s, i) => {
-                  const tc = s.typeCode.toUpperCase()
-                  const suaColor = tc.startsWith('P') ? '#FF3B30'
-                    : tc.startsWith('R') ? '#FF9500'
-                    : tc.includes('MOA') ? '#FFD60A'
-                    : tc.startsWith('W') ? '#5AC8FA'
-                    : '#AF52DE' // Alert
-                  return (
-                    <Polygon key={`sua-${i}`} positions={s.poly}
-                      pathOptions={{ color: suaColor, fillColor: suaColor, fillOpacity: 0.15, weight: 1.5, opacity: 0.85, dashArray: '5 4' }}>
-                      <Popup><div style={{ fontSize: 12, lineHeight: 1.5, maxWidth: 200 }}>
-                        <strong style={{ color: suaColor }}>{s.name}</strong>
-                      </div></Popup>
-                    </Polygon>
-                  )
-                })}
-                {fit && <RouteFitter positions={waypoints.map(w => [w.lat, w.lon])} />}
-                <AirspaceZoomer active={layers.airspace} />
-                <SectionalZoomer active={layers.sectional} />
-                <Marker position={waypoints[0] ? [waypoints[0].lat, waypoints[0].lon] : route.depPos}  icon={airportIcon} />
-                <Marker position={waypoints[waypoints.length-1] ? [waypoints[waypoints.length-1].lat, waypoints[waypoints.length-1].lon] : route.destPos} icon={airportIcon} />
-                {waypoints.length >= 2 && <PolylineEditor waypoints={waypoints} onInsert={insertWaypoint} />}
-                {waypoints.slice(1, -1).map((w, i) => (
-                  <DraggableWaypoint key={w.id} position={[w.lat, w.lon]} index={i + 1} onMove={moveWaypoint} onRemove={removeWaypoint} />
-                ))}
-              </>)
-
-              const AirportLabels = () => (
-                <div style={{
-                  position: 'absolute', bottom: 8, left: 8, right: 8, zIndex: 999,
-                  display: 'flex', justifyContent: 'space-between', pointerEvents: 'none',
-                }}>
-                  {[
-                    { icao: dep,  pos: route.depPos },
-                    { icao: dest, pos: route.destPos },
-                  ].map(({ icao, pos }, i) => (
-                    <div key={i}
-                      onClick={e => { e.stopPropagation(); setMapFlyTarget({ lat: pos[0], lon: pos[1], zoom: 10, _t: Date.now() }) }}
-                      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', borderRadius: 6, padding: '3px 8px', pointerEvents: 'auto', cursor: 'pointer' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', fontFamily: 'monospace' }}>{icao}</span>
-                    </div>
-                  ))}
-                </div>
-              )
+              const mapLayerProps = { layers, openaipKey, tfrData, detectedSUAPolys, waypoints, insertWaypoint, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
 
               return (<>
                 {/* Inline map */}
@@ -1037,7 +1053,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                     style={{ height: '100%', width: '100%' }}
                     zoomControl={false} attributionControl={false}
                     dragging={false} scrollWheelZoom={false} doubleClickZoom={false} touchZoom={false}>
-                    <MapLayers fit={false} />
+                    <MapLayers fit={false} {...mapLayerProps} />
                     <MapFlyTo target={mapFlyTarget} instant={true} />
                   </MapContainer>
                   {/* Expand hint */}
@@ -1046,7 +1062,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                     borderRadius: 6, padding: '4px 7px', pointerEvents: 'none' }}>
                     <span style={{ fontSize: 13, color: '#fff' }}>⤢</span>
                   </div>
-                  <AirportLabels />
+                  <AirportLabels dep={dep} dest={dest} depPos={route.depPos} destPos={route.destPos}
+                    onFlyTo={pos => setMapFlyTarget({ lat: pos[0], lon: pos[1], zoom: 10, _t: Date.now() })} />
                 </div>
 
                 {/* Fullscreen modal */}
@@ -1094,7 +1111,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                           style={{ height: '100%', width: '100%' }}
                           zoomControl={true} attributionControl={false}>
                           <MapInvalidator />
-                          <MapLayers fit={true} />
+                          <MapLayers fit={true} {...mapLayerProps} />
                           <MapFlyTo target={mapFlyTarget} />
                         </MapContainer>
                       </div>
