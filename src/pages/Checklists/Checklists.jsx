@@ -3,6 +3,7 @@ import { BackButton } from '../../components/Shell'
 import { get, put, del } from '../../lib/db'
 import ChecklistTabShell from './ChecklistTabShell'
 import FlightPlanOnePager from './FlightPlanOnePager'
+import FlightPlanTypePicker from './FlightPlanTypePicker'
 import SplitFlapTitle from './shared/SplitFlapTitle'
 
 const TITLE_INTRO_MS = 3000    // how long "Flight Plan" shows before switching to the active step
@@ -95,6 +96,23 @@ function ChecklistDetail({ checklist, onBack }) {
   const [addDrawerOpen, setAddDrawerOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
 
+  // Flight-plan-type picker (VFR/IFR + Local/Cross Country) — gates entry to
+  // the checklist. `undefined` = not yet loaded from storage (render nothing
+  // to avoid a flash of the picker before we know), `null` = loaded and not
+  // yet picked, an object = picked and persisted until Reset.
+  const [flightPlanType, setFlightPlanType] = useState(undefined)
+
+  useEffect(() => {
+    get('settings', 'flightPlanType').then(saved => {
+      setFlightPlanType(saved?.value ?? null)
+    })
+  }, [checklist.id])
+
+  function pickFlightPlanType(value) {
+    setFlightPlanType(value)
+    put('settings', { key: 'flightPlanType', value })
+  }
+
   const customTotal = Object.values(customItems).reduce((sum, arr) => sum + arr.length, 0)
   const total = allIds(checklist).length + customTotal
 
@@ -107,13 +125,17 @@ function ChecklistDetail({ checklist, onBack }) {
 
   useEffect(() => { activeIndexRef.current = activeIndex }, [activeIndex])
 
+  // The title cycle only makes sense once the pilot is actually past the
+  // VFR/IFR + Local/XC picker and inside the checklist — skip it entirely
+  // (and stay on the plain "Flight Plan" title) until then.
   useEffect(() => {
+    if (!flightPlanType) { introDoneRef.current = false; setHeaderTitle(checklist.title); return }
     const introTimer = setTimeout(() => {
       introDoneRef.current = true
       setHeaderTitle(checklist.sections[activeIndexRef.current]?.title ?? checklist.title)
     }, TITLE_INTRO_MS)
     return () => clearTimeout(introTimer)
-  }, [checklist])
+  }, [checklist, flightPlanType])
 
   useEffect(() => {
     if (!introDoneRef.current) return
@@ -121,6 +143,7 @@ function ChecklistDetail({ checklist, onBack }) {
   }, [activeIndex, checklist])
 
   useEffect(() => {
+    if (!flightPlanType) return
     const cycle = setInterval(() => {
       if (!introDoneRef.current) return
       setHeaderTitle(checklist.title)
@@ -129,7 +152,7 @@ function ChecklistDetail({ checklist, onBack }) {
       }, TITLE_INTRO_MS)
     }, TITLE_CYCLE_MS)
     return () => clearInterval(cycle)
-  }, [checklist])
+  }, [checklist, flightPlanType])
 
   useEffect(() => {
     get('checklists', checklist.id).then(saved => {
@@ -159,6 +182,7 @@ function ChecklistDetail({ checklist, onBack }) {
     setChecked(new Set())
     save(new Set(), customItems)   // custom items persist across resets — they're a template
     setResetKey(k => k + 1)        // remount every item so cleared data shows immediately
+    setFlightPlanType(null)        // back to the VFR/IFR + Local/XC picker for the next flight
 
     await Promise.all([
       del('settings', 'route'),
@@ -168,6 +192,7 @@ function ChecklistDetail({ checklist, onBack }) {
       del('settings', 'alternates'),
       del('settings', 'selectedRunway'),
       del('settings', 'lastWB'),
+      del('settings', 'flightPlanType'),
     ]).catch(() => {})
 
     ;['cruise_fuel_state', 'apt_fbo_freq', 'apt_fbo_note',
@@ -225,6 +250,11 @@ function ChecklistDetail({ checklist, onBack }) {
         }}>Reset</button>
       </div>
 
+      {flightPlanType === null && (
+        <FlightPlanTypePicker onComplete={pickFlightPlanType} />
+      )}
+
+      {flightPlanType && (
       <ChecklistTabShell
         sections={checklist.sections}
         resetKey={resetKey}
@@ -246,6 +276,7 @@ function ChecklistDetail({ checklist, onBack }) {
           />
         }
       />
+      )}
 
       {/* ── Flight Plan one-pager — shown before the checklist resets, so
           all the per-flight data it reads is still in IndexedDB. Closing it

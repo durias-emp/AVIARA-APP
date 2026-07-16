@@ -216,6 +216,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [open, setOpen]           = useState(false)
   const [course, setCourse]       = useState('')
   const [selectedAlt, setSelectedAlt] = useState(null)
+  const [isHelicopter, setIsHelicopter] = useState(false)
+
+  useEffect(() => {
+    get('aircraft', 'profile').then(profile => setIsHelicopter(profile?.category === 'helicopter'))
+  }, [])
 
   // Route inputs
   const [dep, setDep]              = useState('')
@@ -794,7 +799,16 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
               </div>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', paddingBottom: 0, color: 'var(--text-tertiary)', fontSize: 16 }}>→</div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{ height: 18, flexShrink: 0 }} />
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <img
+                src={isHelicopter ? '/helicopter.png' : '/modo-avion.png'}
+                width={18} height={18} alt=""
+                style={{ objectFit: 'contain', filter: 'var(--icon-filter)', flexShrink: 0, transform: 'rotate(90deg)' }}
+              />
+            </div>
+          </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 4, letterSpacing: '0.3px', textTransform: 'uppercase' }}>To</div>
             {destValidated ? (

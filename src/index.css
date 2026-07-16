@@ -38,11 +38,15 @@
   --shadow-sm:  0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
   --shadow-md:  0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
 
-  /* Radius */
+  /* Radius — a scale, not arbitrary values, so nested surfaces read as
+     carved from one shape rather than stacked stickers. Each step down
+     is roughly 3/4 of its parent, mirroring iOS's own card/sheet/control
+     nesting (bigger container -> bigger radius -> more inset). */
   --r-sm: 8px;
   --r-md: 12px;
   --r-lg: 16px;
   --r-xl: 20px;
+  --r-sheet: 26px;
 }
 
 [data-theme="dark"] {
@@ -179,15 +183,15 @@ body {
    and slides back once every card in view is collapsed again. ── */
 .fixed-footer-bar {
   position: fixed;
-  left: 12px;
-  right: 12px;
-  bottom: calc(12px + env(safe-area-inset-bottom));
+  left: 16px;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
   width: auto;
   margin: 0 auto;
   z-index: 40;
-  border-radius: 20px;
+  border-radius: var(--r-sheet);
   overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.06);
   transition: transform 0.32s cubic-bezier(0.4,0,0.2,1);
 }
 
