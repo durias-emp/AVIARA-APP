@@ -177,21 +177,26 @@ body {
 /* ── Fixed footer bar (checklist tab bar + action buttons) ───
    position:fixed pins to the true device viewport regardless of
    any dvh/ancestor-height mismatch — mirrors .app-shell's centered
-   width so it lines up with the content column above it. Styled as
-   a floating card (margin, rounded on all corners, shadow) that
-   slides down out of view while a card in the active step is open,
-   and slides back once every card in view is collapsed again. ── */
+   width so it lines up with the content column above it. Flush to
+   the screen's own left/right/bottom edges (like a native iOS sheet
+   or tab bar) so its corners read as part of the device rather than
+   a card floating above it — only the top corners are rounded, and
+   the safe-area inset is padding (keeps content off the home
+   indicator) rather than a bottom margin. Slides down out of view
+   while a card in the active step is open, and slides back once
+   every card in view is collapsed again. ── */
 .fixed-footer-bar {
   position: fixed;
-  left: 16px;
-  right: 16px;
-  bottom: calc(16px + env(safe-area-inset-bottom));
+  left: 0;
+  right: 0;
+  bottom: 0;
   width: auto;
   margin: 0 auto;
+  padding-bottom: env(safe-area-inset-bottom);
   z-index: 40;
-  border-radius: var(--r-sheet);
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.06);
+  box-shadow: 0 -8px 24px rgba(0,0,0,0.12);
   transition: transform 0.32s cubic-bezier(0.4,0,0.2,1);
 }
 
