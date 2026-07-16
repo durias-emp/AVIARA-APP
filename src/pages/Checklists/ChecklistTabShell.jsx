@@ -115,7 +115,7 @@ export default function ChecklistTabShell({
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <div
         ref={containerRef}
-        style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden' }}
+        style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', touchAction: 'pan-y' }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
