@@ -521,7 +521,7 @@ function AddItemDrawer({ sections, onClose, onAdd }) {
               placeholder="e.g. Check tie-downs"
               style={{
                 width: '100%', boxSizing: 'border-box', marginBottom: 14,
-                padding: '10px 12px', borderRadius: 10, background: 'var(--bg-card-2)', color: 'var(--text)', fontSize: 14,
+                padding: '10px 12px', borderRadius: 10, background: 'var(--bg-card-2)', color: 'var(--text)', fontSize: 16,
                 outline: 'none', fontFamily: 'inherit',
               }}
             />

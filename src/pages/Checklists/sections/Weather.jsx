@@ -191,7 +191,7 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
               placeholder="Search by ICAO, name or city…"
               style={{
                 width: '100%', background: 'var(--bg)', borderRadius: showList && matches.length ? '8px 8px 0 0' : 8,
-                padding: '9px 11px', color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box',
+                padding: '9px 11px', color: 'var(--text)', fontSize: 16, outline: 'none', boxSizing: 'border-box',
               }}
             />
             {loading && <div style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)',

@@ -116,7 +116,7 @@ export function DensityAltItem({ item, isChecked, onToggle }) {
       <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 600, letterSpacing: '0.4px', marginBottom: 4, textTransform: 'uppercase' }}>{label}</div>
       <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-card-2)', borderRadius: 8, padding: '7px 10px', gap: 4 }}>
         <input type="number" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-          style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: 15, fontWeight: 600,
+          style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: 16, fontWeight: 600,
             color: 'var(--text)', fontFamily: 'monospace', width: 0, minWidth: 0 }} />
         <span style={{ fontSize: 11, color: 'var(--text-tertiary)', flexShrink: 0 }}>{unit}</span>
       </div>
@@ -327,7 +327,7 @@ function PerfSmallInput({ label, value, onChange, unit }) {
         borderRadius: 7, padding: '7px 9px', gap: 3 }}>
         <input type="number" value={value} onChange={e => onChange(e.target.value)}
           placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
-            fontSize: 15, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
+            fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
             width: 0, minWidth: 0 }} />
         <span style={{ fontSize: 10, color: 'var(--text-tertiary)', flexShrink: 0 }}>{unit}</span>
       </div>
@@ -626,7 +626,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
               borderRadius: 7, padding: '0 9px', height: 36, gap: 4 }}>
               <input type="text" inputMode="numeric" value={cur.windDir} onChange={e => updCur({ windDir: e.target.value })}
                 placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
-                  fontSize: 15, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
+                  fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
                   width: 0, minWidth: 0 }} />
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)', flexShrink: 0 }}>
                 {cur.windDir === 'VRB' ? '' : '°'}
@@ -644,7 +644,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
               borderRadius: 7, padding: '0 9px', height: 36, gap: 3 }}>
               <input type="number" value={cur.windSpd} onChange={e => updCur({ windSpd: e.target.value })}
                 placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
-                  fontSize: 15, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
+                  fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
                   width: 0, minWidth: 0 }} />
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)', flexShrink: 0 }}>kt</span>
             </div>
@@ -688,7 +688,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
               borderRadius: 7, padding: '7px 9px', gap: 3 }}>
               <input type="number" step="0.1" value={cur.slope} onChange={e => updCur({ slope: e.target.value })}
                 placeholder="0" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
-                  fontSize: 15, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
+                  fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
                   width: 0, minWidth: 0 }} />
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)', flexShrink: 0 }}>%</span>
             </div>
@@ -710,7 +710,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
               borderRadius: 8, padding: '8px 12px', gap: 8 }}>
               <input type="number" value={cur.pohBase} onChange={e => updCur({ pohBase: e.target.value })}
                 placeholder="0" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
-                  fontSize: 15, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace' }} />
+                  fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace' }} />
               <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>ft  ·  sea level = 0</span>
             </div>
           </FieldTip>
@@ -723,7 +723,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
               borderRadius: 8, padding: '8px 10px', gap: 3 }}>
               <input type="number" value={cur.pohWeight} onChange={e => updCur({ pohWeight: e.target.value })}
                 placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
-                  fontSize: 15, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace', width: 0, minWidth: 0 }} />
+                  fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace', width: 0, minWidth: 0 }} />
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)', flexShrink: 0 }}>lb</span>
             </div>
           </FieldTip>
@@ -732,7 +732,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
               borderRadius: 8, padding: '8px 10px', gap: 3 }}>
               <input type="number" value={cur.actualWeight} onChange={e => updCur({ actualWeight: e.target.value })}
                 placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
-                  fontSize: 15, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace', width: 0, minWidth: 0 }} />
+                  fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace', width: 0, minWidth: 0 }} />
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)', flexShrink: 0 }}>lb</span>
             </div>
           </FieldTip>
@@ -1201,7 +1201,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
               borderRadius: 8, padding: '8px 10px', gap: 4 }}>
               <input type="number" value={cruiseAlt} onChange={e => setCruiseAlt(e.target.value)}
                 placeholder="e.g. 6500" style={{ flex: 1, background: 'none', border: 'none',
-                  outline: 'none', fontSize: 15, fontWeight: 700, color: 'var(--text)',
+                  outline: 'none', fontSize: 16, fontWeight: 700, color: 'var(--text)',
                   fontFamily: 'monospace', width: 0, minWidth: 0 }} />
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>ft</span>
             </div>
@@ -1317,7 +1317,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
               borderRadius: 8, padding: '8px 10px', gap: 4 }}>
               <input type="number" value={tas} onChange={e => setTas(e.target.value)}
                 placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
-                  fontSize: 15, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
+                  fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
                   width: 0, minWidth: 0 }} />
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>kt</span>
             </div>
@@ -1327,7 +1327,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
               borderRadius: 8, padding: '8px 10px', gap: 4 }}>
               <input type="number" value={burnRate} onChange={e => setBurnRate(e.target.value)}
                 placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
-                  fontSize: 15, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
+                  fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
                   width: 0, minWidth: 0 }} />
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>GPH</span>
             </div>
@@ -1337,7 +1337,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
               borderRadius: 8, padding: '8px 10px', gap: 4 }}>
               <input type="number" value={fuelOnBoard} onChange={e => setFuelOnBoard(e.target.value)}
                 placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
-                  fontSize: 15, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
+                  fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
                   width: 0, minWidth: 0 }} />
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>gal</span>
             </div>

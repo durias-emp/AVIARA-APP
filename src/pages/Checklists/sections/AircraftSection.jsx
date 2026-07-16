@@ -239,7 +239,7 @@ export function AircraftItem({ item, isChecked, onToggle }) {
               onChange={e => localStorage.setItem(storageKey, e.target.value)}
               placeholder={placeholder}
               style={{
-                flex: 1, background: 'var(--bg-card-2)', borderRadius: 8, padding: '7px 10px', fontSize: 12, color: 'var(--text)',
+                flex: 1, background: 'var(--bg-card-2)', borderRadius: 8, padding: '7px 10px', fontSize: 16, color: 'var(--text)',
                 fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box',
               }}
             />

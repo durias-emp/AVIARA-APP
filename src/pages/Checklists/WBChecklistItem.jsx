@@ -32,7 +32,7 @@ function NumberInput({ value, onChange, unit, max }) {
         style={{
           width: '100%', padding: '7px 28px 7px 8px', borderRadius: 8,
           background: 'var(--bg-card-2)',
-          color: 'var(--text)', fontSize: 13, textAlign: 'right',
+          color: 'var(--text)', fontSize: 16, textAlign: 'right',
           outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
         }}
       />
@@ -494,7 +494,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                     onChange={e => setSouls(e.target.value)}
                     placeholder="—"
                     style={{
-                      width: 56, textAlign: 'center', fontSize: 15, fontWeight: 700,
+                      width: 56, textAlign: 'center', fontSize: 16, fontWeight: 700,
                       color: 'var(--text)', background: 'var(--bg-card)', borderRadius: 8, padding: '5px 0', outline: 'none', fontFamily: 'inherit',
                     }}
                   />

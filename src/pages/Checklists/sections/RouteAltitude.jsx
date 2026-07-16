@@ -1665,7 +1665,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                 style={{
                   width: '100%', background: 'var(--bg-card-2)', borderRadius: 9,
                   padding: '10px 12px', color: 'var(--text)',
-                  fontSize: 14, outline: 'none', boxSizing: 'border-box',
+                  fontSize: 16, outline: 'none', boxSizing: 'border-box',
                 }}
               />
               {loading && (

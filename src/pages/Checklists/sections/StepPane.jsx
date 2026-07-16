@@ -128,7 +128,7 @@ export default function StepPane({ section, checked, onToggle, total, customItem
               onChange={e => onUpdateCustomItemValue(section.title, ci.id, e.target.value)}
               placeholder="—"
               style={{
-                width: 84, flexShrink: 0, fontSize: 13, textAlign: 'right',
+                width: 84, flexShrink: 0, fontSize: 16, textAlign: 'right',
                 background: 'var(--bg-card-2)', borderRadius: 8, padding: '5px 8px', color: 'var(--text)',
                 outline: 'none', fontFamily: 'inherit',
               }}

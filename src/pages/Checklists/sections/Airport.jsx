@@ -145,7 +145,7 @@ export function NotamSection({ icao, CheckRow }) {
       <input value={urlInput} onChange={e => setUrlInput(e.target.value)}
         placeholder="https://pqrh-notam.yourname.workers.dev"
         style={{ background: 'var(--bg-card-2)', borderRadius: 7,
-          padding: '8px 10px', fontSize: 12, color: 'var(--text)', outline: 'none', fontFamily: 'monospace' }} />
+          padding: '8px 10px', fontSize: 16, color: 'var(--text)', outline: 'none', fontFamily: 'monospace' }} />
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={saveUrl} disabled={!urlInput.trim()}
           style={{ flex: 1, background: 'var(--accent)', color: 'var(--bg)', border: 'none', borderRadius: 7,
@@ -712,7 +712,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
                   onChange={e => localStorage.setItem('apt_fbo_freq', e.target.value)}
                   placeholder="e.g. 122.95"
                   style={{
-                    width: '100%', background: 'var(--bg)', borderRadius: 8, padding: '8px 10px', fontSize: 13, color: 'var(--text)',
+                    width: '100%', background: 'var(--bg)', borderRadius: 8, padding: '8px 10px', fontSize: 16, color: 'var(--text)',
                     fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box',
                   }}
                 />
