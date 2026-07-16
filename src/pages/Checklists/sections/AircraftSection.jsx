@@ -16,8 +16,7 @@ function DocFarBadge({ id }) {
   return (
     <div style={{
       fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)',
-      background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-      borderRadius: 20, padding: '3px 10px', flexShrink: 0,
+      background: 'var(--bg-card)', borderRadius: 20, padding: '3px 10px', flexShrink: 0,
     }}>{far}</div>
   )
 }
@@ -32,8 +31,7 @@ function GroupRowComp({ title, ids, isCurrencyCompleted: icc, checkedIds, childr
         onClick={() => setGroupOpen(o => !o)}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-          borderRadius: groupOpen ? '11px 11px 0 0' : 11,
+          background: 'var(--bg-card-2)', borderRadius: groupOpen ? '11px 11px 0 0' : 11,
           padding: '11px 14px', cursor: 'pointer', gap: 10,
           textAlign: 'left', boxSizing: 'border-box',
         }}>
@@ -48,14 +46,13 @@ function GroupRowComp({ title, ids, isCurrencyCompleted: icc, checkedIds, childr
           {!allCompleted && currencyDone && (
             <div style={{
               fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)',
-              background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-              borderRadius: 20, padding: '3px 10px',
+              background: 'var(--bg-card)', borderRadius: 20, padding: '3px 10px',
             }}>Partial</div>
           )}
         </div>
       </button>
       {groupOpen && (
-        <div style={{ border: '0.5px solid var(--border)', borderTop: 'none', borderRadius: '0 0 11px 11px', overflow: 'hidden' }}>
+        <div style={{ borderTop: 'none', borderRadius: '0 0 11px 11px', overflow: 'hidden' }}>
           {children}
         </div>
       )}
@@ -242,8 +239,7 @@ export function AircraftItem({ item, isChecked, onToggle }) {
               onChange={e => localStorage.setItem(storageKey, e.target.value)}
               placeholder={placeholder}
               style={{
-                flex: 1, background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-                borderRadius: 8, padding: '7px 10px', fontSize: 12, color: 'var(--text)',
+                flex: 1, background: 'var(--bg-card-2)', borderRadius: 8, padding: '7px 10px', fontSize: 12, color: 'var(--text)',
                 fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box',
               }}
             />

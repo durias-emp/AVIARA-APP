@@ -1,10 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { usePaneActivity } from './PaneActivity'
 
 /* ── Expandable card shell — used by every checklist item ────── */
-export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, children, hideHeaderDivider, forceOpen, hideCheckmark }) {
+export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, children, forceOpen, hideCheckmark }) {
   const isOpen = forceOpen || open
+  usePaneActivity(isOpen)
   const rootRef = useRef(null)
   const wasOpenRef = useRef(open)
+  const contentRef = useRef(null)
+  const [measuredHeight, setMeasuredHeight] = useState(0)
+  // Mount content the first time it's opened, then keep it mounted (rather
+  // than unmounting on every close) so the max-height transition has real
+  // content to measure/animate instead of instantly popping in/out.
+  const [everOpened, setEverOpened] = useState(isOpen)
 
   // Collapsing (e.g. via the Done button inside `children`) shrinks the page's
   // total height. Left alone, the browser clamps scroll position toward the new,
@@ -17,14 +25,34 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
     wasOpenRef.current = open
   }, [open])
 
+  useEffect(() => {
+    if (isOpen) setEverOpened(true)
+  }, [isOpen])
+
+  // Re-measure whenever the content's own size changes (e.g. async data
+  // arriving after mount) so the max-height transition doesn't clip late
+  // content or freeze at a stale height.
+  useLayoutEffect(() => {
+    if (!everOpened || !contentRef.current || typeof ResizeObserver === 'undefined') return
+    const el = contentRef.current
+    // scrollHeight is always a rounded-down integer, while actual rendered
+    // content can be a fraction of a pixel taller — without slack, the
+    // max-height clips that sliver off the bottom (visible as a flat-cut
+    // corner instead of the intended rounded one). +2px is enough margin
+    // without being visible as extra space once fully open.
+    const measure = () => setMeasuredHeight(el.scrollHeight + 2)
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    measure()
+    return () => observer.disconnect()
+  }, [everOpened])
+
   const Header = forceOpen ? 'div' : 'button'
 
   return (
     <div ref={rootRef} style={{ marginBottom: 8 }}>
       <div style={{
         background: 'var(--bg-card)',
-        border: '0.5px solid var(--border)',
-        borderBottom: isOpen && hideHeaderDivider ? 'none' : '0.5px solid var(--border)',
         borderRadius: isOpen ? '14px 14px 0 0' : 14,
         boxShadow: 'var(--shadow-sm)',
         overflow: 'hidden',
@@ -65,16 +93,19 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
         </Header>
       </div>
 
-      {/* Expanded content — connects flush to the card header */}
-      {isOpen && (
+      {/* Expanded content — connects flush to the card header. Stays mounted
+          once opened so max-height has real content to measure/animate. */}
+      {everOpened && (
         <div style={{
-          background: 'var(--bg-card)',
-          border: '0.5px solid var(--border)',
-          borderTop: 'none',
-          borderRadius: '0 0 14px 14px',
+          maxHeight: isOpen ? measuredHeight : 0,
           overflow: 'hidden',
+          background: 'var(--bg-card)',
+          borderRadius: '0 0 14px 14px',
+          transition: 'max-height 0.3s cubic-bezier(0.4,0,0.2,1)',
         }}>
-          {children}
+          <div ref={contentRef}>
+            {children}
+          </div>
         </div>
       )}
     </div>
@@ -134,7 +165,7 @@ export function CheckRow({ id, label, checked, onToggle, disabled = false, compl
         width: '100%', textAlign: 'left', background: 'transparent',
         border: 'none', cursor: disabled ? 'default' : 'pointer',
         display: 'flex', alignItems: 'center', gap: 11,
-        padding: '9px 14px', borderRadius: 8, transition: 'background 0.15s',
+        padding: '4px 14px', borderRadius: 8, transition: 'background 0.15s',
       }}>
         {!disabled && (
           <div style={{

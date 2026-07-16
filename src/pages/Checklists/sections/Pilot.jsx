@@ -178,7 +178,6 @@ export function IMChecklistItem({ item, isChecked, onToggle, statusKey }) {
       {/* Card header */}
       <div style={{
         background: 'var(--bg-card)',
-        border: '0.5px solid var(--border)',
         borderBottom: open ? 'none' : '0.5px solid var(--border)',
         borderRadius: open ? '14px 14px 0 0' : 14,
         overflow: 'hidden',
@@ -229,8 +228,7 @@ export function IMChecklistItem({ item, isChecked, onToggle, statusKey }) {
       {/* Expanded body */}
       {open && (
         <div style={{
-          background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-          borderTop: 'none', borderRadius: '0 0 14px 14px', overflow: 'hidden',
+          background: 'var(--bg-card)', borderTop: 'none', borderRadius: '0 0 14px 14px', overflow: 'hidden',
         }}>
           {renderContent()}
           {statusKey === 'safe' ? (
@@ -297,7 +295,7 @@ export function OverflightItem({ item, isChecked, onToggle }) {
   const activeTerrains = TERRAIN.filter(t => selected.has(t.id))
 
   return (
-    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen} hideHeaderDivider>
+    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
           {/* Terrain type selector */}
           <div style={{ padding: '14px 14px 12px' }}>
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
@@ -322,7 +320,7 @@ export function OverflightItem({ item, isChecked, onToggle }) {
 
           {/* Considerations for selected terrain types */}
           {activeTerrains.length > 0 && (
-            <div style={{ borderTop: '0.5px solid var(--border)' }}>
+            <div style={{}}>
               {activeTerrains.map((t, ti) => (
                 <div key={t.id} style={{ padding: '12px 14px', borderTop: ti > 0 ? '0.5px solid var(--border)' : 'none' }}>
                   <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.4px', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: 8 }}>
@@ -346,7 +344,7 @@ export function OverflightItem({ item, isChecked, onToggle }) {
           )}
 
           {activeTerrains.length === 0 && (
-            <div style={{ borderTop: '0.5px solid var(--border)', padding: '12px 14px 10px' }}>
+            <div style={{ padding: '12px 14px 10px' }}>
               <div style={{ fontSize: 12, color: 'var(--text-tertiary)', textAlign: 'center' }}>
                 Select terrain types above to see considerations
               </div>
@@ -368,7 +366,7 @@ const O2_RULES = [
 export function OxygenItem({ item, isChecked, onToggle }) {
   const [open, setOpen] = useState(false)
   return (
-    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen} hideHeaderDivider>
+    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
           <div style={{ padding: '12px 12px 10px' }}>
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
               14 CFR §91.211 — Supplemental Oxygen
@@ -385,11 +383,10 @@ export function OxygenItem({ item, isChecked, onToggle }) {
               ))}
             </div>
           </div>
-          <div style={{ borderTop: '0.5px solid var(--border)', padding: '8px 12px 10px' }}>
+          <div style={{ padding: '8px 12px 10px' }}>
             <a href="https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.211" target="_blank" rel="noreferrer" style={{
               display: 'block', textAlign: 'center', padding: '8px 0',
-              borderRadius: 9, border: '0.5px solid var(--border)',
-              background: 'var(--bg-card-2)', textDecoration: 'none',
+              borderRadius: 9, background: 'var(--bg-card-2)', textDecoration: 'none',
               fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
             }}>14 CFR §91.211</a>
           </div>
@@ -476,7 +473,7 @@ export function RecapItem({ item, isChecked, onToggle, checked, total }) {
   }, null)
 
   return (
-    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen} hideHeaderDivider hideCheckmark>
+    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen} hideCheckmark>
       <div style={{ padding: '4px 14px 12px' }}>
 
         <RecapSection title="Route" />

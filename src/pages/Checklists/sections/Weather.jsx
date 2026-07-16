@@ -171,8 +171,7 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
       : []
 
     return (
-      <div style={{ margin: '10px 14px 0', borderRadius: 12, border: '0.5px solid var(--border)',
-        background: 'var(--bg-card-2)', overflow: 'visible' }}>
+      <div style={{ margin: '10px 14px 0', borderRadius: 12, background: 'var(--bg-card-2)', overflow: 'visible', display: 'flow-root' }}>
         {/* Card header */}
         <div style={{ padding: '10px 12px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)',
@@ -191,8 +190,7 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
               onBlur={() => setTimeout(() => setShowList(false), 150)}
               placeholder="Search by ICAO, name or city…"
               style={{
-                width: '100%', background: 'var(--bg)', border: '0.5px solid var(--border)',
-                borderRadius: showList && matches.length ? '8px 8px 0 0' : 8,
+                width: '100%', background: 'var(--bg)', borderRadius: showList && matches.length ? '8px 8px 0 0' : 8,
                 padding: '9px 11px', color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box',
               }}
             />
@@ -201,7 +199,7 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
           </div>
           {showList && matches.length > 0 && (
             <div style={{ position: 'absolute', left: 10, right: 10, zIndex: 20,
-              background: 'var(--bg-card-2)', border: '0.5px solid var(--border)', borderTop: 'none',
+              background: 'var(--bg-card-2)', borderTop: 'none',
               borderRadius: '0 0 8px 8px', overflow: 'hidden' }}>
               {matches.map((a, i) => (
                 <button key={a.icao} onMouseDown={() => addAlt(a.icao, refPos, refIcao, setAlts, setQuery, setShowList, setLoading, setError)}
@@ -234,8 +232,7 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
                   return (
                     <button key={s.icao} onClick={() => addAlt(s.icao, refPos, refIcao, setAlts, setQuery, setShowList, setLoading, setError)}
                       style={{ width: '100%', textAlign: 'left', cursor: 'pointer',
-                        background: 'var(--bg)', border: '0.5px solid var(--border)',
-                        borderRadius: 8, padding: '7px 10px',
+                        background: 'var(--bg)', borderRadius: 8, padding: '7px 10px',
                         display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: 'var(--border-strong)' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -259,7 +256,7 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
 
         {/* Loaded alternates */}
         {alts.length > 0 && (
-          <div style={{ borderTop: '0.5px solid var(--border)' }}>
+          <div style={{}}>
             {alts.map((alt, i) => {
               const cat = flightCat(alt.wx)
               const fuel = fuelToAlt(alt.distNm)
@@ -270,8 +267,7 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                         <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', fontFamily: 'monospace' }}>{alt.icaoId}</span>
                         {cat && <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-secondary)',
-                          background: 'var(--accent-light)', borderRadius: 4, padding: '2px 5px',
-                          border: '0.5px solid var(--border)' }}>{cat.cat}</span>}
+                          background: 'var(--accent-light)', borderRadius: 4, padding: '2px 5px' }}>{cat.cat}</span>}
                         {!alt.wx && <span style={{ fontSize: 9, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>no WX</span>}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
@@ -325,8 +321,7 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
         {altMinLink && (
           <a href={altMinLink} target="_blank" rel="noreferrer" style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            margin: '6px 10px 10px', background: 'var(--bg)', border: '0.5px solid var(--border)',
-            borderRadius: 8, padding: '8px 10px', textDecoration: 'none',
+            margin: '6px 10px 10px', background: 'var(--bg)', borderRadius: 8, padding: '8px 10px', textDecoration: 'none',
           }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)' }}>Alternate Minimums</div>
@@ -444,13 +439,11 @@ export function MetarItem({ item, isChecked, onToggle }) {
     <div style={{
       margin: '10px 12px 0',
       background: 'var(--bg-card-2)',
-      border: '0.5px solid var(--border)',
       borderRadius: 14,
       overflow: 'hidden',
     }}>
       {/* Header */}
-      <div style={{ padding: '10px 12px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        borderBottom: '0.5px solid var(--border)' }}>
+      <div style={{ padding: '10px 12px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.5px',
             textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>{label}</span>
@@ -459,8 +452,7 @@ export function MetarItem({ item, isChecked, onToggle }) {
         </div>
         {data?.decoded?.time && (
           <span style={{ fontSize: 10, color: 'var(--text-tertiary)',
-            background: 'var(--bg)', border: '0.5px solid var(--border)',
-            borderRadius: 20, padding: '2px 8px' }}>{data.decoded.time}</span>
+            background: 'var(--bg)', borderRadius: 20, padding: '2px 8px' }}>{data.decoded.time}</span>
         )}
         {isLoading && !data && (
           <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>Fetching…</span>
@@ -481,13 +473,12 @@ export function MetarItem({ item, isChecked, onToggle }) {
       {/* Decoded fields */}
       {data?.decoded && (
         <div style={{ padding: '4px 12px 10px' }}>
-          {FIELDS.filter(([, key]) => data.decoded[key]).map(([lbl, key], i, arr) => (
+          {FIELDS.filter(([, key]) => data.decoded[key]).map(([lbl, key]) => (
             <div key={key} style={{
               display: 'flex', alignItems: 'baseline', gap: 10, padding: '6px 0',
-              borderBottom: i < arr.length - 1 ? '0.5px solid var(--border)' : 'none',
             }}>
               <span style={{ fontSize: 11, color: 'var(--text-tertiary)', width: 68, flexShrink: 0 }}>{lbl}</span>
-              <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', flex: 1, lineHeight: 1.4 }}>
+              <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-tertiary)', flex: 1, lineHeight: 1.4, textAlign: 'right' }}>
                 {data.decoded[key]}
               </span>
             </div>
@@ -508,16 +499,14 @@ export function MetarItem({ item, isChecked, onToggle }) {
 
       {/* No route set */}
       {!dep && !dest && !loading && (
-        <div style={{ padding: '14px 14px 12px', borderTop: '0.5px solid var(--border)',
-          fontSize: 11, color: 'var(--text-tertiary)' }}>
+        <div style={{ padding: '14px 14px 12px', fontSize: 11, color: 'var(--text-tertiary)' }}>
           Set a departure and destination in Route and Altitude to auto-load METARs.
         </div>
       )}
 
       {/* Error */}
       {error && !loading && (
-        <div style={{ padding: '10px 14px', borderTop: '0.5px solid var(--border)',
-          fontSize: 11, color: 'var(--danger)' }}>{error}</div>
+        <div style={{ padding: '10px 14px', fontSize: 11, color: 'var(--danger)' }}>{error}</div>
       )}
 
       {/* Departure METAR */}
@@ -531,19 +520,17 @@ export function MetarItem({ item, isChecked, onToggle }) {
       )}
 
       {/* Reference links */}
-      <div style={{ borderTop: '0.5px solid var(--border)', padding: '10px 14px 10px', marginTop: 10 }}>
+      <div style={{ padding: '10px 14px 10px', marginTop: 10 }}>
         <div style={{ display: 'flex', gap: 8 }}>
           <a href="https://aviationweather.gov" target="_blank" rel="noreferrer" style={{
             flex: 1, textAlign: 'center', padding: '8px 0',
-            borderRadius: 9, border: '0.5px solid var(--border)',
-            background: 'var(--bg-card-2)', textDecoration: 'none',
+            borderRadius: 9, background: 'var(--bg-card-2)', textDecoration: 'none',
             fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
           }}>aviationweather.gov</a>
           <button onClick={() => { setDepData(null); setDestData(null); doFetch(dep, dest) }} style={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: '8px 0',
-            borderRadius: 9, border: '0.5px solid var(--border)',
-            background: 'var(--bg-card-2)',
+            borderRadius: 9, background: 'var(--bg-card-2)',
             cursor: 'pointer',
           }}>
             <IconRefresh size={14} onDark={false} />

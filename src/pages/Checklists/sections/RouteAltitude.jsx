@@ -736,7 +736,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
   return (
     <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
-      <div style={{ padding: '14px 12px 12px', borderTop: '0.5px solid var(--border)' }}>
+      <div style={{ padding: '14px 12px 12px' }}>
 
         {/* ── Route calculator ── */}
         <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
@@ -747,14 +747,12 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 4, letterSpacing: '0.3px', textTransform: 'uppercase' }}>From</div>
             {depValidated ? (
               <div style={{
-                width: '100%', background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-                borderRadius: 9, padding: '9px 11px', boxSizing: 'border-box',
+                width: '100%', background: 'var(--bg-card-2)', borderRadius: 9, padding: '9px 11px', boxSizing: 'border-box',
                 display: 'flex', alignItems: 'center',
               }}>
                 <div style={{
                   display: 'inline-flex', alignItems: 'center', gap: 7,
-                  background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-                  borderRadius: 6, padding: '3px 8px 3px 10px',
+                  background: 'var(--bg-card)', borderRadius: 6, padding: '3px 8px 3px 10px',
                 }}>
                   <span style={{
                     fontSize: 16, fontWeight: 700, fontFamily: 'monospace',
@@ -801,14 +799,12 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 4, letterSpacing: '0.3px', textTransform: 'uppercase' }}>To</div>
             {destValidated ? (
               <div style={{
-                width: '100%', background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-                borderRadius: 9, padding: '9px 11px', boxSizing: 'border-box',
+                width: '100%', background: 'var(--bg-card-2)', borderRadius: 9, padding: '9px 11px', boxSizing: 'border-box',
                 display: 'flex', alignItems: 'center',
               }}>
                 <div style={{
                   display: 'inline-flex', alignItems: 'center', gap: 7,
-                  background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-                  borderRadius: 6, padding: '3px 8px 3px 10px',
+                  background: 'var(--bg-card)', borderRadius: 6, padding: '3px 8px 3px 10px',
                 }}>
                   <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '1px', color: 'var(--text)', lineHeight: 1 }}>
                     {dest}
@@ -856,7 +852,6 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             width: '100%', padding: '9px 0', borderRadius: 9,
             background: dep.trim() && dest.trim() && !routeLoading ? 'var(--text)' : 'var(--bg-card-2)',
             color: dep.trim() && dest.trim() && !routeLoading ? 'var(--bg)' : 'var(--text-tertiary)',
-            border: '0.5px solid var(--border)',
             fontSize: 13, fontWeight: 600, cursor: dep.trim() && dest.trim() ? 'pointer' : 'default',
             transition: 'all 0.15s',
           }}>
@@ -885,8 +880,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             </div>
             <div style={{
               marginTop: 10, padding: '7px 10px', borderRadius: 8,
-              background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
               <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Magnetic Course</span>
               <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', fontFamily: 'monospace' }}>{route.mc}°</span>
@@ -1023,7 +1017,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
               return (<>
                 {/* Inline map */}
-                <div style={{ borderRadius: 10, overflow: 'hidden', height: 240, border: '0.5px solid var(--border)', position: 'relative', cursor: 'pointer' }}
+                <div style={{ borderRadius: 10, overflow: 'hidden', height: 240, position: 'relative', cursor: 'pointer' }}
                   onClick={() => setMapFS(true)}>
                   <MapContainer center={route.depPos} zoom={10}
                     style={{ height: '100%', width: '100%' }}
@@ -1439,8 +1433,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, marginTop: 12 }}>
             <span style={{
               fontSize: 12, fontWeight: 700, color: 'var(--text)',
-              background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-              borderRadius: 20, padding: '4px 10px', whiteSpace: 'nowrap',
+              background: 'var(--bg-card-2)', borderRadius: 20, padding: '4px 10px', whiteSpace: 'nowrap',
             }}>
               {isEast ? '↗ Eastbound' : '↙ Westbound'}
             </span>
@@ -1476,7 +1469,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
               })}
             </div>
             {selectedAlt && (
-              <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 9, background: 'var(--bg-card-2)', border: '0.5px solid var(--border)' }}>
+              <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 9, background: 'var(--bg-card-2)' }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
                   Planned: {selectedAlt.toLocaleString()} ft MSL
                 </div>
@@ -1492,13 +1485,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         )}
       </div>
 
-      <div style={{ borderTop: '0.5px solid var(--border)', padding: '10px 12px 12px' }}>
+      <div style={{ padding: '10px 12px 12px' }}>
         <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>For reference</div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <a href="https://www.faa.gov/air_traffic/publications/atpubs/aim_html/chap4_section_4.html#$paragraph4-4-6" target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: 9, border: '0.5px solid var(--border)', background: 'var(--bg-card-2)', textDecoration: 'none', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+          <a href="https://www.faa.gov/air_traffic/publications/atpubs/aim_html/chap4_section_4.html#$paragraph4-4-6" target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: 9, background: 'var(--bg-card-2)', textDecoration: 'none', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
             AIM 4-4-6
           </a>
-          <a href="https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.159" target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: 9, border: '0.5px solid var(--border)', background: 'var(--bg-card-2)', textDecoration: 'none', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+          <a href="https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.159" target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: 9, background: 'var(--bg-card-2)', textDecoration: 'none', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
             14 CFR §91.159
           </a>
         </div>
@@ -1656,8 +1649,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                 onChange={() => {}}
                 placeholder="Set a route first, or search…"
                 style={{
-                  width: '100%', background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-                  borderRadius: 9,
+                  width: '100%', background: 'var(--bg-card-2)', borderRadius: 9,
                   padding: '10px 12px', color: 'var(--text)',
                   fontSize: 14, outline: 'none', boxSizing: 'border-box',
                 }}
@@ -1679,7 +1671,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
           )}
 
           {loading && (
-            <div style={{ borderTop: '0.5px solid var(--border)', padding: '14px 12px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ padding: '14px 12px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Bone w={56} h={22} r={4} />
@@ -1820,7 +1812,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                 )
 
                 return (
-                  <div style={{ borderTop: '0.5px solid var(--border)', padding: '14px 12px 10px' }}>
+                  <div style={{ padding: '14px 12px 10px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around' }}>
 
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, opacity: 0.45 }}>
@@ -1860,7 +1852,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                 const FreqToggle = () => {
                   const [open, setOpen] = useState(false)
                   return (
-                    <div style={{ borderTop: '0.5px solid var(--border)', borderRadius: open ? '0 0 10px 10px' : undefined }}>
+                    <div style={{ borderRadius: open ? '0 0 10px 10px' : undefined }}>
                       <button onClick={() => setOpen(o => !o)} style={{
                         width: '100%', display: 'flex', alignItems: 'center',
                         justifyContent: 'space-between', padding: '10px 12px',
@@ -1876,7 +1868,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                         <span style={{ fontSize: 12, color: 'var(--text-tertiary)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▾</span>
                       </button>
                       {open && (
-                        <div style={{ borderTop: '0.5px solid var(--border)' }}>
+                        <div style={{}}>
                           {airport.frequencies.map((f, i) => (
                             <div key={i} style={{
                               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1912,7 +1904,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                 )
                 const apd = grouped['APD']?.[0]
                 return (
-                  <div style={{ borderTop: '0.5px solid var(--border)', padding: '12px 12px 4px' }}>
+                  <div style={{ padding: '12px 12px 4px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                       <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
                         FAA Official Charts
@@ -1959,7 +1951,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                       const meta = CHART_META[code] || { label: code }
                       const isOpen = openGroup === code
                       return (
-                        <div key={code} style={{ marginBottom: 4, border: '0.5px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                        <div key={code} style={{ marginBottom: 4, borderRadius: 10, overflow: 'hidden' }}>
                           <button
                             onClick={() => setActive(s => ({ ...s, openGroup: isOpen ? null : code }))}
                             style={{
@@ -1977,7 +1969,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                             <span style={{ fontSize: 12, color: 'var(--text-tertiary)', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▾</span>
                           </button>
                           {isOpen && (
-                            <div style={{ borderTop: '0.5px solid var(--border)' }}>
+                            <div style={{}}>
                               {charts.map((c, i) => (
                                 <a key={c.pdf_name} href={pdfBase + c.pdf_name} target="_blank" rel="noreferrer" style={{
                                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -2006,7 +1998,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
               })()}
 
               {/* Open charts */}
-              <div style={{ borderTop: '0.5px solid var(--border)', padding: '10px 12px 12px' }}>
+              <div style={{ padding: '10px 12px 12px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>Open charts</div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {[
@@ -2021,8 +2013,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                   ].map(cl => (
                     <a key={cl.label} href={cl.url} target="_blank" rel="noreferrer" style={{
                       flex: 1, textAlign: 'center', padding: '8px 0',
-                      borderRadius: 9, border: '0.5px solid var(--border)',
-                      background: 'var(--bg-card-2)', textDecoration: 'none',
+                      borderRadius: 9, background: 'var(--bg-card-2)', textDecoration: 'none',
                       fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
                     }}>{cl.label}</a>
                   ))}

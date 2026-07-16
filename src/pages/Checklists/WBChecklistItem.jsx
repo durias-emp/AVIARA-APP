@@ -31,7 +31,7 @@ function NumberInput({ value, onChange, unit, max }) {
         onChange={e => onChange(e.target.value)}
         style={{
           width: '100%', padding: '7px 28px 7px 8px', borderRadius: 8,
-          border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+          background: 'var(--bg-card-2)',
           color: 'var(--text)', fontSize: 13, textAlign: 'right',
           outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
         }}
@@ -275,7 +275,6 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
               </div>
               <button onClick={() => setMetric(m => !m)} style={{
                 padding: '4px 8px', borderRadius: 8, fontSize: 9, fontWeight: 700,
-                border: '0.5px solid var(--border)',
                 background: metric ? 'var(--accent-light)' : 'var(--bg-card-2)',
                 color: metric ? 'var(--accent)' : 'var(--text-tertiary)',
                 cursor: 'pointer', fontFamily: 'inherit',
@@ -356,7 +355,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                 onClick={() => setShowFuelConv(v => !v)}
                 style={{
                   width: '100%', padding: '7px 0', marginTop: 4,
-                  border: '0.5px solid var(--border)', borderRadius: 'var(--r-sm)',
+                  borderRadius: 'var(--r-sm)',
                   background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
                   fontSize: 11, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
                 }}>
@@ -372,16 +371,14 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
             {/* Results */}
             {result?.status.hasData && (
               <>
-                <div style={{ height: '0.5px', background: 'var(--border)', margin: '0 14px 10px' }} />
-
                 {/* Summary table */}
-                <div style={{ padding: '0 14px 10px' }}>
+                <div style={{ padding: '10px 14px 10px' }}>
                   <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>
                     Weight & Moment Summary
                   </div>
-                  <div style={{ border: '0.5px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                  <div style={{ borderRadius: 12, overflow: 'hidden' }}>
                     {/* Header */}
-                    <div style={{ display: 'grid', gridTemplateColumns: cfg.hasLateral ? '1fr 56px 56px 56px' : '1fr 56px 56px', padding: '5px 12px', background: 'var(--bg-card-2)', borderBottom: '0.5px solid var(--border)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: cfg.hasLateral ? '1fr 56px 56px 56px' : '1fr 56px 56px', padding: '5px 12px', background: 'var(--bg-card-2)' }}>
                       {(cfg.hasLateral ? ['Item', wU, `Arm ${aU}`, `Lat ${aU}`] : ['Item', wU, `Arm ${aU}`]).map((h, i) => (
                         <div key={h} style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: i > 0 ? 'right' : 'left' }}>{h}</div>
                       ))}
@@ -427,9 +424,9 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                 {/* Longitudinal chart */}
                 <div style={{ padding: '0 14px 10px' }}>
                   <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>
-                    CG Envelope — Longitudinal
+                    CG Envelope Longitudinal
                   </div>
-                  <div style={{ border: '0.5px solid var(--border)', borderRadius: 12, padding: 10 }}>
+                  <div style={{ borderRadius: 12, padding: 10 }}>
                     <LongCGChart cfg={cfg} result={result} ok={overallOK} />
                     <div style={{ display: 'flex', gap: 12, marginTop: 6, paddingLeft: 2 }}>
                       <Legend color="#60a5fa" label="Zero Fuel" />
@@ -443,9 +440,9 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                 {cfg.hasLateral && (
                   <div style={{ padding: '0 14px 10px' }}>
                     <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>
-                      CG Envelope — Lateral vs Longitudinal
+                      CG Envelope Lateral vs Longitudinal
                     </div>
-                    <div style={{ border: '0.5px solid var(--border)', borderRadius: 12, padding: 10 }}>
+                    <div style={{ borderRadius: 12, padding: 10 }}>
                       <LatCGChart cfg={cfg} result={result} ok={overallOK} />
                       <div style={{ display: 'flex', gap: 12, marginTop: 6, paddingLeft: 2 }}>
                         <Legend color="#60a5fa" label="Zero Fuel" />
@@ -460,7 +457,6 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                 <div style={{ margin: '0 14px 10px' }}>
                   <div style={{
                     background: 'var(--bg-card-2)',
-                    border: '0.5px solid var(--border)',
                     borderRadius: 12, padding: '10px 12px',
                     display: 'flex', alignItems: 'center', gap: 10,
                   }}>
@@ -491,7 +487,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                 {/* Souls on board — used by the Flight Plan one-pager and, if filing,
                     matches the ICAO flight-plan "persons on board" item. */}
                 <div style={{ margin: '0 14px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  background: 'var(--bg-card-2)', border: '0.5px solid var(--border)', borderRadius: 12, padding: '10px 12px' }}>
+                  background: 'var(--bg-card-2)', borderRadius: 12, padding: '10px 12px' }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>Souls on Board</span>
                   <input
                     type="number" inputMode="numeric" min={1} value={souls}
@@ -499,8 +495,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                     placeholder="—"
                     style={{
                       width: 56, textAlign: 'center', fontSize: 15, fontWeight: 700,
-                      color: 'var(--text)', background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-                      borderRadius: 8, padding: '5px 0', outline: 'none', fontFamily: 'inherit',
+                      color: 'var(--text)', background: 'var(--bg-card)', borderRadius: 8, padding: '5px 0', outline: 'none', fontFamily: 'inherit',
                     }}
                   />
                 </div>

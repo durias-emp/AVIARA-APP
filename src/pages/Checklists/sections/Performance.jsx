@@ -175,8 +175,7 @@ export function DensityAltItem({ item, isChecked, onToggle }) {
             <div style={{ display: 'flex', gap: 8 }}>
               <input value={manualIcao} onChange={e => setManual(e.target.value.toUpperCase())}
                 placeholder={tab === 'dep' ? 'Departure ICAO' : 'Arrival ICAO'} maxLength={6}
-                style={{ flex: 1, background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-                  borderRadius: 8, padding: '10px 12px', fontSize: 16, fontWeight: 700,
+                style={{ flex: 1, background: 'var(--bg-card-2)', borderRadius: 8, padding: '10px 12px', fontSize: 16, fontWeight: 700,
                   color: 'var(--text)', outline: 'none', fontFamily: 'monospace', letterSpacing: '1px' }} />
               <button onClick={async () => { if (manualIcao.length >= 3) { setNoRoute(false); setLoading(true); await fetchForTab(manualIcao, tab); setLoading(false) } }}
                 style={{ padding: '10px 16px', borderRadius: 8, background: 'var(--text)', color: 'var(--bg)',
@@ -249,10 +248,9 @@ export function DensityAltItem({ item, isChecked, onToggle }) {
 
       {/* Blocked Done */}
       {!bothValid && !isChecked && (
-        <div style={{ borderTop: '0.5px solid var(--border)', padding: '10px 14px 12px' }}>
+        <div style={{ padding: '10px 14px 12px' }}>
           <div style={{ width: '100%', padding: '11px 0', borderRadius: 10,
-            background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-            color: 'var(--text-tertiary)', fontSize: 13, fontWeight: 600,
+            background: 'var(--bg-card-2)', color: 'var(--text-tertiary)', fontSize: 13, fontWeight: 600,
             textAlign: 'center' }}>
             {!depValid && !destValid ? 'Fill Departure and Arrival to complete'
               : depValid  ? 'Check Arrival tab to complete'
@@ -537,7 +535,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
     <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
 
       {/* ── Tab toggle ── */}
-      <div style={{ padding: '10px 12px', borderBottom: '0.5px solid var(--border)' }}>
+      <div style={{ padding: '10px 12px' }}>
         <div style={{ position: 'relative', display: 'flex', background: 'var(--bg-card-2)', borderRadius: 10, padding: 3 }}>
           <div style={{
             position: 'absolute', top: 3, bottom: 3,
@@ -565,7 +563,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
 
         {/* ── Airport header ── */}
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
-          marginBottom: 14, paddingBottom: 14, borderBottom: '0.5px solid var(--border)' }}>
+          marginBottom: 14, paddingBottom: 14 }}>
           <div>
             {cur.loading
               ? <div style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Fetching…</div>
@@ -888,10 +886,9 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
       </div>
 
       {!allFilled && !isChecked && (
-        <div style={{ borderTop: '0.5px solid var(--border)', padding: '10px 14px 12px' }}>
+        <div style={{ padding: '10px 14px 12px' }}>
           <div style={{ width: '100%', padding: '11px 0', borderRadius: 10,
-            background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-            color: 'var(--text-tertiary)', fontSize: 13, fontWeight: 600, textAlign: 'center' }}>
+            background: 'var(--bg-card-2)', color: 'var(--text-tertiary)', fontSize: 13, fontWeight: 600, textAlign: 'center' }}>
             Enter POH reference values to complete
           </div>
         </div>
@@ -1171,13 +1168,17 @@ export function CruiseItem({ item, isChecked, onToggle }) {
         {/* ── Route summary ── */}
         {(depIcao || destIcao || distN) && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            marginBottom: 14, paddingBottom: 14, borderBottom: '0.5px solid var(--border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 20, fontWeight: 800, fontFamily: 'monospace', color: 'var(--text)' }}>
+            marginBottom: 14, paddingBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 32, fontWeight: 800, fontFamily: 'monospace', color: 'var(--text)', letterSpacing: '-0.5px' }}>
                 {depIcao || '—'}
               </span>
-              <div style={{ width: 32, height: 1, background: 'var(--border-strong)' }} />
-              <span style={{ fontSize: 20, fontWeight: 800, fontFamily: 'monospace', color: 'var(--text)' }}>
+              <img
+                src={isHelicopter ? '/helicopter.png' : '/modo-avion.png'}
+                width={22} height={22} alt=""
+                style={{ objectFit: 'contain', filter: 'var(--icon-filter)', flexShrink: 0, transform: 'rotate(90deg)' }}
+              />
+              <span style={{ fontSize: 32, fontWeight: 800, fontFamily: 'monospace', color: 'var(--text)', letterSpacing: '-0.5px' }}>
                 {destIcao || '—'}
               </span>
             </div>
@@ -1245,7 +1246,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
         {/* ── Winds aloft ── */}
         <div style={{ background: 'var(--bg-card-2)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
           {/* Header */}
-          <div style={{ padding: '8px 12px 6px', borderBottom: '0.5px solid var(--border)' }}>
+          <div style={{ padding: '8px 12px 6px' }}>
             <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.6px',
               textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
               Winds Aloft{windsAloft ? ` · ${windsAloft.level.toLocaleString()} ft` : ''}
@@ -1265,15 +1266,15 @@ export function CruiseItem({ item, isChecked, onToggle }) {
           {!winding && windsAloft && (
             <>
               {/* Data row */}
-              <div style={{ display: 'flex', borderBottom: routeBearing != null ? '0.5px solid var(--border)' : 'none' }}>
+              <div style={{ display: 'flex' }}>
                 {windsAloft.dir === 0 && windsAloft.spd === 0
                   ? <div style={{ flex: 1, padding: '10px 12px', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Light &amp; variable</div>
                   : <>
-                      <div style={{ flex: 1, padding: '10px 12px', borderRight: '0.5px solid var(--border)' }}>
+                      <div style={{ flex: 1, padding: '10px 12px' }}>
                         <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 4 }}>Direction</div>
                         <div style={{ fontSize: 18, fontWeight: 800, fontFamily: 'monospace', color: 'var(--text)', letterSpacing: '-0.5px' }}>{windsAloft.dir}°</div>
                       </div>
-                      <div style={{ flex: 1, padding: '10px 12px', borderRight: '0.5px solid var(--border)' }}>
+                      <div style={{ flex: 1, padding: '10px 12px' }}>
                         <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 4 }}>Speed</div>
                         <div style={{ fontSize: 18, fontWeight: 800, fontFamily: 'monospace', color: 'var(--text)', letterSpacing: '-0.5px' }}>{windsAloft.spd}<span style={{ fontSize: 11, fontWeight: 600, marginLeft: 2 }}>kt</span></div>
                       </div>
@@ -1306,7 +1307,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
             <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
             <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
-              Auto-filled from <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{aircraftLabel}</span> — edit to override
+              Auto-filled from <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{aircraftLabel}</span>, edit to override
             </span>
           </div>
         )}
@@ -1428,7 +1429,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
 
                 {/* GO / NO-GO */}
                 <div style={{ borderRadius: 12, padding: '12px 14px', marginBottom: 14,
-                  background: 'var(--bg-card-2)', border: '0.5px solid var(--border)' }}>
+                  background: 'var(--bg-card-2)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
                       <div style={{ fontSize: 9, color: 'var(--text-tertiary)', fontWeight: 700,
@@ -1469,7 +1470,6 @@ export function CruiseItem({ item, isChecked, onToggle }) {
 
                   {/* Header */}
                   <div style={{ padding: '11px 14px 10px',
-                    borderBottom: '0.5px solid var(--border)',
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
@@ -1492,8 +1492,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
                   </div>
 
                   {/* Stats row */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
-                    borderBottom: '0.5px solid var(--border)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr' }}>
                     {[
                       { label: 'Range / tank',  val: `${legRangeNm}`,  unit: 'nm',  sub: `with ${reqReserveMin}min reserve` },
                       { label: 'Leg distance',   val: `${legDist}`,     unit: 'nm',  sub: `${numLegs} equal legs` },
@@ -1560,7 +1559,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
                   {/* Footer note */}
                   <div style={{ padding: '0 14px 11px' }}>
                     <div style={{ fontSize: 9, color: 'var(--text-tertiary)', lineHeight: 1.6,
-                      borderTop: '0.5px solid var(--border)', paddingTop: 9 }}>
+                      paddingTop: 9 }}>
                       Equal-split estimates only. Verify fuel availability at each stop before flight.
                     </div>
                   </div>
@@ -1587,10 +1586,9 @@ export function CruiseItem({ item, isChecked, onToggle }) {
       </div>
 
       {!hasAll && !isChecked && (
-        <div style={{ borderTop: '0.5px solid var(--border)', padding: '10px 14px 12px' }}>
+        <div style={{ padding: '10px 14px 12px' }}>
           <div style={{ width: '100%', padding: '11px 0', borderRadius: 10,
-            background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-            color: 'var(--text-tertiary)', fontSize: 13, fontWeight: 600, textAlign: 'center' }}>
+            background: 'var(--bg-card-2)', color: 'var(--text-tertiary)', fontSize: 13, fontWeight: 600, textAlign: 'center' }}>
             Fill all fields to complete
           </div>
         </div>

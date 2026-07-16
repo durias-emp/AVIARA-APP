@@ -170,6 +170,39 @@ body {
   }
 }
 
+/* ── Fixed footer bar (checklist tab bar + action buttons) ───
+   position:fixed pins to the true device viewport regardless of
+   any dvh/ancestor-height mismatch — mirrors .app-shell's centered
+   width so it lines up with the content column above it. Styled as
+   a floating card (margin, rounded on all corners, shadow) that
+   slides down out of view while a card in the active step is open,
+   and slides back once every card in view is collapsed again. ── */
+.fixed-footer-bar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  width: auto;
+  margin: 0 auto;
+  z-index: 40;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  transition: transform 0.32s cubic-bezier(0.4,0,0.2,1);
+}
+
+@media (min-width: 600px) {
+  .fixed-footer-bar {
+    max-width: 700px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .fixed-footer-bar {
+    max-width: 780px;
+  }
+}
+
 /* ── Overlay content column (responsive) ───────────────────── */
 .overlay-content {
   width: 100%;

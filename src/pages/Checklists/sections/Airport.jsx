@@ -43,7 +43,7 @@ export function NotamItem({ item, isChecked, onToggle }) {
             </div>
           </div>
           {/* NOTAM links */}
-          <div style={{ borderTop: '0.5px solid var(--border)', padding: '14px 14px 4px' }}>
+          <div style={{ padding: '14px 14px 4px' }}>
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
               Check NOTAMs
             </div>
@@ -65,7 +65,7 @@ export function NotamItem({ item, isChecked, onToggle }) {
               </a>
             ))}
           </div>
-          <div style={{ borderTop: '0.5px solid var(--border)', padding: '10px 14px 10px', marginTop: 4 }}>
+          <div style={{ padding: '10px 14px 10px', marginTop: 4 }}>
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>NOTAMs change daily — always check on the day of flight.</div>
           </div>
           <DoneButton isChecked={isChecked} onDone={() => { onToggle(item.id); setOpen(false) }} />
@@ -144,7 +144,7 @@ export function NotamSection({ icao, CheckRow }) {
       <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Cloudflare Worker URL</div>
       <input value={urlInput} onChange={e => setUrlInput(e.target.value)}
         placeholder="https://pqrh-notam.yourname.workers.dev"
-        style={{ background: 'var(--bg-card-2)', border: '0.5px solid var(--border)', borderRadius: 7,
+        style={{ background: 'var(--bg-card-2)', borderRadius: 7,
           padding: '8px 10px', fontSize: 12, color: 'var(--text)', outline: 'none', fontFamily: 'monospace' }} />
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={saveUrl} disabled={!urlInput.trim()}
@@ -328,7 +328,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
   )
 
   return (
-    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen} hideHeaderDivider>
+    <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
 
       {/* ── Airport info ── */}
       <div style={{ padding: '14px 14px 0' }}>
@@ -483,7 +483,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
                         <div key={r.id} style={{
                           padding: '6px 8px', borderRadius: 7, textAlign: 'center',
                           fontSize: 12, fontWeight: 700, fontFamily: 'monospace',
-                          border: '0.5px solid var(--border)', background: 'transparent',
+                          background: 'transparent',
                           color: 'var(--text-secondary)',
                         }}>
                           {r.id}
@@ -512,8 +512,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
           const apdUrl = apdChart ? `${FAA_DTPP_BASE}${apdChart[2]}` : null
           const gridBtn = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center',
             gap: 6, padding: '13px 12px', borderRadius: 11,
-            background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-            textDecoration: 'none', cursor: 'pointer', width: '100%', textAlign: 'left' }
+            background: 'var(--bg-card-2)', textDecoration: 'none', cursor: 'pointer', width: '100%', textAlign: 'left' }
           return (
             <div style={{ padding: '10px 14px 4px',
               display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -547,7 +546,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
                 </div>
               </a>
               {/* Satellite Image */}
-              <button onClick={() => setMapsOpen(true)} style={{ ...gridBtn, border: '0.5px solid var(--border)' }}>
+              <button onClick={() => setMapsOpen(true)} style={{ ...gridBtn }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
                   stroke="var(--text-secondary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10"/>
@@ -620,7 +619,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
         {aptData?.frequencies?.length > 0 && (
           <div style={{ padding: '4px 14px 4px' }}>
             <div style={{
-              borderRadius: 11, background: 'var(--bg-card-2)', border: '0.5px solid var(--border)', overflow: 'hidden',
+              borderRadius: 11, background: 'var(--bg-card-2)', overflow: 'hidden',
             }}>
               <button onClick={() => setFreqOpen(o => !o)} style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -646,7 +645,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
                 </svg>
               </button>
               {freqOpen && (
-                <div style={{ borderTop: '0.5px solid var(--border)' }}>
+                <div style={{}}>
                   {aptData.frequencies.map((f, i) => (
                     <div key={f.freq + f.type + i} style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -703,43 +702,43 @@ export function AirportItem({ item, isChecked, onToggle }) {
         <div style={{ padding: '10px 14px 0' }}>
           <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.5px', textTransform: 'uppercase' }}>FBO / Arrival</span>
         </div>
-        <div style={{ padding: '0 14px 12px' }}>
-          <div style={{ padding: '10px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 4 }}>FBO Frequency</div>
-              <input
-                defaultValue={fboFreq}
-                onChange={e => localStorage.setItem('apt_fbo_freq', e.target.value)}
-                placeholder="e.g. 122.95"
-                style={{
-                  width: '100%', background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-                  borderRadius: 8, padding: '8px 10px', fontSize: 13, color: 'var(--text)',
-                  fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box',
-                }}
-              />
+        <div style={{ padding: '6px 14px 12px' }}>
+          <div style={{ background: 'var(--bg-card-2)', borderRadius: 12, padding: '10px 10px 4px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '0 4px' }}>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 4 }}>FBO Frequency</div>
+                <input
+                  defaultValue={fboFreq}
+                  onChange={e => localStorage.setItem('apt_fbo_freq', e.target.value)}
+                  placeholder="e.g. 122.95"
+                  style={{
+                    width: '100%', background: 'var(--bg)', borderRadius: 8, padding: '8px 10px', fontSize: 13, color: 'var(--text)',
+                    fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 4 }}>Special Remarks / Procedures</div>
+                <textarea
+                  defaultValue={fboNote}
+                  onChange={e => localStorage.setItem('apt_fbo_note', e.target.value)}
+                  placeholder="Parking instructions, contact info, special procedures..."
+                  rows={3}
+                  style={{
+                    width: '100%', background: 'var(--bg)', borderRadius: 8, padding: '8px 10px', fontSize: 12, color: 'var(--text)',
+                    resize: 'none', outline: 'none', lineHeight: 1.5, boxSizing: 'border-box',
+                    fontFamily: 'inherit',
+                  }}
+                />
+              </div>
             </div>
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 4 }}>Special Remarks / Procedures</div>
-              <textarea
-                defaultValue={fboNote}
-                onChange={e => localStorage.setItem('apt_fbo_note', e.target.value)}
-                placeholder="Parking instructions, contact info, special procedures..."
-                rows={3}
-                style={{
-                  width: '100%', background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-                  borderRadius: 8, padding: '8px 10px', fontSize: 12, color: 'var(--text)',
-                  resize: 'none', outline: 'none', lineHeight: 1.5, boxSizing: 'border-box',
-                  fontFamily: 'inherit',
-                }}
-              />
-            </div>
+            <CheckRow id="apt-fbo"   label="FBO / Airport informed of arrival and intention" />
+            <CheckRow id="apt-fbo-a" label="FBO frequency noted" />
           </div>
-          <CheckRow id="apt-fbo"   label="FBO / Airport informed of arrival and intention" />
-          <CheckRow id="apt-fbo-a" label="FBO frequency noted" />
         </div>
       </SectionCard>
 
-      <div style={{ borderTop: '0.5px solid var(--border)', height: 4 }} />
+      <div style={{ height: 4 }} />
       <DoneButton
         isChecked={isChecked}
         onDone={() => { if (!isChecked) onToggle(item.id); setOpen(false) }}
