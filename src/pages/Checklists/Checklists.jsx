@@ -125,30 +125,31 @@ function ChecklistDetail({ checklist, onBack }) {
 
   useEffect(() => { activeIndexRef.current = activeIndex }, [activeIndex])
 
-  // The title cycle only makes sense once the pilot is actually past the
-  // VFR/IFR + Local/XC picker and inside the checklist — skip it entirely
-  // (and stay on the plain "Flight Plan" title) until then.
+  // Where the title settles after the intro flip: the VFR/IFR/Local picker
+  // shows "Flight Type" (nothing to pick a step from yet), the checklist
+  // shows the active step's name, and "loading from storage" (undefined)
+  // has no settled state — the intro effect below skips it entirely.
   useEffect(() => {
-    if (!flightPlanType) { introDoneRef.current = false; setHeaderTitle(checklist.title); return }
+    if (flightPlanType === undefined) { introDoneRef.current = false; setHeaderTitle(checklist.title); return }
     const introTimer = setTimeout(() => {
       introDoneRef.current = true
-      setHeaderTitle(checklist.sections[activeIndexRef.current]?.title ?? checklist.title)
+      setHeaderTitle(flightPlanType === null ? 'Flight Type' : (checklist.sections[activeIndexRef.current]?.title ?? checklist.title))
     }, TITLE_INTRO_MS)
     return () => clearTimeout(introTimer)
   }, [checklist, flightPlanType])
 
   useEffect(() => {
-    if (!introDoneRef.current) return
+    if (!introDoneRef.current || flightPlanType === null) return
     setHeaderTitle(checklist.sections[activeIndex]?.title ?? checklist.title)
-  }, [activeIndex, checklist])
+  }, [activeIndex, checklist, flightPlanType])
 
   useEffect(() => {
-    if (!flightPlanType) return
+    if (flightPlanType === undefined) return
     const cycle = setInterval(() => {
       if (!introDoneRef.current) return
       setHeaderTitle(checklist.title)
       setTimeout(() => {
-        setHeaderTitle(checklist.sections[activeIndexRef.current]?.title ?? checklist.title)
+        setHeaderTitle(flightPlanType === null ? 'Flight Type' : (checklist.sections[activeIndexRef.current]?.title ?? checklist.title))
       }, TITLE_INTRO_MS)
     }, TITLE_CYCLE_MS)
     return () => clearInterval(cycle)
@@ -244,10 +245,12 @@ function ChecklistDetail({ checklist, onBack }) {
         <h2 style={{ flex: 1, fontSize: 22, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)', margin: 0 }}>
           <SplitFlapTitle text={headerTitle} />
         </h2>
-        <button onClick={reset} style={{
-          fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
-          background: 'var(--bg-card)', borderRadius: 20, cursor: 'pointer', padding: '6px 14px', flexShrink: 0,
-        }}>Reset</button>
+        {flightPlanType !== null && (
+          <button onClick={reset} style={{
+            fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
+            background: 'var(--bg-card)', borderRadius: 20, cursor: 'pointer', padding: '6px 14px', flexShrink: 0,
+          }}>Reset</button>
+        )}
       </div>
 
       {flightPlanType === null && (
