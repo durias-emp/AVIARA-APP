@@ -949,7 +949,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                   placeholder="MGGT"
                   maxLength={4}
                   style={{
-                    width: '100%', background: 'var(--bg-card-2)', border: `0.5px solid ${destError ? 'var(--danger)' : 'var(--border)'}`,
+                    width: '100%', background: 'var(--bg-card-2)', border: `0.5px solid ${destError ? 'var(--danger)' : 'transparent'}`,
                     borderRadius: 9, padding: '9px 11px', color: 'var(--text)',
                     fontSize: 16, fontWeight: 700, fontFamily: 'monospace',
                     letterSpacing: '1px', outline: 'none', boxSizing: 'border-box',
@@ -1512,20 +1512,15 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
               Above 18,000 ft MSL is Class A airspace, IFR only.
             </div>
+
+            <a href="https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.159" target="_blank" rel="noreferrer" style={{
+              display: 'block', marginTop: 10, textAlign: 'center', padding: '8px 0', borderRadius: 9,
+              background: 'var(--bg-card-2)', textDecoration: 'none', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
+            }}>
+              14 CFR §91.159
+            </a>
           </>
         )}
-      </div>
-
-      <div style={{ padding: '10px 12px 12px' }}>
-        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>For reference</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <a href="https://www.faa.gov/air_traffic/publications/atpubs/aim_html/chap4_section_4.html#$paragraph4-4-6" target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: 9, background: 'var(--bg-card-2)', textDecoration: 'none', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
-            AIM 4-4-6
-          </a>
-          <a href="https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.159" target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: 9, background: 'var(--bg-card-2)', textDecoration: 'none', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
-            14 CFR §91.159
-          </a>
-        </div>
       </div>
       <DoneButton isChecked={isChecked} onDone={() => { onToggle(item.id); setOpen(false) }} />
     </ExpandableCard>
