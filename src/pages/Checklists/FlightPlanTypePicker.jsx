@@ -11,9 +11,9 @@ const OPTIONS = [
 function OptionButton({ label, onClick }) {
   return (
     <button onClick={onClick} style={{
-      flex: 1, borderRadius: 14, border: 'none', cursor: 'pointer',
+      flex: '1 1 0', minHeight: 160, borderRadius: 20, border: 'none', cursor: 'pointer',
       background: 'var(--bg-card-2)', color: 'var(--text)',
-      fontSize: 22, fontWeight: 700, letterSpacing: '-0.3px',
+      fontSize: 32, fontWeight: 800, letterSpacing: '-0.4px',
       transition: 'background 0.15s',
       WebkitTapHighlightColor: 'transparent',
     }}>{label}</button>
@@ -24,10 +24,13 @@ function OptionButton({ label, onClick }) {
 // determines both flightRules and crossCountry so the checklist can filter
 // its content by them later; for now every combination opens the same
 // checklist, so tapping an option starts it immediately (each button is its
-// own "start" action, not a selection that needs separate confirming).
+// own "start" action, not a selection that needs separate confirming). Big,
+// screen-filling buttons — flex:1 stretches them to share the available
+// height, and minHeight is a floor in case an ancestor's flex-grow chain
+// doesn't hand down as much room as expected.
 export default function FlightPlanTypePicker({ onComplete }) {
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '4px 20px 24px', gap: 14 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '4px 20px 24px', gap: 16 }}>
       {OPTIONS.map(o => (
         <OptionButton
           key={o.key}
