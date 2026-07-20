@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { get, put, getAll } from './db'
+import { get, put, getAll, clearStore } from './db'
 
 // The five stores backed up to the cloud. `weather` is excluded — it's a
 // disposable fetch cache, not pilot data worth restoring.
@@ -76,5 +76,17 @@ export async function retryPendingPushes() {
   for (const store of SYNCED_STORES) {
     const meta = await get('syncMeta', store)
     if (meta?.pendingPush) await pushToCloud(store)
+  }
+}
+
+// Wipe all locally-stored pilot data. Called on sign-out so the device is
+// left clean for the next account — otherwise hydrateFromCloud (which only
+// fills empty stores) would leave the previous pilot's data visible to
+// whoever signs in next. Also clears syncMeta so the next sign-in triggers
+// a fresh pull. Callers should push a final backup BEFORE this, while the
+// session still exists.
+export async function clearLocalData() {
+  for (const store of [...SYNCED_STORES, 'syncMeta']) {
+    await clearStore(store).catch(() => {})
   }
 }

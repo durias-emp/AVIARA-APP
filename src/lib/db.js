@@ -59,3 +59,9 @@ export async function getAll(store) {
 export async function del(store, key) {
   return (await db()).delete(store, key)
 }
+
+// Wipe one store's contents (not the store itself). Used on sign-out so a
+// shared device doesn't leak one pilot's data into the next account.
+export async function clearStore(store) {
+  return (await db()).clear(store)
+}

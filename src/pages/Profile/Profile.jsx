@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { usePilotProfile } from '../../context/PilotProfile'
+import { useAuth } from '../../context/AuthContext'
 import { BackButton } from '../../components/Shell'
 import { SegControl, UNIT_ROWS } from '../Onboarding/Onboarding'
 import { get } from '../../lib/db'
+import { pushAllToCloud, clearLocalData } from '../../lib/sync'
 import { getCurrencyStatus, fmtDate } from '../../lib/currency'
 
 const STATUS_COLOR = {
@@ -70,11 +72,25 @@ function TextInput({ value, onChange, placeholder, type = 'text' }) {
 
 export default function Profile() {
   const { profile, setProfile } = usePilotProfile()
+  const { user, signOut } = useAuth()
   const [currencyData, setCurrencyData] = useState(null)
+  const [confirmSignOut, setConfirmSignOut] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
 
   useEffect(() => {
     get('currency', 'profile').then(saved => setCurrencyData(saved ?? {}))
   }, [])
+
+  async function handleSignOut() {
+    setSigningOut(true)
+    // Push a final backup while we still have a session, then wipe local
+    // data so the next account starts clean, then sign out. The reload
+    // resets all in-memory state and lands on the sign-in gate.
+    await pushAllToCloud().catch(() => {})
+    await clearLocalData().catch(() => {})
+    await signOut().catch(() => {})
+    window.location.reload()
+  }
 
   if (!profile) return null
 
@@ -145,7 +161,77 @@ export default function Profile() {
             </div>
           ))}
         </div>
+
+        {/* Account */}
+        <div style={{ background: 'var(--bg-card)', border: '0.5px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
+          <div style={{ padding: '14px 16px 4px' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Account</span>
+          </div>
+          {user?.email && (
+            <div style={{ padding: '4px 16px 12px', fontSize: 13, color: 'var(--text-secondary)' }}>
+              Signed in as <span style={{ color: 'var(--text)', fontWeight: 600 }}>{user.email}</span>
+            </div>
+          )}
+          <div style={{ padding: '0 16px 16px' }}>
+            <button
+              onClick={() => setConfirmSignOut(true)}
+              style={{
+                width: '100%', padding: '12px', borderRadius: 'var(--r-sm)', border: 'none',
+                background: 'var(--danger-light)', color: 'var(--danger)',
+                fontSize: 15, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
       </div>
+
+      {confirmSignOut && (
+        <div
+          onClick={() => !signingOut && setConfirmSignOut(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 600,
+            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px',
+          }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{
+            width: '100%', maxWidth: 340, background: 'var(--bg-card)', borderRadius: 16,
+            padding: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+          }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>Sign out?</div>
+            <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 18 }}>
+              Your data is backed up and will be restored when you sign back in. This device will be cleared.
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setConfirmSignOut(false)}
+                disabled={signingOut}
+                style={{
+                  flex: 1, padding: '12px', borderRadius: 'var(--r-sm)', border: 'none',
+                  background: 'var(--bg-card-2)', color: 'var(--text)',
+                  fontSize: 15, fontWeight: 600, cursor: signingOut ? 'default' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSignOut}
+                disabled={signingOut}
+                style={{
+                  flex: 1, padding: '12px', borderRadius: 'var(--r-sm)', border: 'none',
+                  background: 'var(--danger)', color: '#fff',
+                  fontSize: 15, fontWeight: 600, cursor: signingOut ? 'default' : 'pointer',
+                  opacity: signingOut ? 0.7 : 1,
+                }}
+              >
+                {signingOut ? 'Signing out…' : 'Sign Out'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
