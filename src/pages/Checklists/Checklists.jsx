@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { BackButton } from '../../components/Shell'
 import { get, put, del } from '../../lib/db'
+import { trackEvent } from '../../lib/analytics'
 import ChecklistTabShell from './ChecklistTabShell'
 import FlightPlanOnePager from './FlightPlanOnePager'
 import FlightPlanTypePicker from './FlightPlanTypePicker'
@@ -360,6 +361,7 @@ function CompleteButton({ pct, complete, checklist, onComplete, onAddStep }) {
       }
 
       await put('flights', record)
+      trackEvent('checklist_completed', { checklistId: checklist.id, dep, dest })
     } catch (e) {
       // Save failed silently — don't block the pilot
     }

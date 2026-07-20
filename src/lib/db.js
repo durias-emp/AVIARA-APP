@@ -1,7 +1,8 @@
 import { openDB } from 'idb'
+import { SYNCED_STORES, pushToCloud } from './sync'
 
 const DB_NAME = 'pqrh'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 let _db = null
 
@@ -18,6 +19,11 @@ async function db() {
       }
       if (oldVersion < 2) {
         db.createObjectStore('flights', { keyPath: 'id' })
+      }
+      if (oldVersion < 3) {
+        // Bookkeeping for the cloud-backup push hook below — one row per
+        // synced store name, tracking whether its last push succeeded.
+        db.createObjectStore('syncMeta', { keyPath: 'store' })
       }
     },
     blocking() {
@@ -38,7 +44,12 @@ export async function get(store, key) {
 }
 
 export async function put(store, value) {
-  return (await db()).put(store, value)
+  const result = await (await db()).put(store, value)
+  // Best-effort cloud backup — fire-and-forget, never blocks or throws from
+  // here. `pushToCloud` itself no-ops for stores that aren't backed up
+  // (including `syncMeta`, so this can't recurse).
+  if (SYNCED_STORES.includes(store)) pushToCloud(store)
+  return result
 }
 
 export async function getAll(store) {

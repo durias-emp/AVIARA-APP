@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useTheme } from './hooks/useTheme'
 import { PilotProfileProvider, usePilotProfile } from './context/PilotProfile'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import BackOverrideProvider from './context/BackOverrideProvider'
 import Shell from './components/Shell'
 
@@ -14,9 +15,26 @@ const Reference   = lazy(() => import('./pages/Reference/Reference'))
 const Weather     = lazy(() => import('./pages/Weather/Weather'))
 const Onboarding  = lazy(() => import('./pages/Onboarding/Onboarding'))
 const Profile     = lazy(() => import('./pages/Profile/Profile'))
+const SignIn      = lazy(() => import('./pages/SignIn/SignIn'))
 
 function AppRoutes({ theme }) {
+  const { session, loading: authLoading } = useAuth()
   const { profile } = usePilotProfile()
+
+  if (authLoading) return null
+
+  // Sign-in is required before anything else — no bypass. A pre-existing
+  // install (real local data, onboarding already done, no account yet)
+  // gets reassuring "back up your data" copy instead of the generic
+  // sign-in screen; the actual sign-in flow is identical either way.
+  if (!session) {
+    const legacy = profile != null && profile.onboardingComplete
+    return (
+      <Suspense fallback={null}>
+        <SignIn legacy={legacy} />
+      </Suspense>
+    )
+  }
 
   if (profile === null) return null
 
@@ -51,10 +69,12 @@ export default function App() {
   const { theme } = useTheme()
 
   return (
-    <PilotProfileProvider>
-      <BrowserRouter>
-        <AppRoutes theme={theme} />
-      </BrowserRouter>
-    </PilotProfileProvider>
+    <AuthProvider>
+      <PilotProfileProvider>
+        <BrowserRouter>
+          <AppRoutes theme={theme} />
+        </BrowserRouter>
+      </PilotProfileProvider>
+    </AuthProvider>
   )
 }

@@ -5,6 +5,7 @@ import { medicalExpiryRows, ageAt, fmtDate, calendarMonthExpiry, statusFromExpir
 import { TEMPLATES } from '../Aircraft/Aircraft'
 import { put } from '../../lib/db'
 import { loadWeather } from '../../lib/weather'
+import { trackEvent } from '../../lib/analytics'
 
 const TOTAL = 6
 const CERTS  = ['Student', 'Private', 'Commercial', 'ATP']
@@ -1067,6 +1068,7 @@ export default function Onboarding() {
     // which mounts WeatherCard and reads 'settings'/homeAirport on mount.
     const savedProfile = { ...draft, onboardingComplete: true }
     await setProfile(savedProfile)
+    trackEvent('onboarding_complete')
   }
 
   const anim = dir === 'forward' ? 'slide-in-right 0.28s ease' : 'slide-in-left 0.28s ease'

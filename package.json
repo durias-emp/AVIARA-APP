@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@lottiefiles/dotlottie-react": "^0.19.7",
+    "@supabase/supabase-js": "^2.110.7",
     "idb": "^8.0.3",
     "leaflet": "^1.9.4",
     "react": "^19.2.6",
