@@ -50,7 +50,7 @@ function ModuleCard({ section, onOpen, icon, label, tint }) {
       cursor: 'pointer',
       background: 'var(--bg-card)',
       borderRadius: 20,
-      border: '0.5px solid var(--border)',
+      boxShadow: 'var(--shadow-sm)',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -152,7 +152,7 @@ function AircraftCard({ aircraftName, registration, aircraftImage, hobbsTime, on
     <div style={{ padding: '10px 18px 0' }}>
       <div ref={ref} onClick={handleClick} style={{
         background: 'var(--bg-card)', borderRadius: 20,
-        border: '0.5px solid var(--border)',
+        boxShadow: 'var(--shadow-sm)',
         display: 'flex', alignItems: 'stretch',
         overflow: 'hidden', minHeight: 90,
         cursor: 'pointer',
@@ -294,7 +294,7 @@ export default function Home() {
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
               padding: '6px 12px', borderRadius: 20,
-              background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+              background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
             }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.1px' }}>
                 Pilot
@@ -370,7 +370,7 @@ export default function Home() {
           <div style={{
             background: 'var(--bg-card)',
             borderRadius: 20,
-            border: '0.5px solid var(--border)',
+            boxShadow: 'var(--shadow-sm)',
             overflow: 'hidden',
           }}>
             {flights.map((flight) => (
