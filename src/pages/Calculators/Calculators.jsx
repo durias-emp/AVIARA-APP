@@ -97,7 +97,7 @@ function ChipButton({ onClick, children }) {
   return (
     <button onClick={onClick} style={{
       fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)',
-      background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+      background: 'var(--bg-card-2)',
       borderRadius: 20, padding: '3px 10px', cursor: 'pointer',
       fontFamily: 'inherit', flexShrink: 0,
     }}>{children}</button>
@@ -179,7 +179,7 @@ function UnitConverter({ units, placeholder }) {
             style={{
               width: 152, boxSizing: 'border-box',
               height: 46, padding: '0 32px 0 12px', borderRadius: 'var(--r-sm)',
-              border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+              background: 'var(--bg-card-2)',
               color: 'var(--text)', fontSize: 14, fontWeight: 500, cursor: 'pointer',
               appearance: 'none', outline: 'none',
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='3,6 8,11 13,6' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
@@ -194,7 +194,7 @@ function UnitConverter({ units, placeholder }) {
             type="number" inputMode="decimal" step="any"
             placeholder={placeholder}
             value={value} onChange={e => setValue(e.target.value)}
-            style={{ width: '100%', height: 46, padding: '0 13px', borderRadius: 'var(--r-sm)', border: '0.5px solid var(--border)', background: 'var(--bg-card-2)', color: 'var(--text)', fontSize: 17, outline: 'none' }}
+            style={{ width: '100%', height: 46, padding: '0 13px', borderRadius: 'var(--r-sm)', background: 'var(--bg-card-2)', color: 'var(--text)', fontSize: 17, outline: 'none' }}
           />
         </div>
       </div>
@@ -245,7 +245,7 @@ function NmConverter() {
             style={{
               width: 152, boxSizing: 'border-box',
               height: 46, padding: '0 32px 0 12px', borderRadius: 'var(--r-sm)',
-              border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+              background: 'var(--bg-card-2)',
               color: 'var(--text)', fontSize: 14, fontWeight: 500, cursor: 'pointer',
               appearance: 'none', outline: 'none',
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='3,6 8,11 13,6' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
@@ -260,7 +260,7 @@ function NmConverter() {
             type="number" inputMode="decimal" step="any"
             placeholder="Distance"
             value={value} onChange={e => setValue(e.target.value)}
-            style={{ width: '100%', height: 46, padding: '0 13px', borderRadius: 'var(--r-sm)', border: '0.5px solid var(--border)', background: 'var(--bg-card-2)', color: 'var(--text)', fontSize: 17, outline: 'none' }}
+            style={{ width: '100%', height: 46, padding: '0 13px', borderRadius: 'var(--r-sm)', background: 'var(--bg-card-2)', color: 'var(--text)', fontSize: 17, outline: 'none' }}
           />
         </div>
       </div>
@@ -493,6 +493,7 @@ function GlideRatioCalc() {
 
 /* ── Shared atoms ────────────────────────────────────── */
 function SectionCard({ title, formula, children, headerRight }) {
+  const [refOpen, setRefOpen] = useState(false)
   return (
     <div style={{
       background: 'var(--bg-card)',
@@ -500,16 +501,47 @@ function SectionCard({ title, formula, children, headerRight }) {
       padding: 16,
       boxShadow: 'var(--shadow-sm)',
     }}>
-      <div style={{ marginBottom: formula ? 2 : 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ fontSize: 17, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.2px' }}>{title}</span>
-        {headerRight}
+        {formula ? <ChipButton onClick={() => setRefOpen(true)}>Reference</ChipButton> : headerRight}
       </div>
-      {formula && (
-        <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 14, fontFamily: 'monospace', lineHeight: 1.5 }}>
+      {children}
+      {refOpen && <FormulaModal title={title} formula={formula} onClose={() => setRefOpen(false)} />}
+    </div>
+  )
+}
+
+// Same interaction as Fuel Conversion's "Reference" chip — the formula is
+// tucked behind a modal instead of always sitting under the title, so the
+// card stays compact and the formula is available on demand.
+function FormulaModal({ title, formula, onClose }) {
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 600,
+      background: 'rgba(0,0,0,0.55)',
+      backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 20px',
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: '100%', maxWidth: 360,
+        background: 'var(--bg-card)', borderRadius: 16,
+        padding: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <span style={{ fontSize: 17, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.2px' }}>{title} Reference</span>
+          <button onClick={onClose} style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+            color: 'var(--text-tertiary)', display: 'flex',
+          }}>
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'monospace', lineHeight: 1.6, margin: 0 }}>
           {formula}
         </p>
-      )}
-      {children}
+      </div>
     </div>
   )
 }
@@ -533,16 +565,12 @@ function NumField({ label, value, onChange, step = '1', placeholder = '', noLabe
           width: '100%',
           padding: '11px 13px',
           borderRadius: 'var(--r-sm)',
-          border: '0.5px solid var(--border)',
           background: 'var(--bg-card-2)',
           color: 'var(--text)',
           fontSize: 17,
           fontVariantNumeric: 'tabular-nums',
           outline: 'none',
-          transition: 'border-color 0.15s',
         }}
-        onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-        onBlur={e => e.target.style.borderColor = 'var(--border)'}
       />
     </div>
   )
