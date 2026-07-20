@@ -465,10 +465,10 @@ function GlideRatioCalc() {
         <div style={{ marginTop: 12, overflowX: 'auto', borderRadius: 10, border: '0.5px solid var(--border)' }}>
           <table style={{ borderCollapse: 'collapse', fontSize: 11, width: '100%', minWidth: 480 }}>
             <thead>
-              <tr style={{ background: 'var(--bg-card-2)' }}>
-                <th style={{ padding: '7px 8px', textAlign: 'left', color: 'var(--text)', fontWeight: 600, borderRight: '0.5px solid var(--border)', whiteSpace: 'nowrap' }}>NM \ Ratio</th>
+              <tr style={{ background: '#ffffff' }}>
+                <th style={{ padding: '7px 8px', textAlign: 'left', color: '#000', fontWeight: 600, borderRight: '0.5px solid rgba(0,0,0,0.15)', whiteSpace: 'nowrap' }}>NM \ Ratio</th>
                 {TABLE_RATIOS.map(r => (
-                  <th key={r} style={{ padding: '7px 6px', textAlign: 'center', color: 'var(--text)', fontWeight: 600, borderRight: '0.5px solid var(--border)', whiteSpace: 'nowrap' }}>{r}</th>
+                  <th key={r} style={{ padding: '7px 6px', textAlign: 'center', color: '#000', fontWeight: 600, borderRight: '0.5px solid rgba(0,0,0,0.15)', whiteSpace: 'nowrap' }}>{r}</th>
                 ))}
               </tr>
             </thead>
