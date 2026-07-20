@@ -34,16 +34,31 @@ function createOfflineStubClient() {
   }
 }
 
-if (!url || !anonKey) {
-  console.warn('Supabase env vars missing — set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local. Auth/backup features are disabled until then.')
+// A present-but-malformed URL (typo, stray whitespace, wrong value pasted
+// into the Vercel dashboard) must degrade exactly like a missing one —
+// createClient() throws synchronously on a bad URL, and one bad character
+// in a dashboard field must never be able to white-screen the whole app.
+function isValidHttpUrl(value) {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:'
+  } catch {
+    return false
+  }
+}
+
+const configured = Boolean(url && anonKey && isValidHttpUrl(url.trim()))
+
+if (!configured) {
+  console.warn('Supabase env vars missing or invalid — set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local. Auth/backup features are disabled until then.')
 }
 
 // persistSession/autoRefreshToken/detectSessionInUrl are all Supabase
 // defaults, spelled out here because they're load-bearing: they're what
 // let auth.getSession() resolve from local storage with no network round
 // trip, so a pilot who's already signed in keeps working fully offline.
-export const supabase = (url && anonKey)
-  ? createClient(url, anonKey, {
+export const supabase = configured
+  ? createClient(url.trim(), anonKey.trim(), {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
     })
   : createOfflineStubClient()
