@@ -1460,14 +1460,12 @@ export default function Aircraft() {
             style={{
               width: '100%', resize: 'none',
               padding: '11px 13px', borderRadius: 'var(--r-sm)',
-              border: '0.5px solid var(--border)',
+              border: 'none',
               background: 'var(--bg-card-2)',
               color: 'var(--text)', fontSize: 15,
               fontFamily: 'inherit', lineHeight: 1.5,
               outline: 'none',
             }}
-            onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-            onBlur={e => e.target.style.borderColor = 'var(--border)'}
           />
         </Section>
 
@@ -1614,12 +1612,10 @@ function Field({ label, value, onChange, placeholder, type = 'text' }) {
         placeholder={placeholder}
         style={{
           width: '100%', padding: '10px 12px', borderRadius: 'var(--r-sm)',
-          border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+          border: 'none', background: 'var(--bg-card-2)',
           color: 'var(--text)', fontSize: 15, outline: 'none',
           fontVariantNumeric: 'tabular-nums',
         }}
-        onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-        onBlur={e => e.target.style.borderColor = 'var(--border)'}
       />
     </div>
   )
@@ -1640,12 +1636,10 @@ function VSpeed({ label, value, onChange }) {
           placeholder="—"
           style={{
             width: '100%', padding: '10px 36px 10px 12px', borderRadius: 'var(--r-sm)',
-            border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+            border: 'none', background: 'var(--bg-card-2)',
             color: 'var(--text)', fontSize: 15, outline: 'none',
             fontVariantNumeric: 'tabular-nums',
           }}
-          onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-          onBlur={e => e.target.style.borderColor = 'var(--border)'}
         />
         <span style={{
           position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
