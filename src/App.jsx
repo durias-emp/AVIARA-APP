@@ -13,15 +13,25 @@ const Aircraft    = lazy(() => import('./pages/Aircraft/Aircraft'))
 const Currency    = lazy(() => import('./pages/Currency/Currency'))
 const Reference   = lazy(() => import('./pages/Reference/Reference'))
 const Weather     = lazy(() => import('./pages/Weather/Weather'))
-const Onboarding  = lazy(() => import('./pages/Onboarding/Onboarding'))
-const Profile     = lazy(() => import('./pages/Profile/Profile'))
-const SignIn      = lazy(() => import('./pages/SignIn/SignIn'))
+const Onboarding    = lazy(() => import('./pages/Onboarding/Onboarding'))
+const Profile       = lazy(() => import('./pages/Profile/Profile'))
+const SignIn        = lazy(() => import('./pages/SignIn/SignIn'))
+const ResetPassword = lazy(() => import('./pages/SignIn/ResetPassword'))
 
 function AppRoutes({ theme }) {
-  const { session, loading: authLoading } = useAuth()
+  const { session, loading: authLoading, recovery } = useAuth()
   const { profile } = usePilotProfile()
 
   if (authLoading) return null
+
+  // Arrived via a password-reset email link — force the "set new password"
+  // screen before anything else, even though Supabase created a recovery
+  // session (which would otherwise fall through to the app).
+  if (recovery) return (
+    <Suspense fallback={null}>
+      <ResetPassword />
+    </Suspense>
+  )
 
   // Sign-in is required before anything else — no bypass. A pre-existing
   // install (real local data, onboarding already done, no account yet)

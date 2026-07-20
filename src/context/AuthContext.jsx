@@ -9,6 +9,11 @@ const AuthContext = createContext(null)
 // see src/lib/supabase.js), null = signed out, object = signed in.
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined)
+  // True while the user arrived via a password-reset email link — the app
+  // shows the "set a new password" screen instead of the normal gate, even
+  // though Supabase has technically created a session from the recovery
+  // token. Cleared once the new password is saved.
+  const [recovery, setRecovery] = useState(false)
   const syncedRef = useRef(false)
 
   useEffect(() => {
@@ -18,6 +23,10 @@ export function AuthProvider({ children }) {
 
     const { data: subscription } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession ?? null)
+
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecovery(true)
+      }
 
       // Runs on every sign-in (fresh account, restored session, or a
       // pre-existing local install linking an account for the first time).
@@ -33,6 +42,7 @@ export function AuthProvider({ children }) {
       }
       if (event === 'SIGNED_OUT') {
         syncedRef.current = false
+        setRecovery(false)
       }
     })
 
@@ -59,14 +69,27 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(() => supabase.auth.signOut(), [])
 
+  const resetPasswordForEmail = useCallback((email) => (
+    supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin })
+  ), [])
+
+  const updatePassword = useCallback(async (password) => {
+    const result = await supabase.auth.updateUser({ password })
+    if (!result.error) setRecovery(false)
+    return result
+  }, [])
+
   const value = {
     session,
     user: session?.user ?? null,
     loading: session === undefined,
+    recovery,
     signInWithGoogle,
     signInWithPassword,
     signUp,
     signOut,
+    resetPasswordForEmail,
+    updatePassword,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

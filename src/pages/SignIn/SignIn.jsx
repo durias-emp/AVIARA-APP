@@ -20,8 +20,8 @@ function GoogleIcon() {
 }
 
 export default function SignIn({ legacy = false }) {
-  const { signInWithGoogle, signInWithPassword, signUp } = useAuth()
-  const [mode, setMode] = useState('signin') // 'signin' | 'signup'
+  const { signInWithGoogle, signInWithPassword, signUp, resetPasswordForEmail } = useAuth()
+  const [mode, setMode] = useState('signin') // 'signin' | 'signup' | 'reset'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -38,9 +38,20 @@ export default function SignIn({ legacy = false }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!email.trim() || !password) return
     setError(null)
     setNotice(null)
+
+    if (mode === 'reset') {
+      if (!email.trim()) return
+      setBusy(true)
+      const { error: err } = await resetPasswordForEmail(email.trim())
+      setBusy(false)
+      if (err) { setError(err.message); return }
+      setNotice('If an account exists for that email, a password-reset link is on its way.')
+      return
+    }
+
+    if (!email.trim() || !password) return
     setBusy(true)
     const { error: err } = mode === 'signin'
       ? await signInWithPassword(email.trim(), password)
@@ -58,35 +69,41 @@ export default function SignIn({ legacy = false }) {
     }}>
       <div>
         <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.5px' }}>
-          {legacy ? 'Back up your data' : 'Welcome to PQRH'}
+          {mode === 'reset' ? 'Reset password' : legacy ? 'Back up your data' : 'Welcome to PQRH'}
         </div>
         <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.5 }}>
-          {legacy
-            ? 'Everything already on this device — your profile, aircraft, and checklists — stays exactly as it is. Signing in just backs it up so you never lose it if you get a new phone.'
-            : 'Sign in to keep your pilot profile, aircraft, and checklists backed up and ready on any device.'}
+          {mode === 'reset'
+            ? "Enter your email and we'll send you a link to set a new password."
+            : legacy
+              ? 'Everything already on this device — your profile, aircraft, and checklists — stays exactly as it is. Signing in just backs it up so you never lose it if you get a new phone.'
+              : 'Sign in to keep your pilot profile, aircraft, and checklists backed up and ready on any device.'}
         </div>
       </div>
 
-      <button
-        onClick={handleGoogle}
-        disabled={busy}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          width: '100%', height: 50, borderRadius: 14, border: 'none',
-          background: '#ffffff', color: '#1f1f1f',
-          fontSize: 15, fontWeight: 600, cursor: busy ? 'default' : 'pointer',
-          opacity: busy ? 0.6 : 1,
-        }}
-      >
-        <GoogleIcon />
-        Continue with Google
-      </button>
+      {mode !== 'reset' && (
+        <>
+          <button
+            onClick={handleGoogle}
+            disabled={busy}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              width: '100%', height: 50, borderRadius: 14, border: 'none',
+              background: '#ffffff', color: '#1f1f1f',
+              fontSize: 15, fontWeight: 600, cursor: busy ? 'default' : 'pointer',
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            <GoogleIcon />
+            Continue with Google
+          </button>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-        <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 600, letterSpacing: '0.3px' }}>OR</span>
-        <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-      </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 600, letterSpacing: '0.3px' }}>OR</span>
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+          </div>
+        </>
+      )}
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <input
@@ -94,12 +111,27 @@ export default function SignIn({ legacy = false }) {
           value={email} onChange={e => setEmail(e.target.value)}
           style={INPUT_STYLE}
         />
-        <input
-          type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-          placeholder="Password"
-          value={password} onChange={e => setPassword(e.target.value)}
-          style={INPUT_STYLE}
-        />
+        {mode !== 'reset' && (
+          <input
+            type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+            placeholder="Password"
+            value={password} onChange={e => setPassword(e.target.value)}
+            style={INPUT_STYLE}
+          />
+        )}
+
+        {mode === 'signin' && (
+          <button
+            type="button"
+            onClick={() => { setMode('reset'); setError(null); setNotice(null); setPassword('') }}
+            style={{
+              alignSelf: 'flex-end', background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: 12, color: 'var(--text-secondary)', padding: '2px 0',
+            }}
+          >
+            Forgot password?
+          </button>
+        )}
 
         {error && (
           <div style={{ fontSize: 12, color: 'var(--danger)', lineHeight: 1.4 }}>{error}</div>
@@ -110,27 +142,34 @@ export default function SignIn({ legacy = false }) {
 
         <button
           type="submit"
-          disabled={busy || !email.trim() || !password}
+          disabled={busy || !email.trim() || (mode !== 'reset' && !password)}
           style={{
             width: '100%', height: 50, borderRadius: 14, border: 'none',
             cursor: busy ? 'default' : 'pointer',
             background: 'var(--text)', color: 'var(--bg)',
             fontSize: 15, fontWeight: 700, letterSpacing: '-0.2px',
-            opacity: (!email.trim() || !password) ? 0.5 : 1,
+            opacity: (!email.trim() || (mode !== 'reset' && !password)) ? 0.5 : 1,
           }}
         >
-          {mode === 'signin' ? 'Sign In' : 'Create Account'}
+          {mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Reset Link'}
         </button>
       </form>
 
       <button
-        onClick={() => { setMode(m => m === 'signin' ? 'signup' : 'signin'); setError(null); setNotice(null) }}
+        onClick={() => {
+          setMode(m => (m === 'signin' ? 'signup' : 'signin'))
+          setError(null); setNotice(null)
+        }}
         style={{
           background: 'none', border: 'none', cursor: 'pointer',
           fontSize: 13, color: 'var(--text-secondary)', textAlign: 'center',
         }}
       >
-        {mode === 'signin' ? "Don't have an account? Create one" : 'Already have an account? Sign in'}
+        {mode === 'reset'
+          ? 'Back to sign in'
+          : mode === 'signin'
+            ? "Don't have an account? Create one"
+            : 'Already have an account? Sign in'}
       </button>
     </div>
   )
