@@ -154,6 +154,15 @@ function DateField({ label, value, onChange }) {
           type="date"
           value={value}
           onChange={e => onChange(e.target.value)}
+          // The input is invisible (opacity 0) with the formatted date shown
+          // in the styled div above it. Mobile browsers open their picker on
+          // any tap of a date input, but desktop browsers only open the
+          // calendar from the (invisible) icon — a plain click just focuses
+          // the hidden field and looks completely dead. showPicker() opens
+          // the picker explicitly; guarded because it throws off a user
+          // gesture or in cross-origin frames, where the tap-to-focus
+          // fallback still applies.
+          onClick={e => { try { e.currentTarget.showPicker?.() } catch { /* ignore */ } }}
           style={{
             gridColumn: 1, gridRow: 1,
             width: '100%',
