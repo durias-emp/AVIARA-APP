@@ -128,6 +128,19 @@ html {
   overscroll-behavior: none;
 }
 
+/* Buttons never opt into a custom focus style of their own, so the browser's
+   default focus ring (a persistent white/blue outline on tap, not just the
+   brief tap-highlight flash) was showing on almost every button in the app.
+   Every interactive state here is already communicated through background/
+   color changes, so the native ring is redundant — remove it everywhere. */
+button {
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+button:focus, button:focus-visible {
+  outline: none;
+}
+
 body {
   background-color: var(--bg);
   color: var(--text);
