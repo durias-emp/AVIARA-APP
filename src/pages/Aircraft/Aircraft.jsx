@@ -1320,7 +1320,7 @@ export default function Aircraft() {
         <div style={{ display: 'flex', gap: 10 }}>
           <button style={{
             flex: 1, padding: '9px 12px', borderRadius: 10,
-            background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+            background: 'var(--bg-card)', border: 'none',
             boxShadow: 'var(--shadow-sm)', cursor: 'pointer', fontFamily: 'inherit',
             fontSize: 14, fontWeight: 700, color: 'var(--text)',
           }}>
@@ -1328,7 +1328,7 @@ export default function Aircraft() {
           </button>
           <button onClick={() => setHobbsModalOpen(true)} style={{
             flex: 1, padding: '9px 12px', borderRadius: 10,
-            background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+            background: 'var(--bg-card)', border: 'none',
             boxShadow: 'var(--shadow-sm)', cursor: 'pointer', fontFamily: 'inherit',
             fontSize: 14, fontWeight: 700, color: 'var(--text)',
           }}>
@@ -1753,7 +1753,6 @@ function Section({ title, children }) {
   return (
     <div style={{
       background: 'var(--bg-card)',
-      border: '0.5px solid var(--border)',
       borderRadius: 'var(--r-lg)',
       boxShadow: 'var(--shadow-sm)',
       overflow: 'hidden',
