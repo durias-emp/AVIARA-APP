@@ -8,6 +8,8 @@ export const EMPTY_PROFILE = {
   key: KEY,
   onboardingComplete: false,
   name: '',
+  email: '',
+  phone: '',
   dob: '',
   certificate: '',
   ratings: [],

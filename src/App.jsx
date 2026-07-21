@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useTheme } from './hooks/useTheme'
 import { PilotProfileProvider, usePilotProfile } from './context/PilotProfile'
@@ -20,7 +20,16 @@ const ResetPassword = lazy(() => import('./pages/SignIn/ResetPassword'))
 
 function AppRoutes({ theme }) {
   const { session, loading: authLoading, recovery } = useAuth()
-  const { profile } = usePilotProfile()
+  const { profile, setProfile } = usePilotProfile()
+
+  // Seed the profile's contact email from the signed-in account (Google/
+  // Apple/email all expose user.email) so it's pre-filled without the pilot
+  // typing it — only when empty, so a manually-edited value is never
+  // overwritten. Phone isn't provided by OAuth, so that stays manual.
+  useEffect(() => {
+    const email = session?.user?.email
+    if (email && profile && !profile.email) setProfile({ email })
+  }, [session, profile, setProfile])
 
   if (authLoading) return null
 

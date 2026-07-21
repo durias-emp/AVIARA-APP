@@ -209,6 +209,9 @@ export default function FlightPlanOnePager({ onClose }) {
         <PLine l={`TRIP DIST ${route?.distNm ?? '---'}NM`} r={`TC/MC ${route?.tc != null ? Math.round(route.tc) : '--'}/${route?.mc != null ? Math.round(route.mc) : '--'}`} />
         <PLine l={`SOULS ${lastWB?.souls ?? '--'}`} r={`RULES ${flightRules}${flightRules === 'VFR' ? ` ${timeOfDay.toUpperCase()}` : ''}`} />
         <PLine l={`PIC ${pilot?.name || '----'}`} r={acProfile?.color ? acProfile.color.toUpperCase() : '----'} />
+        {(pilot?.phone || pilot?.email) && (
+          <PLine l={pilot?.phone ? `TEL ${pilot.phone}` : ''} r={pilot?.email || ''} />
+        )}
         <PLine l={`ALTN TO ${toAlt?.icao || '----'}`} r={`ALTN LD ${ldAlt?.icao || '----'}`} />
 
         <Rule />

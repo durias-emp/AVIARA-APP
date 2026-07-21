@@ -130,6 +130,12 @@ export default function Profile() {
           <Field label="Name">
             <TextInput value={profile.name} onChange={v => update({ name: v })} placeholder="Pilot name" />
           </Field>
+          <Field label="Email">
+            <TextInput type="email" value={profile.email} onChange={v => update({ email: v })} placeholder="you@example.com" />
+          </Field>
+          <Field label="Phone">
+            <TextInput type="tel" value={profile.phone} onChange={v => update({ phone: v })} placeholder="+1 555 123 4567" />
+          </Field>
           <Field label="Certificate">
             <TextInput value={profile.certificate} onChange={v => update({ certificate: v })} placeholder="Private, Commercial, ATP..." />
           </Field>
