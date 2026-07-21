@@ -467,7 +467,7 @@ async function fetchAdDocuments(term, signal) {
   return data.results ?? []
 }
 
-function AdSbLookup({ make, model }) {
+function AdSbLookup({ make, model, year }) {
   const [results, setResults] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -483,17 +483,26 @@ function AdSbLookup({ make, model }) {
     const signal = AbortSignal.timeout(10000)
     const m = make.trim()
     const modelTrimmed = model?.trim() || null
+    const yr = year != null && String(year).trim() ? String(year).trim() : null
 
-    // Try, in order: full model -> numeric-core model (suffix stripped) ->
-    // make alone. Stop at the first query that returns any results, so the
-    // pilot always sees something useful rather than a suffix-related zero.
+    // Try, in priority order, stopping at the first query that returns hits so
+    // the pilot always sees something useful:
+    //   make+model+year -> make+model -> make+numeric-core model -> make alone.
+    // Year goes FIRST only as an optional refinement — AD titles almost never
+    // contain the model year (a 2024 AD can apply to a 1978 airframe), so a
+    // year-qualified search usually returns nothing and we fall straight back
+    // to the make/model results. It can only add precision, never zero them out.
     async function run() {
-      const attempts = [modelTrimmed, simplifyModel(modelTrimmed), null].filter((v, i, arr) => arr.indexOf(v) === i)
-      for (let i = 0; i < attempts.length; i++) {
-        const term = `${m}${attempts[i] ? ' ' + attempts[i] : ''} Airworthiness Directive`
-        const docs = await fetchAdDocuments(term, signal)
+      const modelAttempts = [modelTrimmed, simplifyModel(modelTrimmed), null]
+        .filter((v, i, arr) => arr.indexOf(v) === i)
+      const terms = []
+      if (yr && modelTrimmed) terms.push(`${m} ${modelTrimmed} ${yr} Airworthiness Directive`)
+      for (const a of modelAttempts) terms.push(`${m}${a ? ' ' + a : ''} Airworthiness Directive`)
+
+      for (let i = 0; i < terms.length; i++) {
+        const docs = await fetchAdDocuments(terms[i], signal)
         if (cancelled) return
-        if (docs.length > 0 || i === attempts.length - 1) {
+        if (docs.length > 0 || i === terms.length - 1) {
           setResults(docs)
           setBroadened(i > 0)
           return
@@ -505,7 +514,7 @@ function AdSbLookup({ make, model }) {
       .catch(() => { if (!cancelled) setError('Could not reach the Federal Register — check your connection and try again.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [make, model])
+  }, [make, model, year])
 
   if (!make?.trim()) {
     return (
@@ -576,6 +585,148 @@ function AirworthinessBadge({ status }) {
       background: bg, color: fg,
       border: status === 'incomplete' ? '0.5px solid var(--border)' : 'none',
     }}>{label}</span>
+  )
+}
+
+// Compliance status for one AD entry — same status vocabulary as the
+// inspection rows (valid/expiring/expired/incomplete) via the shared
+// currency helpers, so the AirworthinessBadge renders consistently.
+function adStatus(ad, currentHobbs) {
+  if (ad.recurrence === 'onetime') return { status: ad.complied ? 'valid' : 'incomplete' }
+  if (ad.recurrence === 'months') {
+    const months = parseInt(ad.intervalMonths, 10)
+    if (ad.lastDate && months > 0) return statusFromExpiry(calendarMonthExpiry(ad.lastDate, months))
+    return { status: 'incomplete' }
+  }
+  if (ad.recurrence === 'hours') {
+    const iv = parseFloat(ad.intervalHours)
+    const last = parseFloat(ad.lastHobbs)
+    if (!isNaN(iv) && !isNaN(last) && currentHobbs != null) return statusFromHours(last + iv, currentHobbs)
+    return { status: 'incomplete' }
+  }
+  return { status: 'incomplete' }
+}
+
+const AD_RECURRENCE = [
+  { key: 'onetime', label: 'One-time' },
+  { key: 'months',  label: 'Every N months' },
+  { key: 'hours',   label: 'Every N hours' },
+]
+
+function ADRow({ ad, onChange, onRemove, currentHobbs }) {
+  const dateRef = useRef(null)
+  const s = adStatus(ad, currentHobbs)
+  const openPicker = () => {
+    const el = dateRef.current
+    if (!el) return
+    if (el.showPicker) el.showPicker(); else el.focus()
+  }
+  const displayDate = ad.lastDate
+    ? new Date(ad.lastDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null
+  const nextHobbs = ad.recurrence === 'hours' && ad.lastHobbs !== '' && ad.intervalHours !== ''
+    ? (parseFloat(ad.lastHobbs) + parseFloat(ad.intervalHours))
+    : null
+
+  const inputStyle = {
+    padding: '8px 10px', borderRadius: 8, border: '0.5px solid var(--border)',
+    background: 'var(--bg-card)', color: 'var(--text)', fontSize: 13, outline: 'none',
+    fontFamily: 'inherit', boxSizing: 'border-box',
+  }
+
+  return (
+    <div style={{ background: 'var(--bg-card-2)', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <input
+          value={ad.adNumber} onChange={e => onChange('adNumber', e.target.value)}
+          placeholder="AD number (2019-12-04)"
+          style={{ ...inputStyle, flex: 1 }}
+        />
+        <AirworthinessBadge status={s.status} />
+        <RemoveButton onClick={onRemove} />
+      </div>
+
+      <input
+        value={ad.title} onChange={e => onChange('title', e.target.value)}
+        placeholder="Description (optional)"
+        style={{ ...inputStyle, fontSize: 12 }}
+      />
+
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+        {AD_RECURRENCE.map(r => (
+          <button key={r.key} onClick={() => onChange('recurrence', r.key)} style={{
+            padding: '5px 9px', borderRadius: 7, cursor: 'pointer', whiteSpace: 'nowrap',
+            fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+            border: ad.recurrence === r.key ? 'none' : '0.5px solid var(--border-strong)',
+            background: ad.recurrence === r.key ? 'var(--accent)' : 'var(--bg-card)',
+            color: ad.recurrence === r.key ? 'var(--accent-fg)' : 'var(--text-secondary)',
+          }}>{r.label}</button>
+        ))}
+      </div>
+
+      {ad.recurrence === 'onetime' && (
+        <button onClick={() => onChange('complied', !ad.complied)} style={{
+          display: 'flex', alignItems: 'center', gap: 9, padding: '4px 2px',
+          background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left',
+        }}>
+          <div style={{
+            width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+            background: ad.complied ? 'var(--accent)' : 'transparent',
+            border: `1.5px solid ${ad.complied ? 'var(--accent)' : 'var(--border-strong)'}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {ad.complied && (
+              <svg width={10} height={10} viewBox="0 0 12 12" fill="none">
+                <polyline points="2,6 5,9 10,3" stroke="var(--accent-fg)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>Complied with</span>
+        </button>
+      )}
+
+      {ad.recurrence === 'months' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 6 }}>
+          <div>
+            <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 3 }}>Interval (months)</div>
+            <MiniInput value={ad.intervalMonths} onChange={v => onChange('intervalMonths', v)} placeholder="12" />
+          </div>
+          <div>
+            <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 3 }}>Last complied</div>
+            <div onClick={openPicker} style={{ ...inputStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+              <span style={{ fontSize: 13, color: displayDate ? 'var(--text)' : 'var(--text-tertiary)' }}>{displayDate || 'Date'}</span>
+              <img src="/calendario.png" width={15} height={15} alt="" className="icon-themed" />
+            </div>
+            <input ref={dateRef} type="date" value={ad.lastDate || ''} onChange={e => onChange('lastDate', e.target.value)}
+              style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }} />
+          </div>
+        </div>
+      )}
+
+      {ad.recurrence === 'hours' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          <div>
+            <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 3 }}>Interval (hours)</div>
+            <MiniInput value={ad.intervalHours} onChange={v => onChange('intervalHours', v)} placeholder="100" />
+          </div>
+          <div>
+            <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 3 }}>Last Hobbs</div>
+            <MiniInput value={ad.lastHobbs} onChange={v => onChange('lastHobbs', v)} placeholder={currentHobbs != null ? currentHobbs.toFixed(1) : '0.0'} />
+          </div>
+        </div>
+      )}
+
+      {ad.recurrence === 'months' && s.expiresOn && (
+        <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
+          Due {fmtDate(s.expiresOn)} · {fmtDaysLeft(s.daysLeft)}
+        </div>
+      )}
+      {ad.recurrence === 'hours' && nextHobbs != null && (
+        <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
+          Due at {nextHobbs.toFixed(1)} Hobbs{s.hoursLeft != null ? ` · ${s.hoursLeft.toFixed(1)}h ${s.hoursLeft < 0 ? 'over' : 'left'}` : ''}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -833,6 +984,32 @@ export default function Aircraft() {
       put('currency', { ...next, id: 'profile' })
       return next
     })
+  }
+
+  // AD compliance log — a manual list under airworthy.ads, filled from the
+  // aircraft's logbook AD-compliance record. Each entry tracks its own
+  // recurring/one-time status; mirrors patchAirworthyInsp's write path.
+  function writeAds(mapper) {
+    setCurrencyData(prev => {
+      const base = prev ?? {}
+      const airworthy = base.airworthy ?? {}
+      const ads = mapper(airworthy.ads ?? [])
+      const next = { ...base, airworthy: { ...airworthy, ads } }
+      put('currency', { ...next, id: 'profile' })
+      return next
+    })
+  }
+  function addAD() {
+    writeAds(ads => [...ads, {
+      id: 'ad-' + Date.now(), adNumber: '', title: '', recurrence: 'onetime',
+      intervalMonths: '', intervalHours: '', lastDate: '', lastHobbs: '', complied: false,
+    }])
+  }
+  function updateAD(id, key, value) {
+    writeAds(ads => ads.map(a => a.id === id ? { ...a, [key]: value } : a))
+  }
+  function removeAD(id) {
+    writeAds(ads => ads.filter(a => a.id !== id))
   }
 
   const save = useCallback(async (updated) => {
@@ -1181,7 +1358,26 @@ export default function Aircraft() {
 
         {/* Airworthiness Directives & Service Bulletins */}
         <Section title="Airworthiness Directives & Service Bulletins">
-          <AdSbLookup make={profile.make} model={profile.model} />
+          <AdSbLookup make={profile.make} model={profile.model} year={profile.year} />
+
+          {/* AD compliance log — filled from the aircraft's logbook AD record */}
+          <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
+              AD Compliance Log
+            </div>
+            {(currencyData?.airworthy?.ads ?? []).length === 0 && (
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+                Add ADs from your aircraft's logbook AD-compliance record to track recurring inspections and due dates.
+              </div>
+            )}
+            {(currencyData?.airworthy?.ads ?? []).map(ad => (
+              <ADRow key={ad.id} ad={ad} currentHobbs={profile.hobbsTime}
+                onChange={(key, v) => updateAD(ad.id, key, v)} onRemove={() => removeAD(ad.id)} />
+            ))}
+            <div>
+              <Chip label="+ Add AD" onClick={addAD} accent />
+            </div>
+          </div>
         </Section>
 
         {/* Airworthiness */}
