@@ -3,7 +3,10 @@
 -- keeps the sync code generic (same push/pull function works for every
 -- store name: aircraft, currency, checklists, settings, flights).
 create table if not exists backups (
-  user_id uuid references auth.users(id) not null,
+  -- on delete cascade: removing a user (e.g. account deletion in the
+  -- dashboard) also removes their backup rows, rather than the FK blocking
+  -- the delete.
+  user_id uuid references auth.users(id) on delete cascade not null,
   store_name text not null,
   data jsonb not null,
   updated_at timestamptz not null default now(),
@@ -27,7 +30,7 @@ create policy "users manage their own backups"
 -- Minimal usage analytics: what pilots do, not a full analytics platform.
 create table if not exists events (
   id bigint generated always as identity primary key,
-  user_id uuid references auth.users(id) not null,
+  user_id uuid references auth.users(id) on delete cascade not null,
   name text not null,
   meta jsonb,
   created_at timestamptz not null default now()
