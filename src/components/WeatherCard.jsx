@@ -278,6 +278,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
                     <WxMetric icon="/wind.png"       value={parseWind(wx.metar, units)}        fg={fg} color={fg} weight={700} size={13} />
                     <WxMetric icon="/cloud.png"      value={parseCeiling(wx.metar, units)}     fg={fg} color={fgMuted} weight={600} size={12} />
                     <WxMetric icon="/visibility.png" value={`${parseVisib(wx.metar, units)} vis`} fg={fg} color={fgMuted} weight={600} size={12} />
+                    <WxMetric icon="/droplet.png"    value={`${parseDewp(wx.metar, units)} dp`} fg={fg} color={fgMuted} weight={600} size={12} />
                   </>
                 ) : loading ? (
                   <div style={{ fontSize: 12, color: fgMuted }}>Loading…</div>

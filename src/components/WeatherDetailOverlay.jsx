@@ -1,7 +1,7 @@
 import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 import {
   parseFltCat, parseWind, parseVisib, parseCloudLayers,
-  parseTemp, parseDewp, parseAltim, parseWx, parseObsAge, parseFetchAge, parseAirportName,
+  parseTemp, parseAltim, parseWx, parseObsAge, parseFetchAge, parseAirportName,
   FLTCAT, catFromCeilingVis, colorizeTaf,
 } from '../lib/weather'
 import { getCondition } from './WeatherAnimation'
@@ -537,10 +537,12 @@ export default function WeatherDetailOverlay({
                     sub: parseWx(metar) ?? 'unrestricted',
                   },
                   {
-                    label: 'Dew Point',
-                    value: parseDewp(metar, units),
+                    label: 'Spread',
+                    value: (metar.temp != null && metar.dewp != null)
+                       ? `${(metar.temp - metar.dewp).toFixed(0)}°`
+                       : '—',
                     sub: (metar.temp != null && metar.dewp != null)
-                       ? (metar.temp - metar.dewp <= 3 ? 'near spread — fog risk' : `${(metar.temp - metar.dewp).toFixed(0)}° spread`)
+                       ? (metar.temp - metar.dewp <= 3 ? 'narrow — fog risk' : 'wide — low fog risk')
                        : '—',
                   },
                   {
