@@ -17,12 +17,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 })
 
-const airportIcon = new L.DivIcon({
-  className: '',
-  html: `<div style="width:12px;height:12px;border-radius:50%;background:#fff;border:2.5px solid #333;box-shadow:0 1px 6px rgba(0,0,0,0.4)"></div>`,
-  iconSize: [12, 12], iconAnchor: [6, 6],
-})
-
 function RouteFitter({ positions, once = true }) {
   const map = useMap()
   const fitted = useRef(false)
@@ -154,7 +148,7 @@ function crossTrackNM(la, lo, a, b) {
 }
 
 // DraggableWaypoint — draggable intermediate marker (touch-safe)
-function DraggableWaypoint({ position, index, onMove, onRemove, name }) {
+function DraggableWaypoint({ position, index, onMove, onRemove, name, removable = true }) {
   const markerRef = useRef(null)
   // touch-action:none is critical — prevents browser scroll from hijacking the drag
   // Waypoints look identical to the dep/dest airport dots (white, dark ring);
@@ -194,7 +188,7 @@ function DraggableWaypoint({ position, index, onMove, onRemove, name }) {
         // Leaflet moves the marker itself while the finger is down.
         dragend: (e) => onMove(index, e.target.getLatLng()),
         click:   (e) => { L.DomEvent.stopPropagation(e) },
-        contextmenu: () => onRemove(index),
+        ...(removable ? { contextmenu: () => onRemove(index) } : {}),
       }}
     />
   )
@@ -319,7 +313,7 @@ function RouteHint() {
 // toggling a layer, TFR data arriving). That's what read as "the map glitches
 // constantly" and, on iOS, remounting mid-tap can also swallow the tap event
 // on nearby chips/buttons.
-function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, insertWaypoint, moveWaypoint, removeWaypoint, depPos, destPos }) {
+function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, insertWaypoint, moveWaypoint, removeWaypoint }) {
   return (<>
     <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
     {layers.sectional && (
@@ -383,8 +377,19 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
     {fit && <RouteFitter positions={waypoints.map(w => [w.lat, w.lon])} once={fitOnce} />}
     <AirspaceZoomer active={layers.airspace} />
     <SectionalZoomer active={layers.sectional} />
-    <Marker position={waypoints[0] ? [waypoints[0].lat, waypoints[0].lon] : depPos} icon={airportIcon} />
-    <Marker position={waypoints[waypoints.length-1] ? [waypoints[waypoints.length-1].lat, waypoints[waypoints.length-1].lon] : destPos} icon={airportIcon} />
+    {/* Dep/dest endpoints — draggable like any waypoint (fine-tune the start/
+        end point around the airport), but never removable. Moving one well
+        outside the airport area raises a warning upstream without blocking. */}
+    {waypoints[0] && (
+      <DraggableWaypoint key={waypoints[0].id} position={[waypoints[0].lat, waypoints[0].lon]}
+        index={0} onMove={moveWaypoint} name={waypoints[0].name} removable={false} />
+    )}
+    {waypoints.length >= 2 && (
+      <DraggableWaypoint key={waypoints[waypoints.length-1].id}
+        position={[waypoints[waypoints.length-1].lat, waypoints[waypoints.length-1].lon]}
+        index={waypoints.length-1} onMove={moveWaypoint}
+        name={waypoints[waypoints.length-1].name} removable={false} />
+    )}
     {waypoints.length >= 2 && <PolylineEditor waypoints={waypoints} onInsert={insertWaypoint} />}
     {waypoints.length >= 2 && <LongPressAdd waypoints={waypoints} onInsert={insertWaypoint} />}
     {waypoints.slice(1, -1).map((w, i) => (
@@ -549,6 +554,15 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
   // Editable waypoints — dep + optional intermediates + dest
   const [waypoints, setWaypoints] = useState([])
+
+  // Amber, non-blocking notice when a dep/dest point is dragged off-airport
+  const [endpointWarning, setEndpointWarning] = useState(null)
+  const endpointWarnTimer = useRef(null)
+  function showEndpointWarning(msg) {
+    clearTimeout(endpointWarnTimer.current)
+    setEndpointWarning(msg)
+    if (msg) endpointWarnTimer.current = setTimeout(() => setEndpointWarning(null), 5000)
+  }
   useEffect(() => {
     if (route?.depPos && route?.destPos) {
       setWaypoints([
@@ -567,6 +581,22 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     })
   }
   function moveWaypoint(index, latlng) {
+    // Dragging an endpoint away from its airport is allowed, but warn once
+    // it leaves the airport area (~2 NM from the field reference point).
+    // Side effect stays OUTSIDE the state updater (React suppresses effects
+    // run inside updaters).
+    const isDep  = index === 0
+    const isDest = index === waypoints.length - 1
+    if ((isDep || isDest) && route?.depPos && route?.destPos) {
+      const home = isDep ? route.depPos : route.destPos
+      const icao = isDep ? route.dep : route.dest
+      const distOff = haversineNm(latlng.lat, latlng.lng, home[0], home[1])
+      if (distOff > 2) {
+        showEndpointWarning(`${icao} point is ${Math.round(distOff)} NM outside the airport area`)
+      } else {
+        showEndpointWarning(null)
+      }
+    }
     setWaypoints(prev => prev.map((w, i) => i === index ? { ...w, lat: latlng.lat, lon: latlng.lng } : w))
   }
   function removeWaypoint(index) {
@@ -1430,6 +1460,22 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
                       {/* Route edit hint — fades after 4s */}
                       <RouteHint />
+
+                      {/* Off-airport endpoint warning — informative, never blocking */}
+                      {endpointWarning && (
+                        <div style={{
+                          position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
+                          left: '50%', transform: 'translateX(-50%)', zIndex: 10003,
+                          background: 'rgba(255,159,10,0.95)', color: '#1a1200',
+                          borderRadius: 20, padding: '8px 16px', maxWidth: '86%',
+                          fontSize: 12, fontWeight: 700, letterSpacing: '0.2px',
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.35)', pointerEvents: 'none',
+                          display: 'flex', alignItems: 'center', gap: 7,
+                        }}>
+                          <span style={{ fontSize: 13 }}>⚠︎</span>
+                          <span>{endpointWarning}</span>
+                        </div>
+                      )}
 
                       {/* Top bar — the map behind it extends under the status bar for a true
                           full-screen feel, but the controls themselves need the safe-area
