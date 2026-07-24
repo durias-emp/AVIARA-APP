@@ -532,8 +532,8 @@ input[type="number"]::-webkit-outer-spin-button {
    loupe, blue selection handles, callout — fighting the map. */
 .leaflet-container,
 .leaflet-container * {
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
   -webkit-tap-highlight-color: transparent;
 }

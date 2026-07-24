@@ -245,7 +245,13 @@ function LongPressAdd({ waypoints, onInsert }) {
     <CircleMarker center={[pt.lat, pt.lon]} radius={7}
       pathOptions={{ color: '#fff', weight: 2.5, fillColor: '#0a84ff', fillOpacity: 1 }} />
     <Popup position={[pt.lat, pt.lon]} offset={[0, -6]} closeButton={false} autoPan={false}>
-      <div style={{ textAlign: 'center', minWidth: 168 }}>
+      <div style={{
+        textAlign: 'center', minWidth: 168,
+        // Inline (beats every stylesheet): the popup opens under the user's
+        // still-held finger, and without these iOS turns that ongoing press
+        // into text selection of the coordinates — handles, loupe, Copy bar.
+        userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+      }}>
         <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, letterSpacing: '0.3px' }}>
           {fmtAvCoord(pt.lat, pt.lon)}
         </div>
