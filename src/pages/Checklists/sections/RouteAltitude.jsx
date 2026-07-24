@@ -38,11 +38,15 @@ function RouteFitter({ positions, once = true }) {
       // The fullscreen map mounts before its container has its final size —
       // fitting immediately frames the route against the wrong dimensions
       // (the "opens in the middle of nowhere" bug). Invalidate then fit.
-      const t = setTimeout(() => {
+      const doFit = () => {
         map.invalidateSize()
         map.fitBounds(L.latLngBounds(positions), { padding: [36, 36], animate: false })
-      }, 80)
-      return () => clearTimeout(t)
+      }
+      const t1 = setTimeout(doFit, 80)
+      // On phones the modal can still be mid-layout at 80ms — re-assert once
+      // more after layout is guaranteed settled (before any user interaction).
+      const t2 = setTimeout(doFit, 450)
+      return () => { clearTimeout(t1); clearTimeout(t2) }
     }
   }, [JSON.stringify(positions)])
   return null
@@ -744,7 +748,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   function toggleLayer(name) {
     setLayers(prev => {
       const next = { ...prev, [name]: !prev[name] }
-      if (name === 'tfr' && next.tfr && !tfrData) loadTFRs()
+      // Retry when the previous attempt failed or returned nothing —
+      // `!tfrData` alone never retried after a failed fetch stored [].
+      if (name === 'tfr' && next.tfr && !tfrData?.length && !tfrLoading) loadTFRs()
       return next
     })
   }
@@ -1409,7 +1415,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       }}>
                         {/* Layer toggles */}
                         <div style={{ display: 'flex', gap: 7 }}>
-                          {[['sectional','SECT'],['airspace','ARSP'],['tfr','TFR']].map(([k,label]) => (
+                          {[['sectional','SECT'],['airspace','ARSP'],
+                            ['tfr', tfrLoading ? 'TFR…' : (layers.tfr && tfrData?.length === 0 ? 'TFR ·0' : 'TFR')],
+                          ].map(([k,label]) => (
                             <button key={k} onClick={() => toggleLayer(k)} style={{
                               background: layers[k] ? 'rgba(255,255,255,0.95)' : 'rgba(10,10,10,0.75)',
                               backdropFilter: 'blur(12px)',

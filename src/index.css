@@ -525,3 +525,15 @@ input[type="number"]::-webkit-outer-spin-button {
     animation: none;
   }
 }
+
+/* ── Leaflet maps on iOS ──────────────────────────────────────
+   Press-and-hold is our "drop waypoint" gesture (Leaflet contextmenu).
+   Without these, iOS interprets the hold as text selection — magnifier
+   loupe, blue selection handles, callout — fighting the map. */
+.leaflet-container,
+.leaflet-container * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
