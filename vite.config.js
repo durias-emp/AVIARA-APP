@@ -54,8 +54,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'favicon-32x32.png', 'favicon-16x16.png', 'apple-touch-icon.png'],
       manifest: {
-        name: 'PQRH – Pilot Quick Reference Handbook',
-        short_name: 'PQRH',
+        name: 'AVIARA – Pilot Quick Reference Handbook',
+        short_name: 'AVIARA',
         description: 'Offline pilot quick reference: calculators, checklists, air law, currency tracker.',
         theme_color: '#0f172a',
         background_color: '#0f172a',

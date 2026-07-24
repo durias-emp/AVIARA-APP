@@ -69,7 +69,7 @@ export default function SignIn({ legacy = false }) {
     }}>
       <div>
         <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.5px' }}>
-          {mode === 'reset' ? 'Reset password' : legacy ? 'Back up your data' : 'Welcome to PQRH'}
+          {mode === 'reset' ? 'Reset password' : legacy ? 'Back up your data' : 'Welcome to AVIARA'}
         </div>
         <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.5 }}>
           {mode === 'reset'

@@ -42,7 +42,7 @@ export default function ResetPassword() {
           Set a new password
         </div>
         <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.5 }}>
-          Choose a new password for your PQRH account.
+          Choose a new password for your AVIARA account.
         </div>
       </div>
 

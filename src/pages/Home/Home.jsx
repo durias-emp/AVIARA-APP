@@ -286,7 +286,7 @@ export default function Home() {
               {greeting()}{pilotName ? ',' : ''}
             </div>
             <div style={{ fontSize: 36, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.8px', lineHeight: 1.1, marginTop: 4 }}>
-              {pilotName || 'PQRH'}
+              {pilotName || 'AVIARA'}
             </div>
           </div>
 
