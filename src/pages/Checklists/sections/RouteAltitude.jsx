@@ -24,8 +24,14 @@ const airportIcon = new L.DivIcon({
 
 function RouteFitter({ positions }) {
   const map = useMap()
+  const fitted = useRef(false)
   useEffect(() => {
+    // Fit ONCE when the map opens. Never re-fit on waypoint edits — snapping
+    // the view away right after the user adds/drags a waypoint is exactly the
+    // "random zoom" ForeFlight never does. The user owns the camera.
+    if (fitted.current) return
     if (positions.length >= 2) {
+      fitted.current = true
       map.fitBounds(L.latLngBounds(positions), { padding: [36, 36] })
     }
   }, [JSON.stringify(positions)])
@@ -226,7 +232,7 @@ function LongPressAdd({ waypoints, onInsert }) {
   return (<>
     <CircleMarker center={[pt.lat, pt.lon]} radius={7}
       pathOptions={{ color: '#fff', weight: 2.5, fillColor: '#0a84ff', fillOpacity: 1 }} />
-    <Popup position={[pt.lat, pt.lon]} offset={[0, -6]} closeButton={false} autoPan={true}>
+    <Popup position={[pt.lat, pt.lon]} offset={[0, -6]} closeButton={false} autoPan={false}>
       <div style={{ textAlign: 'center', minWidth: 168 }}>
         <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, letterSpacing: '0.3px' }}>
           {fmtAvCoord(pt.lat, pt.lon)}
