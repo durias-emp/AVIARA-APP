@@ -160,15 +160,21 @@ function DraggableWaypoint({ position, index, onMove, onRemove, name }) {
   // Waypoints look identical to the dep/dest airport dots (white, dark ring);
   // named ones show their identifier on a label underneath. The 28px box is an
   // invisible touch target around the 12px visual dot.
-  const label = name
-    ? `<div style="position:absolute;top:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.72);color:#fff;font:700 10px monospace;letter-spacing:0.5px;border-radius:5px;padding:1px 6px;white-space:nowrap;">${name}</div>`
-    : ''
-  const icon = L.divIcon({
-    className: '', iconSize: [28, 28], iconAnchor: [14, 14],
-    html: `<div style="position:relative;width:28px;height:28px;cursor:grab;touch-action:none;display:flex;align-items:center;justify-content:center;">
-      <div style="width:12px;height:12px;border-radius:50%;background:#fff;border:2.5px solid #333;box-shadow:0 1px 6px rgba(0,0,0,0.4);box-sizing:border-box;"></div>${label}
-    </div>`
-  })
+  // The icon MUST be referentially stable across renders: a fresh divIcon
+  // object every render makes react-leaflet reset the marker's icon, which
+  // rebuilds its DOM element and kills any in-progress drag after a few
+  // pixels ("can only move it little by little"). Memoize on the label.
+  const icon = useMemo(() => {
+    const label = name
+      ? `<div style="position:absolute;top:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.72);color:#fff;font:700 10px monospace;letter-spacing:0.5px;border-radius:5px;padding:1px 6px;white-space:nowrap;">${name}</div>`
+      : ''
+    return L.divIcon({
+      className: '', iconSize: [28, 28], iconAnchor: [14, 14],
+      html: `<div style="position:relative;width:28px;height:28px;cursor:grab;touch-action:none;display:flex;align-items:center;justify-content:center;">
+        <div style="width:12px;height:12px;border-radius:50%;background:#fff;border:2.5px solid #333;box-shadow:0 1px 6px rgba(0,0,0,0.4);box-sizing:border-box;"></div>${label}
+      </div>`
+    })
+  }, [name])
   useEffect(() => {
     const marker = markerRef.current
     if (!marker) return
@@ -183,7 +189,9 @@ function DraggableWaypoint({ position, index, onMove, onRemove, name }) {
       icon={icon}
       draggable={true}
       eventHandlers={{
-        drag:    (e) => onMove(index, e.target.getLatLng()),
+        // Commit position only on release — updating state on every `drag`
+        // frame re-renders the marker mid-gesture and interrupts the drag.
+        // Leaflet moves the marker itself while the finger is down.
         dragend: (e) => onMove(index, e.target.getLatLng()),
         click:   (e) => { L.DomEvent.stopPropagation(e) },
         contextmenu: () => onRemove(index),
