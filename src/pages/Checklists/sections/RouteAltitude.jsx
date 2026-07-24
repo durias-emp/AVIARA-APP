@@ -230,11 +230,21 @@ function PolylineEditor({ waypoints, onInsert }) {
 // insert it into the route at the nearest leg.
 function LongPressAdd({ waypoints, onInsert }) {
   const [pt, setPt] = useState(null)
+  const openedAt = useRef(0)
   useMapEvents({
     // Leaflet fires `contextmenu` for long-press on touch and right-click on
     // desktop — exactly the ForeFlight hold gesture.
-    contextmenu(e) { setPt({ lat: e.latlng.lat, lon: e.latlng.lng }) },
-    click() { setPt(null) },
+    contextmenu(e) {
+      openedAt.current = Date.now()
+      setPt({ lat: e.latlng.lat, lon: e.latlng.lng })
+    },
+    click() {
+      // On iOS, lifting the finger that performed the long-press fires a
+      // click — that's the SAME gesture, not a dismiss-tap. Ignore clicks
+      // arriving right after the popup opened so it survives finger-up.
+      if (Date.now() - openedAt.current < 900) return
+      setPt(null)
+    },
     dragstart() { setPt(null) },
   })
   if (!pt) return null
