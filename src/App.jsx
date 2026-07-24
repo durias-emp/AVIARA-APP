@@ -19,17 +19,22 @@ const SignIn        = lazy(() => import('./pages/SignIn/SignIn'))
 const ResetPassword = lazy(() => import('./pages/SignIn/ResetPassword'))
 
 function AppRoutes({ theme }) {
-  const { session, loading: authLoading, recovery } = useAuth()
+  const { session, loading: authLoading, hydrated, recovery } = useAuth()
   const { profile, setProfile } = usePilotProfile()
 
   // Seed the profile's contact email from the signed-in account (Google/
   // Apple/email all expose user.email) so it's pre-filled without the pilot
   // typing it — only when empty, so a manually-edited value is never
   // overwritten. Phone isn't provided by OAuth, so that stays manual.
+  // Must wait for hydration: this effect fires even while the gate renders
+  // null, and writing the (still empty) profile mid-restore marked the
+  // settings store non-empty — which made the old store-level hydrate skip
+  // it entirely, bouncing returning users into onboarding.
   useEffect(() => {
+    if (!hydrated) return
     const email = session?.user?.email
     if (email && profile && !profile.email) setProfile({ email })
-  }, [session, profile, setProfile])
+  }, [session, profile, setProfile, hydrated])
 
   if (authLoading) return null
 
@@ -54,6 +59,11 @@ function AppRoutes({ theme }) {
       </Suspense>
     )
   }
+
+  // Signed in but the cloud restore is still running — showing the gate now
+  // would read an empty local profile and bounce a returning user into
+  // onboarding (and their redone onboarding would overwrite the backup).
+  if (!hydrated) return null
 
   if (profile === null) return null
 

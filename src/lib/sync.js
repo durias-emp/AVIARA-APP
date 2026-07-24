@@ -30,29 +30,42 @@ export async function pushToCloud(store) {
   }
 }
 
-// Pulls each store's cloud backup into IndexedDB, but only for stores that
-// are still empty locally — a device that already has data (the normal
-// case: restoring a session, not a fresh install) never gets clobbered.
-// This is "backup & restore" for one active device, not merge/conflict
-// resolution.
+// Pulls each store's cloud backup into IndexedDB, per row: a cloud row is
+// restored when this device has no row with the same key, and existing local
+// rows always win. (The old store-level "skip if not empty" was fragile —
+// any incidental early write, like the profile email seed, marked a store
+// non-empty and blocked the whole restore.) One domain tiebreak: a local
+// pilot row that never completed onboarding is a stub and must not shadow a
+// completed cloud profile. This is still "backup & restore" for one active
+// device, not merge/conflict resolution.
 export async function hydrateFromCloud() {
   const userId = await currentUserId()
   if (!userId) return
 
+  const keyOf = (store, item) => (store === 'settings' ? item.key : item.id)
+
   for (const store of SYNCED_STORES) {
     try {
-      const localRows = await getAll(store)
-      if (localRows.length > 0) continue
-
       const { data: row } = await supabase
         .from('backups')
         .select('data')
         .eq('user_id', userId)
         .eq('store_name', store)
         .maybeSingle()
+      if (!row?.data?.length) continue
 
-      if (row?.data?.length) {
-        for (const item of row.data) await put(store, item)
+      const localRows = await getAll(store)
+      const localByKey = new Map(localRows.map(r => [keyOf(store, r), r]))
+
+      for (const item of row.data) {
+        const k = keyOf(store, item)
+        const local = localByKey.get(k)
+        if (!local) {
+          await put(store, item)
+        } else if (store === 'settings' && k === 'pilot'
+                   && !local.onboardingComplete && item.onboardingComplete) {
+          await put(store, item)
+        }
       }
     } catch {
       // Offline or no backup yet — leave local state as-is.

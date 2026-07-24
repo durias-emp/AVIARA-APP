@@ -14,6 +14,11 @@ export function AuthProvider({ children }) {
   // though Supabase has technically created a session from the recovery
   // token. Cleared once the new password is saved.
   const [recovery, setRecovery] = useState(false)
+  // False while the post-sign-in cloud restore is running. The app gate must
+  // wait for it: reading the (still empty) local profile mid-restore sent
+  // returning users to onboarding — and re-completing onboarding would then
+  // overwrite their cloud backup.
+  const [hydrated, setHydrated] = useState(true)
   const syncedRef = useRef(false)
 
   useEffect(() => {
@@ -38,7 +43,16 @@ export function AuthProvider({ children }) {
       if (event === 'SIGNED_IN' && !syncedRef.current) {
         syncedRef.current = true
         trackEvent('sign_in')
-        hydrateFromCloud().then(() => pushAllToCloud()).catch(() => {})
+        setHydrated(false)
+        hydrateFromCloud()
+          .then(() => pushAllToCloud())
+          .catch(() => {})
+          .finally(() => {
+            setHydrated(true)
+            // Local stores may have just been filled from the cloud —
+            // anything that cached a pre-hydration read must re-read.
+            window.dispatchEvent(new Event('aviara-hydrated'))
+          })
       }
       if (event === 'SIGNED_OUT') {
         syncedRef.current = false
@@ -83,6 +97,7 @@ export function AuthProvider({ children }) {
     session,
     user: session?.user ?? null,
     loading: session === undefined,
+    hydrated,
     recovery,
     signInWithGoogle,
     signInWithPassword,
