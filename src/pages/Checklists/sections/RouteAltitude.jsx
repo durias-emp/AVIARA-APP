@@ -1,5 +1,6 @@
 import 'leaflet/dist/leaflet.css'
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { MapContainer, TileLayer, Marker, Polyline, Polygon, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
@@ -22,17 +23,26 @@ const airportIcon = new L.DivIcon({
   iconSize: [12, 12], iconAnchor: [6, 6],
 })
 
-function RouteFitter({ positions }) {
+function RouteFitter({ positions, once = true }) {
   const map = useMap()
   const fitted = useRef(false)
   useEffect(() => {
-    // Fit ONCE when the map opens. Never re-fit on waypoint edits — snapping
-    // the view away right after the user adds/drags a waypoint is exactly the
-    // "random zoom" ForeFlight never does. The user owns the camera.
-    if (fitted.current) return
+    // once=true (fullscreen): fit when the map opens, then never again —
+    // snapping the view away right after the user adds/drags a waypoint is
+    // exactly the "random zoom" ForeFlight never does. The user owns the
+    // camera. once=false (inline preview): the map isn't user-pannable, so
+    // keep re-framing the whole route as it changes.
+    if (once && fitted.current) return
     if (positions.length >= 2) {
       fitted.current = true
-      map.fitBounds(L.latLngBounds(positions), { padding: [36, 36] })
+      // The fullscreen map mounts before its container has its final size —
+      // fitting immediately frames the route against the wrong dimensions
+      // (the "opens in the middle of nowhere" bug). Invalidate then fit.
+      const t = setTimeout(() => {
+        map.invalidateSize()
+        map.fitBounds(L.latLngBounds(positions), { padding: [36, 36], animate: false })
+      }, 80)
+      return () => clearTimeout(t)
     }
   }, [JSON.stringify(positions)])
   return null
@@ -140,7 +150,7 @@ function crossTrackNM(la, lo, a, b) {
 }
 
 // DraggableWaypoint — draggable intermediate marker (touch-safe)
-function DraggableWaypoint({ position, index, onMove, onRemove, name, kind }) {
+function DraggableWaypoint({ position, index, onMove, onRemove, name }) {
   const markerRef = useRef(null)
   // touch-action:none is critical — prevents browser scroll from hijacking the drag
   // Waypoints look identical to the dep/dest airport dots (white, dark ring);
@@ -278,7 +288,7 @@ function RouteHint() {
 // toggling a layer, TFR data arriving). That's what read as "the map glitches
 // constantly" and, on iOS, remounting mid-tap can also swallow the tap event
 // on nearby chips/buttons.
-function MapLayers({ fit, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, insertWaypoint, moveWaypoint, removeWaypoint, depPos, destPos }) {
+function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, insertWaypoint, moveWaypoint, removeWaypoint, depPos, destPos }) {
   return (<>
     <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
     {layers.sectional && (
@@ -339,7 +349,7 @@ function MapLayers({ fit, layers, openaipKey, tfrData, detectedSUAPolys, waypoin
         </Polygon>
       )
     })}
-    {fit && <RouteFitter positions={waypoints.map(w => [w.lat, w.lon])} />}
+    {fit && <RouteFitter positions={waypoints.map(w => [w.lat, w.lon])} once={fitOnce} />}
     <AirspaceZoomer active={layers.airspace} />
     <SectionalZoomer active={layers.sectional} />
     <Marker position={waypoints[0] ? [waypoints[0].lat, waypoints[0].lon] : depPos} icon={airportIcon} />
@@ -403,6 +413,14 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [showRefs, setShowRefs]     = useState(false)
   const [activeChip, setActiveChip] = useState(null) // id of chip whose popup is open
 
+  // ── Named intermediate waypoints (Garmin/ForeFlight style) ──
+  // Each row: { id, text, resolved: {kind,name,lat,lon,...}|null, error,
+  //             creating: {lat,lon}|null } — `creating` holds the inline
+  //             lat/lon form for defining a new USER waypoint.
+  const [wptRows, setWptRows] = useState([])
+  // Coordinate hint for disambiguating duplicate idents — nearest wins.
+  const depPosHint = useRef(null)
+
   // Restore saved route on mount; fall back to homeAirport for the FROM field
   useEffect(() => {
     get('settings', 'route').then(r => {
@@ -457,14 +475,6 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   useEffect(() => {
     if (dest.trim().length === 4 && !destValidated && !destChecking) validateDest()
   }, [dest])
-
-  // ── Named intermediate waypoints (Garmin/ForeFlight style) ──
-  // Each row: { id, text, resolved: {kind,name,lat,lon,...}|null, error,
-  //             creating: {lat,lon}|null } — `creating` holds the inline
-  //             lat/lon form for defining a new USER waypoint.
-  const [wptRows, setWptRows] = useState([])
-  // Coordinate hint for disambiguating duplicate idents — nearest wins.
-  const depPosHint = useRef(null)
 
   function addWptRow() {
     setWptRows(prev => [...prev, { id: `wr-${Date.now()}`, text: '', resolved: null, error: null, creating: null }])
@@ -947,7 +957,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       }
       setRoute(routeObj)
       setLayers(prev => ({ ...prev, sectional: true }))
-      setMapFlyTarget({ lat: depLat, lon: depLon, zoom: 10, _t: Date.now() })
+      // No fly-to here — RouteFitter frames the whole route on map mount,
+      // and a lingering target would snap fullscreen away from that framing.
+      setMapFlyTarget(null)
       put('settings', { key: 'route', ...routeObj }).catch(() => {})
       setCourse(String(mcRounded))
       setSelectedAlt(null)
@@ -1311,12 +1323,12 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
               return (<>
                 {/* Inline map */}
                 <div style={{ borderRadius: 10, overflow: 'hidden', height: 240, position: 'relative', cursor: 'pointer' }}
-                  onClick={() => setMapFS(true)}>
+                  onClick={() => { setMapFlyTarget(null); setMapFS(true) }}>
                   <MapContainer center={route.depPos} zoom={10}
                     style={{ height: '100%', width: '100%' }}
                     zoomControl={false} attributionControl={false}
                     dragging={false} scrollWheelZoom={false} doubleClickZoom={false} touchZoom={false}>
-                    <MapLayers fit={false} {...mapLayerProps} />
+                    <MapLayers fit={true} fitOnce={false} {...mapLayerProps} />
                     <MapFlyTo target={mapFlyTarget} instant={true} />
                   </MapContainer>
                   {/* Expand hint */}
@@ -1330,7 +1342,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 </div>
 
                 {/* Fullscreen modal */}
-                {mapFullscreen && (() => {
+                {/* Portal to <body>: the tab track above has a CSS transform,
+                    which turns position:fixed into "fill the transformed
+                    ancestor" — a 5-pane-wide track — so the map rendered on a
+                    huge offscreen canvas and opened misframed. */}
+                {mapFullscreen && createPortal((() => {
                   const TERRAIN_DATA = {
                     water:     { label: 'Water',         items: ['Life jacket / flotation device aboard','Glide range reaches shore or vessel','Survival equipment for water temp','Filed flight plan with overwater leg'] },
                     mountains: { label: 'Mountains',     items: ['Terrain clearance — 1,000 ft above highest within 5 NM','Escape route identified for each leg','Turbulence / downdraft margins planned','Density altitude checked at cruise level'] },
@@ -1716,7 +1732,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       )}
                     </div>
                   )
-                })()}
+                })(), document.body)}
               </>)
             })()}
           </div>
