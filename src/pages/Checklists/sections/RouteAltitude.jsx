@@ -1,6 +1,6 @@
 import 'leaflet/dist/leaflet.css'
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { MapContainer, TileLayer, Marker, Polyline, Polygon, CircleMarker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Polyline, Polygon, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
 import { get, put } from '../../../lib/db'
@@ -199,6 +199,51 @@ function PolylineEditor({ waypoints, onInsert }) {
   </>)
 }
 
+// LongPressAdd — ForeFlight-style: press-and-hold (or right-click) anywhere on
+// the map to drop a point showing its aviation coordinates, with a button to
+// insert it into the route at the nearest leg.
+function LongPressAdd({ waypoints, onInsert }) {
+  const [pt, setPt] = useState(null)
+  useMapEvents({
+    // Leaflet fires `contextmenu` for long-press on touch and right-click on
+    // desktop — exactly the ForeFlight hold gesture.
+    contextmenu(e) { setPt({ lat: e.latlng.lat, lon: e.latlng.lng }) },
+    click() { setPt(null) },
+    dragstart() { setPt(null) },
+  })
+  if (!pt) return null
+
+  function addHere() {
+    let bestSeg = 1, bestDist = Infinity
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const d = crossTrackNM(pt.lat, pt.lon, [waypoints[i].lat, waypoints[i].lon], [waypoints[i + 1].lat, waypoints[i + 1].lon])
+      if (d < bestDist) { bestDist = d; bestSeg = i + 1 }
+    }
+    onInsert(bestSeg, pt.lat, pt.lon)
+    setPt(null)
+  }
+
+  return (<>
+    <CircleMarker center={[pt.lat, pt.lon]} radius={7}
+      pathOptions={{ color: '#fff', weight: 2.5, fillColor: '#0a84ff', fillOpacity: 1 }} />
+    <Popup position={[pt.lat, pt.lon]} offset={[0, -6]} closeButton={false} autoPan={true}>
+      <div style={{ textAlign: 'center', minWidth: 168 }}>
+        <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, letterSpacing: '0.3px' }}>
+          {fmtAvCoord(pt.lat, pt.lon)}
+        </div>
+        <button
+          onClick={addHere}
+          style={{
+            marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 8, border: 'none',
+            background: '#0a84ff', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+          }}>
+          + Add to route
+        </button>
+      </div>
+    </Popup>
+  </>)
+}
+
 // Fade-out hint shown once when fullscreen opens
 function RouteHint() {
   const [visible, setVisible] = useState(true)
@@ -296,6 +341,7 @@ function MapLayers({ fit, layers, openaipKey, tfrData, detectedSUAPolys, waypoin
     <Marker position={waypoints[0] ? [waypoints[0].lat, waypoints[0].lon] : depPos} icon={airportIcon} />
     <Marker position={waypoints[waypoints.length-1] ? [waypoints[waypoints.length-1].lat, waypoints[waypoints.length-1].lon] : destPos} icon={airportIcon} />
     {waypoints.length >= 2 && <PolylineEditor waypoints={waypoints} onInsert={insertWaypoint} />}
+    {waypoints.length >= 2 && <LongPressAdd waypoints={waypoints} onInsert={insertWaypoint} />}
     {waypoints.slice(1, -1).map((w, i) => (
       <DraggableWaypoint key={w.id} position={[w.lat, w.lon]} index={i + 1} onMove={moveWaypoint} onRemove={removeWaypoint} name={w.name} kind={w.kind} />
     ))}

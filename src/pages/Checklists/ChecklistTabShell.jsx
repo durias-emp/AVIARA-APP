@@ -66,6 +66,10 @@ export default function ChecklistTabShell({
   }, [])
 
   function onTouchStart(e) {
+    // Gestures that start on a map belong to the map (pan/zoom/long-press) —
+    // never turn them into tab swipes. This was the "glitchy map" bug: any
+    // horizontal pan on the route map dragged the whole checklist sideways.
+    if (e.target.closest?.('.leaflet-container')) return
     const t = e.touches[0]
     gesture.current = {
       startX: t.clientX,
