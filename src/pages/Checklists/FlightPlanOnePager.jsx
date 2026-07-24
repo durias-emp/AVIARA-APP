@@ -199,7 +199,7 @@ export default function FlightPlanOnePager({ onClose }) {
         <div style={{ textAlign: 'center', fontWeight: 700, marginBottom: 2 }}>FLIGHTPLAN {acProfile?.registration || '-----'}</div>
         <div style={{ textAlign: 'center', color: PAPER_MUTE, marginBottom: 8 }}>{dateStr}   OFP 1</div>
 
-        <PLine l={`${dep}-${dest} DCT`} r="" />
+        <PLine l={route?.wpts?.length ? [dep, ...route.wpts.map(w => w.name), dest].join(' ') : `${dep}-${dest} DCT`} r="" />
         <PLine l={aircraftLine || 'AIRCRAFT'} r={lastWB ? `TOW ${Math.round(lastWB.weight)}` : 'TOW ----'} />
         <PLine l={`CRZ ALT ${cruise?.cruiseAlt || route?.cruiseAlt || '----'}`} r={`WIND ${toWindStr}`} />
         <PLine l={`RES ${reqReserve}MIN`} r={cruise?.fuelOnBoard ? `FOB ${cruise.fuelOnBoard}` : 'FOB --'} />
@@ -229,7 +229,11 @@ export default function FlightPlanOnePager({ onClose }) {
 
         <Rule />
         <div style={{ fontWeight: 700, marginBottom: 2 }}>ATS ROUTE:</div>
-        <div style={{ marginBottom: 4 }}>{dep} DCT {dest}</div>
+        <div style={{ marginBottom: 4 }}>
+          {route?.wpts?.length
+            ? [dep, ...route.wpts.map(w => `DCT ${w.name}`), `DCT ${dest}`].join(' ')
+            : `${dep} DCT ${dest}`}
+        </div>
 
         {/* ── TAKEOFF ── */}
         <StageHead label="TAKEOFF" active={stage === 'TAKEOFF'} dimmed={dim('TAKEOFF')} onClick={() => toggleStage('TAKEOFF')} />

@@ -70,6 +70,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // The bundled navdata (fixes.json chunk, ~2 MB) exceeds workbox's
+        // 2 MiB default — raise so waypoint lookup works offline.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/aviationweather\.gov\/.*/i,

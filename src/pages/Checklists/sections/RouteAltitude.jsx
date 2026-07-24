@@ -7,6 +7,7 @@ import { get, put } from '../../../lib/db'
 import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
 import { FAA_CHART_CYCLE } from '../shared/faaData'
 import { awcUrl, proxyFetch, fetchAWC, lookupAirport, bearingDeg, haversineNm } from '../shared/awc'
+import { resolveWaypoint, saveUserWaypoint } from '../../../lib/waypoints'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -133,13 +134,21 @@ function crossTrackNM(la, lo, a, b) {
 }
 
 // DraggableWaypoint — draggable intermediate marker (touch-safe)
-function DraggableWaypoint({ position, index, onMove, onRemove }) {
+function DraggableWaypoint({ position, index, onMove, onRemove, name, kind }) {
   const markerRef = useRef(null)
   // touch-action:none is critical — prevents browser scroll from hijacking the drag
+  // Named waypoints (GPS fix / VOR / user) show their identifier under the dot;
+  // VORs get the classic hexagon-ish outline color.
+  const ringColor = kind === 'VOR' ? '#a78bfa' : kind === 'GPS' ? '#34c759' : kind === 'USER' ? '#ff9f0a' : '#fff'
+  const label = name
+    ? `<div style="position:absolute;top:30px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.72);color:#fff;font:700 10px monospace;letter-spacing:0.5px;border-radius:5px;padding:1px 6px;white-space:nowrap;">${name}</div>`
+    : ''
   const icon = L.divIcon({
     className: '', iconSize: [28, 28], iconAnchor: [14, 14],
-    html: `<div style="width:28px;height:28px;border-radius:50%;background:#333;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);cursor:grab;touch-action:none;display:flex;align-items:center;justify-content:center;">
-      <div style="width:8px;height:8px;background:#fff;border-radius:50%"></div>
+    html: `<div style="position:relative;width:28px;height:28px;">
+      <div style="width:28px;height:28px;border-radius:50%;background:#333;border:3px solid ${ringColor};box-shadow:0 2px 8px rgba(0,0,0,0.4);cursor:grab;touch-action:none;display:flex;align-items:center;justify-content:center;box-sizing:border-box;">
+        <div style="width:8px;height:8px;background:#fff;border-radius:50%"></div>
+      </div>${label}
     </div>`
   })
   useEffect(() => {
@@ -288,7 +297,7 @@ function MapLayers({ fit, layers, openaipKey, tfrData, detectedSUAPolys, waypoin
     <Marker position={waypoints[waypoints.length-1] ? [waypoints[waypoints.length-1].lat, waypoints[waypoints.length-1].lon] : destPos} icon={airportIcon} />
     {waypoints.length >= 2 && <PolylineEditor waypoints={waypoints} onInsert={insertWaypoint} />}
     {waypoints.slice(1, -1).map((w, i) => (
-      <DraggableWaypoint key={w.id} position={[w.lat, w.lon]} index={i + 1} onMove={moveWaypoint} onRemove={removeWaypoint} />
+      <DraggableWaypoint key={w.id} position={[w.lat, w.lon]} index={i + 1} onMove={moveWaypoint} onRemove={removeWaypoint} name={w.name} kind={w.kind} />
     ))}
   </>)
 }
@@ -351,6 +360,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         if (r.dep) { setDep(r.dep); setDepVal(true) }
         if (r.dest) { setDest(r.dest); setDestVal(true) }
         setRoute(r)
+        if (r.wpts?.length) {
+          setWptRows(r.wpts.map((w, i) => ({
+            id: `wr-restored-${i}`, text: w.name, resolved: w, error: null, creating: null,
+          })))
+        }
         if (r.mc != null) setCourse(String(r.mc))
         if (r.cruiseAlt != null) setSelectedAlt(r.cruiseAlt)
         if (!r.dep) get('settings', 'homeAirport').then(h => { if (h?.value) { setDep(h.value); setDepVal(true) } })
@@ -366,7 +380,10 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setDepChk(true); setDepErr(null)
     const result = await fetchAWC(id)
     setDepChk(false)
-    if (result) { setDep(id); setDepVal(true) }
+    if (result) {
+      setDep(id); setDepVal(true)
+      if (result.lat != null) depPosHint.current = [parseFloat(result.lat), parseFloat(result.lon)]
+    }
     else setDepErr('Airport not found')
   }
 
@@ -391,16 +408,65 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     if (dest.trim().length === 4 && !destValidated && !destChecking) validateDest()
   }, [dest])
 
+  // ── Named intermediate waypoints (Garmin/ForeFlight style) ──
+  // Each row: { id, text, resolved: {kind,name,lat,lon,...}|null, error,
+  //             creating: {lat,lon}|null } — `creating` holds the inline
+  //             lat/lon form for defining a new USER waypoint.
+  const [wptRows, setWptRows] = useState([])
+  // Coordinate hint for disambiguating duplicate idents — nearest wins.
+  const depPosHint = useRef(null)
+
+  function addWptRow() {
+    setWptRows(prev => [...prev, { id: `wr-${Date.now()}`, text: '', resolved: null, error: null, creating: null }])
+  }
+  function patchWptRow(id, patch) {
+    setWptRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r))
+  }
+  function removeWptRow(id) {
+    setWptRows(prev => prev.filter(r => r.id !== id))
+    setRoute(null); setRE(null)
+  }
+
+  async function resolveWptRow(id, text) {
+    const ident = text.trim().toUpperCase()
+    if (!ident) return
+    const nearPos = route ? [(route.depPos[0] + route.destPos[0]) / 2, (route.depPos[1] + route.destPos[1]) / 2]
+      : depPosHint.current
+    const hit = await resolveWaypoint(ident, nearPos)
+    if (hit) {
+      patchWptRow(id, { text: ident, resolved: hit, error: null, creating: null })
+      setRoute(null); setRE(null)
+    } else {
+      patchWptRow(id, { text: ident, resolved: null, error: 'not-found', creating: null })
+    }
+  }
+
+  async function createUserWpt(id, ident, latStr, lonStr) {
+    const lat = parseFloat(latStr), lon = parseFloat(lonStr)
+    if (isNaN(lat) || isNaN(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+      patchWptRow(id, { error: 'bad-coords' })
+      return
+    }
+    try {
+      const wp = await saveUserWaypoint(ident, lat, lon)
+      patchWptRow(id, { text: wp.name, resolved: wp, error: null, creating: null })
+      setRoute(null); setRE(null)
+    } catch (e) {
+      patchWptRow(id, { error: e.message })
+    }
+  }
+
   // Editable waypoints — dep + optional intermediates + dest
   const [waypoints, setWaypoints] = useState([])
   useEffect(() => {
     if (route?.depPos && route?.destPos) {
       setWaypoints([
         { id: 'dep',  lat: route.depPos[0],  lon: route.depPos[1],  name: dep },
+        ...(route.wpts ?? []).map((w, i) => ({ id: `named-${i}-${w.name}`, lat: w.lat, lon: w.lon, name: w.name, kind: w.kind })),
         { id: 'dest', lat: route.destPos[0], lon: route.destPos[1], name: dest },
       ])
     }
-  }, [route?.depPos?.[0], route?.depPos?.[1], route?.destPos?.[0], route?.destPos?.[1]])
+  }, [route?.depPos?.[0], route?.depPos?.[1], route?.destPos?.[0], route?.destPos?.[1], JSON.stringify(route?.wpts)])
 
   function insertWaypoint(index, lat, lon) {
     setWaypoints(prev => {
@@ -419,10 +485,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // Route string for display — dep / intermediates in aviation coords / dest
   const routeString = useMemo(() => {
     if (waypoints.length < 2) return null
-    return waypoints.map((w, i) => {
-      if (i === 0 || i === waypoints.length - 1) return w.name || fmtAvCoord(w.lat, w.lon)
-      return fmtAvCoord(w.lat, w.lon)
-    }).join(' / ')
+    return waypoints.map(w => w.name || fmtAvCoord(w.lat, w.lon)).join(' / ')
   }, [waypoints])
 
   // Real terrain detection via OpenTopoData elevation + FAA airport corridor check
@@ -791,8 +854,19 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
       const depLat = parseFloat(da.lat), depLon = parseFloat(da.lon)
       const dstLat = parseFloat(dsta.lat), dstLon = parseFloat(dsta.lon)
-      const tc   = bearingDeg(depLat, depLon, dstLat, dstLon)
-      const dist = haversineNm(depLat, depLon, dstLat, dstLon)
+
+      // Full chain: dep → named waypoints → dest. Distance sums per leg;
+      // course is the first leg's (what you'd fly off the departure).
+      const wpts = wptRows.filter(r => r.resolved).map(r => ({
+        kind: r.resolved.kind, name: r.resolved.name,
+        lat: r.resolved.lat, lon: r.resolved.lon,
+      }))
+      const chain = [[depLat, depLon], ...wpts.map(w => [w.lat, w.lon]), [dstLat, dstLon]]
+      let dist = 0
+      for (let i = 0; i < chain.length - 1; i++) {
+        dist += haversineNm(chain[i][0], chain[i][1], chain[i + 1][0], chain[i + 1][1])
+      }
+      const tc = bearingDeg(chain[0][0], chain[0][1], chain[1][0], chain[1][1])
 
       // NOAA magnetic declination at route midpoint
       const midLat = (depLat + dstLat) / 2
@@ -819,6 +893,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         destPos: [dstLat, dstLon],
         dep: dep.trim().toUpperCase(),
         dest: dest.trim().toUpperCase(),
+        wpts,
       }
       setRoute(routeObj)
       setLayers(prev => ({ ...prev, sectional: true }))
@@ -962,6 +1037,139 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
           </div>
         </div>
 
+        {/* ── Intermediate waypoints ── */}
+        {wptRows.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+            {wptRows.map((row, i) => (
+              <div key={row.id}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', letterSpacing: '0.3px', width: 34, flexShrink: 0, textTransform: 'uppercase' }}>
+                    WPT {i + 1}
+                  </div>
+                  {row.resolved ? (
+                    <div style={{
+                      flex: 1, background: 'var(--bg-card-2)', borderRadius: 9, padding: '7px 11px',
+                      display: 'flex', alignItems: 'center', gap: 8, boxSizing: 'border-box',
+                    }}>
+                      <span style={{ fontSize: 15, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '1px', color: 'var(--text)' }}>
+                        {row.resolved.name}
+                      </span>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, letterSpacing: '0.5px', padding: '2px 7px', borderRadius: 8,
+                        background: row.resolved.kind === 'VOR' ? 'rgba(139,92,246,0.18)' : row.resolved.kind === 'GPS' ? 'rgba(52,199,89,0.15)' : 'rgba(255,159,10,0.15)',
+                        color:      row.resolved.kind === 'VOR' ? '#a78bfa' : row.resolved.kind === 'GPS' ? 'var(--ok)' : 'var(--warn)',
+                      }}>
+                        {row.resolved.kind}
+                      </span>
+                      {row.resolved.kind === 'VOR' && row.resolved.vorName && (
+                        <span style={{ fontSize: 10, color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {row.resolved.vorName}{row.resolved.freq ? ` · ${row.resolved.freq}` : ''}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <input
+                      value={row.text}
+                      onChange={e => {
+                        const v = e.target.value.toUpperCase()
+                        patchWptRow(row.id, { text: v, resolved: null, error: null })
+                        // silent auto-resolve at fix/VOR lengths, Garmin-style
+                        if (v.trim().length === 5 || v.trim().length === 3) {
+                          resolveWaypoint(v.trim()).then(hit => {
+                            if (hit) patchWptRow(row.id, { text: v.trim(), resolved: hit, error: null })
+                          })
+                        }
+                      }}
+                      onKeyDown={e => e.key === 'Enter' && resolveWptRow(row.id, row.text)}
+                      onBlur={() => row.text.trim() && resolveWptRow(row.id, row.text)}
+                      placeholder="GPS · VOR · user"
+                      maxLength={10}
+                      style={{
+                        flex: 1, minWidth: 0, background: 'var(--bg-card-2)',
+                        border: `0.5px solid ${row.error ? 'var(--danger)' : 'transparent'}`,
+                        borderRadius: 9, padding: '8px 11px', color: 'var(--text)',
+                        fontSize: 16, fontWeight: 700, fontFamily: 'monospace',
+                        letterSpacing: '1px', outline: 'none', boxSizing: 'border-box',
+                      }}
+                    />
+                  )}
+                  <button
+                    onClick={() => removeWptRow(row.id)}
+                    style={{
+                      background: 'var(--bg-card-2)', border: 'none', borderRadius: 8,
+                      width: 28, height: 28, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer', color: 'var(--text-tertiary)',
+                    }}>
+                    <svg width={10} height={10} viewBox="0 0 24 24" fill="none">
+                      <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                </div>
+                {row.error === 'not-found' && !row.creating && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 0 42px' }}>
+                    <span style={{ fontSize: 10, color: 'var(--danger)' }}>Not a known GPS fix or VOR</span>
+                    <button
+                      onClick={() => patchWptRow(row.id, { creating: { lat: '', lon: '' }, error: null })}
+                      style={{
+                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                        fontSize: 10, fontWeight: 600, color: 'var(--warn)', textDecoration: 'underline',
+                      }}>
+                      Create user waypoint
+                    </button>
+                  </div>
+                )}
+                {row.error && row.error !== 'not-found' && (
+                  <div style={{ fontSize: 10, color: 'var(--danger)', margin: '4px 0 0 42px' }}>
+                    {row.error === 'bad-coords' ? 'Enter valid decimal coordinates (lat −90…90, lon −180…180)' : row.error}
+                  </div>
+                )}
+                {row.creating && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '6px 0 0 42px' }}>
+                    <input
+                      value={row.creating.lat}
+                      onChange={e => patchWptRow(row.id, { creating: { ...row.creating, lat: e.target.value } })}
+                      placeholder="Lat 37.615"
+                      inputMode="decimal"
+                      style={{
+                        flex: 1, minWidth: 0, background: 'var(--bg-card-2)', border: 'none', borderRadius: 8,
+                        padding: '7px 10px', color: 'var(--text)', fontSize: 16, fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box',
+                      }}
+                    />
+                    <input
+                      value={row.creating.lon}
+                      onChange={e => patchWptRow(row.id, { creating: { ...row.creating, lon: e.target.value } })}
+                      placeholder="Lon −122.375"
+                      inputMode="decimal"
+                      style={{
+                        flex: 1, minWidth: 0, background: 'var(--bg-card-2)', border: 'none', borderRadius: 8,
+                        padding: '7px 10px', color: 'var(--text)', fontSize: 16, fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box',
+                      }}
+                    />
+                    <button
+                      onClick={() => createUserWpt(row.id, row.text, row.creating.lat, row.creating.lon)}
+                      style={{
+                        background: 'var(--text)', color: 'var(--bg)', border: 'none', borderRadius: 8,
+                        padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+                      }}>
+                      Save
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          onClick={addWptRow}
+          style={{
+            width: '100%', padding: '7px 0', borderRadius: 9, marginBottom: 8,
+            background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
+            fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
+          }}>
+          + Add waypoint
+        </button>
+
         <button
           onClick={calcRoute}
           disabled={routeLoading || !dep.trim() || !dest.trim()}
@@ -983,6 +1191,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>
               {route.depName} → {route.destName}
             </div>
+            {route.wpts?.length > 0 && (
+              <div style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 700, letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: 8, overflowX: 'auto', whiteSpace: 'nowrap' }}>
+                {[route.dep, ...route.wpts.map(w => w.name), route.dest].join(' → ')}
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
               {[
                 { label: 'Distance',    val: `${route.distNm} NM` },
