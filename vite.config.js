@@ -7,6 +7,34 @@ import { VitePWA } from 'vite-plugin-pwa'
 // Vercel serverless functions, so /api/awc 404s under `npm run dev` even
 // though it works fine once deployed. Without this, every airport lookup
 // looks "broken" locally regardless of the actual proxy's health.
+// Dev-only middleware mirroring api/tfr.js (same reasoning as awcDevProxy).
+function tfrDevProxy() {
+  const WFS_URL =
+    'https://tfr.faa.gov/geoserver/TFR/ows?service=WFS&version=1.1.0&request=GetFeature' +
+    '&typeName=TFR:V_TFR_LOC&maxFeatures=300&outputFormat=application/json&srsname=EPSG:4326'
+  return {
+    name: 'tfr-dev-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/tfr', async (req, res) => {
+        try {
+          const upstream = await fetch(WFS_URL, {
+            headers: { 'User-Agent': 'AVIARA-App/1.0' },
+            signal: AbortSignal.timeout(15000),
+          })
+          const text = await upstream.text()
+          res.statusCode = upstream.status
+          res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
+          res.end(text)
+        } catch (err) {
+          res.statusCode = 502
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'upstream fetch failed', detail: err.message }))
+        }
+      })
+    },
+  }
+}
+
 function awcDevProxy() {
   return {
     name: 'awc-dev-proxy',
@@ -48,6 +76,7 @@ function awcDevProxy() {
 export default defineConfig({
   plugins: [
     awcDevProxy(),
+    tfrDevProxy(),
     react(),
     tailwindcss(),
     VitePWA({

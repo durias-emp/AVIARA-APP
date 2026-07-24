@@ -820,11 +820,21 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setTfrLoad(true)
     setTfrData(null)
 
-    // FAA GeoServer WFS — the actual endpoint tfr3 uses internally
-    // No CORS headers, must proxy. corsproxy.io confirmed working.
+    // FAA GeoServer WFS (the endpoint tfr3 uses internally) via OUR /api/tfr
+    // proxy — the FAA serves no CORS headers, and the public CORS proxies the
+    // app previously fell back on (corsproxy.io, allorigins) have gone
+    // dead/blocking, which silently broke TFRs. Same-origin proxy is the
+    // reliable path; the old public proxies remain only as a last resort.
     const WFS_URL = 'https://tfr.faa.gov/geoserver/TFR/ows?service=WFS&version=1.1.0&request=GetFeature&typeName=TFR:V_TFR_LOC&maxFeatures=300&outputFormat=application/json&srsname=EPSG:4326'
     try {
-      const raw = await proxyFetch(WFS_URL, 15000)
+      let raw
+      try {
+        const res = await fetch('/api/tfr', { signal: AbortSignal.timeout(15000) })
+        if (!res.ok) throw new Error('proxy ' + res.status)
+        raw = await res.text()
+      } catch {
+        raw = await proxyFetch(WFS_URL, 15000)
+      }
       const geo = JSON.parse(raw)
       if (geo?.features?.length) {
         const tfrs = (geo.features || []).map(f => {
