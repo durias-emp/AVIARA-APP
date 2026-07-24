@@ -160,12 +160,14 @@ function DraggableWaypoint({ position, index, onMove, onRemove, name, removable 
   // pixels ("can only move it little by little"). Memoize on the label.
   const icon = useMemo(() => {
     const label = name
-      ? `<div style="position:absolute;top:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.72);color:#fff;font:700 10px monospace;letter-spacing:0.5px;border-radius:5px;padding:1px 6px;white-space:nowrap;">${name}</div>`
+      ? `<div style="position:absolute;top:34px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.72);color:#fff;font:700 10px monospace;letter-spacing:0.5px;border-radius:5px;padding:1px 6px;white-space:nowrap;">${name}</div>`
       : ''
+    // 44×44 touch target (Apple HIG minimum) around a 14px visual dot —
+    // smaller boxes are genuinely hard to grab with a finger on iOS.
     return L.divIcon({
-      className: '', iconSize: [28, 28], iconAnchor: [14, 14],
-      html: `<div style="position:relative;width:28px;height:28px;cursor:grab;touch-action:none;display:flex;align-items:center;justify-content:center;">
-        <div style="width:12px;height:12px;border-radius:50%;background:#fff;border:2.5px solid #333;box-shadow:0 1px 6px rgba(0,0,0,0.4);box-sizing:border-box;"></div>${label}
+      className: '', iconSize: [44, 44], iconAnchor: [22, 22],
+      html: `<div style="position:relative;width:44px;height:44px;cursor:grab;touch-action:none;display:flex;align-items:center;justify-content:center;">
+        <div style="width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid #333;box-shadow:0 1px 6px rgba(0,0,0,0.4);box-sizing:border-box;"></div>${label}
       </div>`
     })
   }, [name])
@@ -198,10 +200,11 @@ function DraggableWaypoint({ position, index, onMove, onRemove, name, removable 
 function PolylineEditor({ waypoints, onInsert }) {
   const positions = waypoints.map(w => [w.lat, w.lon])
   return (<>
-    {/* Thick invisible hit-area so tap is easy on mobile */}
+    {/* Thick invisible hit-area so a finger tap on the line reliably inserts
+        a waypoint — 36px ≈ a fingertip */}
     <Polyline
       positions={positions}
-      pathOptions={{ color: 'transparent', weight: 20, opacity: 0 }}
+      pathOptions={{ color: 'transparent', weight: 36, opacity: 0 }}
       eventHandlers={{
         click: (e) => {
           L.DomEvent.stopPropagation(e)
@@ -224,19 +227,20 @@ function PolylineEditor({ waypoints, onInsert }) {
 // insert it into the route at the nearest leg.
 function LongPressAdd({ waypoints, onInsert }) {
   const [pt, setPt] = useState(null)
-  const openedAt = useRef(0)
+  const ignoreNextClick = useRef(false)
   useMapEvents({
     // Leaflet fires `contextmenu` for long-press on touch and right-click on
     // desktop — exactly the ForeFlight hold gesture.
     contextmenu(e) {
-      openedAt.current = Date.now()
+      // Lifting the finger that performed the long-press fires ONE click —
+      // however long the user keeps holding. A time window can't cover that
+      // (hold 3s → release-click arrives after any window), so swallow
+      // exactly the first click following a long-press instead.
+      ignoreNextClick.current = true
       setPt({ lat: e.latlng.lat, lon: e.latlng.lng })
     },
     click() {
-      // On iOS, lifting the finger that performed the long-press fires a
-      // click — that's the SAME gesture, not a dismiss-tap. Ignore clicks
-      // arriving right after the popup opened so it survives finger-up.
-      if (Date.now() - openedAt.current < 900) return
+      if (ignoreNextClick.current) { ignoreNextClick.current = false; return }
       setPt(null)
     },
     // No dismissal on drag: the tiniest finger movement while still holding
