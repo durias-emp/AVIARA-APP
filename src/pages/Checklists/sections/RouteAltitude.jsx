@@ -143,18 +143,16 @@ function crossTrackNM(la, lo, a, b) {
 function DraggableWaypoint({ position, index, onMove, onRemove, name, kind }) {
   const markerRef = useRef(null)
   // touch-action:none is critical — prevents browser scroll from hijacking the drag
-  // Named waypoints (GPS fix / VOR / user) show their identifier under the dot;
-  // VORs get the classic hexagon-ish outline color.
-  const ringColor = kind === 'VOR' ? '#a78bfa' : kind === 'GPS' ? '#34c759' : kind === 'USER' ? '#ff9f0a' : '#fff'
+  // Waypoints look identical to the dep/dest airport dots (white, dark ring);
+  // named ones show their identifier on a label underneath. The 28px box is an
+  // invisible touch target around the 12px visual dot.
   const label = name
-    ? `<div style="position:absolute;top:30px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.72);color:#fff;font:700 10px monospace;letter-spacing:0.5px;border-radius:5px;padding:1px 6px;white-space:nowrap;">${name}</div>`
+    ? `<div style="position:absolute;top:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.72);color:#fff;font:700 10px monospace;letter-spacing:0.5px;border-radius:5px;padding:1px 6px;white-space:nowrap;">${name}</div>`
     : ''
   const icon = L.divIcon({
     className: '', iconSize: [28, 28], iconAnchor: [14, 14],
-    html: `<div style="position:relative;width:28px;height:28px;">
-      <div style="width:28px;height:28px;border-radius:50%;background:#333;border:3px solid ${ringColor};box-shadow:0 2px 8px rgba(0,0,0,0.4);cursor:grab;touch-action:none;display:flex;align-items:center;justify-content:center;box-sizing:border-box;">
-        <div style="width:8px;height:8px;background:#fff;border-radius:50%"></div>
-      </div>${label}
+    html: `<div style="position:relative;width:28px;height:28px;cursor:grab;touch-action:none;display:flex;align-items:center;justify-content:center;">
+      <div style="width:12px;height:12px;border-radius:50%;background:#fff;border:2.5px solid #333;box-shadow:0 1px 6px rgba(0,0,0,0.4);box-sizing:border-box;"></div>${label}
     </div>`
   })
   useEffect(() => {
@@ -200,8 +198,8 @@ function PolylineEditor({ waypoints, onInsert }) {
         }
       }}
     />
-    {/* Visible line */}
-    <Polyline positions={positions} pathOptions={{ color: '#ffffff', weight: 2.5, opacity: 0.85 }} />
+    {/* Visible line — ForeFlight-style magenta/purple course line, slightly translucent */}
+    <Polyline positions={positions} pathOptions={{ color: '#a855f7', weight: 4, opacity: 0.65 }} />
   </>)
 }
 
