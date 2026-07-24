@@ -245,7 +245,10 @@ function LongPressAdd({ waypoints, onInsert }) {
       if (Date.now() - openedAt.current < 900) return
       setPt(null)
     },
-    dragstart() { setPt(null) },
+    // No dismissal on drag: the tiniest finger movement while still holding
+    // (or right after) registers as a map drag and was closing the popup.
+    // It's anchored to the pressed point, so it simply pans with the map;
+    // only a deliberate tap elsewhere dismisses it.
   })
   if (!pt) return null
 
