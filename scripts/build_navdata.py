@@ -101,3 +101,33 @@ for probe in ("GOOFY", "GINDU", "IPGOP", "SUNOL"):
     print(probe, fixes.get(probe))
 for probe in ("MCO", "MIA", "YVR", "OSI", "SFO"):
     print(probe, navaids.get(probe))
+
+# ---------- Airways (NASR AWY_BASE + AWY_SEG_ALT) ----------
+# {"V25": [{"loc": "C", "pts": ["MZB", ...], "mea": [18000|null per segment]}]}
+# Idents only — the app resolves coordinates at runtime from fixes/navaids,
+# disambiguating duplicates by chain proximity.
+awys = {}
+mea_by_from = {}
+with open(f"{SCRATCH}/nasr/AWY_SEG_ALT.csv", newline="", encoding="utf-8", errors="replace") as f:
+    for row in csv.DictReader(f):
+        key = (row["AWY_ID"].strip(), row["AWY_LOCATION"].strip(), row["FROM_POINT"].strip().upper())
+        try:
+            mea_by_from[key] = int(float(row["MIN_ENROUTE_ALT"]))
+        except (ValueError, TypeError):
+            pass
+
+with open(f"{SCRATCH}/nasr/AWY_BASE.csv", newline="", encoding="utf-8", errors="replace") as f:
+    for row in csv.DictReader(f):
+        awy_id = row["AWY_ID"].strip().upper()
+        loc = row["AWY_LOCATION"].strip()
+        pts = row["AIRWAY_STRING"].split()
+        if len(pts) < 2:
+            continue
+        mea = [mea_by_from.get((awy_id, loc, pts[i].upper())) for i in range(len(pts) - 1)]
+        awys.setdefault(awy_id, []).append({"loc": loc, "pts": pts, "mea": mea})
+
+json.dump(awys, open(f"{OUT}/airways.json", "w"), separators=(",", ":"))
+print(f"airways: {len(awys)} ids -> {os.path.getsize(f'{OUT}/airways.json')/1e6:.2f} MB")
+v25 = next(v for v in awys.get("V25", []) if v["loc"] == "C")
+i1, i2 = v25["pts"].index("SNS"), v25["pts"].index("RZS")
+print("V25 SNS..RZS:", v25["pts"][min(i1,i2):max(i1,i2)+1], "MEAs:", v25["mea"][min(i1,i2):max(i1,i2)])

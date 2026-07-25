@@ -230,9 +230,18 @@ export default function FlightPlanOnePager({ onClose }) {
         <Rule />
         <div style={{ fontWeight: 700, marginBottom: 2 }}>ATS ROUTE:</div>
         <div style={{ marginBottom: 4 }}>
-          {route?.wpts?.length
-            ? [dep, ...route.wpts.map(w => `DCT ${w.name}`), `DCT ${dest}`].join(' ')
-            : `${dep} DCT ${dest}`}
+          {route?.atsTokens?.length > 2
+            // Filed-style string: airways stay as tokens, direct legs get DCT
+            // (e.g. "KSFO DCT SNS V25 RZS DCT KLAX")
+            ? route.atsTokens.map((tok, i, arr) => {
+                if (i === 0) return tok
+                const isAirway = /^[A-Z]{1,2}\d{1,4}$/.test(tok) && !(route.wpts ?? []).some(w => w.name === tok && !w.via)
+                const prevIsAirway = /^[A-Z]{1,2}\d{1,4}$/.test(arr[i-1]) && !(route.wpts ?? []).some(w => w.name === arr[i-1] && !w.via)
+                return isAirway || prevIsAirway ? tok : `DCT ${tok}`
+              }).join(' ')
+            : route?.wpts?.length
+              ? [dep, ...route.wpts.map(w => `DCT ${w.name}`), `DCT ${dest}`].join(' ')
+              : `${dep} DCT ${dest}`}
         </div>
 
         {/* ── TAKEOFF ── */}

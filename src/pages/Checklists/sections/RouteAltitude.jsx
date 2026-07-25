@@ -8,7 +8,7 @@ import { get, put } from '../../../lib/db'
 import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
 import { FAA_CHART_CYCLE } from '../shared/faaData'
 import { awcUrl, proxyFetch, fetchAWC, lookupAirport, bearingDeg, haversineNm } from '../shared/awc'
-import { resolveWaypoint, saveUserWaypoint } from '../../../lib/waypoints'
+import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expandAirway } from '../../../lib/waypoints'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -504,7 +504,19 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         if (r.dep) { setDep(r.dep); setDepVal(true) }
         if (r.dest) { setDest(r.dest); setDestVal(true) }
         setRoute(r)
-        if (r.wpts?.length) {
+        if (r.atsTokens?.length > 2) {
+          // Restore the rows AS TYPED (airway tokens intact, not their
+          // expansion) — any token without a matching expanded waypoint is
+          // an airway.
+          const mid = r.atsTokens.slice(1, -1)
+          setWptRows(mid.map((name, i) => {
+            const w = (r.wpts ?? []).find(x => x.name === name && !x.via)
+            return {
+              id: `wr-restored-${i}`, text: name,
+              resolved: w ?? { kind: 'AWY', name }, error: null, creating: null,
+            }
+          }))
+        } else if (r.wpts?.length) {
           setWptRows(r.wpts.map((w, i) => ({
             id: `wr-restored-${i}`, text: w.name, resolved: w, error: null, creating: null,
           })))
@@ -566,6 +578,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   async function resolveWptRow(id, text) {
     const ident = text.trim().toUpperCase()
     if (!ident) return
+    // Airway ID (V25, J501, Q822…) — expanded into its fix chain at
+    // Calculate time, between the fixes in the neighboring rows.
+    if (looksLikeAirway(ident) && await lookupAirway(ident)) {
+      patchWptRow(id, { text: ident, resolved: { kind: 'AWY', name: ident }, error: null, creating: null })
+      setRoute(null); setRE(null)
+      return
+    }
     const nearPos = route ? [(route.depPos[0] + route.destPos[0]) / 2, (route.depPos[1] + route.destPos[1]) / 2]
       : depPosHint.current
     const hit = await resolveWaypoint(ident, nearPos)
@@ -1034,12 +1053,35 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       const depLat = parseFloat(da.lat), depLon = parseFloat(da.lon)
       const dstLat = parseFloat(dsta.lat), dstLon = parseFloat(dsta.lon)
 
-      // Full chain: dep → named waypoints → dest. Distance sums per leg;
-      // course is the first leg's (what you'd fly off the departure).
-      const wpts = wptRows.filter(r => r.resolved).map(r => ({
-        kind: r.resolved.kind, name: r.resolved.name,
-        lat: r.resolved.lat, lon: r.resolved.lon,
-      }))
+      // Full chain: dep → named waypoints → dest, expanding airway tokens
+      // (V25, J501…) into their fix chain between the neighboring rows.
+      // Distance sums per leg; course is the first leg's (what you'd fly
+      // off the departure).
+      const rowTokens = wptRows.filter(r => r.resolved).map(r => r.resolved)
+      const wpts = []
+      const airwayNotes = []
+      for (let i = 0; i < rowTokens.length; i++) {
+        const t = rowTokens[i]
+        if (t.kind !== 'AWY') {
+          wpts.push({ kind: t.kind, name: t.name, lat: t.lat, lon: t.lon, ...(t.via ? { via: t.via } : {}) })
+          continue
+        }
+        const prev = wpts[wpts.length - 1]
+        const nextT = rowTokens[i + 1]
+        if (!prev || !nextT || nextT.kind === 'AWY') {
+          const err = new Error(`${t.name} needs a fix or VOR on the airway before and after it`)
+          err.userMessage = err.message
+          throw err
+        }
+        const res = await expandAirway(t.name, prev.name, nextT.name, [prev.lat, prev.lon])
+        if (res.error) {
+          const err = new Error(res.error)
+          err.userMessage = res.error
+          throw err
+        }
+        for (const f of res.fixes) wpts.push(f)
+        if (res.maxMEA != null) airwayNotes.push({ awy: t.name, mea: res.maxMEA })
+      }
       const chain = [[depLat, depLon], ...wpts.map(w => [w.lat, w.lon]), [dstLat, dstLon]]
       let dist = 0
       for (let i = 0; i < chain.length - 1; i++) {
@@ -1073,6 +1115,10 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         dep: dep.trim().toUpperCase(),
         dest: dest.trim().toUpperCase(),
         wpts,
+        airwayNotes,
+        // Compact filed-route tokens (airways kept as V25 etc.) — drives the
+        // row restore and the one-pager's ATS route string.
+        atsTokens: [dep.trim().toUpperCase(), ...rowTokens.map(t => t.name), dest.trim().toUpperCase()],
       }
       setRoute(routeObj)
       // Default chart per flight rules: IFR flights open on the enroute Low
@@ -1084,7 +1130,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       setCourse(String(mcRounded))
       setSelectedAlt(null)
     } catch (e) {
-      setRE('Could not calculate — check both ICAO codes')
+      setRE(e.userMessage || 'Could not calculate — check both ICAO codes')
     } finally {
       setRL(false)
     }
@@ -1238,8 +1284,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       </span>
                       <span style={{
                         fontSize: 9, fontWeight: 700, letterSpacing: '0.5px', padding: '2px 7px', borderRadius: 8,
-                        background: row.resolved.kind === 'VOR' ? 'rgba(139,92,246,0.18)' : row.resolved.kind === 'GPS' ? 'rgba(52,199,89,0.15)' : 'rgba(255,159,10,0.15)',
-                        color:      row.resolved.kind === 'VOR' ? '#a78bfa' : row.resolved.kind === 'GPS' ? 'var(--ok)' : 'var(--warn)',
+                        background: row.resolved.kind === 'VOR' ? 'rgba(139,92,246,0.18)' : row.resolved.kind === 'GPS' ? 'rgba(52,199,89,0.15)' : row.resolved.kind === 'AWY' ? 'rgba(10,132,255,0.18)' : 'rgba(255,159,10,0.15)',
+                        color:      row.resolved.kind === 'VOR' ? '#a78bfa' : row.resolved.kind === 'GPS' ? 'var(--ok)' : row.resolved.kind === 'AWY' ? '#64a8ff' : 'var(--warn)',
                       }}>
                         {row.resolved.kind}
                       </span>
@@ -1259,6 +1305,12 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         if (v.trim().length === 5 || v.trim().length === 3) {
                           resolveWaypoint(v.trim()).then(hit => {
                             if (hit) patchWptRow(row.id, { text: v.trim(), resolved: hit, error: null })
+                          })
+                        }
+                        // …and airway IDs (V25, J501) as they're typed
+                        if (looksLikeAirway(v.trim())) {
+                          lookupAirway(v.trim()).then(a => {
+                            if (a) patchWptRow(row.id, { text: v.trim().toUpperCase(), resolved: { kind: 'AWY', name: v.trim().toUpperCase() }, error: null })
                           })
                         }
                       }}
@@ -1375,7 +1427,12 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             </div>
             {route.wpts?.length > 0 && (
               <div style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 700, letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: 8, overflowX: 'auto', whiteSpace: 'nowrap' }}>
-                {[route.dep, ...route.wpts.map(w => w.name), route.dest].join(' → ')}
+                {(route.atsTokens ?? [route.dep, ...route.wpts.map(w => w.name), route.dest]).join(' → ')}
+              </div>
+            )}
+            {route.airwayNotes?.length > 0 && (
+              <div style={{ fontSize: 11, color: '#64a8ff', fontWeight: 600, marginBottom: 8 }}>
+                {route.airwayNotes.map(n => `${n.awy} · MEA up to ${n.mea.toLocaleString()} ft`).join('   ')}
               </div>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
