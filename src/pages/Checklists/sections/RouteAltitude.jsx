@@ -1140,10 +1140,20 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const valid    = !isNaN(c) && c >= 0 && c <= 360
   const isEast   = valid && c <= 179
   const direction = valid ? (isEast ? 'Eastbound' : 'Westbound') : null
+  // VFR cruising altitudes are hemispheric thousands + 500 (§91.159); IFR
+  // are plain thousands (§91.179) — odd eastbound, even westbound.
+  const isIFR = flightRules === 'IFR'
   const altitudes = valid
-    ? (isEast ? [3500,5500,7500,9500,11500,13500,15500,17500]
-              : [4500,6500,8500,10500,12500,14500,16500])
+    ? (isIFR
+        ? (isEast ? [3000,5000,7000,9000,11000,13000,15000,17000]
+                  : [4000,6000,8000,10000,12000,14000,16000])
+        : (isEast ? [3500,5500,7500,9500,11500,13500,15500,17500]
+                  : [4500,6500,8500,10500,12500,14500,16500]))
     : null
+  // Highest MEA among the airways in the calculated route — altitudes below
+  // it are flagged (never blocked; ATC may still assign segment-specific).
+  const routeMaxMEA = route?.airwayNotes?.length
+    ? Math.max(...route.airwayNotes.map(n => n.mea)) : null
 
   return (
     <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
@@ -1954,11 +1964,14 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         {altitudes && (
           <>
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>
-              {isEast ? 'Odd thousands + 500 ft' : 'Even thousands + 500 ft'}
+              {isIFR
+                ? (isEast ? 'Odd thousands (IFR)' : 'Even thousands (IFR)')
+                : (isEast ? 'Odd thousands + 500 ft' : 'Even thousands + 500 ft')}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
               {altitudes.map(alt => {
                 const selected = selectedAlt === alt
+                const belowMEA = isIFR && routeMaxMEA != null && alt < routeMaxMEA
                 return (
                   <button key={alt} onClick={() => {
                   const next = selected ? null : alt
@@ -1968,36 +1981,50 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                   })
                 }} style={{
                     background: selected ? 'var(--text)' : 'var(--bg-card-2)',
-                    border: `0.5px solid ${selected ? 'var(--text)' : 'var(--border)'}`,
+                    border: `0.5px solid ${selected ? 'var(--text)' : belowMEA ? 'rgba(255,159,10,0.5)' : 'var(--border)'}`,
                     borderRadius: 8, padding: '7px 0',
                     fontSize: 13, fontWeight: 600,
-                    color: selected ? 'var(--bg)' : 'var(--text)',
+                    color: selected ? 'var(--bg)' : belowMEA ? 'var(--warn)' : 'var(--text)',
                     cursor: 'pointer', transition: 'all 0.18s', textAlign: 'center',
                   }}>
-                    {alt.toLocaleString()} ft
+                    {alt.toLocaleString()} ft{belowMEA ? ' ⚠' : ''}
                   </button>
                 )
               })}
             </div>
+            {isIFR && routeMaxMEA != null && (
+              <div style={{ marginTop: 8, fontSize: 11, color: 'var(--warn)', lineHeight: 1.5 }}>
+                ⚠ Altitudes below {routeMaxMEA.toLocaleString()} ft are under the highest MEA on
+                your airway routing — usable only where segment MEAs allow.
+              </div>
+            )}
             {selectedAlt && (
               <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 9, background: 'var(--bg-card-2)' }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
                   Planned: {selectedAlt.toLocaleString()} ft MSL
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                  {direction} · {isEast ? 'Odd' : 'Even'} thousands + 500 ft · §91.159
+                  {direction} · {isEast ? 'Odd' : 'Even'} thousands{isIFR ? '' : ' + 500 ft'} · {isIFR ? '§91.179' : '§91.159'}
                 </div>
+                {isIFR && routeMaxMEA != null && selectedAlt < routeMaxMEA && (
+                  <div style={{ fontSize: 11, color: 'var(--warn)', fontWeight: 600, marginTop: 4 }}>
+                    ⚠ Below the highest MEA on this routing ({routeMaxMEA.toLocaleString()} ft)
+                  </div>
+                )}
               </div>
             )}
             <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
               Above 18,000 ft MSL is Class A airspace, IFR only.
             </div>
 
-            <a href="https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.159" target="_blank" rel="noreferrer" style={{
+            <a href={isIFR
+                ? 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.179'
+                : 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.159'}
+              target="_blank" rel="noreferrer" style={{
               display: 'block', marginTop: 10, textAlign: 'center', padding: '8px 0', borderRadius: 9,
               background: 'var(--bg-card-2)', textDecoration: 'none', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
             }}>
-              14 CFR §91.159
+              {isIFR ? '14 CFR §91.179' : '14 CFR §91.159'}
             </a>
           </>
         )}
