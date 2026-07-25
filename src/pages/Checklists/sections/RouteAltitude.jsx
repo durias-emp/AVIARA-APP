@@ -56,14 +56,19 @@ function AirspaceZoomer({ active }) {
   return null
 }
 
-function SectionalZoomer({ active }) {
+// Nudge into a chart's readable range once when it's toggled on (below its
+// minZoom the chart doesn't render at all). No continuous clamp: the user may
+// zoom out freely and the chart simply hands off to the basemap instead of
+// fighting the gesture.
+function ChartZoomer({ active, min }) {
   const map = useMap()
-  // Nudge into chart range once when the layer is toggled on (below zoom 7
-  // the sectional doesn't render at all — see its minZoom). No continuous
-  // clamp: the user may zoom out freely and the chart simply hands off to
-  // the basemap instead of fighting the gesture.
+  const prev = useRef(active)
   useEffect(() => {
-    if (active && map.getZoom() < 7) map.setZoom(7)
+    // Nudge into chart range only when the user TOGGLES the layer on — not
+    // when a map mounts with the layer already active, which would override
+    // the fit-whole-route framing on fullscreen open.
+    if (active && !prev.current && map.getZoom() < min) map.setZoom(min)
+    prev.current = active
   }, [active])
   return null
 }
@@ -329,6 +334,24 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
         errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
         attribution='&copy; <a href="https://vfrmap.com">VFRMap.com</a>' />
     )}
+    {/* IFR enroute charts — FAA's official free tile services (Web Mercator,
+        56-day cycle, same data SkyVector's US enroute layers come from).
+        Low is readable z8–11, High z5–9; beyond native range Leaflet
+        over-zooms the tiles, below minZoom the basemap shows. */}
+    {layers.ifrlo && (
+      <TileLayer url="https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_AreaLow/MapServer/tile/{z}/{y}/{x}"
+        opacity={0.9} minZoom={8} maxNativeZoom={11} maxZoom={13}
+        className="sectional-layer"
+        errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+        attribution='&copy; FAA AIS' />
+    )}
+    {layers.ifrhi && (
+      <TileLayer url="https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_High/MapServer/tile/{z}/{y}/{x}"
+        opacity={0.9} minZoom={5} maxNativeZoom={9} maxZoom={13}
+        className="sectional-layer"
+        errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+        attribution='&copy; FAA AIS' />
+    )}
     {layers.airspace && openaipKey && (
       <TileLayer key={openaipKey}
         url={`https://api.tiles.openaip.net/api/data/openaip/{z}/{x}/{y}.png?apiKey=${openaipKey}`}
@@ -382,7 +405,9 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
     })}
     {fit && <RouteFitter positions={waypoints.map(w => [w.lat, w.lon])} once={fitOnce} />}
     <AirspaceZoomer active={layers.airspace} />
-    <SectionalZoomer active={layers.sectional} />
+    <ChartZoomer active={layers.sectional} min={7} />
+    <ChartZoomer active={layers.ifrlo} min={8} />
+    <ChartZoomer active={layers.ifrhi} min={5} />
     {/* Dep/dest endpoints — draggable like any waypoint (fine-tune the start/
         end point around the airport), but never removable. Moving one well
         outside the airport area raises a warning upstream without blocking. */}
@@ -450,7 +475,16 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [routeError, setRE]       = useState(null)
 
   // Map layers
-  const [layers, setLayers]         = useState({ sectional: false, airspace: false, tfr: false })
+  const [layers, setLayers]         = useState({ sectional: false, ifrlo: false, ifrhi: false, airspace: false, tfr: false })
+
+  // IFR flights get the FAA enroute Low/High chart chips; VFR/Local get the
+  // sectional. Read from the picked flight-plan type (settings) on mount.
+  const [flightRules, setFlightRules] = useState('VFR')
+  useEffect(() => {
+    get('settings', 'flightPlanType').then(s => {
+      if (s?.value?.flightRules) setFlightRules(s.value.flightRules)
+    })
+  }, [])
   const [mapFullscreen, setMapFS]   = useState(false)
   const [showRefs, setShowRefs]     = useState(false)
   const [activeChip, setActiveChip] = useState(null) // id of chip whose popup is open
@@ -811,6 +845,12 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   function toggleLayer(name) {
     setLayers(prev => {
       const next = { ...prev, [name]: !prev[name] }
+      // Chart layers are mutually exclusive — stacking two raster charts
+      // (both multiply-blended) is unreadable.
+      const CHARTS = ['sectional', 'ifrlo', 'ifrhi']
+      if (CHARTS.includes(name) && next[name]) {
+        for (const k of CHARTS) if (k !== name) next[k] = false
+      }
       // Retry when the previous attempt failed or returned nothing —
       // `!tfrData` alone never retried after a failed fetch stored [].
       if (name === 'tfr' && next.tfr && !tfrData?.length && !tfrLoading) loadTFRs()
@@ -1035,7 +1075,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         wpts,
       }
       setRoute(routeObj)
-      setLayers(prev => ({ ...prev, sectional: true }))
+      // Default chart per flight rules: IFR flights open on the enroute Low
+      setLayers(prev => ({ ...prev, [flightRules === 'IFR' ? 'ifrlo' : 'sectional']: true }))
       // No fly-to here — RouteFitter frames the whole route on map mount,
       // and a lingering target would snap fullscreen away from that framing.
       setMapFlyTarget(null)
@@ -1366,7 +1407,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             {/* Layer toggles */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
               {[
-                { id: 'sectional', label: 'Sectional' },
+                ...(flightRules === 'IFR'
+                  ? [{ id: 'ifrlo', label: 'IFR Low' }, { id: 'ifrhi', label: 'IFR High' }, { id: 'sectional', label: 'Sectional' }]
+                  : [{ id: 'sectional', label: 'Sectional' }]),
                 { id: 'airspace',  label: 'Airspace' },
                 { id: 'tfr',       label: tfrLoading ? 'TFR…' : 'TFR' },
               ].map(l => (
@@ -1504,7 +1547,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       }}>
                         {/* Layer toggles */}
                         <div style={{ display: 'flex', gap: 7 }}>
-                          {[['sectional','SECT'],['airspace','ARSP'],
+                          {[
+                            ...(flightRules === 'IFR'
+                              ? [['ifrlo','LO'],['ifrhi','HI'],['sectional','SECT']]
+                              : [['sectional','SECT']]),
+                            ['airspace','ARSP'],
                             ['tfr', tfrLoading ? 'TFR…' : (layers.tfr && tfrData?.length === 0 ? 'TFR ·0' : 'TFR')],
                           ].map(([k,label]) => (
                             <button key={k} onClick={() => toggleLayer(k)} style={{
