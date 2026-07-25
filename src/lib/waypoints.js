@@ -183,6 +183,7 @@ export async function getAirwayGeometry() {
   }
 
   const lines = []
+  const pointsByKey = new Map() // name@lat,lon -> {name,lat,lon,vor,freq,lo,hi}
   for (const [id, variants] of Object.entries(airways)) {
     const cls = /^(U|J|Q)/.test(id) ? 'hi' : 'lo'
     for (const v of variants) {
@@ -197,12 +198,23 @@ export async function getAirwayGeometry() {
         }
         near = c
         seg.push([c[0], c[1]])
+        const key = `${name}@${c[0].toFixed(3)},${c[1].toFixed(3)}`
+        let p = pointsByKey.get(key)
+        if (!p) {
+          const nv = navaids[name]
+          const match = nv && nv.find(e => Math.abs(e[0] - c[0]) < 0.01 && Math.abs(e[1] - c[1]) < 0.01)
+          p = { name, lat: c[0], lon: c[1], vor: !!match,
+                vorName: match ? match[2] : null, freq: match ? match[3] : null,
+                lo: false, hi: false }
+          pointsByKey.set(key, p)
+        }
+        p[cls] = true
       }
       if (seg.length >= 2) lines.push({ id, cls, latlngs: seg })
     }
   }
-  _geometry = lines
-  return lines
+  _geometry = { lines, points: [...pointsByKey.values()] }
+  return _geometry
 }
 
 // Main entry: resolve a typed identifier to a waypoint.

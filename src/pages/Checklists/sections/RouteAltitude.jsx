@@ -229,17 +229,73 @@ function PolylineEditor({ waypoints, onInsert }) {
 // exists (Central America); over the US it overlays the FAA chart at wide
 // zooms where the raster doesn't render.
 function AirwayNetwork({ cls }) {
-  const [lines, setLines] = useState(null)
+  const [geo, setGeo] = useState(null)
   useEffect(() => {
     let cancelled = false
-    getAirwayGeometry().then(g => { if (!cancelled) setLines(g) })
+    getAirwayGeometry().then(g => { if (!cancelled) setGeo(g) })
     return () => { cancelled = true }
   }, [])
-  if (!lines) return null
-  return lines.filter(l => l.cls === cls).map((l, i) => (
-    <Polyline key={`${l.id}-${i}`} positions={l.latlngs}
-      pathOptions={{ color: '#2a5ea8', weight: 1.1, opacity: 0.45, interactive: false }} />
-  ))
+  if (!geo) return null
+  return (<>
+    {geo.lines.filter(l => l.cls === cls).map((l, i) => (
+      <Polyline key={`${l.id}-${i}`} positions={l.latlngs}
+        pathOptions={{ color: '#2a5ea8', weight: 1.1, opacity: 0.45, interactive: false }} />
+    ))}
+    <NavSymbols geo={geo} cls={cls} />
+  </>)
+}
+
+// Chart symbology over the airway web — what pilots expect from an enroute
+// chart: ▲ triangles with names for fixes, the VOR symbol with name/frequency
+// box, and the airway designator in a navy box at each segment's midpoint.
+// Rendered only at readable zooms and only inside the current viewport so the
+// DOM stays small.
+function NavSymbols({ geo, cls }) {
+  const map = useMap()
+  const [, setTick] = useState(0)
+  useMapEvents({ moveend: () => setTick(t => t + 1), zoomend: () => setTick(t => t + 1) })
+
+  const z = map.getZoom()
+  if (z < 7) return null
+  const b = map.getBounds().pad(0.1)
+
+  const pts = geo.points.filter(p => p[cls] && b.contains([p.lat, p.lon])).slice(0, 160)
+
+  // Airway ID label at the midpoint of each in-view line
+  const labels = []
+  if (z >= 7) {
+    for (const l of geo.lines) {
+      if (l.cls !== cls) continue
+      const mid = l.latlngs[Math.floor(l.latlngs.length / 2)]
+      if (b.contains(mid)) labels.push({ id: l.id, pos: mid })
+      if (labels.length >= 60) break
+    }
+  }
+
+  return (<>
+    {pts.map(p => (
+      <Marker key={`${p.name}${p.lat}`} position={[p.lat, p.lon]} interactive={false}
+        icon={L.divIcon({
+          className: '', iconSize: [0, 0],
+          html: p.vor
+            ? `<div style="transform:translate(-50%,-50%);text-align:center;pointer-events:none;">
+                 <div style="font-size:13px;line-height:1;color:#1c3f7a;">⬡</div>
+                 <div style="font:700 9px ui-monospace,monospace;color:#1c3f7a;background:rgba(255,255,255,0.75);border:0.5px solid #1c3f7a;border-radius:2px;padding:0 3px;white-space:nowrap;margin-top:1px;">${p.name}${p.freq ? ' ' + p.freq : ''}</div>
+               </div>`
+            : `<div style="transform:translate(-50%,-50%);text-align:center;pointer-events:none;">
+                 <div style="font-size:8px;line-height:1;color:#233042;">▲</div>
+                 ${z >= 8 ? `<div style="font:600 8.5px ui-monospace,monospace;color:#233042;text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap;">${p.name}</div>` : ''}
+               </div>`,
+        })} />
+    ))}
+    {labels.map((l, i) => (
+      <Marker key={`awy-${l.id}-${i}`} position={l.pos} interactive={false}
+        icon={L.divIcon({
+          className: '', iconSize: [0, 0],
+          html: `<div style="transform:translate(-50%,-50%);pointer-events:none;font:700 8.5px ui-monospace,monospace;color:#fff;background:#1c3f7a;border-radius:2px;padding:0.5px 4px;white-space:nowrap;">${l.id}</div>`,
+        })} />
+    ))}
+  </>)
 }
 
 // LongPressAdd — ForeFlight-style: press-and-hold (or right-click) anywhere on
