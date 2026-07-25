@@ -40,7 +40,12 @@ export function AuthProvider({ children }) {
       // right after is what turns pre-existing local data into a cloud
       // backup the very first time someone signs in. Guarded so it only
       // fires once per session, not on every token refresh.
-      if (event === 'SIGNED_IN' && !syncedRef.current) {
+      // INITIAL_SESSION = app launch with a persisted session. Hydrating on
+      // launch (not just fresh sign-ins) keeps the local copy self-healing:
+      // if anything corrupted the local profile, the per-row restore + the
+      // never-onboarded-stub tiebreak repair it from the cloud backup on the
+      // next open.
+      if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && newSession)) && !syncedRef.current) {
         syncedRef.current = true
         trackEvent('sign_in')
         setHydrated(false)

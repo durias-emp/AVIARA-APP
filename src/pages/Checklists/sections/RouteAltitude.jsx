@@ -58,15 +58,12 @@ function AirspaceZoomer({ active }) {
 
 function SectionalZoomer({ active }) {
   const map = useMap()
+  // Nudge into chart range once when the layer is toggled on (below zoom 7
+  // the sectional doesn't render at all — see its minZoom). No continuous
+  // clamp: the user may zoom out freely and the chart simply hands off to
+  // the basemap instead of fighting the gesture.
   useEffect(() => {
     if (active && map.getZoom() < 7) map.setZoom(7)
-  }, [active])
-  // Keep enforcing min zoom while sectional is on (user may zoom out)
-  useEffect(() => {
-    if (!active) return
-    const onZoom = () => { if (map.getZoom() < 6) map.setZoom(6) }
-    map.on('zoomend', onZoom)
-    return () => map.off('zoomend', onZoom)
   }, [active])
   return null
 }
@@ -320,9 +317,14 @@ function RouteHint() {
 function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, insertWaypoint, moveWaypoint, removeWaypoint }) {
   return (<>
     <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+    {/* Sectional minZoom 7: below that a chart is unreadable anyway, and the
+        mosaic's ragged edges + out-of-coverage tiles (multiply-blended into
+        a dark wash) look broken at wide views. Under zoom 7 the clean
+        basemap shows; the chart appears as you zoom in — the ForeFlight
+        behavior. */}
     {layers.sectional && (
       <TileLayer url="https://vfrmap.com/20260319/tiles/vfrc/{z}/{y}/{x}.jpg"
-        tms={true} opacity={0.9} maxZoom={12}
+        tms={true} opacity={0.9} minZoom={7} maxZoom={12}
         className="sectional-layer"
         errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
         attribution='&copy; <a href="https://vfrmap.com">VFRMap.com</a>' />

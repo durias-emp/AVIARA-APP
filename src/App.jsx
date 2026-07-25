@@ -33,7 +33,10 @@ function AppRoutes({ theme }) {
   useEffect(() => {
     if (!hydrated) return
     const email = session?.user?.email
-    if (email && profile && !profile.email) setProfile({ email })
+    // Only seed a COMPLETED profile. Seeding an empty one materializes a
+    // never-onboarded stub row in the settings store, which once poisoned
+    // this device's restore (the stub shadowed the real cloud profile).
+    if (email && profile?.onboardingComplete && !profile.email) setProfile({ email })
   }, [session, profile, setProfile, hydrated])
 
   if (authLoading) return null
