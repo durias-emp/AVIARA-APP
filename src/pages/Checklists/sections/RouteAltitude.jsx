@@ -8,7 +8,7 @@ import { get, put } from '../../../lib/db'
 import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
 import { FAA_CHART_CYCLE } from '../shared/faaData'
 import { awcUrl, proxyFetch, fetchAWC, lookupAirport, bearingDeg, haversineNm } from '../shared/awc'
-import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expandAirway } from '../../../lib/waypoints'
+import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expandAirway, getAirwayGeometry } from '../../../lib/waypoints'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -224,6 +224,24 @@ function PolylineEditor({ waypoints, onInsert }) {
   </>)
 }
 
+// AirwayNetwork — draws the airway web (SkyVector World Lo/Hi style) from our
+// own navdata. This is what puts route lines on the map where no raster chart
+// exists (Central America); over the US it overlays the FAA chart at wide
+// zooms where the raster doesn't render.
+function AirwayNetwork({ cls }) {
+  const [lines, setLines] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    getAirwayGeometry().then(g => { if (!cancelled) setLines(g) })
+    return () => { cancelled = true }
+  }, [])
+  if (!lines) return null
+  return lines.filter(l => l.cls === cls).map((l, i) => (
+    <Polyline key={`${l.id}-${i}`} positions={l.latlngs}
+      pathOptions={{ color: '#2a5ea8', weight: 1.1, opacity: 0.45, interactive: false }} />
+  ))
+}
+
 // LongPressAdd — ForeFlight-style: press-and-hold (or right-click) anywhere on
 // the map to drop a point showing its aviation coordinates, with a button to
 // insert it into the route at the nearest leg.
@@ -352,6 +370,8 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
         errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
         attribution='&copy; FAA AIS' />
     )}
+    {layers.ifrlo && <AirwayNetwork cls="lo" />}
+    {layers.ifrhi && <AirwayNetwork cls="hi" />}
     {layers.airspace && openaipKey && (
       <TileLayer key={openaipKey}
         url={`https://api.tiles.openaip.net/api/data/openaip/{z}/{x}/{y}.png?apiKey=${openaipKey}`}

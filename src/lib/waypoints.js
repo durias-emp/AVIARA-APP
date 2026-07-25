@@ -148,6 +148,63 @@ export async function expandAirway(ident, fromName, toName, fromPos) {
   return { error: `${fromName} and ${toName} are not both on ${id}` }
 }
 
+// ── Airway geometry for map rendering ───────────────────────────
+// Resolves every airway's fix chain to coordinates once (memoized) so the
+// map can draw the network like SkyVector's World Lo/Hi — essential where
+// no raster chart exists (Central America). Unresolvable points split the
+// line rather than rubber-banding across the gap.
+let _geometry = null
+export async function getAirwayGeometry() {
+  if (_geometry) return _geometry
+  const [{ fixes, navaids }, airways] = await Promise.all([
+    (async () => {
+      const [f, n] = await Promise.all([
+        import('../data/navdata/fixes.json'),
+        import('../data/navdata/navaids.json'),
+      ])
+      return { fixes: f.default, navaids: n.default }
+    })(),
+    loadAirways(),
+  ])
+
+  const coordsOf = (name, near) => {
+    let cands = null
+    const fx = fixes[name]
+    if (fx) cands = Array.isArray(fx[0]) ? fx : [fx]
+    else if (navaids[name]) cands = navaids[name].map(e => [e[0], e[1]])
+    if (!cands) return null
+    if (!near || cands.length === 1) return cands[0]
+    let best = cands[0], bd = Infinity
+    for (const c of cands) {
+      const d = (c[0] - near[0]) ** 2 + ((c[1] - near[1]) * 0.97) ** 2
+      if (d < bd) { bd = d; best = c }
+    }
+    return best
+  }
+
+  const lines = []
+  for (const [id, variants] of Object.entries(airways)) {
+    const cls = /^(U|J|Q)/.test(id) ? 'hi' : 'lo'
+    for (const v of variants) {
+      let seg = []
+      let near = null
+      for (const name of v.pts) {
+        const c = coordsOf(name, near)
+        if (!c) {
+          if (seg.length >= 2) lines.push({ id, cls, latlngs: seg })
+          seg = []
+          continue
+        }
+        near = c
+        seg.push([c[0], c[1]])
+      }
+      if (seg.length >= 2) lines.push({ id, cls, latlngs: seg })
+    }
+  }
+  _geometry = lines
+  return lines
+}
+
 // Main entry: resolve a typed identifier to a waypoint.
 // nearPos ([lat, lon], optional) disambiguates duplicate idents by proximity —
 // pass the departure airport or route midpoint.
