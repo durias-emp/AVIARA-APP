@@ -68,6 +68,30 @@ with open(f"{SCRATCH}/nasr/NAV_BASE.csv", newline="", encoding="utf-8", errors="
         add_navaid(row["NAV_ID"], lat, lon, row.get("NAME", ""), freq)
         nasr_count += 1
 
+# ---------- Navaids: OurAirports global (public domain, ~11k navaids) ----------
+# Far better worldwide coverage than openAIP, especially Latin America
+# (AUR Guatemala, LIM Peru, ...). https://davidmegginson.github.io/ourairports-data/navaids.csv
+OA_VOR = {"VOR", "VOR-DME", "VORTAC", "DME", "TACAN", "VOT"}
+oa_count = 0
+try:
+    with open(f"{SCRATCH}/navaids_oa.csv", newline="", encoding="utf-8", errors="replace") as f:
+        for row in csv.DictReader(f):
+            if row.get("type") not in OA_VOR:
+                continue
+            try:
+                lat = float(row["latitude_deg"]); lon = float(row["longitude_deg"])
+            except (ValueError, KeyError):
+                continue
+            freq = None
+            try:
+                freq = round(float(row.get("frequency_khz")) / 1000, 2)
+            except (TypeError, ValueError):
+                pass
+            add_navaid(row.get("ident", ""), lat, lon, row.get("name", "").replace(" VOR-DME", "").replace(" VORTAC", "").replace(" VOR", ""), freq)
+            oa_count += 1
+except FileNotFoundError:
+    print("WARNING: navaids_oa.csv not in scratch — OurAirports layer skipped")
+
 # ---------- Navaids: openAIP global (fills non-US: YVR etc.) ----------
 # openAIP navaid types: 0 DME, 1 TACAN, 2 NDB, 3 VOR, 4 VOR-DME, 5 VORTAC, 6 DVOR, 7 DVOR-DME, 8 DVORTAC
 OAIP_VOR = {0, 1, 3, 4, 5, 6, 7, 8}
