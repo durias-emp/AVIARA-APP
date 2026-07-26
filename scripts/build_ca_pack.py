@@ -67,8 +67,10 @@ def parse_routes(path):
         if not names:
             continue
         events.append((m.start(), 'wpt', (names[-1], *m.groups())))
-    for m in re.finditer(r'FL\s*(\d{2,3})|(\d{3,5})\s*FT', t):
-        val = int(m.group(1)) * 100 if m.group(1) else int(m.group(2))
+    # Altitudes. Commas must be part of the number ("8,500FT"), or the regex
+    # matches the trailing "500FT" and silently invents a 500 ft MEA.
+    for m in re.finditer(r'FL\s*(\d{2,3})|(\d{1,3}(?:,\d{3})+|\d{3,5})\s*FT', t):
+        val = int(m.group(1)) * 100 if m.group(1) else int(m.group(2).replace(',', ''))
         events.append((m.start(), 'alt', val))
     # Magnetic tracks: each segment prints forward°/reverse° — the FIRST one
     # seen after a waypoint is the charted forward track.
@@ -77,13 +79,13 @@ def parse_routes(path):
     events.sort(key=lambda e: e[0])
 
     out = []
-    route_id, pts, seg_lo, seg_trk, pending_lo, pending_trk = None, [], [], [], None, None
+    route_id, pts, seg_lo, seg_trk, pending_alts, pending_trk = None, [], [], [], [], None
 
     def flush():
-        nonlocal route_id, pts, seg_lo, seg_trk, pending_lo, pending_trk
+        nonlocal route_id, pts, seg_lo, seg_trk, pending_alts, pending_trk
         if route_id and len(pts) >= 2:
             out.append((route_id, pts, seg_lo, seg_trk))
-        route_id, pts, seg_lo, seg_trk, pending_lo, pending_trk = None, [], [], [], None, None
+        route_id, pts, seg_lo, seg_trk, pending_alts, pending_trk = None, [], [], [], [], None
 
     for _, kind, data in events:
         if kind == 'des':
@@ -92,13 +94,17 @@ def parse_routes(path):
         elif kind == 'wpt' and route_id:
             name, la, lah, lo, loh = data
             if pts:
-                seg_lo.append(pending_lo)
+                # Each segment prints UPPER then LOWER limit; anything after
+                # that belongs to remarks ("CLASS F FM 3,000FT-8,500FT"), so
+                # take the second value when both are present.
+                seg_lo.append(pending_alts[1] if len(pending_alts) >= 2
+                              else (pending_alts[0] if pending_alts else None))
                 seg_trk.append(round(pending_trk) if pending_trk is not None else None)
-                pending_lo = None
+                pending_alts = []
                 pending_trk = None
             pts.append((name, dms(la, lah), dms(lo, loh, lon=True)))
         elif kind == 'alt' and route_id:
-            pending_lo = data
+            pending_alts.append(data)
         elif kind == 'trk' and route_id and pending_trk is None:
             pending_trk = data
     flush()
