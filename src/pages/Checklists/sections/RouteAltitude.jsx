@@ -10,6 +10,7 @@ import { FAA_CHART_CYCLE } from '../shared/faaData'
 import { awcUrl, proxyFetch, fetchAWC, lookupAirport, bearingDeg, haversineNm } from '../shared/awc'
 import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expandAirway, getAirwayGeometry, getWorldRef } from '../../../lib/waypoints'
 import { sampleRoute } from '../../../lib/corridor'
+import { analyzeTerrain, MOUNTAIN_FT } from '../../../lib/terrain'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -856,13 +857,17 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setWaypoints(prev => prev.filter((_, i) => i !== index))
   }
 
-  // Real terrain detection via OpenTopoData elevation + FAA airport corridor check
+  // Real terrain detection via corridor elevation + FAA airport corridor check
   const [detectedTerrain, setDetectedTerrain] = useState([])
+  // Terrain measurement behind the Mountains chip: highest point in the
+  // corridor, where it is, and what it leaves under the planned altitude.
+  // status 'unavailable' is shown rather than hidden — see below.
+  const [terrainInfo, setTerrainInfo] = useState(null)
   const [detectedParkNames, setDetectedParkNames] = useState([])
   const [detectedSUANames, setDetectedSUANames]   = useState([])
   const [detectedSUAPolys, setDetectedSUAPolys]   = useState([]) // [{name, typeCode, poly:[lat,lon][]}]
   useEffect(() => {
-    if (waypoints.length < 2) { setDetectedTerrain([]); return }
+    if (waypoints.length < 2) { setDetectedTerrain([]); setTerrainInfo(null); return }
     let cancelled = false
 
     async function detect() {
@@ -871,31 +876,15 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       const { samples } = sampleRoute(waypoints, { spacingNm: 5 })
       const pts = samples.map(s => [s.lat, s.lon])
 
-      // Open-Elevation API (SRTM data, free, CORS-enabled).
-      // It takes one POST, so the full corridor is thinned to what a single
-      // request can carry; batching against a faster source, and the ±5 NM
-      // lateral samples, come with the terrain rework.
-      const elevPts = pts.length <= 100 ? pts
-        : Array.from({ length: 100 }, (_, i) => pts[Math.round(i * (pts.length - 1) / 99)])
-      let elevations = []
-      try {
-        const locations = elevPts.map(([la, lo]) => ({ latitude: parseFloat(la.toFixed(4)), longitude: parseFloat(lo.toFixed(4)) }))
-        const res = await fetch('https://api.open-elevation.com/api/v1/lookup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify({ locations }),
-          signal: AbortSignal.timeout(8000),
-        })
-        if (res.ok) {
-          const d = await res.json()
-          elevations = (d.results || []).map(r => r.elevation ?? 0)
-        }
-      } catch { /* ignore */ }
+      // Terrain across the ±5 NM corridor, with the highest point and the
+      // clearance it leaves under the planned altitude (see lib/terrain.js).
+      const terrain = await analyzeTerrain(waypoints, { altFt: selectedAlt || null })
 
       if (cancelled) return
 
       const det = []
-      const ftElev = elevations.map(e => e * 3.28084) // metres → feet
+      setTerrainInfo(terrain)
+      const ftElev = terrain.status === 'ok' ? terrain.centerlineFt : []
 
       // Water: elevation at/near sea level (≤ 5m) — crude but catches ocean/coastal routes
       const hasWater = ftElev.some(e => e <= 15) || pts.some(([la, lo]) =>
@@ -903,10 +892,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         || (lo < -130 && la < 55)                         // Pacific
         || (la < 30 && la > 17 && lo > -98 && lo < -80)  // Gulf of Mexico
       )
-      // Mountains: any point above 5000 ft terrain, or pilot selected high altitude
-      const hasMountains = ftElev.some(e => e > 5000) || (selectedAlt && selectedAlt > 9500)
-      // High terrain: above 8000 ft
-      const hasHighTerrain = ftElev.some(e => e > 8000)
+      // Mountains: measured terrain only. Cruise altitude used to trigger this
+      // as well, which flagged "Mountains" for a high cruise over flat ground.
+      const hasMountains = terrain.status === 'ok' && terrain.maxFt > MOUNTAIN_FT
 
       if (hasWater) det.push('water')
       if (hasMountains) det.push('mountains')
@@ -1989,7 +1977,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                           )}
 
                           {/* ── Overflight section ── */}
-                          {detectedTerrain.length > 0 && (() => {
+                          {(detectedTerrain.length > 0 || terrainInfo?.status === 'unavailable') && (() => {
                             const chipColor = id =>
                               id === 'parks' ? { bg: 'rgba(52,199,89,0.15)', fg: 'rgba(52,199,89,0.9)', activeBg: 'rgba(52,199,89,0.28)', border: 'rgba(52,199,89,0.4)' }
                               : id === 'sua' ? { bg: 'rgba(255,149,0,0.15)', fg: 'rgba(255,149,0,0.9)', activeBg: 'rgba(255,149,0,0.28)', border: 'rgba(255,149,0,0.4)' }
@@ -2034,6 +2022,18 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                       </div>
                                     )
                                   })}
+                                  {/* A failed terrain lookup used to be indistinguishable
+                                      from "no terrain" — an empty row read as clear. */}
+                                  {terrainInfo?.status === 'unavailable' && (
+                                    <span style={{
+                                      fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 4,
+                                      background: 'var(--warn-light)', color: 'var(--warn)',
+                                      letterSpacing: '0.2px', whiteSpace: 'nowrap',
+                                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                                    }}>
+                                      Terrain data unavailable — verify manually
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             )
@@ -2069,6 +2069,40 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                 {activeChip === 'sua' && (
                                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 10, lineHeight: 1.4 }}>
                                     Your route passes through or crosses the boundary of the following airspaces. Each requires a specific action before flight.
+                                  </div>
+                                )}
+
+                                {/* Mountains — the measurement behind the chip, so the
+                                    clearance item below is checkable against a number */}
+                                {activeChip === 'mountains' && terrainInfo?.status === 'ok' && (
+                                  <div style={{ borderRadius: 8, background: 'rgba(255,255,255,0.04)', padding: '9px 11px', marginBottom: 10 }}>
+                                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+                                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.4px' }}>
+                                        HIGHEST WITHIN {terrainInfo.corridorNm} NM
+                                      </span>
+                                      <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', fontFamily: 'monospace' }}>
+                                        {terrainInfo.maxFt.toLocaleString()} ft
+                                      </span>
+                                    </div>
+                                    <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', marginTop: 4, lineHeight: 1.45 }}>
+                                      {terrainInfo.atDistNm} NM along route
+                                      {terrainInfo.atLat != null && ` · ${fmtAvCoord(terrainInfo.atLat, terrainInfo.atLon)}`}
+                                    </div>
+                                    {terrainInfo.clearanceFt != null && (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7 }}>
+                                        <div style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                                          background: terrainInfo.meetsMin ? 'var(--ok)' : 'var(--danger)' }} />
+                                        <span style={{ fontSize: 11.5, fontWeight: 600, color: terrainInfo.meetsMin ? 'var(--ok)' : 'var(--danger)' }}>
+                                          {terrainInfo.clearanceFt >= 0
+                                            ? `${terrainInfo.clearanceFt.toLocaleString()} ft clearance at ${selectedAlt.toLocaleString()} ft`
+                                            : `${Math.abs(terrainInfo.clearanceFt).toLocaleString()} ft BELOW terrain at ${selectedAlt.toLocaleString()} ft`}
+                                        </span>
+                                      </div>
+                                    )}
+                                    <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.25)', marginTop: 6, lineHeight: 1.4 }}>
+                                      Copernicus DEM · {terrainInfo.pointCount} points at {terrainInfo.spacingNm} NM spacing.
+                                      Terrain only — obstacles are not included.
+                                    </div>
                                   </div>
                                 )}
 
