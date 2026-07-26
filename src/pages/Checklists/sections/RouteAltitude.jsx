@@ -9,6 +9,7 @@ import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
 import { FAA_CHART_CYCLE } from '../shared/faaData'
 import { awcUrl, proxyFetch, fetchAWC, lookupAirport, bearingDeg, haversineNm } from '../shared/awc'
 import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expandAirway, getAirwayGeometry, getWorldRef } from '../../../lib/waypoints'
+import { sampleRoute } from '../../../lib/corridor'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -855,12 +856,6 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setWaypoints(prev => prev.filter((_, i) => i !== index))
   }
 
-  // Route string for display — dep / intermediates in aviation coords / dest
-  const routeString = useMemo(() => {
-    if (waypoints.length < 2) return null
-    return waypoints.map(w => w.name || fmtAvCoord(w.lat, w.lon)).join(' / ')
-  }, [waypoints])
-
   // Real terrain detection via OpenTopoData elevation + FAA airport corridor check
   const [detectedTerrain, setDetectedTerrain] = useState([])
   const [detectedParkNames, setDetectedParkNames] = useState([])
@@ -871,23 +866,20 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     let cancelled = false
 
     async function detect() {
-      // Sample 15 points evenly along all segments
-      const segs = waypoints.length - 1
-      const ptsPerSeg = Math.ceil(15 / segs)
-      const pts = []
-      for (let s = 0; s < segs; s++) {
-        const a = waypoints[s], b = waypoints[s + 1]
-        for (let i = 0; i < ptsPerSeg; i++) {
-          const t = i / ptsPerSeg
-          pts.push([a.lat + (b.lat - a.lat) * t, a.lon + (b.lon - a.lon) * t])
-        }
-      }
-      pts.push([waypoints[waypoints.length-1].lat, waypoints[waypoints.length-1].lon])
+      // Great-circle samples every 5 NM — see lib/corridor.js for why fixed
+      // spacing (rather than a fixed count) and spherical interpolation matter.
+      const { samples } = sampleRoute(waypoints, { spacingNm: 5 })
+      const pts = samples.map(s => [s.lat, s.lon])
 
-      // Open-Elevation API (SRTM data, free, CORS-enabled)
+      // Open-Elevation API (SRTM data, free, CORS-enabled).
+      // It takes one POST, so the full corridor is thinned to what a single
+      // request can carry; batching against a faster source, and the ±5 NM
+      // lateral samples, come with the terrain rework.
+      const elevPts = pts.length <= 100 ? pts
+        : Array.from({ length: 100 }, (_, i) => pts[Math.round(i * (pts.length - 1) / 99)])
       let elevations = []
       try {
-        const locations = pts.map(([la, lo]) => ({ latitude: parseFloat(la.toFixed(4)), longitude: parseFloat(lo.toFixed(4)) }))
+        const locations = elevPts.map(([la, lo]) => ({ latitude: parseFloat(la.toFixed(4)), longitude: parseFloat(lo.toFixed(4)) }))
         const res = await fetch('https://api.open-elevation.com/api/v1/lookup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
