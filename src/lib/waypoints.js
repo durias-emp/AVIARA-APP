@@ -263,6 +263,31 @@ export async function getAirwayGeometry() {
   return _geometry
 }
 
+// ── World reference layer (TIER 2) ──────────────────────────────
+// Global airway geometry for regions with no authoritative pack. GPL v3
+// X-Plane/Robin Peel data, cycle 2012.08 — REFERENCE ONLY, deliberately
+// isolated from resolveWaypoint/expandAirway so a stale airway can never
+// end up in a filed route. Bounding boxes are precomputed for viewport
+// culling: there are ~40k polylines.
+let _worldRef = null
+export async function getWorldRef() {
+  if (_worldRef) return _worldRef
+  const d = (await import('../data/navdata/world_ref.json')).default
+  const items = d.lines.map((latlngs, i) => {
+    let minLat = latlngs[0][0], maxLat = latlngs[0][0]
+    let minLon = latlngs[0][1], maxLon = latlngs[0][1]
+    for (const [la, lo] of latlngs) {
+      if (la < minLat) minLat = la
+      if (la > maxLat) maxLat = la
+      if (lo < minLon) minLon = lo
+      if (lo > maxLon) maxLon = lo
+    }
+    return { latlngs, hi: d.hi[i], bbox: [minLat, maxLat, minLon, maxLon] }
+  })
+  _worldRef = items
+  return items
+}
+
 // Main entry: resolve a typed identifier to a waypoint.
 // nearPos ([lat, lon], optional) disambiguates duplicate idents by proximity —
 // pass the departure airport or route midpoint.

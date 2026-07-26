@@ -8,7 +8,7 @@ import { get, put } from '../../../lib/db'
 import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
 import { FAA_CHART_CYCLE } from '../shared/faaData'
 import { awcUrl, proxyFetch, fetchAWC, lookupAirport, bearingDeg, haversineNm } from '../shared/awc'
-import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expandAirway, getAirwayGeometry } from '../../../lib/waypoints'
+import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expandAirway, getAirwayGeometry, getWorldRef } from '../../../lib/waypoints'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -222,6 +222,40 @@ function PolylineEditor({ waypoints, onInsert }) {
     {/* Visible line — ForeFlight-style magenta/purple course line, slightly translucent */}
     <Polyline positions={positions} pathOptions={{ color: '#a855f7', weight: 4, opacity: 0.65 }} />
   </>)
+}
+
+// WorldRefLayer — TIER 2. Global airway structure for regions we have no
+// authoritative pack for, drawn thin/dashed/grey so it never reads as the
+// navy Tier-1 network. The data is a 2012 GPL snapshot: good for orientation,
+// not for navigation, and the route planner cannot expand it.
+function WorldRefLayer({ cls }) {
+  const map = useMap()
+  const [items, setItems] = useState(null)
+  const [, setTick] = useState(0)
+  useMapEvents({ moveend: () => setTick(t => t + 1), zoomend: () => setTick(t => t + 1) })
+  useEffect(() => {
+    let cancelled = false
+    getWorldRef().then(d => { if (!cancelled) setItems(d) })
+    return () => { cancelled = true }
+  }, [])
+  if (!items) return null
+
+  const b = map.getBounds().pad(0.25)
+  const n = b.getNorth(), s = b.getSouth(), w = b.getWest(), e = b.getEast()
+  const wantHi = cls === 'hi'
+  const out = []
+  for (const it of items) {
+    if (it.hi !== wantHi) continue
+    const [minLat, maxLat, minLon, maxLon] = it.bbox
+    // bbox overlap with the viewport
+    if (minLat > n || maxLat < s || minLon > e || maxLon < w) continue
+    out.push(it)
+    if (out.length >= 2500) break
+  }
+  return out.map((it, i) => (
+    <Polyline key={`wr-${i}-${it.bbox[0]}`} positions={it.latlngs}
+      pathOptions={{ color: '#8290a4', weight: 0.8, opacity: 0.5, dashArray: '4 4', interactive: false }} />
+  ))
 }
 
 // AirwayNetwork — draws the airway web (SkyVector World Lo/Hi style) from our
@@ -490,6 +524,9 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
         errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
         attribution='&copy; FAA AIS' />
     )}
+    {/* Tier 2 first so the authoritative network draws on top of it */}
+    {layers.ifrlo && <WorldRefLayer cls="lo" />}
+    {layers.ifrhi && <WorldRefLayer cls="hi" />}
     {layers.ifrlo && <AirwayNetwork cls="lo" />}
     {layers.ifrhi && <AirwayNetwork cls="hi" />}
     {layers.airspace && openaipKey && (
@@ -1726,6 +1763,22 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
                       {/* Route edit hint — fades after 4s */}
                       <RouteHint />
+
+                      {/* Tier-2 disclosure. Dashed grey airways are a 2012
+                          reference snapshot outside our current-data regions;
+                          say so plainly rather than let them pass for chart
+                          data. */}
+                      {(layers.ifrlo || layers.ifrhi) && (
+                        <div style={{
+                          position: 'absolute', left: 12, bottom: 12, zIndex: 10002, pointerEvents: 'none',
+                          background: 'rgba(255,255,255,0.9)', border: '0.5px solid rgba(0,0,0,0.15)',
+                          borderRadius: 7, padding: '5px 9px', maxWidth: 230,
+                          fontSize: 9.5, lineHeight: 1.35, color: '#3d4a5c', fontWeight: 600,
+                        }}>
+                          <span style={{ color: '#8290a4' }}>– – –</span> World reference (2012, outside
+                          US/Mexico/Central America) — orientation only, verify against current charts
+                        </div>
+                      )}
 
                       {/* Off-airport endpoint warning — informative, never blocking */}
                       {endpointWarning && (
