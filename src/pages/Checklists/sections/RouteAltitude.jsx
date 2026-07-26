@@ -1873,23 +1873,51 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                           flexShrink: 0,
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            {/* ICAO pair */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                              <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', fontFamily: 'monospace', letterSpacing: '1px' }}>{dep}</span>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <div style={{ width: 18, height: 0.5, background: 'rgba(255,255,255,0.35)' }} />
-                                <div style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.35)' }} />
-                                <div style={{ width: 18, height: 0.5, background: 'rgba(255,255,255,0.35)' }} />
-                              </div>
-                              <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', fontFamily: 'monospace', letterSpacing: '1px' }}>{dest}</span>
-                              {waypoints.length > 2 && (
-                                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.08)', borderRadius: 4, padding: '2px 6px', fontWeight: 600 }}>
-                                  +{waypoints.length - 2} WPT
-                                </span>
-                              )}
+                            {/* Route pills — dep, intermediates, dest, in order.
+                                One line, scrolls sideways so the stats stay put. */}
+                            <div style={{
+                              display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1,
+                              overflowX: 'auto', overflowY: 'hidden', marginRight: 12,
+                              WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
+                              // fade the last pill out when the row scrolls
+                              maskImage: 'linear-gradient(to right, #000 calc(100% - 18px), transparent)',
+                              WebkitMaskImage: 'linear-gradient(to right, #000 calc(100% - 18px), transparent)',
+                            }}>
+                              {waypoints.map((w, i) => {
+                                const isDep = i === 0
+                                const isDest = i === waypoints.length - 1
+                                const clear = isDep
+                                  ? () => { setDep(''); setDepVal(false); setDepErr(null); setRoute(null); setRE(null) }
+                                  : isDest
+                                  ? () => { setDest(''); setDestVal(false); setDestErr(null); setRoute(null); setRE(null) }
+                                  : () => removeWaypoint(i)
+                                return (
+                                  <div key={w.id} style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0,
+                                    background: 'rgba(255,255,255,0.08)', borderRadius: 7,
+                                    padding: '4px 6px 4px 9px',
+                                  }}>
+                                    <span style={{
+                                      fontSize: 14, fontWeight: 800, color: '#fff',
+                                      fontFamily: 'monospace', letterSpacing: '1px', lineHeight: 1,
+                                    }}>{w.name || 'WPT'}</span>
+                                    <button
+                                      onClick={clear}
+                                      style={{
+                                        background: 'none', border: 'none', padding: 3,
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        cursor: 'pointer', color: 'rgba(255,255,255,0.45)',
+                                      }}>
+                                      <svg width={9} height={9} viewBox="0 0 24 24" fill="none">
+                                        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                                      </svg>
+                                    </button>
+                                  </div>
+                                )
+                              })}
                             </div>
                             {/* Stats */}
-                            <div style={{ display: 'flex', gap: 16 }}>
+                            <div style={{ display: 'flex', gap: 16, flexShrink: 0 }}>
                               {[
                                 { val: `${route.distNm} NM`, lbl: 'DIST' },
                                 { val: `${route.mc}°`,       lbl: 'MC' },
