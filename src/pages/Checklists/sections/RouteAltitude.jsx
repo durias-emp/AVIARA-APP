@@ -224,6 +224,20 @@ function PolylineEditor({ waypoints, onInsert }) {
   </>)
 }
 
+// Regions with an authoritative, current navdata pack (FAA NASR, SENEAM,
+// COCESNA). Outside these, the map falls back to the Tier-2 reference layer —
+// which the pilot must be told about.
+const TIER1_BOXES = [
+  [24.0, 50.0, -125.0, -66.0],   // CONUS
+  [51.0, 72.0, -170.0, -129.0],  // Alaska
+  [18.0, 23.0, -161.0, -154.0],  // Hawaii
+  [14.0, 33.0, -118.0, -86.0],   // Mexico
+  [5.0, 19.5, -93.0, -77.0],     // Central America
+]
+function inTier1(lat, lon) {
+  return TIER1_BOXES.some(([s, n, w, e]) => lat >= s && lat <= n && lon >= w && lon <= e)
+}
+
 // WorldRefLayer — TIER 2. Global airway structure for regions we have no
 // authoritative pack for, drawn thin/dashed/grey so it never reads as the
 // navy Tier-1 network. The data is a 2012 GPL snapshot: good for orientation,
@@ -1332,6 +1346,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const routeMaxMEA = route?.airwayNotes?.length
     ? Math.max(...route.airwayNotes.map(n => n.mea)) : null
 
+  // True when any point of the planned route sits outside the regions we hold
+  // current navdata for — drives the Tier-2 reference disclosure on the map.
+  const routeLeavesTier1 = waypoints.length >= 2 &&
+    waypoints.some(w => !inTier1(w.lat, w.lon))
+
   return (
     <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
       <div style={{ padding: '14px 12px 12px' }}>
@@ -1764,19 +1783,20 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       {/* Route edit hint — fades after 4s */}
                       <RouteHint />
 
-                      {/* Tier-2 disclosure. Dashed grey airways are a 2012
-                          reference snapshot outside our current-data regions;
-                          say so plainly rather than let them pass for chart
-                          data. */}
-                      {(layers.ifrlo || layers.ifrhi) && (
+                      {/* Tier-2 disclosure — only when THIS route leaves the
+                          regions we hold current data for, since that's when
+                          the pilot is actually looking at the 2012 reference
+                          airways. */}
+                      {(layers.ifrlo || layers.ifrhi) && routeLeavesTier1 && (
                         <div style={{
-                          position: 'absolute', left: 12, bottom: 12, zIndex: 10002, pointerEvents: 'none',
-                          background: 'rgba(255,255,255,0.9)', border: '0.5px solid rgba(0,0,0,0.15)',
-                          borderRadius: 7, padding: '5px 9px', maxWidth: 230,
+                          position: 'absolute', left: 12, top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
+                          zIndex: 10002, pointerEvents: 'none',
+                          background: 'rgba(255,255,255,0.92)', border: '0.5px solid rgba(0,0,0,0.15)',
+                          borderRadius: 7, padding: '5px 9px', maxWidth: 235,
                           fontSize: 9.5, lineHeight: 1.35, color: '#3d4a5c', fontWeight: 600,
                         }}>
-                          <span style={{ color: '#8290a4' }}>– – –</span> World reference (2012, outside
-                          US/Mexico/Central America) — orientation only, verify against current charts
+                          Airways outside US · Mexico · Central America are a 2012 reference —
+                          orientation only, verify against current charts
                         </div>
                       )}
 
