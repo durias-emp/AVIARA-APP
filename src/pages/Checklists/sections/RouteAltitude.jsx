@@ -274,8 +274,15 @@ function NavSymbols({ geo, cls }) {
 
   // Per-segment mag track° + distance NM, rotated along the leg — the chart's
   // "099 / 23" annotations. Only at closer zooms, capped for performance.
+  // Staged density: distance only when zoomed out, course added closer in,
+  // MEA only when you're actually reading a segment. Everything at once over
+  // a hub like Guatemala City is unreadable.
+  const showTrk = z >= 9
+  const showMea = z >= 10
+  const minLegNm = z >= 10 ? 2 : z >= 9 ? 8 : 20
   const segs = []
   const segSeen = new Set()
+  const placed = []           // screen points, to keep labels apart
   if (z >= 8) {
     outer: for (const l of geo.lines) {
       if (l.cls !== cls) continue
@@ -293,7 +300,7 @@ function NavSymbols({ geo, cls }) {
         if (!inView.length) continue
         const mid = inView[Math.floor(inView.length / 2)]
         const distNm = Math.round(haversineNm(a[0], a[1], c[0], c[1]))
-        if (distNm < 2) continue
+        if (distNm < minLegNm) continue
         const trk = l.trk?.[i]
         const mea = l.mea?.[i]
         // rotate along the leg's screen bearing, kept upright
@@ -306,7 +313,12 @@ function NavSymbols({ geo, cls }) {
         const key = `${a[0].toFixed(2)},${a[1].toFixed(2)}-${c[0].toFixed(2)},${c[1].toFixed(2)}`
         if (segSeen.has(key)) continue
         segSeen.add(key)
-        segs.push({ pos: mid, trk, distNm, mea, ang })
+        // Keep labels physically apart on screen — near a hub, many distinct
+        // legs converge and their labels would still collide.
+        const pt = map.latLngToLayerPoint(mid)
+        if (placed.some(p => Math.abs(p.x - pt.x) < 44 && Math.abs(p.y - pt.y) < 26)) continue
+        placed.push(pt)
+        segs.push({ pos: mid, trk: showTrk ? trk : null, distNm, mea: showMea ? mea : null, ang })
         if (segs.length >= 80) break outer
       }
     }

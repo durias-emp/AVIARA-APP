@@ -199,6 +199,21 @@ export async function getAirwayGeometry() {
           seg = []; segTrk = []; segMea = []
           continue
         }
+        // A leg longer than 600 NM means an ident resolved to the wrong
+        // continent (duplicate idents exist worldwide). Break the line there
+        // instead of drawing a rubber band across the map.
+        if (seg.length) {
+          const p = seg[seg.length - 1]
+          const dLat = (c[0] - p[0]) * 60
+          const dLon = (c[1] - p[1]) * 60 * Math.cos(((c[0] + p[0]) / 2) * Math.PI / 180)
+          if (Math.hypot(dLat, dLon) > 600) {
+            if (seg.length >= 2) lines.push({ id, cls, latlngs: seg, trk: segTrk, mea: segMea })
+            seg = []; segTrk = []; segMea = []
+            near = c
+            seg.push([c[0], c[1]])
+            continue
+          }
+        }
         near = c
         if (seg.length) {
           segTrk.push(v.trk?.[pi - 1] ?? null)
