@@ -132,11 +132,16 @@ for probe in ("MCO", "MIA", "YVR", "OSI", "SFO"):
 # disambiguating duplicates by chain proximity.
 awys = {}
 mea_by_from = {}
+trk_by_from = {}
 with open(f"{SCRATCH}/nasr/AWY_SEG_ALT.csv", newline="", encoding="utf-8", errors="replace") as f:
     for row in csv.DictReader(f):
         key = (row["AWY_ID"].strip(), row["AWY_LOCATION"].strip(), row["FROM_POINT"].strip().upper())
         try:
             mea_by_from[key] = int(float(row["MIN_ENROUTE_ALT"]))
+        except (ValueError, TypeError):
+            pass
+        try:
+            trk_by_from[key] = round(float(row["MAG_COURSE"]))
         except (ValueError, TypeError):
             pass
 
@@ -148,7 +153,8 @@ with open(f"{SCRATCH}/nasr/AWY_BASE.csv", newline="", encoding="utf-8", errors="
         if len(pts) < 2:
             continue
         mea = [mea_by_from.get((awy_id, loc, pts[i].upper())) for i in range(len(pts) - 1)]
-        awys.setdefault(awy_id, []).append({"loc": loc, "pts": pts, "mea": mea})
+        trk = [trk_by_from.get((awy_id, loc, pts[i].upper())) for i in range(len(pts) - 1)]
+        awys.setdefault(awy_id, []).append({"loc": loc, "pts": pts, "mea": mea, "trk": trk})
 
 json.dump(awys, open(f"{OUT}/airways.json", "w"), separators=(",", ":"))
 print(f"airways: {len(awys)} ids -> {os.path.getsize(f'{OUT}/airways.json')/1e6:.2f} MB")

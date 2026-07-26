@@ -70,16 +70,20 @@ def parse_routes(path):
     for m in re.finditer(r'FL\s*(\d{2,3})|(\d{3,5})\s*FT', t):
         val = int(m.group(1)) * 100 if m.group(1) else int(m.group(2))
         events.append((m.start(), 'alt', val))
+    # Magnetic tracks: each segment prints forward°/reverse° — the FIRST one
+    # seen after a waypoint is the charted forward track.
+    for m in re.finditer(r'<span[^>]*>\s*(\d{1,3}(?:\.\d+)?)°\s*</span>', t):
+        events.append((m.start(), 'trk', float(m.group(1))))
     events.sort(key=lambda e: e[0])
 
     out = []
-    route_id, pts, seg_lo, pending_lo = None, [], [], None
+    route_id, pts, seg_lo, seg_trk, pending_lo, pending_trk = None, [], [], [], None, None
 
     def flush():
-        nonlocal route_id, pts, seg_lo, pending_lo
+        nonlocal route_id, pts, seg_lo, seg_trk, pending_lo, pending_trk
         if route_id and len(pts) >= 2:
-            out.append((route_id, pts, seg_lo))
-        route_id, pts, seg_lo, pending_lo = None, [], [], None
+            out.append((route_id, pts, seg_lo, seg_trk))
+        route_id, pts, seg_lo, seg_trk, pending_lo, pending_trk = None, [], [], [], None, None
 
     for _, kind, data in events:
         if kind == 'des':
@@ -89,10 +93,14 @@ def parse_routes(path):
             name, la, lah, lo, loh = data
             if pts:
                 seg_lo.append(pending_lo)
+                seg_trk.append(round(pending_trk) if pending_trk is not None else None)
                 pending_lo = None
+                pending_trk = None
             pts.append((name, dms(la, lah), dms(lo, loh, lon=True)))
         elif kind == 'alt' and route_id:
             pending_lo = data
+        elif kind == 'trk' and route_id and pending_trk is None:
+            pending_trk = data
     flush()
     return out
 
@@ -111,16 +119,16 @@ def parse_points(path):
 # ── Parse ────────────────────────────────────────────────────────
 routes = {}   # id -> (pts, seg_lo) ; keep the longest chain if repeated
 for f in ('CS-ENR-3.1.html', 'CS-ENR-3.2.html'):
-    for rid, pts, seg_lo in parse_routes(os.path.join(SCRATCH, f)):
+    for rid, pts, seg_lo, seg_trk in parse_routes(os.path.join(SCRATCH, f)):
         if rid not in routes or len(pts) > len(routes[rid][0]):
-            routes[rid] = (pts, seg_lo)
+            routes[rid] = (pts, seg_lo, seg_trk)
 
 ca_fixes = {}
 for name, lat, lon in parse_points(os.path.join(SCRATCH, 'CS-ENR-4.4.html')):
     ca_fixes[name] = [lat, lon]
 # Airway points not in ENR 4.4 (VOR endpoints appear in navaids already;
 # 4-5 letter fix points get added from route tables too)
-for pts, _ in routes.values():
+for pts, _, _ in routes.values():
     for name, lat, lon in pts:
         if len(name) == 5 and name not in ca_fixes:
             ca_fixes[name] = [lat, lon]
@@ -140,10 +148,11 @@ for name, coord in ca_fixes.items():
 json.dump(fixes, open(f'{OUT}/fixes.json', 'w'), separators=(',', ':'))
 
 airways = json.load(open(f'{OUT}/airways.json'))
-for rid, (pts, seg_lo) in routes.items():
+for rid, (pts, seg_lo, seg_trk) in routes.items():
     variants = [v for v in airways.get(rid, []) if v.get('loc') != 'CA']
     mea = (seg_lo + [None] * len(pts))[:len(pts) - 1]
-    variants.append({'loc': 'CA', 'pts': [p[0] for p in pts], 'mea': mea})
+    trk = (seg_trk + [None] * len(pts))[:len(pts) - 1]
+    variants.append({'loc': 'CA', 'pts': [p[0] for p in pts], 'mea': mea, 'trk': trk})
     airways[rid] = variants
 json.dump(airways, open(f'{OUT}/airways.json', 'w'), separators=(',', ':'))
 

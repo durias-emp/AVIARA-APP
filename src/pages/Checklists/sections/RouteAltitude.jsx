@@ -272,6 +272,30 @@ function NavSymbols({ geo, cls }) {
     }
   }
 
+  // Per-segment mag track° + distance NM, rotated along the leg — the chart's
+  // "099 / 23" annotations. Only at closer zooms, capped for performance.
+  const segs = []
+  if (z >= 8) {
+    outer: for (const l of geo.lines) {
+      if (l.cls !== cls) continue
+      for (let i = 0; i < l.latlngs.length - 1; i++) {
+        const a = l.latlngs[i], c = l.latlngs[i + 1]
+        const mid = [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2]
+        if (!b.contains(mid)) continue
+        const distNm = Math.round(haversineNm(a[0], a[1], c[0], c[1]))
+        if (distNm < 2) continue
+        const trk = l.trk?.[i]
+        // rotate along the leg's screen bearing, kept upright
+        let ang = (Math.atan2((c[1] - a[1]) * Math.cos(mid[0] * Math.PI / 180), c[0] - a[0]) * 180 / Math.PI)
+        ang = 90 - ang
+        if (ang > 90) ang -= 180
+        if (ang < -90) ang += 180
+        segs.push({ pos: mid, trk, distNm, ang })
+        if (segs.length >= 80) break outer
+      }
+    }
+  }
+
   return (<>
     {pts.map(p => (
       <Marker key={`${p.name}${p.lat}`} position={[p.lat, p.lon]} interactive={false}
@@ -293,6 +317,15 @@ function NavSymbols({ geo, cls }) {
         icon={L.divIcon({
           className: '', iconSize: [0, 0],
           html: `<div style="transform:translate(-50%,-50%);pointer-events:none;font:700 8.5px ui-monospace,monospace;color:#fff;background:#1c3f7a;border-radius:2px;padding:0.5px 4px;white-space:nowrap;">${l.id}</div>`,
+        })} />
+    ))}
+    {segs.map((s, i) => (
+      <Marker key={`seg-${i}-${s.pos[0]}`} position={s.pos} interactive={false}
+        icon={L.divIcon({
+          className: '', iconSize: [0, 0],
+          html: `<div style="transform:translate(-50%,-130%) rotate(${s.ang.toFixed(0)}deg);pointer-events:none;text-align:center;font:600 8px ui-monospace,monospace;color:#1c3f7a;text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap;line-height:1.15;">
+            ${s.trk != null ? String(s.trk).padStart(3, '0') + '°<br>' : ''}${s.distNm}
+          </div>`,
         })} />
     ))}
   </>)
