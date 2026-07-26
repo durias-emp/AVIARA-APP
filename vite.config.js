@@ -86,8 +86,10 @@ export default defineConfig({
         name: 'AVIARA – Pilot Quick Reference Handbook',
         short_name: 'AVIARA',
         description: 'Offline pilot quick reference: calculators, checklists, air law, currency tracker.',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        // matches --bg in the dark theme, so the install splash and app
+        // surface are the same colour instead of slate vs near-black
+        theme_color: '#1c1c22',
+        background_color: '#1c1c22',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',

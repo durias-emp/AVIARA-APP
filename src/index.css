@@ -3,6 +3,11 @@
 
 /* ── Apple-style design tokens ─────────────────────────────── */
 :root {
+  /* Tells the engine which scheme native UI (form controls, scrollbars,
+     date pickers, input carets) should be drawn in — without it they stay
+     light-mode even when the app is dark. */
+  color-scheme: light;
+
   /* Surfaces */
   --bg:           #f2f2f7;
   --bg-card:      #ffffff;
@@ -50,6 +55,8 @@
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
+
   --bg:           #1c1c22;
   --bg-card:      #272730;
   --bg-card-2:    #32323c;
@@ -80,6 +87,8 @@
 }
 
 [data-theme="red"] {
+  color-scheme: dark;
+
   --bg:           #0a0000;
   --bg-card:      #1a0000;
   --bg-card-2:    #220000;
