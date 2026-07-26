@@ -136,6 +136,8 @@ export async function expandAirway(ident, fromName, toName, fromPos) {
     const maxMEA = meas.length ? Math.max(...meas) : null
 
     const fixes = []
+    // fromPos anchors the chain to the right continent — the entry fix the
+    // pilot typed is already resolved, so duplicates downstream follow it.
     let near = fromPos
     for (const pt of idents) {
       const hit = await resolveWaypoint(pt, near)
@@ -187,10 +189,23 @@ export async function getAirwayGeometry() {
   for (const [id, variants] of Object.entries(airways)) {
     const cls = /^(U|J|Q)/.test(id) ? 'hi' : 'lo'
     for (const v of variants) {
+      // Anchor pass: unambiguous points define where this airway lives, so a
+      // duplicated ident at the START of the chain (CAT, MGA, CTM… exist on
+      // several continents) resolves to the right one instead of whichever
+      // came first in the file.
+      let aLat = 0, aLon = 0, aN = 0
+      for (const name of v.pts) {
+        const fxc = fixes[name]
+        const one = fxc && !Array.isArray(fxc[0]) ? fxc
+          : (navaids[name] && navaids[name].length === 1 ? navaids[name][0] : null)
+        if (one) { aLat += one[0]; aLon += one[1]; aN++ }
+      }
+      const anchor = aN ? [aLat / aN, aLon / aN] : null
+
       let seg = []
       let segTrk = []
       let segMea = []
-      let near = null
+      let near = anchor
       for (let pi = 0; pi < v.pts.length; pi++) {
         const name = v.pts[pi]
         const c = coordsOf(name, near)
@@ -199,13 +214,21 @@ export async function getAirwayGeometry() {
           seg = []; segTrk = []; segMea = []
           continue
         }
-        // A leg longer than 600 NM means an ident resolved to the wrong
-        // continent (duplicate idents exist worldwide). Break the line there
-        // instead of drawing a rubber band across the map.
+        // Antimeridian: Alaska/Pacific airways cross 180°, where a raw
+        // longitude jump (174E → -177W) would draw the line the long way
+        // around the world. Unwrap into a continuous frame instead.
+        let cLon = c[1]
+        if (seg.length) {
+          const prevLon = seg[seg.length - 1][1]
+          while (cLon - prevLon > 180) cLon -= 360
+          while (cLon - prevLon < -180) cLon += 360
+        }
+        // Anything still over 600 NM is a genuinely bad resolve — break the
+        // line rather than draw a rubber band.
         if (seg.length) {
           const p = seg[seg.length - 1]
           const dLat = (c[0] - p[0]) * 60
-          const dLon = (c[1] - p[1]) * 60 * Math.cos(((c[0] + p[0]) / 2) * Math.PI / 180)
+          const dLon = (cLon - p[1]) * 60 * Math.cos(((c[0] + p[0]) / 2) * Math.PI / 180)
           if (Math.hypot(dLat, dLon) > 600) {
             if (seg.length >= 2) lines.push({ id, cls, latlngs: seg, trk: segTrk, mea: segMea })
             seg = []; segTrk = []; segMea = []
@@ -219,7 +242,8 @@ export async function getAirwayGeometry() {
           segTrk.push(v.trk?.[pi - 1] ?? null)
           segMea.push(v.mea?.[pi - 1] ?? null)
         }
-        seg.push([c[0], c[1]])
+        // unwrapped longitude keeps the line continuous across 180°
+        seg.push([c[0], cLon])
         const key = `${name}@${c[0].toFixed(3)},${c[1].toFixed(3)}`
         let p = pointsByKey.get(key)
         if (!p) {
