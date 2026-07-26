@@ -275,22 +275,38 @@ function NavSymbols({ geo, cls }) {
   // Per-segment mag track° + distance NM, rotated along the leg — the chart's
   // "099 / 23" annotations. Only at closer zooms, capped for performance.
   const segs = []
+  const segSeen = new Set()
   if (z >= 8) {
     outer: for (const l of geo.lines) {
       if (l.cls !== cls) continue
       for (let i = 0; i < l.latlngs.length - 1; i++) {
         const a = l.latlngs[i], c = l.latlngs[i + 1]
-        const mid = [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2]
-        if (!b.contains(mid)) continue
+        // Label the middle of the leg's VISIBLE portion: zoomed in, a long
+        // leg's true midpoint is often off-screen and the label would vanish
+        // exactly when the pilot is reading that segment.
+        const inView = []
+        for (let s = 0; s <= 20; s++) {
+          const t = s / 20
+          const p = [a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t]
+          if (b.contains(p)) inView.push(p)
+        }
+        if (!inView.length) continue
+        const mid = inView[Math.floor(inView.length / 2)]
         const distNm = Math.round(haversineNm(a[0], a[1], c[0], c[1]))
         if (distNm < 2) continue
         const trk = l.trk?.[i]
+        const mea = l.mea?.[i]
         // rotate along the leg's screen bearing, kept upright
         let ang = (Math.atan2((c[1] - a[1]) * Math.cos(mid[0] * Math.PI / 180), c[0] - a[0]) * 180 / Math.PI)
         ang = 90 - ang
         if (ang > 90) ang -= 180
         if (ang < -90) ang += 180
-        segs.push({ pos: mid, trk, distNm, ang })
+        // Airways overlap (a leg can belong to several routes) — one label
+        // per physical segment, or they stack into an unreadable pile.
+        const key = `${a[0].toFixed(2)},${a[1].toFixed(2)}-${c[0].toFixed(2)},${c[1].toFixed(2)}`
+        if (segSeen.has(key)) continue
+        segSeen.add(key)
+        segs.push({ pos: mid, trk, distNm, mea, ang })
         if (segs.length >= 80) break outer
       }
     }
@@ -323,8 +339,11 @@ function NavSymbols({ geo, cls }) {
       <Marker key={`seg-${i}-${s.pos[0]}`} position={s.pos} interactive={false}
         icon={L.divIcon({
           className: '', iconSize: [0, 0],
+          // track° over distance, with the MEA below in bold — the MEA is the
+          // safety-critical number, so it reads first at a glance
           html: `<div style="transform:translate(-50%,-130%) rotate(${s.ang.toFixed(0)}deg);pointer-events:none;text-align:center;font:600 8px ui-monospace,monospace;color:#1c3f7a;text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap;line-height:1.15;">
             ${s.trk != null ? String(s.trk).padStart(3, '0') + '°<br>' : ''}${s.distNm}
+            ${s.mea != null ? `<br><span style="font-weight:800;font-size:8.5px;color:#0f2d5c;">${s.mea >= 18000 ? 'FL' + Math.round(s.mea / 100) : s.mea.toLocaleString()}</span>` : ''}
           </div>`,
         })} />
     ))}

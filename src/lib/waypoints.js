@@ -189,17 +189,21 @@ export async function getAirwayGeometry() {
     for (const v of variants) {
       let seg = []
       let segTrk = []
+      let segMea = []
       let near = null
       for (let pi = 0; pi < v.pts.length; pi++) {
         const name = v.pts[pi]
         const c = coordsOf(name, near)
         if (!c) {
-          if (seg.length >= 2) lines.push({ id, cls, latlngs: seg, trk: segTrk })
-          seg = []; segTrk = []
+          if (seg.length >= 2) lines.push({ id, cls, latlngs: seg, trk: segTrk, mea: segMea })
+          seg = []; segTrk = []; segMea = []
           continue
         }
         near = c
-        if (seg.length) segTrk.push(v.trk?.[pi - 1] ?? null)
+        if (seg.length) {
+          segTrk.push(v.trk?.[pi - 1] ?? null)
+          segMea.push(v.mea?.[pi - 1] ?? null)
+        }
         seg.push([c[0], c[1]])
         const key = `${name}@${c[0].toFixed(3)},${c[1].toFixed(3)}`
         let p = pointsByKey.get(key)
@@ -213,7 +217,7 @@ export async function getAirwayGeometry() {
         }
         p[cls] = true
       }
-      if (seg.length >= 2) lines.push({ id, cls, latlngs: seg, trk: segTrk })
+      if (seg.length >= 2) lines.push({ id, cls, latlngs: seg, trk: segTrk, mea: segMea })
     }
   }
   _geometry = { lines, points: [...pointsByKey.values()] }
