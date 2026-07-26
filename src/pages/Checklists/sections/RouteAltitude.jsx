@@ -615,7 +615,9 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
     {waypoints.length >= 2 && <PolylineEditor waypoints={waypoints} onInsert={insertWaypoint} />}
     {waypoints.length >= 2 && <LongPressAdd waypoints={waypoints} onInsert={insertWaypoint} />}
     {waypoints.slice(1, -1).map((w, i) => (
-      <DraggableWaypoint key={w.id} position={[w.lat, w.lon]} index={i + 1} onMove={moveWaypoint} onRemove={removeWaypoint} name={w.name} kind={w.kind} />
+      <DraggableWaypoint key={w.id} position={[w.lat, w.lon]} index={i + 1} onMove={moveWaypoint} onRemove={removeWaypoint}
+        // unnamed map-dropped points carry the same WPT n label as the card
+        name={w.name || `WPT ${waypoints.slice(0, i + 1).filter(p => !p.name).length + 1}`} kind={w.kind} />
     ))}
   </>)
 }
@@ -1868,8 +1870,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       }}>
                         {/* Route strip */}
                         <div style={{
-                          padding: '10px 18px 8px',
-                          borderBottom: '0.5px solid rgba(255,255,255,0.07)',
+                          padding: '11px 18px 9px',
                           flexShrink: 0,
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1877,13 +1878,18 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                 One line, scrolls sideways so the stats stay put. */}
                             <div style={{
                               display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1,
-                              overflowX: 'auto', overflowY: 'hidden', marginRight: 12,
+                              overflowX: 'auto', overflowY: 'hidden', marginRight: 14,
                               WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
                               // fade the last pill out when the row scrolls
-                              maskImage: 'linear-gradient(to right, #000 calc(100% - 18px), transparent)',
-                              WebkitMaskImage: 'linear-gradient(to right, #000 calc(100% - 18px), transparent)',
+                              maskImage: 'linear-gradient(to right, #000 calc(100% - 24px), transparent)',
+                              WebkitMaskImage: 'linear-gradient(to right, #000 calc(100% - 24px), transparent)',
                             }}>
-                              {waypoints.map((w, i) => {
+                              {(() => {
+                                // Map-dropped points have no ident — number them in
+                                // route order (WPT 1, WPT 2…) so they can be referred to.
+                                let n = 0
+                                return waypoints.map(w => ({ w, label: w.name || `WPT ${++n}` }))
+                              })().map(({ w, label }, i) => {
                                 const isDep = i === 0
                                 const isDest = i === waypoints.length - 1
                                 const clear = isDep
@@ -1900,7 +1906,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                     <span style={{
                                       fontSize: 14, fontWeight: 800, color: '#fff',
                                       fontFamily: 'monospace', letterSpacing: '1px', lineHeight: 1,
-                                    }}>{w.name || 'WPT'}</span>
+                                    }}>{label}</span>
                                     <button
                                       onClick={clear}
                                       style={{
@@ -1929,11 +1935,6 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                               ))}
                             </div>
                           </div>
-                          {waypoints.length > 2 && routeString && (
-                            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.38)', fontFamily: 'monospace', letterSpacing: '0.3px', lineHeight: 1.4, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {routeString}
-                            </div>
-                          )}
                         </div>
 
                         {/* Content — vertical stack, everything fits */}
