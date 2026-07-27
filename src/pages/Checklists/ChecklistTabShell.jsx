@@ -76,8 +76,12 @@ export default function ChecklistTabShell({
       startY: t.clientY,
       width: containerRef.current?.clientWidth || 1,
       tracking: true,
+      // Nothing is a swipe until it proves horizontal. Flipping state on every
+      // touchstart re-rendered the track — including its transition property —
+      // at the instant a finger landed, which is enough for iOS to abandon the
+      // scroll it was about to start.
+      committed: false,
     }
-    setDragging(true)
   }
 
   function onTouchMove(e) {
@@ -88,12 +92,19 @@ export default function ChecklistTabShell({
     const dy = Math.abs(t.clientY - g.startY)
 
     // Vertical-dominant gesture — this is a scroll, not a tab swipe. Bail out
-    // and let the pane's own overflowY handle it.
+    // and let the pane's own overflowY handle it, without touching state:
+    // a re-render here lands mid-scroll.
     if (dy > MAX_VERTICAL_DRIFT && dy > Math.abs(dx)) {
       g.tracking = false
-      setDragging(false)
-      setDragPx(0)
+      if (g.committed) { setDragging(false); setDragPx(0) }
       return
+    }
+
+    // Horizontal enough to be a swipe — only now does the track start moving.
+    if (!g.committed) {
+      if (Math.abs(dx) < MAX_VERTICAL_DRIFT) return
+      g.committed = true
+      setDragging(true)
     }
 
     let clamped = dx
@@ -105,6 +116,7 @@ export default function ChecklistTabShell({
   function onTouchEnd() {
     const g = gesture.current
     gesture.current = null
+    if (!g?.committed) return          // a scroll, or a tap: nothing to settle
     setDragging(false)
 
     if (g?.tracking) {
@@ -132,7 +144,11 @@ export default function ChecklistTabShell({
           transition: dragging ? 'none' : 'transform 0.32s cubic-bezier(0.4,0,0.2,1)',
         }}>
           {sections.map((section, i) => (
-            <div key={section.title} style={{ width: `${100 / n}%`, flexShrink: 0, height: '100%', overflowY: 'auto' }}>
+            <div key={section.title} style={{
+              width: `${100 / n}%`, flexShrink: 0, height: '100%',
+              overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+              overscrollBehaviorY: 'contain',
+            }}>
               <div style={{ paddingBottom: footerHeight }}>
                 <PaneActivityProvider onActiveChange={onActiveChangeFns[i]}>
                   <StepPane
