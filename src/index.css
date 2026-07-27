@@ -198,20 +198,20 @@ body {
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
-  /* Block, not flex. As a flex column with a real height it squeezes any page
-     taller than the screen instead of scrolling it — and pages that set
-     `flex: 1` inline on their root element cannot be talked out of it from a
-     stylesheet. Every page already carries min-height: 100%, so they still
-     fill a short screen. */
-  display: block;
+  /* A flex column, because the checklist screen is built on nested flex:1
+     panes that need a definite height to scroll inside instead of growing.
+     Every direct child must be grow-only (flex: 1 0 auto) — a shrinkable
+     child gets squeezed to the viewport and its content clipped. */
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── Responsive app shell ──────────────────────────────────── */
 .app-shell {
-  /* Grow with the content, never shrink to fit the scroller. As a plain
-     flex:1 item it would be squeezed to the viewport height and its content
-     clipped, because #root now has a real height rather than growing with the
-     page. min-height keeps short pages full-height. */
+  /* Grow with the content, never shrink to fit the scroller: as a plain
+     flex:1 item it would be squeezed to the viewport and its content clipped.
+     Growing to fill also gives it a definite height, which is what lets the
+     checklist's nested panes scroll rather than stretch. */
   flex: 1 0 auto;
   display: flex;
   flex-direction: column;
@@ -220,6 +220,17 @@ body {
      the height of the notch with nothing to show for it. */
   min-height: 100%;
   width: 100%;
+}
+
+/* Screens that manage their own scrolling — the checklist steps and Home —
+   need the shell to be exactly the scroller's height. Their inner panes are
+   built on nested flex:1 / min-height:0 chains, and those only resolve into
+   something scrollable when the height above them is definite. Left to grow
+   the panes stretch to fit their content and the scroll disappears. */
+.app-shell--fill {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
 }
 
 /* Tablet: fill most of the screen, no border treatment */

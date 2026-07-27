@@ -63,7 +63,7 @@ export default function SignIn({ legacy = false }) {
 
   return (
     <div style={{
-      flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center',
+      flex: '1 0 auto', display: 'flex', flexDirection: 'column', justifyContent: 'center',
       padding: '24px 24px calc(24px + env(safe-area-inset-bottom))', gap: 28,
       minHeight: '100%', boxSizing: 'border-box',
     }}>

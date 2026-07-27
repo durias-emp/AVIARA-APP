@@ -66,8 +66,12 @@ export default function Shell({ children }) {
   // stays available via the header's BackButton, so just disable the swipe.
   const swipeRef = useSwipeBack(handleSwipeBack, { disabled: isHome || ownsInternalScroll })
 
+  // A screen that scrolls inside itself needs the shell pinned to the
+  // viewport; one that scrolls as a page needs it to grow with its content.
+  // Without the distinction the checklist's nested panes stretch to their
+  // content and nothing scrolls at all.
   return (
-    <div className="app-shell">
+    <div className={`app-shell${isHome || ownsInternalScroll ? ' app-shell--fill' : ''}`}>
       <main ref={swipeRef} style={{ flex: 1, overflowY: isHome || ownsInternalScroll ? 'hidden' : 'auto', display: ownsInternalScroll ? 'flex' : 'block', flexDirection: 'column', minHeight: 0 }}>
         {children}
       </main>
