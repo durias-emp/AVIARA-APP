@@ -309,6 +309,13 @@ export async function recommendCruise(waypoints, {
   // Ties go to the lower altitude: less climb, more options, warmer air.
   scored.sort((a, b) => b.score - a.score || a.altFt - b.altFt)
 
+  const crossSection = buildCrossSection(atmo, hazards, terrain, {
+    recommendedAltFt: scored[0]?.altFt ?? null,
+    meaFt: routeMaxMEA,
+    ceilingFt: perf?.serviceCeilingFt ?? null,
+    maxAltFt: Math.min(maxAlt, perf?.serviceCeilingFt ? perf.serviceCeilingFt + 2000 : maxAlt),
+  })
+
   return {
     status: 'ok',
     recommended: scored[0],
@@ -316,11 +323,54 @@ export async function recommendCruise(waypoints, {
     rejected,
     distNm,
     perf,
+    crossSection,
     atmosphere: atmo.status === 'ok'
       ? { model: atmo.model, hourISO: atmo.hourISO, samples: atmo.samples.length }
       : { status: atmo.status },
     hazards,
     degraded,
+  }
+}
+
+// The vertical slice the cross-section draws: departure on the left,
+// destination on the right, altitude up. Everything is already computed by
+// this point — this only reshapes it into per-column arrays the renderer can
+// walk without knowing where any of it came from.
+export function buildCrossSection(atmo, hazards, terrain, {
+  chosenAltFt = null, recommendedAltFt = null, meaFt = null, ceilingFt = null, maxAltFt = 18000,
+} = {}) {
+  if (atmo?.status !== 'ok') return null
+
+  const x = atmo.samples.map(s => ({ distNm: Math.round(s.distNm), lat: s.lat, lon: s.lon }))
+  const levelsFt = []
+  for (let a = 1000; a <= Math.max(maxAltFt, 6000); a += 1000) levelsFt.push(a)
+
+  const cloud = atmo.columns.map(col => levelsFt.map(a => atAltitude(col, a)?.cloudPct ?? 0))
+  const wind = []
+  atmo.columns.forEach((col, i) => {
+    if (i % 2 !== 0 && i !== atmo.columns.length - 1) return   // every other column
+    for (let a = 2000; a <= maxAltFt; a += 4000) {
+      const c = atAltitude(col, a)
+      if (c?.windKt == null) continue
+      wind.push({ distNm: x[i].distNm, altFt: a, dirDeg: c.windDirDeg, kt: c.windKt })
+    }
+  })
+
+  // terrain.centerlineFt runs along the same track at its own spacing, so it
+  // is resampled by position rather than assumed to line up.
+  const terrainFt = terrain?.status === 'ok' && terrain.centerlineFt?.length
+    ? x.map((_, i) => {
+        const t = i / Math.max(1, x.length - 1)
+        return terrain.centerlineFt[Math.round(t * (terrain.centerlineFt.length - 1))]
+      })
+    : null
+
+  return {
+    lengthNm: Math.round(atmo.lengthNm),
+    x, levelsFt, cloud, wind, terrainFt,
+    freezingFt: atmo.surface.map(s => s.freezingFt),
+    bands: [...(hazards?.icing || []), ...(hazards?.turbulence || [])],
+    chosenAltFt, recommendedAltFt, meaFt, ceilingFt, maxAltFt,
   }
 }
 

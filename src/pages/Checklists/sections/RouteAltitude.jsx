@@ -16,6 +16,7 @@ import { analyzeAerodromes } from '../../../lib/aerodromes'
 import { analyzeAirspace } from '../../../lib/airspace'
 import { recommendCruise, fmtAlt } from '../../../lib/cruiseAdvisor'
 import { parseAircraftPerf } from '../../../lib/climbPerf'
+import CrossSection from './CrossSection'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -2655,6 +2656,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 )
               })}
             </div>
+            {advice?.crossSection && (
+              <CrossSection data={advice.crossSection} dep={dep} dest={dest} chosenAltFt={selectedAlt} />
+            )}
             {isIFR && routeMaxMEA != null && (
               <div style={{ marginTop: 8, fontSize: 11, color: 'var(--warn)', lineHeight: 1.5 }}>
                 ⚠ Altitudes below {routeMaxMEA.toLocaleString()} ft are under the highest MEA on
