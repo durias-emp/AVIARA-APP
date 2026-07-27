@@ -37,6 +37,20 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
     if (isOpen) setEverOpened(true)
   }, [isOpen])
 
+  // Release the cap a beat after opening, by the clock.
+  //
+  // This used to wait for transitionend, which sounds right and is not: when a
+  // card opens, React mounts the content and sets its max-height in the same
+  // commit, so the browser has nothing to animate from and never fires the
+  // event. The cap then stayed at whatever the content measured at that instant
+  // — 158 px for a card whose content is 930 — and the card opened to a sliver
+  // that could not be scrolled or interacted with.
+  useEffect(() => {
+    if (!isOpen) return
+    const id = setTimeout(() => setUncapped(true), 340)   // transition is 300ms
+    return () => clearTimeout(id)
+  }, [isOpen, measuredHeight])
+
   // Closing needs a pixel height to animate away from, so the cap goes back on
   // at the card's current size before React renders the zero.
   useLayoutEffect(() => {
@@ -117,6 +131,7 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
           once opened so max-height has real content to measure/animate. */}
       {everOpened && (
         <div ref={wrapRef}
+          // Whichever comes first — the animation finishing, or the timer above.
           onTransitionEnd={e => {
             if (e.target === e.currentTarget && e.propertyName === 'max-height' && isOpen) setUncapped(true)
           }}
