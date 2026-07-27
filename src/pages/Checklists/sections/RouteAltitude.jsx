@@ -17,6 +17,7 @@ import { analyzeAirspace } from '../../../lib/airspace'
 import { recommendCruise, fmtAlt } from '../../../lib/cruiseAdvisor'
 import { parseAircraftPerf } from '../../../lib/climbPerf'
 import CrossSection from './CrossSection'
+import DropPicker from './DropPicker'
 import { fetchBriefing } from '../../../lib/altitudeBrief'
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -216,8 +217,10 @@ function DraggableWaypoint({ position, index, onMove, onRemove, name, removable 
   )
 }
 
-// PolylineEditor — tap/click the route line to insert a waypoint + renders the line
-function PolylineEditor({ waypoints, onInsert }) {
+// PolylineEditor — tap or drag the route line to add a point, and renders the
+// line itself. The tap no longer inserts a coordinate outright: it hands the
+// position to the drop picker, which offers what is actually charted there.
+function PolylineEditor({ waypoints, onDrop }) {
   const positions = waypoints.map(w => [w.lat, w.lon])
   return (<>
     {/* Thick invisible hit-area so a finger tap on the line reliably inserts
@@ -233,7 +236,7 @@ function PolylineEditor({ waypoints, onInsert }) {
             const d = crossTrackNM(e.latlng.lat, e.latlng.lng, [waypoints[i].lat, waypoints[i].lon], [waypoints[i+1].lat, waypoints[i+1].lon])
             if (d < bestDist) { bestDist = d; bestSeg = i + 1 }
           }
-          onInsert(bestSeg, e.latlng.lat, e.latlng.lng)
+          onDrop({ lat: e.latlng.lat, lon: e.latlng.lng, seg: bestSeg })
         }
       }}
     />
@@ -445,7 +448,7 @@ function NavSymbols({ geo, cls }) {
 // LongPressAdd — ForeFlight-style: press-and-hold (or right-click) anywhere on
 // the map to drop a point showing its aviation coordinates, with a button to
 // insert it into the route at the nearest leg.
-function LongPressAdd({ waypoints, onInsert }) {
+function LongPressAdd({ waypoints, onDrop }) {
   const [pt, setPt] = useState(null)
   const ignoreNextClick = useRef(false)
   useMapEvents({
@@ -476,7 +479,7 @@ function LongPressAdd({ waypoints, onInsert }) {
       const d = crossTrackNM(pt.lat, pt.lon, [waypoints[i].lat, waypoints[i].lon], [waypoints[i + 1].lat, waypoints[i + 1].lon])
       if (d < bestDist) { bestDist = d; bestSeg = i + 1 }
     }
-    onInsert(bestSeg, pt.lat, pt.lon)
+    onDrop({ lat: pt.lat, lon: pt.lon, seg: bestSeg })
     setPt(null)
   }
 
@@ -522,7 +525,7 @@ function RouteHint() {
       animation: 'fadeOut 0.6s ease 2.9s forwards',
     }}>
       <span style={{ fontSize: 16 }}>✦</span>
-      <span style={{ fontSize: 12, color: '#fff', fontWeight: 500 }}>Tap the route line to add a waypoint · drag to move</span>
+      <span style={{ fontSize: 12, color: '#fff', fontWeight: 500 }}>Tap the line or hold the map to add · drag a point to move it</span>
       <style>{`@keyframes fadeOut { to { opacity: 0 } }`}</style>
     </div>
   )
@@ -537,7 +540,7 @@ function RouteHint() {
 // toggling a layer, TFR data arriving). That's what read as "the map glitches
 // constantly" and, on iOS, remounting mid-tap can also swallow the tap event
 // on nearby chips/buttons.
-function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, insertWaypoint, moveWaypoint, removeWaypoint }) {
+function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, onDrop, onWaypointDrop, moveWaypoint, removeWaypoint }) {
   return (<>
     <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' />
@@ -661,10 +664,10 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
         index={waypoints.length-1} onMove={moveWaypoint}
         name={waypoints[waypoints.length-1].name} removable={false} />
     )}
-    {waypoints.length >= 2 && <PolylineEditor waypoints={waypoints} onInsert={insertWaypoint} />}
-    {waypoints.length >= 2 && <LongPressAdd waypoints={waypoints} onInsert={insertWaypoint} />}
+    {waypoints.length >= 2 && <PolylineEditor waypoints={waypoints} onDrop={onDrop} />}
+    {waypoints.length >= 2 && <LongPressAdd waypoints={waypoints} onDrop={onDrop} />}
     {waypoints.slice(1, -1).map((w, i) => (
-      <DraggableWaypoint key={w.id} position={[w.lat, w.lon]} index={i + 1} onMove={moveWaypoint} onRemove={removeWaypoint}
+      <DraggableWaypoint key={w.id} position={[w.lat, w.lon]} index={i + 1} onMove={onWaypointDrop} onRemove={removeWaypoint}
         // unnamed map-dropped points carry the same WPT n label as the card
         name={w.name || `WPT ${waypoints.slice(0, i + 1).filter(p => !p.name).length + 1}`} kind={w.kind} />
     ))}
@@ -1081,12 +1084,45 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     }
   }, [route?.depPos?.[0], route?.depPos?.[1], route?.destPos?.[0], route?.destPos?.[1], JSON.stringify(route?.wpts)])
 
-  function insertWaypoint(index, lat, lon) {
+  function insertWaypoint(index, lat, lon, name = null) {
     setWaypoints(prev => {
       const next = [...prev]
-      next.splice(index, 0, { id: `wp-${Date.now()}`, lat, lon, name: null })
+      next.splice(index, 0, { id: `wp-${Date.now()}`, lat, lon, name })
       return next
     })
+  }
+
+  // ── Dropping a point on the map ──
+  // A drop opens the picker rather than committing a coordinate: the finger
+  // lands somewhere approximate, and what the pilot almost always wants is the
+  // charted point a mile or two away.
+  const [dropPoint, setDropPoint] = useState(null)
+  function openDropPicker(pt) { setDropPoint(pt) }
+
+  // Dragging a waypoint moves it immediately — the point follows the finger and
+  // stays where it was let go — and then offers to snap it to whatever is
+  // charted there. Nothing is undone if the picker is dismissed.
+  function onWaypointDrop(index, latlng) {
+    moveWaypoint(index, latlng)
+    setDropPoint({ lat: latlng.lat, lon: latlng.lng, moveIndex: index })
+  }
+
+  function commitDrop(choice) {
+    const { lat, lon, name, as } = choice
+    if (dropPoint?.moveIndex != null) {
+      setWaypoints(prev => prev.map((w, i) =>
+        i === dropPoint.moveIndex ? { ...w, lat, lon, name } : w))
+      setDropPoint(null)
+      return
+    }
+    if (as === 'append') {
+      // A new final waypoint: the old destination stays in the route as the
+      // point before it, which is what "continue on to" means.
+      setWaypoints(prev => [...prev, { id: `wp-${Date.now()}`, lat, lon, name }])
+    } else {
+      insertWaypoint(dropPoint?.seg ?? Math.max(1, waypoints.length - 1), lat, lon, name)
+    }
+    setDropPoint(null)
   }
   function moveWaypoint(index, latlng) {
     // Dragging an endpoint away from its airport is allowed, but warn once
@@ -1990,7 +2026,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 (route.depPos[0] + route.destPos[0]) / 2,
                 (route.depPos[1] + route.destPos[1]) / 2,
               ]
-              const mapLayerProps = { layers, openaipKey, tfrData, detectedSUAPolys, waypoints, insertWaypoint, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
+              const mapLayerProps = { layers, openaipKey, tfrData, detectedSUAPolys, waypoints, onDrop: openDropPicker, onWaypointDrop, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
 
               return (<>
                 {/* Inline map */}
@@ -2066,8 +2102,17 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         </MapContainer>
                       </div>
 
+                      {/* What to do with a point just dropped on the map */}
+                      <DropPicker
+                        key={dropPoint ? `${dropPoint.lat.toFixed(4)},${dropPoint.lon.toFixed(4)}` : 'none'}
+                        point={dropPoint}
+                        mode={dropPoint?.moveIndex != null ? 'move' : 'insert'}
+                        canAppend={waypoints.length >= 2}
+                        onChoose={commitDrop}
+                        onCancel={() => setDropPoint(null)} />
+
                       {/* Route edit hint — fades after 4s */}
-                      <RouteHint />
+                      {!dropPoint && <RouteHint />}
 
                       {/* Tier-2 disclosure — only when THIS route leaves the
                           regions we hold current data for, since that's when
