@@ -11,6 +11,7 @@ import { awcUrl, proxyFetch, fetchAWC, lookupAirport, bearingDeg, haversineNm } 
 import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expandAirway, getAirwayGeometry, getWorldRef } from '../../../lib/waypoints'
 import { sampleRoute } from '../../../lib/corridor'
 import { analyzeTerrain, MOUNTAIN_FT } from '../../../lib/terrain'
+import { analyzeWater } from '../../../lib/water'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -863,11 +864,14 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // corridor, where it is, and what it leaves under the planned altitude.
   // status 'unavailable' is shown rather than hidden — see below.
   const [terrainInfo, setTerrainInfo] = useState(null)
+  // Overwater measurement behind the Water chip — distance, longest crossing,
+  // and how far from shore the route gets.
+  const [waterInfo, setWaterInfo] = useState(null)
   const [detectedParkNames, setDetectedParkNames] = useState([])
   const [detectedSUANames, setDetectedSUANames]   = useState([])
   const [detectedSUAPolys, setDetectedSUAPolys]   = useState([]) // [{name, typeCode, poly:[lat,lon][]}]
   useEffect(() => {
-    if (waypoints.length < 2) { setDetectedTerrain([]); setTerrainInfo(null); return }
+    if (waypoints.length < 2) { setDetectedTerrain([]); setTerrainInfo(null); setWaterInfo(null); return }
     let cancelled = false
 
     async function detect() {
@@ -878,20 +882,23 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
       // Terrain across the ±5 NM corridor, with the highest point and the
       // clearance it leaves under the planned altitude (see lib/terrain.js).
-      const terrain = await analyzeTerrain(waypoints, { altFt: selectedAlt || null })
+      // Water against bundled coastline polygons (see lib/water.js) — no
+      // network, so this half of the analysis survives a dead connection.
+      const [terrain, water] = await Promise.all([
+        analyzeTerrain(waypoints, { altFt: selectedAlt || null }),
+        analyzeWater(waypoints),
+      ])
 
       if (cancelled) return
 
       const det = []
       setTerrainInfo(terrain)
-      const ftElev = terrain.status === 'ok' ? terrain.centerlineFt : []
+      setWaterInfo(water)
 
-      // Water: elevation at/near sea level (≤ 5m) — crude but catches ocean/coastal routes
-      const hasWater = ftElev.some(e => e <= 15) || pts.some(([la, lo]) =>
-        (la < 24.5 && la > 8 && lo > -90 && lo < -58)   // Caribbean
-        || (lo < -130 && la < 55)                         // Pacific
-        || (la < 30 && la > 17 && lo > -98 && lo < -80)  // Gulf of Mexico
-      )
+      // Water: measured against the coastline. This used to be "terrain at or
+      // below 15 ft, or inside one of three hardcoded ocean boxes", which
+      // called every sea-level airport and coastal plain an overwater leg.
+      const hasWater = water.status === 'ok' && water.overwater
       // Mountains: measured terrain only. Cruise altitude used to trigger this
       // as well, which flagged "Mountains" for a high cruise over flat ground.
       const hasMountains = terrain.status === 'ok' && terrain.maxFt > MOUNTAIN_FT
@@ -2069,6 +2076,34 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                 {activeChip === 'sua' && (
                                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 10, lineHeight: 1.4 }}>
                                     Your route passes through or crosses the boundary of the following airspaces. Each requires a specific action before flight.
+                                  </div>
+                                )}
+
+                                {/* Water — distance over water and how far from shore
+                                    it gets, which is what picks life jackets vs. a raft */}
+                                {activeChip === 'water' && waterInfo?.status === 'ok' && (
+                                  <div style={{ borderRadius: 8, background: 'rgba(255,255,255,0.04)', padding: '9px 11px', marginBottom: 10 }}>
+                                    <div style={{ display: 'flex', gap: 14 }}>
+                                      {[
+                                        { v: `${waterInfo.overwaterNm} NM`,     l: `OVER WATER · ${waterInfo.pctOverwater}%` },
+                                        { v: `${waterInfo.longestLegNm} NM`,    l: 'LONGEST CROSSING' },
+                                        { v: `${waterInfo.maxFromShoreNm} NM`,  l: 'MAX FROM SHORE' },
+                                      ].map(({ v, l }) => (
+                                        <div key={l} style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', fontFamily: 'monospace' }}>{v}</div>
+                                          <div style={{ fontSize: 8.5, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.4px', marginTop: 2 }}>{l}</div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    {waterInfo.atDistNm != null && (
+                                      <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', marginTop: 6, lineHeight: 1.45 }}>
+                                        Farthest from land at {waterInfo.atDistNm} NM along route
+                                      </div>
+                                    )}
+                                    <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.25)', marginTop: 6, lineHeight: 1.4 }}>
+                                      Natural Earth coastline · {waterInfo.spacingNm} NM sampling, ~1 NM shoreline resolution.
+                                      Crossings shorter than the sampling interval can be missed.
+                                    </div>
                                   </div>
                                 )}
 
