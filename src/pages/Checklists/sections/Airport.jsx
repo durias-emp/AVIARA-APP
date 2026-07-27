@@ -12,7 +12,6 @@ export function NotamItem({ item, isChecked, onToggle }) {
     { label: 'FAA NOTAM Search', sub: 'Official FAA NOTAM system', url: 'https://notams.aim.faa.gov/notamSearch/' },
     { label: 'FAA TFR Map', sub: 'Active TFRs plotted on a map', url: 'https://tfr.faa.gov/tfr2/list.html' },
     { label: '1800wxbrief.com', sub: 'Leidos flight service — full preflight briefing', url: 'https://www.1800wxbrief.com' },
-    { label: 'SkyVector', sub: 'NOTAMs and TFRs overlaid on chart', url: 'https://skyvector.com' },
   ]
   const TFR_TYPES = [
     { label: 'VIP / POTUS movement', color: '#FF3B30' },
@@ -510,6 +509,10 @@ export function AirportItem({ item, isChecked, onToggle }) {
           const ident = icao.replace(/^K/, '').toUpperCase()
           const apdChart = (FAA_CHARTS_DATA[ident] || []).find(([code]) => code === 'APD')
           const apdUrl = apdChart ? `${FAA_DTPP_BASE}${apdChart[2]}` : null
+          // Fallbacks go to the FAA's own products rather than a third-party
+          // chart site — the app renders its charts from FAA tiles now.
+          const faaDafd = `https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dafd/search/advanced/?ident=${ident}`
+          const faaDtpp = `https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dtpp/search/results/?cycle=&ident=${ident}`
           const gridBtn = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center',
             gap: 6, padding: '13px 12px', borderRadius: 11,
             background: 'var(--bg-card-2)', textDecoration: 'none', cursor: 'pointer', width: '100%', textAlign: 'left' }
@@ -517,7 +520,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
             <div style={{ padding: '10px 14px 4px',
               display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {/* Airport Diagram */}
-              <a href={apdUrl || `https://skyvector.com/airport/${icao}`} target="_blank" rel="noreferrer" style={gridBtn}>
+              <a href={apdUrl || faaDtpp} target="_blank" rel="noreferrer" style={gridBtn}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
                   stroke="var(--text-secondary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="3" width="18" height="18" rx="2"/>
@@ -526,12 +529,12 @@ export function AirportItem({ item, isChecked, onToggle }) {
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Airport Diagram</div>
                   <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 1 }}>
-                    {apdUrl ? 'FAA Official · PDF' : 'SkyVector'}
+                    {apdUrl ? 'FAA Official · PDF' : 'FAA d-TPP search'}
                   </div>
                 </div>
               </a>
               {/* Chart Supplement */}
-              <a href={`https://skyvector.com/airport/${icao}`} target="_blank" rel="noreferrer" style={gridBtn}>
+              <a href={faaDafd} target="_blank" rel="noreferrer" style={gridBtn}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
                   stroke="var(--text-secondary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -542,7 +545,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
                 </svg>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Chart Supplement</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 1 }}>SkyVector</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 1 }}>FAA Chart Supplement</div>
                 </div>
               </a>
               {/* Satellite Image */}

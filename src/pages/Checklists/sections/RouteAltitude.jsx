@@ -540,7 +540,7 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
         attribution='&copy; <a href="https://vfrmap.com">VFRMap.com</a>' />
     )}
     {/* IFR enroute charts — FAA's official free tile services (Web Mercator,
-        56-day cycle, same data SkyVector's US enroute layers come from).
+        56-day cycle — the FAA's own enroute product).
         Low is readable z8–11, High z5–9; beyond native range Leaflet
         over-zooms the tiles, below minZoom the basemap shows. */}
     {layers.ifrlo && (
@@ -1751,7 +1751,6 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                     { label: 'FAA NOTAM Search', sub: 'Official FAA NOTAM system',          url: 'https://notams.aim.faa.gov/notamSearch/' },
                     { label: 'FAA TFR Map',       sub: 'Active TFRs plotted on a map',       url: 'https://tfr.faa.gov/tfr2/list.html' },
                     { label: '1800wxbrief.com',   sub: 'Leidos — full preflight briefing',   url: 'https://www.1800wxbrief.com' },
-                    { label: 'SkyVector',         sub: 'NOTAMs and TFRs overlaid on chart',  url: 'https://skyvector.com' },
                   ]
                   const TFR_LEGEND = [
                     { label: 'Security / VIP', color: '#FF3B30' },
@@ -2547,8 +2546,6 @@ export function ChartsItem({ item, isChecked, onToggle }) {
 
   const lat    = airport?.lat ? parseFloat(airport.lat).toFixed(4) : null
   const lon    = airport?.lon ? parseFloat(airport.lon).toFixed(4) : null
-  const svBase = lat && lon ? `?ll=${lat},${lon}` : ''
-  const svPage = airport ? `https://skyvector.com/airport/${airport.icaoId}` : 'https://skyvector.com'
 
   const routeLoaded = depIcao || arrIcao
 
@@ -2680,10 +2677,6 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                       }}>{airport.tower ? 'Towered' : 'Uncontrolled'}</span>
                     )}
                   </div>
-                  <a href={svPage} target="_blank" rel="noreferrer" style={{
-                    fontSize: 11, fontWeight: 600, color: 'var(--accent)',
-                    textDecoration: 'none',
-                  }}>SkyVector ↗</a>
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', marginTop: 3 }}>{airport.name}</div>
                 {(airport.state || airport.country) && (
@@ -2956,8 +2949,6 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>Open charts</div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {[
-                    { label: 'Sectional', url: `https://skyvector.com/${svBase}&chart=301&zoom=2` },
-                    { label: 'IFR',       url: `https://skyvector.com/${svBase}&chart=302&zoom=2` },
                     {
                       label: 'A/FD',
                       url: airport
