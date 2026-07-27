@@ -526,18 +526,20 @@ function RouteHint() {
 // on nearby chips/buttons.
 function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, insertWaypoint, moveWaypoint, removeWaypoint }) {
   return (<>
-    <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
-    {/* Sectional minZoom 7: below that a chart is unreadable anyway, and the
-        mosaic's ragged edges + out-of-coverage tiles (multiply-blended into
-        a dark wash) look broken at wide views. Under zoom 7 the clean
-        basemap shows; the chart appears as you zoom in — the ForeFlight
-        behavior. */}
+    <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' />
+    {/* Sectional — the FAA's own VFR raster service, same publisher and tile
+        org as the IFR layers below. It replaces vfrmap.com, whose terms allow
+        their API but prohibit hotlinking tiles, which is what this was doing.
+        Cached z8-12; below 8 the chart is unreadable anyway and the mosaic's
+        ragged edges look broken, so the basemap shows and the chart appears as
+        you zoom in — the ForeFlight behaviour. */}
     {layers.sectional && (
-      <TileLayer url="https://vfrmap.com/20260319/tiles/vfrc/{z}/{y}/{x}.jpg"
-        tms={true} opacity={0.9} minZoom={7} maxZoom={12}
+      <TileLayer url="https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Sectional/MapServer/tile/{z}/{y}/{x}"
+        opacity={0.9} minZoom={8} maxNativeZoom={12} maxZoom={14}
         className="sectional-layer"
         errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-        attribution='&copy; <a href="https://vfrmap.com">VFRMap.com</a>' />
+        attribution='&copy; FAA AIS' />
     )}
     {/* IFR enroute charts — FAA's official free tile services (Web Mercator,
         56-day cycle — the FAA's own enroute product).
