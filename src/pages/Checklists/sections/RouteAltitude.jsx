@@ -2127,19 +2127,22 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                   <div style={{ borderRadius: 8, background: 'rgba(255,255,255,0.04)', padding: '9px 11px', marginBottom: 10 }}>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                                       {airspaceInfo.areas.map(a => {
-                                        const col = a.cls === 'B' ? '#FF3B30' : a.cls === 'C' ? '#FF9500' : '#5AC8FA'
+                                        const col = a.cls === 'B' ? '#FF3B30' : a.cls === 'C' ? '#FF9500'
+                                          : a.cls === 'D' ? '#5AC8FA' : 'rgba(255,255,255,0.4)'
                                         return (
                                           <div key={a.cls + a.name} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                                             <span style={{
                                               fontSize: 10, fontWeight: 800, color: col, fontFamily: 'monospace',
                                               border: `0.5px solid ${col}`, borderRadius: 3, padding: '1px 4px', flexShrink: 0,
-                                            }}>{a.cls}</span>
+                                            }}>{a.cls || '?'}</span>
                                             <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                               {a.name}
                                               {a.approx && <span style={{ color: 'rgba(255,255,255,0.3)' }}> · approx</span>}
                                             </span>
                                             <span style={{ fontSize: 10.5, color: a.atCruise ? 'var(--warn)' : 'rgba(255,255,255,0.5)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-                                              {a.lowerFt === 0 ? 'SFC' : `${a.lowerFt?.toLocaleString()}`}–{a.upperFt?.toLocaleString()}{a.ref === 'AGL' ? ' AGL' : ' ft'}
+                                              {a.upperFt == null
+                                                ? 'limits n/pub'
+                                                : `${a.lowerFt === 0 ? 'SFC' : a.lowerFt?.toLocaleString()}–${a.upperFt.toLocaleString()}${a.ref === 'AGL' ? ' AGL' : ' ft'}`}
                                             </span>
                                           </div>
                                         )

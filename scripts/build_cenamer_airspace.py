@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
-"""CENAMER controlled-airspace pack — parses COCESNA's eAIP ENR 2.1 (FIR, UIR,
-TMA and CTA) into polygons AVIARA can test a route against.
+"""CENAMER controlled-airspace pack — parses COCESNA's eAIP into polygons
+AVIARA can test a route against:
+
+  ENR 2.1  FIR, UIR, TMA and CTA   (FIR/UIR skipped, see below)
+  ENR 2.2  CTR, ATZ and TWR        (the surface zones under each TMA)
+
+ENR 5.1 (prohibited, restricted and danger areas) was the obvious next
+source and is NOT here: COCESNA publishes the section as an empty stub, as
+it does the whole of ENR 5 — no restricted areas, no military areas, no
+ADIZ. Those exist only in each state's own AIP (DGAC Guatemala, AAC El
+Salvador, DGAC Costa Rica…), which are separate documents in separate
+formats. Nothing is silently missing here; the regional AIP simply does not
+carry them.
 
 Why this exists: controlled-airspace detection reads the FAA class-airspace
 service, which stops at the US border. openAIP has 7,670 airspaces for the US,
@@ -32,15 +43,21 @@ SCRATCH = ("/private/tmp/claude-501/-Users-oliout-Desktop-CC-projects-AVIARA-APP
 OUT = sys.argv[1] if len(sys.argv) > 1 else 'src/data/geo'
 BASE = ('https://www.cocesna.org/aipca/AIP_2657/Eurocontrol/COCESNA/'
         '2026-07-09-NON%20AIRAC/html/eAIP')
-SRC = 'ES-CS-ENR-2.1-es-ES.html'
+SRCS = [('CS-ENR-2.1.html', 'ES-CS-ENR-2.1-es-ES.html', None),
+        ('CS-ENR-2.2.html', 'ES-CS-ENR-2.2-es-ES.html', 'CTR')]
 CYCLE = '2026-07-09'
 
 NM_PER_DEG = 60.0
 
-COORD = re.compile(r'(\d{6}(?:\.\d+)?)([NS])\s*(\d{7}(?:\.\d+)?)([EW])')
+# ENR 2.1 prints DMS (173222.62N 0881850.32W); ENR 2.2 mixes in plain decimal
+# degrees (10.0699N 084.3019W). Five or more digits before the point means the
+# minutes and seconds are packed in.
+LATP = r'(\d{6}(?:\.\d+)?|\d{1,3}\.\d+)([NS])'
+LONP = r'(\d{7}(?:\.\d+)?|\d{1,4}\.\d+)([EW])'
+COORD = re.compile(LATP + r'\s*' + LONP)
 NAME_DIV = re.compile(r'<div class="strong center large-padding-after"[^>]*>(.*?)</div>', re.S)
 # "19500FT AMSL ------ 2500FT AMSL", "FL 195 ------ GND", "UNL ------ 20000FT AMSL"
-LIMIT = r'(UNL|GND|FL\s*\d+|\d{3,5}\s*FT\s*(?:AMSL|AGL))'
+LIMIT = r'(UNL|GND|SFC|FL\s*\d+|\d{3,5}\s*FT\s*(?:AMSL|AGL))'
 BAND = re.compile(LIMIT + r'\s*-{3,}\s*' + LIMIT)
 CLS = re.compile(r'CLASE/CLASS\s+([A-G])')
 
@@ -50,17 +67,21 @@ def flat(html):
 
 
 def dms(v, hemi):
-    v = float(v)
-    deg = int(v // 10000)
-    rest = v - deg * 10000
-    dec = deg + int(rest // 100) / 60 + (rest - int(rest // 100) * 100) / 3600
+    """DDMMSS(.s) / DDDMMSS(.s), or a plain decimal degree value."""
+    if len(v.split('.')[0]) < 5:
+        dec = float(v)
+    else:
+        f = float(v)
+        deg = int(f // 10000)
+        rest = f - deg * 10000
+        dec = deg + int(rest // 100) / 60 + (rest - int(rest // 100) * 100) / 3600
     return round(-dec if hemi in 'SW' else dec, 5)
 
 
 def ft(limit):
     """'FL 195' -> 19500, 'GND' -> 0, 'UNL' -> None (no ceiling)."""
     s = limit.replace(' ', '').upper()
-    if s == 'GND':
+    if s in ('GND', 'SFC'):
         return 0
     if s == 'UNL':
         return None
@@ -118,14 +139,16 @@ def arc(c, r_nm, start, end, clockwise=True, step=5.0):
     return [offset(c, a0 + sweep * i / n, r_nm) for i in range(n + 1)]
 
 
+_LAT = r'(?P<{}>\d{{6}}(?:\.\d+)?|\d{{1,3}}\.\d+)(?P<{}>[NS])'
+_LON = r'(?P<{}>\d{{7}}(?:\.\d+)?|\d{{1,4}}\.\d+)(?P<{}>[EW])'
 ARC = re.compile(
     r'Along the arc(?P<ccw>\s+anticlockwise)?\s*of\s*(?P<r>[\d.]+)\s*NM of radius'
-    r'.*?\(\s*(?P<clat>\d{6}(?:\.\d+)?)(?P<cns>[NS])\s*(?P<clon>\d{7}(?:\.\d+)?)(?P<cew>[EW])\s*\)'
-    r'.*?until:\s*(?P<elat>\d{6}(?:\.\d+)?)(?P<ens>[NS])\s*(?P<elon>\d{7}(?:\.\d+)?)(?P<eew>[EW])',
+    r'.*?\(\s*' + _LAT.format('clat', 'cns') + r'\s*' + _LON.format('clon', 'cew') + r'\s*\)'
+    r'.*?until:\s*' + _LAT.format('elat', 'ens') + r'\s*' + _LON.format('elon', 'eew'),
     re.S)
 CIRCLE = re.compile(
     r'Circle of\s*(?P<r>[\d.]+)\s*NM of radius'
-    r'.*?\(\s*(?P<clat>\d{6}(?:\.\d+)?)(?P<cns>[NS])\s*(?P<clon>\d{7}(?:\.\d+)?)(?P<cew>[EW])\s*\)',
+    r'.*?\(\s*' + _LAT.format('clat', 'cns') + r'\s*' + _LON.format('clon', 'cew') + r'\s*\)',
     re.S)
 
 
@@ -182,7 +205,7 @@ def parse_lateral(text):
     return ring, approx
 
 
-def parse(path):
+def parse(path, default_kind=None):
     html = open(path, encoding='utf-8', errors='replace').read()
     names = list(NAME_DIV.finditer(html))
     out = []
@@ -191,6 +214,10 @@ def parse(path):
         body = flat(html[m.end(): names[i + 1].start() if i + 1 < len(names) else len(html)])
 
         name = re.sub(r'\(.*?\)', '', head).strip()
+        # ENR 2.2 names several control zones by bare place name (BELIZE, COCO,
+        # LA AURORA). Without the prefix they read like airports in the list.
+        if default_kind and not re.search(r'\b(CTR|ATZ|TMA|CTA|TWR)\b', name):
+            name = f'{default_kind} {name}'
         country = (re.search(r'\((.*?)\)', head) or [None, ''])[1]
         # FIR/UIR and the region-wide oceanic blocks would fire on every flight
         if re.match(r'^(FIR|UIR|OCEANIC|REGION INFERIOR)', name):
@@ -207,10 +234,18 @@ def parse(path):
             print(f'  ! no geometry: {name}')
             continue
 
-        # Vertical bands, each with the class printed after it
+        # Vertical bands, each with the class printed after it. A handful of
+        # zones (SAN JOSE CTR, the Sandino ATZ) publish geometry and no limits
+        # at all — they are kept, and say so, rather than dropped: a zone whose
+        # ceiling is unknown is still a zone you have to call before entering.
         bands = [(mm.group(1), mm.group(2), mm.end()) for mm in BAND.finditer(body)]
         if not bands:
-            print(f'  ! no vertical limits: {name}')
+            print(f'  · limits not published: {name}')
+            out.append({
+                'name': name, 'country': country, 'cls': None,
+                'lowerFt': None, 'upperFt': None, 'ref': 'AMSL', 'approx': approx,
+                'poly': [[round(a, 4), round(b, 4)] for a, b in ring],
+            })
             continue
         for upper, lower, pos in bands:
             cls_m = CLS.search(body, pos)
@@ -225,17 +260,18 @@ def parse(path):
     return out
 
 
-path = os.path.join(SCRATCH, 'CS-ENR-2.1.html')
-if not os.path.exists(path):
-    os.makedirs(SCRATCH, exist_ok=True)
-    print('downloading COCESNA ENR 2.1…')
-    urllib.request.urlretrieve(f'{BASE}/{SRC}', path)
-
-areas = parse(path)
+areas = []
+for local, remote, kind in SRCS:
+    path = os.path.join(SCRATCH, local)
+    if not os.path.exists(path):
+        os.makedirs(SCRATCH, exist_ok=True)
+        print(f'downloading COCESNA {local}…')
+        urllib.request.urlretrieve(f'{BASE}/{remote}', path)
+    areas += parse(path, kind)
 os.makedirs(OUT, exist_ok=True)
 dest = f'{OUT}/cenamer_airspace.json'
 json.dump({'areas': areas, 'cycle': CYCLE,
-           'note': 'COCESNA eAIP ENR 2.1 (CENAMER FIR). FIR/UIR excluded. '
+           'note': 'COCESNA eAIP ENR 2.1 + 2.2 (CENAMER FIR). FIR/UIR excluded. '
                    'approx=true means a boundary follows a national border, '
                    'published as prose and approximated by a straight line.'},
           open(dest, 'w'), separators=(',', ':'))
