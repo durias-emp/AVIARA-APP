@@ -133,6 +133,15 @@ function routeIntersectsPoly(waypoints, poly) {
   return false
 }
 
+// The phone's clock as a datetime-local value: local time, whole minutes.
+// datetime-local has no timezone, so the offset is applied before slicing
+// rather than taking the UTC string and hoping.
+function nowLocalISO() {
+  const d = new Date()
+  d.setSeconds(0, 0)
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+}
+
 // Format decimal lat/lon → aviation DMS notation: N25°47'42" W080°17'24"
 function fmtAvCoord(lat, lon) {
   const fmt = (val, padDeg) => {
@@ -875,11 +884,21 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // so the profile is held here rather than re-read per calculation.
   const [aircraft, setAircraft] = useState(null)
   const acPerf = useMemo(() => parseAircraftPerf(aircraft), [aircraft])
-  // Planned departure. Without it the forecast silently answers "now", which
-  // is the wrong question for a flight being planned the night before.
-  const [etd, setEtd] = useState('')
+  // Planned departure. Starts at the phone's clock and keeps up with it, so a
+  // pilot planning to leave shortly never has to set anything; the moment they
+  // pick a time it stops following and stays where they put it.
+  const [etd, setEtd] = useState(nowLocalISO)
+  const [etdPinned, setEtdPinned] = useState(false)
   const [advice, setAdvice] = useState(null)
   const [adviceBusy, setAdviceBusy] = useState(false)
+  // Follow the clock to the minute while the field is untouched. The analysis
+  // keys on the hour, so this costs a re-render, not a forecast fetch.
+  useEffect(() => {
+    if (etdPinned) return
+    const id = setInterval(() => setEtd(nowLocalISO()), 15000)
+    return () => clearInterval(id)
+  }, [etdPinned])
+
   const [brief, setBrief] = useState(null)
   const [briefBusy, setBriefBusy] = useState(false)
 
@@ -952,7 +971,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         }
         if (r.mc != null) setCourse(String(r.mc))
         if (r.cruiseAlt != null) setSelectedAlt(r.cruiseAlt)
-        if (r.etd) setEtd(r.etd)
+        if (r.etd) { setEtd(r.etd); setEtdPinned(true) }
         if (!r.dep) get('settings', 'homeAirport').then(h => { if (h?.value) { setDep(h.value); setDepVal(true) } })
       } else {
         get('settings', 'homeAirport').then(h => { if (h?.value) { setDep(h.value); setDepVal(true) } })
@@ -1605,7 +1624,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     return () => { cancelled = true }
   }, [
     JSON.stringify(waypoints.map(w => [+w.lat.toFixed(3), +w.lon.toFixed(3)])),
-    flightRules, etd, aircraft?.id, altitudes?.length, routeMaxMEA,
+    flightRules, etd?.slice(0, 13), aircraft?.id, altitudes?.length, routeMaxMEA,
     terrainInfo?.maxFt, airspaceInfo?.count,
   ])
 
@@ -2641,9 +2660,17 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)', letterSpacing: '0.3px' }}>ETD</span>
               <input
                 type="datetime-local"
+                step="60"
                 value={etd}
+                // Tapping the field should open the OS picker, not drop a
+                // caret into a text mask. showPicker throws when it is not
+                // driven by a real gesture, which is exactly when we do not
+                // need it — let the browser do its default thing instead.
+                onClick={e => { try { e.currentTarget.showPicker?.() } catch { /* focus is enough */ } }}
+                onFocus={e => { try { e.currentTarget.showPicker?.() } catch { /* focus is enough */ } }}
                 onChange={e => {
                   setEtd(e.target.value)
+                  setEtdPinned(true)
                   get('settings', 'route').then(r => {
                     if (r) put('settings', { ...r, etd: e.target.value }).catch(() => {})
                   })
