@@ -49,7 +49,7 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
     if (!isOpen) return
     const id = setTimeout(() => setUncapped(true), 340)   // transition is 300ms
     return () => clearTimeout(id)
-  }, [isOpen, measuredHeight])
+  }, [isOpen])
 
   // Closing needs a pixel height to animate away from, so the cap goes back on
   // at the card's current size before React renders the zero.
@@ -63,23 +63,31 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
     setUncapped(false)
   }, [isOpen])
 
-  // Re-measure whenever the content's own size changes (e.g. async data
-  // arriving after mount) so the max-height transition doesn't clip late
-  // content or freeze at a stale height.
+  // Re-measure while the cap is on, so the opening animation has a real height
+  // to travel to even when the content arrives late.
+  //
+  // Once the cap is off, the observer is disconnected — and that is the point
+  // of this, not an optimisation. Observing content whose height is no longer
+  // constrained means every measurement can change the layout that produced
+  // it: the map settling, a chart drawing, a card re-rendering. Each pass fed
+  // the next and the main thread never got a turn, which is what left the
+  // checklist unresponsive.
   useLayoutEffect(() => {
-    if (!everOpened || !contentRef.current || typeof ResizeObserver === 'undefined') return
+    if (!everOpened || uncapped || !contentRef.current || typeof ResizeObserver === 'undefined') return
     const el = contentRef.current
-    // scrollHeight is always a rounded-down integer, while actual rendered
-    // content can be a fraction of a pixel taller — without slack, the
-    // max-height clips that sliver off the bottom (visible as a flat-cut
-    // corner instead of the intended rounded one). +2px is enough margin
-    // without being visible as extra space once fully open.
-    const measure = () => setMeasuredHeight(el.scrollHeight + 2)
+    // scrollHeight is a rounded-down integer while the rendered content can be
+    // a fraction taller; +2 keeps the last sliver from being clipped. Ignoring
+    // sub-pixel changes stops a measurement that merely rounds differently from
+    // scheduling another render.
+    const measure = () => {
+      const h = el.scrollHeight + 2
+      setMeasuredHeight(prev => (Math.abs(prev - h) > 1 ? h : prev))
+    }
     const observer = new ResizeObserver(measure)
     observer.observe(el)
     measure()
     return () => observer.disconnect()
-  }, [everOpened])
+  }, [everOpened, uncapped])
 
   const Header = forceOpen ? 'div' : 'button'
 

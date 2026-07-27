@@ -19,6 +19,16 @@ if ('serviceWorker' in navigator) {
     reloading = true
     window.location.reload()
   })
+  // And ask whether there is a newer build each time the app comes back to the
+  // foreground. Without this the check only happens on a cold start, which on
+  // a phone can be days apart — long enough for a fix to look like it never
+  // shipped.
+  const checkForUpdate = () => {
+    if (document.visibilityState !== 'visible') return
+    navigator.serviceWorker.getRegistration().then(reg => reg?.update()).catch(() => {})
+  }
+  document.addEventListener('visibilitychange', checkForUpdate)
+  window.addEventListener('focus', checkForUpdate)
 }
 
 createRoot(document.getElementById('root')).render(
