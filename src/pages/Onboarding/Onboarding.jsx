@@ -1084,7 +1084,7 @@ export default function Onboarding() {
 
   return (
     <div style={{
-      minHeight: '100dvh', background: 'var(--bg)',
+      minHeight: '100%', background: 'var(--bg)',
       display: 'flex', justifyContent: 'center',
       overflowY: 'auto', overflowX: 'hidden',
     }}>

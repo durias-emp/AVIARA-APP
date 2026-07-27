@@ -35,7 +35,7 @@ export default function ResetPassword() {
     <div style={{
       flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center',
       padding: '24px 24px calc(24px + env(safe-area-inset-bottom))', gap: 24,
-      minHeight: '100dvh', boxSizing: 'border-box',
+      minHeight: '100%', boxSizing: 'border-box',
     }}>
       <div>
         <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.5px' }}>
