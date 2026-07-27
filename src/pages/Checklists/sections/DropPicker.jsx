@@ -21,7 +21,8 @@ const KIND_STYLE = {
 
 // point:    { lat, lon } where the finger landed
 // mode:     'insert' when adding to the route, 'move' when a waypoint was dragged
-// onChoose: (target) => void, target = { lat, lon, name|null, as: 'insert'|'append' }
+// onChoose: (target) => void
+//           target = { lat, lon, name|null, as: 'insert'|'append'|'move'|'destination' }
 export default function DropPicker({ point, mode = 'insert', canAppend = true, onChoose, onCancel }) {
   const [filter, setFilter] = useState('all')
   const [options, setOptions] = useState(null)
@@ -121,10 +122,25 @@ export default function DropPicker({ point, mode = 'insert', canAppend = true, o
               {canAppend && btn('Add as final', 'append', false)}
             </>)}
       </div>
+
+      {/* Only an airport can become the destination — a fix cannot be landed
+          at, and offering it there would produce a route that cannot be filed. */}
+      {mode !== 'move' && selected?.kind === 'AIRPORT' && (
+        <button onClick={() => onChoose({ ...target, as: 'destination' })} style={{
+          marginTop: 7, width: '100%', padding: '10px 0', borderRadius: 9, cursor: 'pointer',
+          background: 'transparent', border: '0.5px solid var(--ok)',
+          color: 'var(--ok)', fontSize: 12.5, fontWeight: 700,
+        }}>
+          Make {selected.ident} the destination
+        </button>
+      )}
+
       <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.3)', marginTop: 7, lineHeight: 1.45 }}>
         {mode === 'move'
           ? 'Snaps the point to the selection, or leaves it on the coordinate.'
-          : '“Along route” drops it into the leg you tapped. “Final” makes it the new destination.'}
+          : selected?.kind === 'AIRPORT'
+          ? '“Along route” adds a turning point. “Final” adds it as the last point. “Make destination” re-files the route to end there.'
+          : '“Along route” drops it into the leg you tapped. “Final” adds it as the last point of the route.'}
       </div>
     </div>
   )

@@ -1109,6 +1109,14 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
   function commitDrop(choice) {
     const { lat, lon, name, as } = choice
+    if (as === 'destination' && name) {
+      // Re-file the route to end here. The coordinates come from the bundled
+      // pack, so a strip the weather service has never heard of still routes.
+      setDest(name); setDestVal(true); setDestErr(null)
+      setDropPoint(null)
+      calcRoute({ dest: name, destPos: [lat, lon] })
+      return
+    }
     if (dropPoint?.moveIndex != null) {
       setWaypoints(prev => prev.map((w, i) =>
         i === dropPoint.moveIndex ? { ...w, lat, lon, name } : w))
@@ -1510,13 +1518,19 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   }
 
 
-  async function calcRoute() {
-    if (!dep.trim() || !dest.trim()) return
+  // `over` lets a caller recalculate with a field it has only just chosen,
+  // without waiting a render for the state to land — and lets it supply
+  // coordinates it already holds, so a small field the weather service has
+  // never heard of still routes.
+  async function calcRoute(over = {}) {
+    const depId = (over.dep ?? dep).trim().toUpperCase()
+    const destId = (over.dest ?? dest).trim().toUpperCase()
+    if (!depId || !destId) return
     setRL(true); setRE(null); setRoute(null)
     try {
       const [da, dsta] = await Promise.all([
-        fetchAWC(dep.trim().toUpperCase()),
-        fetchAWC(dest.trim().toUpperCase()),
+        over.depPos ? { lat: over.depPos[0], lon: over.depPos[1] } : fetchAWC(depId),
+        over.destPos ? { lat: over.destPos[0], lon: over.destPos[1] } : fetchAWC(destId),
       ])
       if (!da?.lat || !dsta?.lat) throw new Error('Coordinates not found')
 
@@ -1582,13 +1596,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         destName: dsta.name || dest.toUpperCase(),
         depPos:  [depLat, depLon],
         destPos: [dstLat, dstLon],
-        dep: dep.trim().toUpperCase(),
-        dest: dest.trim().toUpperCase(),
+        dep: depId,
+        dest: destId,
         wpts,
         airwayNotes,
         // Compact filed-route tokens (airways kept as V25 etc.) — drives the
         // row restore and the one-pager's ATS route string.
-        atsTokens: [dep.trim().toUpperCase(), ...rowTokens.map(t => t.name), dest.trim().toUpperCase()],
+        atsTokens: [depId, ...rowTokens.map(t => t.name), destId],
       }
       setRoute(routeObj)
       // Default chart per flight rules: IFR flights open on the enroute Low
@@ -1929,7 +1943,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         </button>
 
         <button
-          onClick={calcRoute}
+          onClick={() => calcRoute()}
           disabled={routeLoading || !dep.trim() || !dest.trim()}
           style={{
             width: '100%', padding: '9px 0', borderRadius: 9,
