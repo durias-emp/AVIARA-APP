@@ -238,6 +238,20 @@ const TIER1_BOXES = [
   [14.0, 33.0, -118.0, -86.0],   // Mexico
   [5.0, 19.5, -93.0, -77.0],     // Central America
 ]
+// NPS park boundaries and FAA Special Use Airspace are United States
+// services. Outside these boxes their silence means "not covered", which is
+// not the same as "nothing there" — the difference is disclosed rather than
+// left to look like clearance.
+const US_BOXES = [
+  [24.0, 50.0, -125.0, -66.0],   // CONUS
+  [51.0, 72.0, -170.0, -129.0],  // Alaska
+  [18.0, 23.0, -161.0, -154.0],  // Hawaii
+]
+function touchesUS(waypoints) {
+  return waypoints.some(w => US_BOXES.some(([s, n, wst, e]) =>
+    w.lat >= s && w.lat <= n && w.lon >= wst && w.lon <= e))
+}
+
 function inTier1(lat, lon) {
   return TIER1_BOXES.some(([s, n, w, e]) => lat >= s && lat <= n && lon >= w && lon <= e)
 }
@@ -870,11 +884,16 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [waterInfo, setWaterInfo] = useState(null)
   // Aerodromes near the route — which fields, how far off track.
   const [aeroInfo, setAeroInfo] = useState(null)
+  // Per-source outcome: 'ok' | 'unavailable' | 'not-covered'. A failed query
+  // and a clear route used to render identically (nothing), so a dead service
+  // read as "no hazards found".
+  const [sourceStatus, setSourceStatus] = useState({})
+  const [recheckNonce, setRecheck] = useState(0)
   const [detectedParkNames, setDetectedParkNames] = useState([])
   const [detectedSUANames, setDetectedSUANames]   = useState([])
   const [detectedSUAPolys, setDetectedSUAPolys]   = useState([]) // [{name, typeCode, poly:[lat,lon][]}]
   useEffect(() => {
-    if (waypoints.length < 2) { setDetectedTerrain([]); setTerrainInfo(null); setWaterInfo(null); setAeroInfo(null); return }
+    if (waypoints.length < 2) { setDetectedTerrain([]); setTerrainInfo(null); setWaterInfo(null); setAeroInfo(null); setSourceStatus({}); return }
     let cancelled = false
 
     async function detect() {
@@ -928,17 +947,22 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       // Esri ring → [lat, lon][] polygon
       const ringToPoly = ring => ring.map(([x, y]) => [y, x])
 
-      // National Parks (NPS ArcGIS)
-      const [npsRes, suaRes] = await Promise.allSettled([
+      // NPS parks and FAA SUA — both US-only services, so a route outside
+      // their coverage is reported as such instead of coming back empty.
+      const inUS = touchesUS(waypoints)
+      const [npsRes, suaRes] = inUS ? await Promise.allSettled([
         fetch(`https://mapservices.nps.gov/arcgis/rest/services/LandResourcesDivisionTractAndBoundaryService/MapServer/1/query?where=1%3D1&geometry=${encodeURIComponent(bbox2)}&geometryType=esriGeometryEnvelope&spatialRel=esriSpatialRelIntersects&outFields=UNIT_NAME,UNIT_TYPE&returnGeometry=true&f=json`, { signal: AbortSignal.timeout(8000) }),
         fetch(`https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/Special_Use_Airspace/FeatureServer/0/query?where=1%3D1&geometry=${encodeURIComponent(bbox2)}&geometryType=esriGeometryEnvelope&spatialRel=esriSpatialRelIntersects&outFields=NAME,TYPE_CODE&returnGeometry=true&f=json`, { signal: AbortSignal.timeout(8000) }),
-      ])
+      ]) : [null, null]
 
       if (cancelled) return
 
+      const okRes = r => r && r.status === 'fulfilled' && r.value.ok
+      const statusOf = r => !inUS ? 'not-covered' : okRes(r) ? 'ok' : 'unavailable'
+
       // Parks
       const parkNames = []
-      if (npsRes.status === 'fulfilled' && npsRes.value.ok) {
+      if (okRes(npsRes)) {
         try {
           const d = await npsRes.value.json()
           for (const f of (d.features || [])) {
@@ -954,7 +978,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       // Special Use Airspace
       const suaNames = []
       const suaPolys = []
-      if (suaRes.status === 'fulfilled' && suaRes.value.ok) {
+      if (okRes(suaRes)) {
         try {
           const d = await suaRes.value.json()
           for (const f of (d.features || [])) {
@@ -974,12 +998,17 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       setDetectedSUANames(suaNames)
       setDetectedSUAPolys(suaPolys)
 
+      setSourceStatus({
+        terrain: terrain.status === 'ok' ? 'ok' : 'unavailable',
+        parks: statusOf(npsRes),
+        sua: statusOf(suaRes),
+      })
       setDetectedTerrain(det)
     }
 
     detect()
     return () => { cancelled = true }
-  }, [JSON.stringify(waypoints.map(w => [+w.lat.toFixed(3), +w.lon.toFixed(3)])), selectedAlt])
+  }, [JSON.stringify(waypoints.map(w => [+w.lat.toFixed(3), +w.lon.toFixed(3)])), selectedAlt, recheckNonce])
 
   const OPENAIP_KEY = 'b640e75c082134fd6f1524246478f301'
   const [openaipKey, setOAKey] = useState(() => localStorage.getItem('openaip_key') || OPENAIP_KEY)
@@ -1961,7 +1990,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                           )}
 
                           {/* ── Overflight section ── */}
-                          {(detectedTerrain.length > 0 || terrainInfo?.status === 'unavailable') && (() => {
+                          {(detectedTerrain.length > 0 || Object.values(sourceStatus).some(v => v !== 'ok')) && (() => {
                             const chipColor = id =>
                               id === 'parks' ? { bg: 'rgba(52,199,89,0.15)', fg: 'rgba(52,199,89,0.9)', activeBg: 'rgba(52,199,89,0.28)', border: 'rgba(52,199,89,0.4)' }
                               : id === 'sua' ? { bg: 'rgba(255,149,0,0.15)', fg: 'rgba(255,149,0,0.9)', activeBg: 'rgba(255,149,0,0.28)', border: 'rgba(255,149,0,0.4)' }
@@ -2006,18 +2035,39 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                       </div>
                                     )
                                   })}
-                                  {/* A failed terrain lookup used to be indistinguishable
-                                      from "no terrain" — an empty row read as clear. */}
-                                  {terrainInfo?.status === 'unavailable' && (
-                                    <span style={{
-                                      fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 4,
-                                      background: 'var(--warn-light)', color: 'var(--warn)',
-                                      letterSpacing: '0.2px', whiteSpace: 'nowrap',
-                                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                                    }}>
-                                      Terrain data unavailable — verify manually
-                                    </span>
-                                  )}
+                                  {/* What was NOT checked. A failed query and a clear
+                                      route used to render identically — nothing — so a
+                                      dead service read as "no hazards found". */}
+                                  {(() => {
+                                    const failed = ['terrain', 'parks', 'sua'].filter(k => sourceStatus[k] === 'unavailable')
+                                    const uncovered = ['parks', 'sua'].filter(k => sourceStatus[k] === 'not-covered')
+                                    const LABEL = { terrain: 'Terrain', parks: 'Parks', sua: 'Special use airspace' }
+                                    return (<>
+                                      {failed.length > 0 && (
+                                        <span style={{
+                                          fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 4,
+                                          background: 'var(--warn-light)', color: 'var(--warn)',
+                                          letterSpacing: '0.2px', display: 'inline-flex', alignItems: 'center', gap: 6,
+                                        }}>
+                                          {failed.map(k => LABEL[k]).join(' · ')} unavailable — verify manually
+                                          <span
+                                            onClick={() => setRecheck(n => n + 1)}
+                                            style={{ textDecoration: 'underline', cursor: 'pointer', opacity: 0.8 }}>
+                                            Recheck
+                                          </span>
+                                        </span>
+                                      )}
+                                      {uncovered.length > 0 && (
+                                        <span style={{
+                                          fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 4,
+                                          background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)',
+                                          letterSpacing: '0.2px', whiteSpace: 'nowrap',
+                                        }}>
+                                          {uncovered.map(k => LABEL[k]).join(' · ')}: US only — not checked
+                                        </span>
+                                      )}
+                                    </>)
+                                  })()}
                                 </div>
                               </div>
                             )
