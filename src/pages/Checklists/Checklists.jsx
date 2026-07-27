@@ -324,7 +324,7 @@ function CompleteButton({ pct, complete, checklist, onComplete, onAddStep }) {
       const dep  = route?.dep  || ''
       const dest = route?.dest || ''
       const distNm      = route?.distNm ?? null
-      const cruiseAlt   = cruise?.cruiseAlt ?? route?.cruiseAlt ?? null
+      const cruiseAlt   = route?.cruiseAlt ?? null
       const flightRules = cruise?.flightRules || 'VFR'
       const tas         = parseFloat(cruise?.tas)   || null
       const burnRate    = parseFloat(cruise?.burnRate) || null

@@ -14,6 +14,8 @@ import { analyzeTerrain, MOUNTAIN_FT } from '../../../lib/terrain'
 import { analyzeWater } from '../../../lib/water'
 import { analyzeAerodromes } from '../../../lib/aerodromes'
 import { analyzeAirspace } from '../../../lib/airspace'
+import { recommendCruise, fmtAlt } from '../../../lib/cruiseAdvisor'
+import { parseAircraftPerf } from '../../../lib/climbPerf'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -658,6 +660,131 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
   </>)
 }
 
+// The altitude recommendation, and the reasons behind it.
+//
+// Every figure here is the engine's own — the score breakdown IS the reasons
+// list, so nothing shown can drift from what was actually computed. What was
+// unavailable or assumed is stated rather than quietly folded in.
+function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick }) {
+  if (busy && !advice) {
+    return (
+      <div style={{ borderRadius: 10, background: 'var(--bg-card-2)', padding: '11px 13px', marginBottom: 10 }}>
+        <Bone w="60%" h={13} />
+        <div style={{ height: 6 }} />
+        <Bone w="85%" h={10} />
+      </div>
+    )
+  }
+  if (!advice) return null
+
+  if (advice.status === 'no-legal-altitude') {
+    return (
+      <div style={{
+        borderRadius: 10, background: 'var(--warn-light)', padding: '11px 13px', marginBottom: 10,
+        border: '0.5px solid var(--warn)',
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--warn)' }}>
+          No cruising altitude works for this route
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.5 }}>
+          Every hemispheric altitude is ruled out — usually terrain below and the aircraft
+          ceiling above. A routing that avoids the high ground, or a different aircraft,
+          is the way through. Reasons are on each altitude below.
+        </div>
+      </div>
+    )
+  }
+  if (advice.status !== 'ok' || !advice.recommended) return null
+
+  const r = advice.recommended
+  const differs = selectedAlt != null && selectedAlt !== r.altFt
+  const wx = advice.atmosphere?.hourISO
+    ? new Date(advice.atmosphere.hourISO).toUTCString().slice(5, 22) + 'Z'
+    : null
+  const modelled = advice.hazards?.coverage &&
+    (advice.hazards.coverage.icing === 'modelled' || advice.hazards.coverage.turbulence === 'modelled')
+
+  const DEGRADED = {
+    'winds-aloft-unavailable': 'winds aloft unavailable — picked on terrain, airspace and rules alone',
+    'no-aircraft-performance': 'no aircraft performance set — climb cost not considered',
+    'assumed-climb-performance': `climb rate and ceiling assumed (${acPerf?.rocFpm} fpm, ${acPerf?.serviceCeilingFt?.toLocaleString()} ft) — set them on the Aircraft page`,
+    'terrain-unavailable': 'terrain data unavailable — clearance not checked',
+  }
+
+  return (
+    <div style={{
+      borderRadius: 10, background: 'var(--bg-card-2)', padding: '11px 13px', marginBottom: 10,
+      border: `0.5px solid ${differs ? 'var(--ok)' : 'var(--border)'}`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 9.5, letterSpacing: '0.6px', color: 'var(--text-tertiary)' }}>RECOMMENDED</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', fontFamily: 'monospace', lineHeight: 1.15 }}>
+            {fmtAlt(r.altFt)}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+          {r.econ && <div>{Math.round(r.econ.blockMin)} min · {r.econ.gallons.toFixed(1)} gal · GS {Math.round(r.econ.gsKt)} kt</div>}
+          {r.wind && (
+            <div>
+              {Math.abs(Math.round(r.wind.hwKt))} kt {r.wind.hwKt < 0 ? 'tailwind' : 'headwind'}
+              {r.oatC != null && ` · ${Math.round(r.oatC)} °C`}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {differs && (
+        <button onClick={() => onPick(r.altFt)} style={{
+          marginTop: 8, width: '100%', background: 'var(--ok)', border: 'none', borderRadius: 8,
+          padding: '7px 0', fontSize: 12, fontWeight: 700, color: '#000', cursor: 'pointer',
+        }}>
+          Use {fmtAlt(r.altFt)}
+        </button>
+      )}
+
+      {r.reasons.length > 0 && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {r.reasons.map((x, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 7, fontSize: 11 }}>
+              <span style={{
+                fontFamily: 'monospace', fontSize: 10, minWidth: 26, textAlign: 'right',
+                color: x.points < 0 ? 'var(--warn)' : 'var(--ok)',
+              }}>{x.points < 0 ? x.points : '+0'}</span>
+              <span style={{ color: 'var(--text)' }}>{x.label}</span>
+              {x.detail && <span style={{ color: 'var(--text-tertiary)', fontSize: 10 }}>{x.detail}</span>}
+              {x.official === false && (
+                <span style={{ fontSize: 9, color: 'var(--text-tertiary)', border: '0.5px dashed var(--border-strong)', borderRadius: 3, padding: '0 3px' }}>
+                  modelled
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {advice.hazards?.convective && (
+        <div style={{ marginTop: 7, fontSize: 10.5, color: 'var(--warn)', lineHeight: 1.45 }}>
+          Convection likely along the route (CAPE {advice.hazards.convective.capeJkg} J/kg) — no
+          cruising altitude is smooth through a build-up; plan to go around.
+        </div>
+      )}
+
+      <div style={{ marginTop: 7, fontSize: 9.5, color: 'var(--text-tertiary)', lineHeight: 1.45 }}>
+        {wx && `${advice.atmosphere.model}, ${wx}. `}
+        {modelled && 'Icing and turbulence outside US coverage are modelled from the forecast profile, not an official product. '}
+        VFR cloud clearance is checked vertically only. Pilot retains final authority.
+      </div>
+
+      {advice.degraded?.length > 0 && (
+        <div style={{ marginTop: 6, fontSize: 10, color: 'var(--warn)', lineHeight: 1.45 }}>
+          {advice.degraded.map(d => DEGRADED[d]).filter(Boolean).join(' · ')}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Departure/destination ICAO chips overlaid on the inline map corners.
 function AirportLabels({ dep, dest, depPos, destPos, onFlyTo }) {
   return (
@@ -685,9 +812,21 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [course, setCourse]       = useState('')
   const [selectedAlt, setSelectedAlt] = useState(null)
   const [isHelicopter, setIsHelicopter] = useState(false)
+  // The aircraft decides how high is worth climbing and how high is possible,
+  // so the profile is held here rather than re-read per calculation.
+  const [aircraft, setAircraft] = useState(null)
+  const acPerf = useMemo(() => parseAircraftPerf(aircraft), [aircraft])
+  // Planned departure. Without it the forecast silently answers "now", which
+  // is the wrong question for a flight being planned the night before.
+  const [etd, setEtd] = useState('')
+  const [advice, setAdvice] = useState(null)
+  const [adviceBusy, setAdviceBusy] = useState(false)
 
   useEffect(() => {
-    get('aircraft', 'profile').then(profile => setIsHelicopter(profile?.category === 'helicopter'))
+    get('aircraft', 'profile').then(profile => {
+      setIsHelicopter(profile?.category === 'helicopter')
+      setAircraft(profile || null)
+    })
   }, [])
 
   // Route inputs
@@ -752,6 +891,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         }
         if (r.mc != null) setCourse(String(r.mc))
         if (r.cruiseAlt != null) setSelectedAlt(r.cruiseAlt)
+        if (r.etd) setEtd(r.etd)
         if (!r.dep) get('settings', 'homeAirport').then(h => { if (h?.value) { setDep(h.value); setDepVal(true) } })
       } else {
         get('settings', 'homeAirport').then(h => { if (h?.value) { setDep(h.value); setDepVal(true) } })
@@ -1357,17 +1497,56 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // VFR cruising altitudes are hemispheric thousands + 500 (§91.159); IFR
   // are plain thousands (§91.179) — odd eastbound, even westbound.
   const isIFR = flightRules === 'IFR'
-  const altitudes = valid
-    ? (isIFR
-        ? (isEast ? [3000,5000,7000,9000,11000,13000,15000,17000]
-                  : [4000,6000,8000,10000,12000,14000,16000])
-        : (isEast ? [3500,5500,7500,9500,11500,13500,15500,17500]
-                  : [4500,6500,8500,10500,12500,14500,16500]))
-    : null
+  // Below 18,000 ft the hemispheric rule gives thousands (IFR) or thousands
+  // +500 (VFR). At and above FL180 everything is IFR in Class A, so the list
+  // continues as flight levels on the same odd/even split. Capped at the
+  // aircraft's service ceiling — offering FL450 to a C172 is noise.
+  const altitudes = valid ? (() => {
+    const out = []
+    const oddEast = isEast
+    for (let a = 3000; a <= 17000; a += 1000) {
+      const odd = (a / 1000) % 2 === 1
+      if (odd !== oddEast) continue
+      out.push(isIFR ? a : a + 500)
+    }
+    for (let fl = 180; fl <= 600; fl += 10) {
+      const odd = (fl / 10) % 2 === 1
+      if (odd !== oddEast) continue
+      out.push(fl * 100)
+    }
+    const ceiling = acPerf?.serviceCeilingFt
+    return ceiling ? out.filter(a => a <= ceiling + 1000) : out
+  })() : null
   // Highest MEA among the airways in the calculated route — altitudes below
   // it are flagged (never blocked; ATC may still assign segment-specific).
   const routeMaxMEA = route?.airwayNotes?.length
     ? Math.max(...route.airwayNotes.map(n => n.mea)) : null
+
+  // ── Altitude advice ──
+  // Runs once per route/rules/ETD change and scores every candidate at once,
+  // so changing the selected altitude afterwards costs nothing. Terrain and
+  // airspace are handed in from the state above rather than refetched.
+  useEffect(() => {
+    if (!altitudes?.length || waypoints.length < 2) { setAdvice(null); return }
+    let cancelled = false
+    setAdviceBusy(true)
+    recommendCruise(waypoints, {
+      flightRules,
+      candidateAlts: altitudes,
+      aircraft,
+      routeMaxMEA,
+      departAtISO: etd || null,
+      terrain: terrainInfo,
+      airspace: airspaceInfo,
+      fieldElevFt: route?.depElevFt ?? 0,
+    }).then(res => { if (!cancelled) { setAdvice(res); setAdviceBusy(false) } })
+      .catch(() => { if (!cancelled) { setAdvice({ status: 'unavailable' }); setAdviceBusy(false) } })
+    return () => { cancelled = true }
+  }, [
+    JSON.stringify(waypoints.map(w => [+w.lat.toFixed(3), +w.lon.toFixed(3)])),
+    flightRules, etd, aircraft?.id, altitudes?.length, routeMaxMEA,
+    terrainInfo?.maxFt, airspaceInfo?.count,
+  ])
 
   // True when any point of the planned route sits outside the regions we hold
   // current navdata for — drives the Tier-2 reference disclosure on the map.
@@ -2395,6 +2574,25 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             }}>
               {isEast ? '↗ Eastbound' : '↙ Westbound'}
             </span>
+            {/* The forecast has to be asked about a time. Left empty it answers
+                for now, which is the wrong question for tomorrow's flight. */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+              <span style={{ fontSize: 10, color: 'var(--text-tertiary)', letterSpacing: '0.3px' }}>ETD</span>
+              <input
+                type="datetime-local"
+                value={etd}
+                onChange={e => {
+                  setEtd(e.target.value)
+                  get('settings', 'route').then(r => {
+                    if (r) put('settings', { ...r, etd: e.target.value }).catch(() => {})
+                  })
+                }}
+                style={{
+                  background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
+                  borderRadius: 7, padding: '4px 7px', color: 'var(--text)',
+                  fontSize: 11, outline: 'none', colorScheme: 'inherit',
+                }} />
+            </label>
           </div>
         )}
 
@@ -2405,26 +2603,54 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 ? (isEast ? 'Odd thousands (IFR)' : 'Even thousands (IFR)')
                 : (isEast ? 'Odd thousands + 500 ft' : 'Even thousands + 500 ft')}
             </div>
+            <AltitudeAdvice advice={advice} busy={adviceBusy} selectedAlt={selectedAlt} acPerf={acPerf}
+              onPick={alt => {
+                setSelectedAlt(alt)
+                get('settings', 'route').then(r => {
+                  if (r) put('settings', { ...r, cruiseAlt: alt }).catch(() => {})
+                })
+              }} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
               {altitudes.map(alt => {
                 const selected = selectedAlt === alt
                 const belowMEA = isIFR && routeMaxMEA != null && alt < routeMaxMEA
+                const cand = advice?.candidates?.find(c => c.altFt === alt)
+                const gate = advice?.rejected?.find(r => r.altFt === alt)
+                const best = advice?.recommended?.altFt === alt
                 return (
-                  <button key={alt} onClick={() => {
-                  const next = selected ? null : alt
-                  setSelectedAlt(next)
-                  get('settings', 'route').then(r => {
-                    if (r) put('settings', { ...r, cruiseAlt: next }).catch(() => {})
-                  })
-                }} style={{
+                  <button key={alt} title={gate ? gate.gates.map(g => g.label).join(' · ') : undefined}
+                    onClick={() => {
+                    const next = selected ? null : alt
+                    setSelectedAlt(next)
+                    get('settings', 'route').then(r => {
+                      if (r) put('settings', { ...r, cruiseAlt: next }).catch(() => {})
+                    })
+                  }} style={{
                     background: selected ? 'var(--text)' : 'var(--bg-card-2)',
-                    border: `0.5px solid ${selected ? 'var(--text)' : belowMEA ? 'rgba(255,159,10,0.5)' : 'var(--border)'}`,
+                    border: `0.5px solid ${selected ? 'var(--text)'
+                      : best ? 'var(--ok)'
+                      : belowMEA ? 'rgba(255,159,10,0.5)' : 'var(--border)'}`,
                     borderRadius: 8, padding: '7px 0',
                     fontSize: 13, fontWeight: 600,
-                    color: selected ? 'var(--bg)' : belowMEA ? 'var(--warn)' : 'var(--text)',
+                    color: selected ? 'var(--bg)' : gate ? 'var(--text-tertiary)'
+                      : belowMEA ? 'var(--warn)' : 'var(--text)',
+                    // A gated altitude stays tappable — the pilot is the final
+                    // authority — but reads as discouraged and says why on hold.
+                    opacity: gate ? 0.45 : 1,
                     cursor: 'pointer', transition: 'all 0.18s', textAlign: 'center',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
                   }}>
-                    {alt.toLocaleString()} ft{belowMEA ? ' ⚠' : ''}
+                    <span>{fmtAlt(alt)}{belowMEA ? ' ⚠' : ''}{best ? ' ★' : ''}</span>
+                    {(cand || gate) && (
+                      <span style={{
+                        fontSize: 9, fontWeight: 500,
+                        color: selected ? 'var(--bg)' : gate ? 'var(--text-tertiary)' : 'var(--text-secondary)',
+                        opacity: 0.85, maxWidth: '95%', overflow: 'hidden',
+                        textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {gate ? gate.gates[0].label : `${cand.econ ? Math.round(cand.econ.blockMin) + ' min · ' : ''}${cand.score}`}
+                      </span>
+                    )}
                   </button>
                 )
               })}

@@ -224,7 +224,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '43', vs0: '35', vx: '55', vy: '67', vg: '60', va: '90', vfe: '85', vno: '107', vne: '149', vref: '54', cruise: '107' },
     fuel: { total: '26 USG', usable: '24.5 USG', type: '100LL' },
     burnRate: { climb: '6.1 GPH', cruise: '6.1 GPH' },
-    perf: { toRoll: '735 ft', to50ft: '1,340 ft', ldgRoll: '475 ft', ldg50ft: '1,200 ft' },
+    perf: { toRoll: '735 ft', to50ft: '1,340 ft', ldgRoll: '475 ft', ldg50ft: '1,200 ft', roc: '715 fpm', ceiling: '14,700 ft' },
     notes: 'VA at MTOW (1,670 lb). VFE applies all flap settings. Standard avgas trainer.',
   },
   {
@@ -237,7 +237,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '48', vs0: '40', vx: '62', vy: '74', vg: '68', va: '105', vfe: '85', vno: '129', vne: '163', vref: '62', cruise: '122' },
     fuel: { total: '56 USG', usable: '53 USG', type: '100LL' },
     burnRate: { climb: '11.5 GPH', cruise: '8.5 GPH' },
-    perf: { toRoll: '960 ft', to50ft: '1,630 ft', ldgRoll: '575 ft', ldg50ft: '1,335 ft' },
+    perf: { toRoll: '960 ft', to50ft: '1,630 ft', ldgRoll: '575 ft', ldg50ft: '1,335 ft', roc: '730 fpm', ceiling: '14,000 ft' },
     notes: '180 hp IO-360. VFE 110 kt (first 10° flap), 85 kt (10–30°). VA reduces with weight.',
   },
   {
@@ -250,7 +250,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '50', vs0: '45', vx: '64', vy: '76', vg: '76', va: '113', vfe: '102', vno: '125', vne: '154', vref: '66', cruise: '128' },
     fuel: { total: '50 USG', usable: '48 USG', type: '100LL' },
     burnRate: { climb: '11.5 GPH', cruise: '10 GPH' },
-    perf: { toRoll: '870 ft', to50ft: '1,600 ft', ldgRoll: '600 ft', ldg50ft: '1,390 ft' },
+    perf: { toRoll: '870 ft', to50ft: '1,600 ft', ldgRoll: '600 ft', ldg50ft: '1,390 ft', roc: '667 fpm', ceiling: '13,240 ft' },
     notes: 'Low wing, 180 hp O-360. Electric fuel pump ON for T/O & landing. VY = VG (76 kt). Differential braking for steering.',
   },
   {
@@ -263,7 +263,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '50', vs0: '41', vx: '60', vy: '84', vg: '70', va: '110', vfe: '100', vno: '140', vne: '175', vref: '62', cruise: '145' },
     fuel: { total: '92 USG', usable: '87 USG', type: '100LL' },
     burnRate: { climb: '17 GPH', cruise: '14 GPH' },
-    perf: { toRoll: '795 ft', to50ft: '1,514 ft', ldgRoll: '590 ft', ldg50ft: '1,350 ft' },
+    perf: { toRoll: '795 ft', to50ft: '1,514 ft', ldgRoll: '590 ft', ldg50ft: '1,350 ft', roc: '924 fpm', ceiling: '18,100 ft' },
     notes: '230 hp IO-540, constant-speed prop, cowl flaps. VFE 140 (10°) / 120 (20°) / 100 (30°). Turbo T182T differs at altitude.',
   },
   {
@@ -276,7 +276,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '73', vs0: '60', vx: '88', vy: '102', vg: '88', va: '133', vfe: '110', vno: '176', vne: '205', vref: '79', cruise: '183' },
     fuel: { total: '94.5 USG', usable: '92 USG', type: '100LL' },
     burnRate: { climb: '19 GPH', cruise: '16.5 GPH' },
-    perf: { toRoll: '1,082 ft', to50ft: '1,628 ft', ldgRoll: '693 ft', ldg50ft: '1,178 ft' },
+    perf: { toRoll: '1,082 ft', to50ft: '1,628 ft', ldgRoll: '693 ft', ldg50ft: '1,178 ft', roc: '1,270 fpm', ceiling: '17,500 ft' },
     notes: '310 hp IO-550-N, composite. CAPS parachute deploy ≤ 140 KIAS. Single power lever. VFE 150 kt (50% flap), 110 kt (full).',
   },
   {
@@ -289,7 +289,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '78', vs0: '61', vx: '72', vy: '104', vg: '95', va: '149', vfe: '95', vno: '175', vne: '175', vref: '82', cruise: '185' },
     fuel: { total: '335.6 USG', usable: '332 USG', type: 'Jet-A' },
     burnRate: { climb: '80 GPH', cruise: '62 GPH' },
-    perf: { toRoll: '1,365 ft', to50ft: '2,055 ft', ldgRoll: '950 ft', ldg50ft: '1,795 ft' },
+    perf: { toRoll: '1,365 ft', to50ft: '2,055 ft', ldgRoll: '950 ft', ldg50ft: '1,795 ft', roc: '1,275 fpm', ceiling: '25,000 ft' },
     notes: 'PT6A-140, 867 SHP. VMO replaces Vno/Vne. Inertial separator reduces perf. Rotate ~65–70 kt. Cargo pod ~1,090 lb.',
   },
   {
@@ -302,7 +302,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '67', vs0: '67', vx: '120', vy: '130', vg: '120', va: '166', vfe: '130', vno: '240', vne: '240', vref: '88', cruise: '290' },
     fuel: { total: '406.8 USG', usable: '402 USG', type: 'Jet-A' },
     burnRate: { climb: '75 GPH', cruise: '58 GPH' },
-    perf: { toRoll: '1,180 ft', to50ft: '2,485 ft', ldgRoll: '1,800 ft', ldg50ft: '2,170 ft' },
+    perf: { toRoll: '1,180 ft', to50ft: '2,485 ft', ldgRoll: '1,800 ft', ldg50ft: '2,170 ft', roc: '1,920 fpm', ceiling: '30,000 ft' },
     notes: 'PT6E-67XP, 1,200 SHP. EPECS (FADEC + autothrottle), single-lever. Pressurized to 30,000 ft. VMO 240 KCAS / M0.49. VFE by flap setting — verify AFM.',
   },
   {
@@ -315,7 +315,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '78', vs0: '81', vx: '125', vy: '140', vg: '135', va: '184', vfe: '158', vno: '260', vne: '260', vref: '109', cruise: '312' },
     fuel: { total: '544 USG', usable: '539 USG', type: 'Jet-A' },
     burnRate: { climb: '130 GPH', cruise: '96 GPH' },
-    perf: { toRoll: '1,940 ft', to50ft: '3,300 ft', ldgRoll: '2,100 ft', ldg50ft: '2,550 ft' },
+    perf: { toRoll: '1,940 ft', to50ft: '3,300 ft', ldgRoll: '2,100 ft', ldg50ft: '2,550 ft', roc: '2,731 fpm', ceiling: '35,000 ft' },
     notes: '2× PT6A-60A (1,050 SHP). Pressurized, winglets. VMO 260 KIAS / M0.58. V1 ≈ 99, Vr ≈ 104, V2 ≈ 109, Vmca 93 — compute per weight/condition. VFE 202 kt approach, 158 kt full. Burn at LRC FL350.',
   },
   // ── Helicopters ─────────────────────────────────────────
@@ -1626,6 +1626,18 @@ export default function Aircraft() {
                 onChange={v => patch('perf', 'ldgRoll', v)} placeholder="e.g. 575 ft" />
               <Field label="Ldg over 50 ft" value={profile.perf?.ldg50ft ?? ''}
                 onChange={v => patch('perf', 'ldg50ft', v)} placeholder="e.g. 1,335 ft" />
+              {/* Climb rate and ceiling are what let the altitude advisor work
+                  out whether climbing higher pays for itself on a given leg.
+                  Templates carry the book figures; correct them from your POH
+                  and the recommendation follows your aircraft, not a class. */}
+              <Field label="Rate of climb" value={profile.perf?.roc ?? ''}
+                onChange={v => patch('perf', 'roc', v)} placeholder="e.g. 730 fpm" />
+              <Field label="Service ceiling" value={profile.perf?.ceiling ?? ''}
+                onChange={v => patch('perf', 'ceiling', v)} placeholder="e.g. 14,000 ft" />
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-tertiary)', marginTop: 8, lineHeight: 1.45 }}>
+              Book figures at sea level and max gross. Used to plan the climb and to cap the
+              altitudes offered on the Route card.
             </div>
           </Section>
         )}

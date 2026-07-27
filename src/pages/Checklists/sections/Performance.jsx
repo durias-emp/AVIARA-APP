@@ -926,7 +926,16 @@ export function CruiseItem({ item, isChecked, onToggle }) {
   const cruiseRestored = useRef(false)
   useEffect(() => {
     if (!cruiseRestored.current) return
-    put('settings', { key: 'cruise', tas, burnRate, fuelOnBoard, flightRules, cruiseAlt, timeOfDay }).catch(() => {})
+    put('settings', { key: 'cruise', tas, burnRate, fuelOnBoard, flightRules, timeOfDay }).catch(() => {})
+    // Editing the altitude here updates the route record the rest of the app
+    // reads, rather than a second copy of it.
+    if (cruiseAlt !== '') {
+      get('settings', 'route').then(r => {
+        if (r && String(r.cruiseAlt ?? '') !== String(cruiseAlt)) {
+          put('settings', { ...r, cruiseAlt: parseFloat(cruiseAlt) || null }).catch(() => {})
+        }
+      })
+    }
   }, [tas, burnRate, fuelOnBoard, flightRules, cruiseAlt, timeOfDay])
 
   useEffect(() => {
@@ -944,7 +953,6 @@ export function CruiseItem({ item, isChecked, onToggle }) {
       // Always restore non-performance fields and label
       if (profile?.fullName) setAircraftLabel(profile.fullName)
       if (s?.flightRules) setFlightRules(s.flightRules)
-      if (s?.cruiseAlt)   setCruiseAlt(s.cruiseAlt)
       if (s?.timeOfDay)   setTimeOfDay(s.timeOfDay)
       setIsHelicopter(profile?.category === 'helicopter')
       cruiseRestored.current = true
@@ -969,7 +977,9 @@ export function CruiseItem({ item, isChecked, onToggle }) {
         setRouteBearing(((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360)
       }
     })
-    // Cruise altitude — saved alongside route
+    // Cruise altitude lives with the route and nowhere else. It used to be
+    // written here too, so the altitude the advisor recommended and the one
+    // the fuel plan used could disagree.
     get('settings', 'route').then(r => {
       if (r?.cruiseAlt) setCruiseAlt(String(r.cruiseAlt))
     })

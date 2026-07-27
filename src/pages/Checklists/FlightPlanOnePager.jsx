@@ -201,7 +201,7 @@ export default function FlightPlanOnePager({ onClose }) {
 
         <PLine l={route?.wpts?.length ? [dep, ...route.wpts.map(w => w.name), dest].join(' ') : `${dep}-${dest} DCT`} r="" />
         <PLine l={aircraftLine || 'AIRCRAFT'} r={lastWB ? `TOW ${Math.round(lastWB.weight)}` : 'TOW ----'} />
-        <PLine l={`CRZ ALT ${cruise?.cruiseAlt || route?.cruiseAlt || '----'}`} r={`WIND ${toWindStr}`} />
+        <PLine l={`CRZ ALT ${route?.cruiseAlt || '----'}`} r={`WIND ${toWindStr}`} />
         <PLine l={`RES ${reqReserve}MIN`} r={cruise?.fuelOnBoard ? `FOB ${cruise.fuelOnBoard}` : 'FOB --'} />
 
         <Rule />
@@ -259,7 +259,7 @@ export default function FlightPlanOnePager({ onClose }) {
         {/* ── ENROUTE ── */}
         <StageHead label="ENROUTE" active={stage === 'ENROUTE'} dimmed={dim('ENROUTE')} onClick={() => toggleStage('ENROUTE')} />
         <div style={{ opacity: dim('ENROUTE') ? 0.35 : 1, transition: 'opacity 0.15s' }}>
-          <PLine l="CRZ ALT / DIST" r={`${cruise?.cruiseAlt || route?.cruiseAlt || '----'} / ${route?.distNm ?? '---'}NM`} />
+          <PLine l="CRZ ALT / DIST" r={`${route?.cruiseAlt || '----'} / ${route?.distNm ?? '---'}NM`} />
           <PLine l="TAS / BURN" r={`${cruise?.tas ?? '---'} / ${cruise?.burnRate ?? '---'}GPH`} />
           <PLine l="FOB / RSV REQ" r={`${cruise?.fuelOnBoard ?? '--'}GAL / ${reqReserve}MIN`} />
           <PLine l="LOST COMM" r="SQUAWK 7600" />
