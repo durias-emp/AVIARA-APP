@@ -200,58 +200,6 @@ json.dump({'airports': airports,
           open(ap_out, 'w'), separators=(',', ':'))
 print(f'aerodromes: {len(airports)} fields -> {os.path.getsize(ap_out)/1e6:.2f} MB')
 
-
-# ── Airport details: runways + frequencies ────────────────────────
-# Replaces the SkyVector scrape. Keyed by the same ident as airports.json:
-#   {"IDENT": {"r": [[le, he, lengthFt, surface, headingT], …],
-#              "f": [[type, mhz], …]}}
-# Frequencies outside the VHF aeronautical band are dropped: the community
-# data carries occasional typos (an "approach" frequency of 32.71 MHz) and a
-# wrong frequency is worse than a missing one.
-VHF_LO, VHF_HI = 108.0, 137.0
-
-rw_path = os.path.join(SCRATCH, 'runways.csv')
-fq_path = os.path.join(SCRATCH, 'airport-frequencies.csv')
-for path, url in ((rw_path, 'https://davidmegginson.github.io/ourairports-data/runways.csv'),
-                  (fq_path, 'https://davidmegginson.github.io/ourairports-data/airport-frequencies.csv')):
-    if not os.path.exists(path):
-        print(f'downloading {os.path.basename(path)}…')
-        urllib.request.urlretrieve(url, path)
-
-known = {a[0] for a in airports}
-details = {}
-out_of_band = 0
-
-def num(x):
-    try:
-        return int(float(x))
-    except (TypeError, ValueError):
-        return None
-
-for row in csv.DictReader(open(fq_path, encoding='utf-8')):
-    ident = row['airport_ident']
-    if ident not in known:
-        continue
-    try:
-        mhz = float(row['frequency_mhz'])
-    except ValueError:
-        continue
-    if not (VHF_LO <= mhz <= VHF_HI):
-        out_of_band += 1
-        continue
-    details.setdefault(ident, {}).setdefault('f', []).append([row['type'], round(mhz, 3)])
-
-for row in csv.DictReader(open(rw_path, encoding='utf-8')):
-    ident = row['airport_ident']
-    if ident not in known or row['closed'] == '1':
-        continue
-    details.setdefault(ident, {}).setdefault('r', []).append([
-        row['le_ident'], row['he_ident'], num(row['length_ft']),
-        (row['surface'] or '')[:12], num(row['le_heading_degT']),
-    ])
-
-det_out = f'{OUT}/airport_details.json'
-json.dump(details, open(det_out, 'w'), separators=(',', ':'))
-print(f'airport details: {len(details)} fields '
-      f'({out_of_band} out-of-band frequencies dropped) '
-      f'-> {os.path.getsize(det_out)/1e6:.2f} MB')
+# Runway and frequency details are built separately, from the FAA's NASR
+# subscription and the COCESNA eAIP where those cover the field — see
+# scripts/build_airport_details.py.

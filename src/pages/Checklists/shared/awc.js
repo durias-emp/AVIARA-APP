@@ -78,10 +78,16 @@ const SURFACE_LABEL = raw => {
   return raw || null
 }
 
+const SOURCE_LABEL = {
+  FAA: 'FAA NASR',
+  AIP: 'COCESNA eAIP',
+  OA:  'OurAirports (community)',
+}
+
 async function bundledDetails(ids) {
   const all = await getDetails()
   const hit = ids.map(i => all[i]).find(Boolean)
-  if (!hit) return { frequencies: [], runways: [] }
+  if (!hit) return { frequencies: [], runways: [], source: null }
 
   const frequencies = (hit.f || []).map(([type, mhz]) => ({
     type: FREQ_LABEL[type] || type,
@@ -96,7 +102,11 @@ async function bundledDetails(ids) {
     if (le) runways.push({ id: le, hdg: hdg != null ? Math.round(hdg) % 360 : null, len, sfc: surface, slope: null })
     if (he) runways.push({ id: he, hdg: hdg != null ? Math.round(hdg + 180) % 360 : null, len, sfc: surface, slope: null })
   }
-  return { frequencies, runways }
+  const cycles = (await getDetails())._meta?.cycles || {}
+  const source = hit.s
+    ? { code: hit.s, label: SOURCE_LABEL[hit.s] || hit.s, cycle: cycles[hit.s] || null }
+    : null
+  return { frequencies, runways, source }
 }
 
 export async function fetchAWC(id) {
@@ -126,7 +136,7 @@ export async function lookupAirport(icao) {
     fetchAWC(id),
   ])
 
-  const det = detResult.status === 'fulfilled' ? detResult.value : { frequencies: [], runways: [] }
+  const det = detResult.status === 'fulfilled' ? detResult.value : { frequencies: [], runways: [], source: null }
   const awc = awcResult.status === 'fulfilled' ? awcResult.value : null
 
   if (!awc && !det.frequencies.length && !det.runways.length) throw new Error('not found')
@@ -158,6 +168,7 @@ export async function lookupAirport(icao) {
     tower:       awc?.tower  ?? null,
     rwyNum:      runways.length || awc?.rwyNum || null,
     frequencies: det.frequencies,
+    freqSource:  det.source,
     runways,
   }
 }

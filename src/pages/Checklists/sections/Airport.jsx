@@ -652,6 +652,10 @@ export function AirportItem({ item, isChecked, onToggle }) {
                     <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Frequencies</div>
                     <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 1 }}>
                       {icao} · {aptData.frequencies.length} frequencies
+                      {/* Where the numbers came from, and how current. The FAA
+                          set is on the 28-day cycle; the community set has no
+                          cycle at all, and a pilot should be able to tell. */}
+                      {aptData.freqSource && ` · ${aptData.freqSource.label}${aptData.freqSource.cycle ? ` ${aptData.freqSource.cycle}` : ''}`}
                     </div>
                   </div>
                 </div>
