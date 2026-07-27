@@ -17,6 +17,7 @@ import { analyzeAirspace } from '../../../lib/airspace'
 import { recommendCruise, fmtAlt } from '../../../lib/cruiseAdvisor'
 import { parseAircraftPerf } from '../../../lib/climbPerf'
 import CrossSection from './CrossSection'
+import { fetchBriefing } from '../../../lib/altitudeBrief'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -666,7 +667,7 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
 // Every figure here is the engine's own — the score breakdown IS the reasons
 // list, so nothing shown can drift from what was actually computed. What was
 // unavailable or assumed is stated rather than quietly folded in.
-function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick }) {
+function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick, brief, briefBusy, onBrief }) {
   if (busy && !advice) {
     return (
       <div style={{ borderRadius: 10, background: 'var(--bg-card-2)', padding: '11px 13px', marginBottom: 10 }}>
@@ -782,6 +783,63 @@ function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick }) {
           {advice.degraded.map(d => DEGRADED[d]).filter(Boolean).join(' · ')}
         </div>
       )}
+
+      {/* The written briefing. The analysis above stands on its own — this
+          reads it back as advice, and can only choose from the same legal
+          altitudes and quote the same figures. */}
+      <div style={{ marginTop: 9, borderTop: '0.5px solid var(--border)', paddingTop: 8 }}>
+        {!brief && (
+          <button onClick={onBrief} disabled={briefBusy} style={{
+            width: '100%', background: 'var(--bg-card)', border: '0.5px solid var(--border)',
+            borderRadius: 8, padding: '8px 0', fontSize: 12, fontWeight: 600,
+            color: briefBusy ? 'var(--text-tertiary)' : 'var(--text)',
+            cursor: briefBusy ? 'default' : 'pointer',
+          }}>
+            {briefBusy ? 'Writing the briefing…' : 'Brief me on this'}
+          </button>
+        )}
+
+        {brief?.status === 'ok' && (
+          <div>
+            {!brief.agrees && (
+              <div style={{
+                fontSize: 11, color: 'var(--warn)', marginBottom: 6, lineHeight: 1.45,
+                background: 'var(--warn-light)', borderRadius: 7, padding: '6px 8px',
+              }}>
+                The briefing prefers {fmtAlt(brief.altFt)}; the analysis scored {fmtAlt(brief.enginePick)} highest.
+                Both are legal here — the figures above are the measured ones.
+              </div>
+            )}
+            <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+              {brief.briefing}
+            </div>
+            {brief.watchFor && (
+              <div style={{ fontSize: 11.5, color: 'var(--warn)', marginTop: 6, lineHeight: 1.5 }}>
+                Watch for: {brief.watchFor}
+              </div>
+            )}
+            {!brief.agrees && (
+              <button onClick={() => onPick(brief.altFt)} style={{
+                marginTop: 8, width: '100%', background: 'var(--bg-card)',
+                border: '0.5px solid var(--border)', borderRadius: 8, padding: '7px 0',
+                fontSize: 12, fontWeight: 600, color: 'var(--text)', cursor: 'pointer',
+              }}>
+                Use {fmtAlt(brief.altFt)} instead
+              </button>
+            )}
+          </div>
+        )}
+
+        {brief && brief.status !== 'ok' && (
+          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+            {brief.status === 'not-configured'
+              ? 'Briefing is not set up on this deployment — the analysis above is unaffected.'
+              : brief.status === 'rejected'
+              ? `Briefing discarded: ${brief.reason}. The analysis above stands.`
+              : 'Briefing unavailable — the analysis above stands.'}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -822,6 +880,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [etd, setEtd] = useState('')
   const [advice, setAdvice] = useState(null)
   const [adviceBusy, setAdviceBusy] = useState(false)
+  const [brief, setBrief] = useState(null)
+  const [briefBusy, setBriefBusy] = useState(false)
 
   useEffect(() => {
     get('aircraft', 'profile').then(profile => {
@@ -1540,7 +1600,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       terrain: terrainInfo,
       airspace: airspaceInfo,
       fieldElevFt: route?.depElevFt ?? 0,
-    }).then(res => { if (!cancelled) { setAdvice(res); setAdviceBusy(false) } })
+    }).then(res => { if (!cancelled) { setAdvice(res); setAdviceBusy(false); setBrief(null) } })
       .catch(() => { if (!cancelled) { setAdvice({ status: 'unavailable' }); setAdviceBusy(false) } })
     return () => { cancelled = true }
   }, [
@@ -2605,6 +2665,14 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 : (isEast ? 'Odd thousands + 500 ft' : 'Even thousands + 500 ft')}
             </div>
             <AltitudeAdvice advice={advice} busy={adviceBusy} selectedAlt={selectedAlt} acPerf={acPerf}
+              brief={brief} briefBusy={briefBusy}
+              onBrief={() => {
+                setBriefBusy(true)
+                fetchBriefing(advice, {
+                  dep, dest, flightRules, etd,
+                  aircraftName: aircraft?.fullName || aircraft?.label,
+                }).then(b => { setBrief(b); setBriefBusy(false) })
+              }}
               onPick={alt => {
                 setSelectedAlt(alt)
                 get('settings', 'route').then(r => {
