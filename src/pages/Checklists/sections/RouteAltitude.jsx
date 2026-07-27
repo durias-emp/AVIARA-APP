@@ -13,6 +13,7 @@ import { sampleRoute } from '../../../lib/corridor'
 import { analyzeTerrain, MOUNTAIN_FT } from '../../../lib/terrain'
 import { analyzeWater } from '../../../lib/water'
 import { analyzeAerodromes } from '../../../lib/aerodromes'
+import { analyzeAirspace } from '../../../lib/airspace'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -884,6 +885,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [waterInfo, setWaterInfo] = useState(null)
   // Aerodromes near the route — which fields, how far off track.
   const [aeroInfo, setAeroInfo] = useState(null)
+  // Class B/C/D the ground track crosses, with their vertical limits.
+  const [airspaceInfo, setAirspaceInfo] = useState(null)
   // Per-source outcome: 'ok' | 'unavailable' | 'not-covered'. A failed query
   // and a clear route used to render identically (nothing), so a dead service
   // read as "no hazards found".
@@ -893,7 +896,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [detectedSUANames, setDetectedSUANames]   = useState([])
   const [detectedSUAPolys, setDetectedSUAPolys]   = useState([]) // [{name, typeCode, poly:[lat,lon][]}]
   useEffect(() => {
-    if (waypoints.length < 2) { setDetectedTerrain([]); setTerrainInfo(null); setWaterInfo(null); setAeroInfo(null); setSourceStatus({}); return }
+    if (waypoints.length < 2) { setDetectedTerrain([]); setTerrainInfo(null); setWaterInfo(null); setAeroInfo(null); setAirspaceInfo(null); setSourceStatus({}); return }
     let cancelled = false
 
     async function detect() {
@@ -950,6 +953,14 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       // NPS parks and FAA SUA — both US-only services, so a route outside
       // their coverage is reported as such instead of coming back empty.
       const inUS = touchesUS(waypoints)
+      // Controlled airspace (Class B/C/D) — the FAA class-airspace layer, so
+      // US-only for the same reason parks and SUA are.
+      const airspace = inUS
+        ? await analyzeAirspace(waypoints, { altFt: selectedAlt || null })
+        : { status: 'not-covered' }
+      setAirspaceInfo(airspace)
+      if (airspace.status === 'ok' && airspace.count > 0) det.push('airspace')
+
       const [npsRes, suaRes] = inUS ? await Promise.allSettled([
         fetch(`https://mapservices.nps.gov/arcgis/rest/services/LandResourcesDivisionTractAndBoundaryService/MapServer/1/query?where=1%3D1&geometry=${encodeURIComponent(bbox2)}&geometryType=esriGeometryEnvelope&spatialRel=esriSpatialRelIntersects&outFields=UNIT_NAME,UNIT_TYPE&returnGeometry=true&f=json`, { signal: AbortSignal.timeout(8000) }),
         fetch(`https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/Special_Use_Airspace/FeatureServer/0/query?where=1%3D1&geometry=${encodeURIComponent(bbox2)}&geometryType=esriGeometryEnvelope&spatialRel=esriSpatialRelIntersects&outFields=NAME,TYPE_CODE&returnGeometry=true&f=json`, { signal: AbortSignal.timeout(8000) }),
@@ -1000,6 +1011,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
       setSourceStatus({
         terrain: terrain.status === 'ok' ? 'ok' : 'unavailable',
+        airspace: !inUS ? 'not-covered' : airspace.status === 'ok' ? 'ok' : 'unavailable',
         parks: statusOf(npsRes),
         sua: statusOf(suaRes),
       })
@@ -1731,6 +1743,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                   const TERRAIN_DATA = {
                     water:     { label: 'Water',         items: ['Life jacket / flotation device aboard','Glide range reaches shore or vessel','Survival equipment for water temp','Filed flight plan with overwater leg'] },
                     mountains: { label: 'Mountains',     items: ['Terrain clearance — 1,000 ft above highest within 5 NM','Escape route identified for each leg','Turbulence / downdraft margins planned','Density altitude checked at cruise level'] },
+                    airspace:  { label: 'Controlled Airspace', items: ['Class B — explicit clearance required: "cleared into the Class B"','Class C — two-way radio established (ATC uses your callsign)','Class D — two-way radio before entering the surface area','Mode C transponder within 30 NM of a Class B primary airport','Check the airspace floor against your planned altitude'] },
                     aero:      { label: 'Aerodromes',    items: ['Cross at min 500 ft above circuit altitude','Monitor CTAF / MF frequency','Note traffic pattern direction'] },
                     oxygen:    { label: 'Oxygen',        items: ['Above 10,000 ft MSL >30 min: O₂ required (crew)','Above 12,500 ft MSL: O₂ required','Passengers: O₂ available above 10,000 ft'] },
                     parks:     { label: 'Nat. Park',     items: ['Check NPS overflight rules — many parks have voluntary/mandatory altitude corridors','Noise-sensitive wildlife areas may have seasonal restrictions','Review park-specific SFAR or LOA if applicable'] },
@@ -1994,10 +2007,12 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                             const chipColor = id =>
                               id === 'parks' ? { bg: 'rgba(52,199,89,0.15)', fg: 'rgba(52,199,89,0.9)', activeBg: 'rgba(52,199,89,0.28)', border: 'rgba(52,199,89,0.4)' }
                               : id === 'sua' ? { bg: 'rgba(255,149,0,0.15)', fg: 'rgba(255,149,0,0.9)', activeBg: 'rgba(255,149,0,0.28)', border: 'rgba(255,149,0,0.4)' }
+                              : id === 'airspace' ? { bg: 'rgba(90,200,250,0.15)', fg: 'rgba(90,200,250,0.95)', activeBg: 'rgba(90,200,250,0.28)', border: 'rgba(90,200,250,0.4)' }
                               : { bg: 'rgba(255,255,255,0.08)', fg: 'rgba(255,255,255,0.65)', activeBg: 'rgba(255,255,255,0.16)', border: 'rgba(255,255,255,0.25)' }
                             const subNames = id =>
                               id === 'parks' ? detectedParkNames
                               : id === 'sua' ? detectedSUANames
+                              : id === 'airspace' ? (airspaceInfo?.areas ?? []).map(a => a.name)
                               : []
                             return (
                               <div style={{ minWidth: 0, position: 'relative' }}>
@@ -2039,9 +2054,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                       route used to render identically — nothing — so a
                                       dead service read as "no hazards found". */}
                                   {(() => {
-                                    const failed = ['terrain', 'parks', 'sua'].filter(k => sourceStatus[k] === 'unavailable')
-                                    const uncovered = ['parks', 'sua'].filter(k => sourceStatus[k] === 'not-covered')
-                                    const LABEL = { terrain: 'Terrain', parks: 'Parks', sua: 'Special use airspace' }
+                                    const failed = ['terrain', 'airspace', 'parks', 'sua'].filter(k => sourceStatus[k] === 'unavailable')
+                                    const uncovered = ['airspace', 'parks', 'sua'].filter(k => sourceStatus[k] === 'not-covered')
+                                    const LABEL = { terrain: 'Terrain', airspace: 'Controlled airspace', parks: 'Parks', sua: 'Special use airspace' }
                                     return (<>
                                       {failed.length > 0 && (
                                         <span style={{
@@ -2077,6 +2092,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                           {activeChip && TERRAIN_DATA[activeChip] && (() => {
                             const c = activeChip === 'parks' ? { accent: 'rgba(52,199,89,0.9)', border: 'rgba(52,199,89,0.25)' }
                               : activeChip === 'sua' ? { accent: 'rgba(255,149,0,0.9)', border: 'rgba(255,149,0,0.25)' }
+                              : activeChip === 'airspace' ? { accent: 'rgba(90,200,250,0.95)', border: 'rgba(90,200,250,0.25)' }
                               : { accent: 'rgba(255,255,255,0.7)', border: 'rgba(255,255,255,0.15)' }
                             const names = activeChip === 'parks' ? detectedParkNames : activeChip === 'sua' ? detectedSUANames : []
                             const td = TERRAIN_DATA[activeChip]
@@ -2103,6 +2119,43 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                 {activeChip === 'sua' && (
                                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 10, lineHeight: 1.4 }}>
                                     Your route passes through or crosses the boundary of the following airspaces. Each requires a specific action before flight.
+                                  </div>
+                                )}
+
+                                {/* Controlled airspace — which classes the track crosses
+                                    and their floors/ceilings, marking the ones the planned
+                                    cruise sits inside */}
+                                {activeChip === 'airspace' && airspaceInfo?.status === 'ok' && airspaceInfo.areas.length > 0 && (
+                                  <div style={{ borderRadius: 8, background: 'rgba(255,255,255,0.04)', padding: '9px 11px', marginBottom: 10 }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                      {airspaceInfo.areas.map(a => {
+                                        const col = a.cls === 'B' ? '#FF3B30' : a.cls === 'C' ? '#FF9500' : '#5AC8FA'
+                                        return (
+                                          <div key={a.cls + a.name} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                                            <span style={{
+                                              fontSize: 10, fontWeight: 800, color: col, fontFamily: 'monospace',
+                                              border: `0.5px solid ${col}`, borderRadius: 3, padding: '1px 4px', flexShrink: 0,
+                                            }}>{a.cls}</span>
+                                            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                              {a.name}
+                                            </span>
+                                            <span style={{ fontSize: 10.5, color: a.atCruise ? 'var(--warn)' : 'rgba(255,255,255,0.5)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                                              {a.lowerFt === 0 ? 'SFC' : `${a.lowerFt?.toLocaleString()}`}–{a.upperFt?.toLocaleString()} ft
+                                            </span>
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                    {airspaceInfo.areas.some(a => a.atCruise) && (
+                                      <div style={{ fontSize: 10.5, color: 'var(--warn)', marginTop: 7, lineHeight: 1.45 }}>
+                                        Amber limits contain your planned altitude — entry needs a clearance (B) or
+                                        established two-way radio (C/D).
+                                      </div>
+                                    )}
+                                    <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.25)', marginTop: 6, lineHeight: 1.4 }}>
+                                      FAA class airspace · every area the ground track crosses is listed, including ones
+                                      below cruise — you still transit them on climb and descent. Class E excluded.
+                                    </div>
                                   </div>
                                 )}
 
