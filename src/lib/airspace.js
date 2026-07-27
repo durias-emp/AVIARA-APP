@@ -14,12 +14,34 @@
 // nothing. B/C/D are the classes that require two-way communication or a
 // clearance before entry.
 //
-// Coverage is US-only, and the caller is told so rather than shown an empty
-// list — see the not-covered handling in the overflight row.
+// Central America is covered too, from a bundled pack built out of COCESNA's
+// eAIP (see scripts/build_cenamer_airspace.py) — there is no queryable source
+// for that region at all, so the TMAs are parsed from the published prose.
+// Anywhere else, the caller is told the route is not covered rather than shown
+// an empty list.
 
 import { bboxOf, sampleRoute } from './corridor'
 
 const URL = 'https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/Class_Airspace/FeatureServer/0/query'
+
+// Where each source has anything to say. A route outside both is reported as
+// not covered.
+const US_BOXES = [
+  [24.0, 50.0, -125.0, -66.0],   // CONUS
+  [51.0, 72.0, -170.0, -129.0],  // Alaska
+  [18.0, 23.0, -161.0, -154.0],  // Hawaii
+]
+const CENAMER_BOX = [1.0, 21.0, -106.0, -81.0]   // CENAMER FIR
+
+const inBox = (w, [s, n, west, e]) => w.lat >= s && w.lat <= n && w.lon >= west && w.lon <= e
+const touchesUS = wps => wps.some(w => US_BOXES.some(b => inBox(w, b)))
+const touchesCenamer = wps => wps.some(w => inBox(w, CENAMER_BOX))
+
+let _cenamer = null
+async function getCenamer() {
+  if (!_cenamer) _cenamer = (await import('../data/geo/cenamer_airspace.json')).default.areas
+  return _cenamer
+}
 
 function pointInPoly(pt, poly) {
   let inside = false
@@ -67,12 +89,14 @@ function limitFt(val, code) {
 //
 // Returns { status:'ok', areas:[{name,cls,lowerFt,upperFt,atCruise}], count }
 //   or { status:'unavailable' } / { status:'empty' }
-export async function analyzeAirspace(waypoints, { altFt = null, timeoutMs = 10000 } = {}) {
-  const wps = (waypoints || []).filter(w => Number.isFinite(w?.lat) && Number.isFinite(w?.lon))
-  if (wps.length < 2) return { status: 'empty' }
-
+async function faaAreas(wps, timeoutMs) {
   const { samples } = sampleRoute(wps, { spacingNm: 25 })
-  const b = bboxOf(samples, 3)
+  // Query only the part of the route actually inside US coverage. A
+  // transatlantic route's full envelope spans an ocean, and the service
+  // rejects an envelope that large — which surfaced as "unavailable" on a
+  // route whose US portion queries perfectly well.
+  const inside = samples.filter(s => US_BOXES.some(b => inBox(s, b)))
+  const b = bboxOf(inside.length ? inside : samples, 3)
   const geom = `${b.minLon},${b.minLat},${b.maxLon},${b.maxLat}`
   const params = new URLSearchParams({
     where: "CLASS IN ('B','C','D')",
@@ -96,7 +120,7 @@ export async function analyzeAirspace(waypoints, { altFt = null, timeoutMs = 100
     if (d.error) throw new Error(d.error.message || 'service error')
     features = d.features || []
   } catch {
-    return { status: 'unavailable' }
+    return { status: 'unavailable', areas: [] }
   }
 
   const byKey = new Map()
@@ -120,17 +144,62 @@ export async function analyzeAirspace(waypoints, { altFt = null, timeoutMs = 100
     }
   }
 
-  const areas = [...byKey.values()].map(x => ({
-    ...x,
-    atCruise: altFt != null && x.lowerFt != null && x.upperFt != null
-      ? altFt >= x.lowerFt && altFt <= x.upperFt
-      : null,
-  }))
+  return { status: 'ok', areas: [...byKey.values()] }
+}
+
+// Bundled CENAMER pack — no network, so it cannot fail; the areas carry their
+// own approx flag where the eAIP describes a boundary by naming a national
+// border instead of publishing coordinates.
+async function cenamerAreas(wps) {
+  const all = await getCenamer()
+  return all
+    .filter(a => routeCrossesPoly(wps, a.poly))
+    .map(a => ({
+      name: a.name, cls: a.cls, lowerFt: a.lowerFt, upperFt: a.upperFt,
+      ref: a.ref, approx: a.approx, source: 'CENAMER',
+    }))
+}
+
+// waypoints: [{lat,lon}, ...]
+// altFt: planned cruise altitude — marks which areas the cruise sits inside.
+//
+// Returns { status:'ok', areas, count, sources } | { status:'unavailable' }
+//        | { status:'not-covered' } | { status:'empty' }
+export async function analyzeAirspace(waypoints, { altFt = null, timeoutMs = 10000 } = {}) {
+  const wps = (waypoints || []).filter(w => Number.isFinite(w?.lat) && Number.isFinite(w?.lon))
+  if (wps.length < 2) return { status: 'empty' }
+
+  const us = touchesUS(wps), ca = touchesCenamer(wps)
+  if (!us && !ca) return { status: 'not-covered' }
+
+  const [faa, cen] = await Promise.all([
+    us ? faaAreas(wps, timeoutMs) : Promise.resolve({ status: 'skip', areas: [] }),
+    ca ? cenamerAreas(wps) : Promise.resolve([]),
+  ])
+  // The bundled pack cannot fail, so a live failure only sinks the whole
+  // result when it was the only source that applied.
+  if (faa.status === 'unavailable' && !ca) return { status: 'unavailable' }
+
+  const areas = [...faa.areas.map(a => ({ ...a, ref: 'AMSL', approx: false, source: 'FAA' })), ...cen]
+    .map(x => ({
+      ...x,
+      // An AGL floor cannot be compared with a planned MSL altitude without
+      // knowing the terrain under it, so it is left unanswered rather than
+      // guessed.
+      atCruise: altFt != null && x.ref === 'AMSL' && x.lowerFt != null && x.upperFt != null
+        ? altFt >= x.lowerFt && altFt <= x.upperFt
+        : null,
+    }))
+
   // Most restrictive first, then the ones the cruise sits inside
-  const rank = { B: 0, C: 1, D: 2 }
+  const rank = { B: 0, C: 1, D: 2, E: 3 }
   areas.sort((x, y) => (y.atCruise === true) - (x.atCruise === true) ||
                        (rank[x.cls] ?? 9) - (rank[y.cls] ?? 9) ||
                        x.name.localeCompare(y.name))
 
-  return { status: 'ok', areas, count: areas.length }
+  return {
+    status: 'ok', areas, count: areas.length,
+    sources: [us && 'FAA', ca && 'CENAMER'].filter(Boolean),
+    partial: faa.status === 'unavailable',
+  }
 }

@@ -953,11 +953,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       // NPS parks and FAA SUA — both US-only services, so a route outside
       // their coverage is reported as such instead of coming back empty.
       const inUS = touchesUS(waypoints)
-      // Controlled airspace (Class B/C/D) — the FAA class-airspace layer, so
-      // US-only for the same reason parks and SUA are.
-      const airspace = inUS
-        ? await analyzeAirspace(waypoints, { altFt: selectedAlt || null })
-        : { status: 'not-covered' }
+      // Controlled airspace: FAA class airspace in the US, the bundled COCESNA
+      // pack over Central America. It decides its own coverage.
+      const airspace = await analyzeAirspace(waypoints, { altFt: selectedAlt || null })
       setAirspaceInfo(airspace)
       if (airspace.status === 'ok' && airspace.count > 0) det.push('airspace')
 
@@ -1011,7 +1009,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
       setSourceStatus({
         terrain: terrain.status === 'ok' ? 'ok' : 'unavailable',
-        airspace: !inUS ? 'not-covered' : airspace.status === 'ok' ? 'ok' : 'unavailable',
+        airspace: airspace.status === 'ok' ? 'ok' : airspace.status,
         parks: statusOf(npsRes),
         sua: statusOf(suaRes),
       })
@@ -2138,9 +2136,10 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                             }}>{a.cls}</span>
                                             <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                               {a.name}
+                                              {a.approx && <span style={{ color: 'rgba(255,255,255,0.3)' }}> · approx</span>}
                                             </span>
                                             <span style={{ fontSize: 10.5, color: a.atCruise ? 'var(--warn)' : 'rgba(255,255,255,0.5)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-                                              {a.lowerFt === 0 ? 'SFC' : `${a.lowerFt?.toLocaleString()}`}–{a.upperFt?.toLocaleString()} ft
+                                              {a.lowerFt === 0 ? 'SFC' : `${a.lowerFt?.toLocaleString()}`}–{a.upperFt?.toLocaleString()}{a.ref === 'AGL' ? ' AGL' : ' ft'}
                                             </span>
                                           </div>
                                         )
@@ -2153,8 +2152,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                       </div>
                                     )}
                                     <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.25)', marginTop: 6, lineHeight: 1.4 }}>
-                                      FAA class airspace · every area the ground track crosses is listed, including ones
-                                      below cruise — you still transit them on climb and descent. Class E excluded.
+                                      {(airspaceInfo.sources ?? []).includes('CENAMER')
+                                        ? 'FAA class airspace + COCESNA eAIP ENR 2.1 · "approx" means the eAIP describes that boundary by naming a national border rather than publishing coordinates. '
+                                        : 'FAA class airspace · '}
+                                      Every area the ground track crosses is listed, including ones below cruise — you
+                                      still transit them on climb and descent. Class E excluded.
                                     </div>
                                   </div>
                                 )}
