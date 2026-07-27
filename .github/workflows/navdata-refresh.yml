@@ -1,0 +1,85 @@
+# Keeps the bundled aeronautical data on the FAA's 28-day cycle.
+#
+# The airport pack is built from NASR, which the FAA republishes every 28 days.
+# Pinned by hand it goes stale four weeks after anyone last thought about it —
+# and stale frequencies at a small field are exactly the failure the pack was
+# built to avoid. The builders work the cycle out from the date, so this only
+# has to run them and commit whatever changed.
+#
+# Runs weekly rather than every 28 days: cheap, and it catches a cycle the FAA
+# posts late without waiting a further month. If nothing changed, nothing is
+# committed.
+
+name: Refresh navdata
+
+on:
+  schedule:
+    # 07:00 UTC every Thursday — NASR cycles take effect on a Thursday
+    - cron: '0 7 * * 4'
+  workflow_dispatch:        # and on demand, from the Actions tab
+
+concurrency:
+  group: navdata-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Rebuild the airport pack from the current NASR cycle
+        run: |
+          python3 scripts/build_cenamer_airspace.py   # eAIP frequencies feed the next step
+          python3 scripts/build_airport_details.py
+
+      - name: Sanity-check the result before committing
+        # A partial download or a changed FAA layout would show up here as a
+        # collapse in coverage. Better to fail the run and keep last cycle's
+        # data than to publish a pack with holes in it.
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          d = json.load(open('src/data/geo/airport_details.json'))
+          fields = {k: v for k, v in d.items() if k != '_meta'}
+          faa = sum(1 for v in fields.values() if v.get('s') == 'FAA')
+          freqs = sum(len(v.get('f', [])) for v in fields.values())
+          print(f'{len(fields)} fields, {faa} from FAA, {freqs} frequencies, '
+                f'cycle {d["_meta"]["cycles"]["FAA"]}')
+          if len(fields) < 20000 or faa < 5000 or freqs < 25000:
+              sys.exit('coverage collapsed — refusing to publish this pack')
+          PY
+
+      - name: Verify the app still builds with it
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit if anything changed
+        run: |
+          if git diff --quiet -- src/data; then
+            echo "No change this cycle."
+            exit 0
+          fi
+          CYCLE=$(python3 -c "import json;print(json.load(open('src/data/geo/airport_details.json'))['_meta']['cycles']['FAA'])")
+          git config user.name  "aviara-navdata"
+          git config user.email "noreply@github.com"
+          git add src/data
+          git commit -m "Navdata: NASR cycle ${CYCLE}
+
+          Rebuilt automatically by .github/workflows/navdata-refresh.yml.
+          Frequencies, runways and the CENAMER airspace pack now reflect the
+          ${CYCLE} cycle."
+          git push

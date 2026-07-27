@@ -27,13 +27,39 @@ Output: src/data/geo/airport_details.json
    "_meta": {"cycles": {...}}}
 """
 import csv, json, os, re, sys, urllib.request
+from datetime import date, timedelta
 
-SCRATCH = ("/private/tmp/claude-501/-Users-oliout-Desktop-CC-projects-AVIARA-APP/"
-           "cc1f0f2f-31a5-48ef-ab87-7f9423836159/scratchpad")
+# Downloads are cached here between runs. Override with AVIARA_CACHE; the
+# default keeps the builders working identically on a laptop and on CI, where
+# no session scratch directory exists.
+CACHE = os.environ.get('AVIARA_CACHE') or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.cache')
+os.makedirs(CACHE, exist_ok=True)
+
+
+SCRATCH = CACHE
 OUT = sys.argv[1] if len(sys.argv) > 1 else 'src/data/geo'
 
-NASR_CYCLE = os.environ.get('NASR_CYCLE', '09_Jul_2026')
 NASR_BASE = 'https://nfdc.faa.gov/webContent/28DaySub/extra'
+
+# NASR runs on the 28-day AIRAC-aligned cycle. Rather than pin a date that goes
+# stale every four weeks, work it out: 9 Jul 2026 was an effective date, and
+# every cycle since is a multiple of 28 days from it. The FAA publishes the
+# next cycle ahead of time, so "current" means the latest one already in force.
+NASR_EPOCH = date(2026, 7, 9)
+
+
+def current_cycle(today=None):
+    today = today or date.today()
+    n = (today - NASR_EPOCH).days // 28
+    return NASR_EPOCH + timedelta(days=28 * n)
+
+
+def cycle_tag(d):
+    return d.strftime('%d_%b_%Y')
+
+
+NASR_CYCLE = os.environ.get('NASR_CYCLE') or cycle_tag(current_cycle())
 OA_BASE = 'https://davidmegginson.github.io/ourairports-data'
 
 VHF_LO, VHF_HI = 108.0, 137.0
@@ -45,6 +71,25 @@ def fetch(path, url):
         print(f'downloading {os.path.basename(path)}…')
         urllib.request.urlretrieve(url, path)
     return path
+
+
+def fetch_nasr(name, subset):
+    """Download a NASR subset for the current cycle, stepping back a cycle if
+    the FAA has not posted it — better a four-week-old official file than a
+    failed build that leaves the app on data months older."""
+    global NASR_CYCLE
+    for back in (0, 1):
+        tag = os.environ.get('NASR_CYCLE') or cycle_tag(current_cycle() - timedelta(days=28 * back))
+        path = f'{SCRATCH}/nasr/{tag}_{name}'
+        try:
+            fetch(path, f'{NASR_BASE}/{tag}_{subset}_CSV.zip')
+            NASR_CYCLE = tag
+            return path
+        except Exception as exc:                      # noqa: BLE001 - any HTTP failure
+            print(f'  {tag} {subset}: {exc}')
+            if os.path.exists(path):
+                os.remove(path)
+    raise SystemExit(f'NASR {subset} not available for this cycle or the last')
 
 
 def unzip(zip_path, dest):
@@ -120,10 +165,10 @@ for row in csv.DictReader(open(oa_rw, encoding='utf-8')):
 print(f'OurAirports base: {len(details)} fields ({oa_dropped} out-of-band frequencies dropped)')
 
 # ── 2. FAA NASR override (United States) ──────────────────────────
-apt_dir = unzip(fetch(f'{SCRATCH}/nasr/apt.zip', f'{NASR_BASE}/{NASR_CYCLE}_APT_CSV.zip'),
-                f'{SCRATCH}/nasr/apt')
-frq_dir = unzip(fetch(f'{SCRATCH}/nasr/frq.zip', f'{NASR_BASE}/{NASR_CYCLE}_FRQ_CSV.zip'),
-                f'{SCRATCH}/nasr/FRQ')
+apt_zip = fetch_nasr('apt.zip', 'APT')
+frq_zip = fetch_nasr('frq.zip', 'FRQ')
+apt_dir = unzip(apt_zip, f'{SCRATCH}/nasr/{NASR_CYCLE}_apt')
+frq_dir = unzip(frq_zip, f'{SCRATCH}/nasr/{NASR_CYCLE}_frq')
 
 # FAA ident -> the key airports.json uses (ICAO where the field has one)
 site_key, faa_to_key = {}, {}

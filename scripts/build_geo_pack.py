@@ -45,7 +45,15 @@ Output: src/data/geo/land.json
 """
 import csv, json, math, os, re, sys, urllib.request
 
-SCRATCH = "/private/tmp/claude-501/-Users-oliout-Desktop-CC-projects-AVIARA-APP/cc1f0f2f-31a5-48ef-ab87-7f9423836159/scratchpad"
+# Downloads are cached here between runs. Override with AVIARA_CACHE; the
+# default keeps the builders working identically on a laptop and on CI, where
+# no session scratch directory exists.
+CACHE = os.environ.get('AVIARA_CACHE') or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.cache')
+os.makedirs(CACHE, exist_ok=True)
+
+
+SCRATCH = CACHE
 URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_land.geojson'
 LAKES_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_lakes.geojson'
 AIRPORTS_URL = 'https://davidmegginson.github.io/ourairports-data/airports.csv'

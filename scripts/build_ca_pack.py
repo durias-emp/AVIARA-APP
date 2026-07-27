@@ -20,7 +20,15 @@ URLS (AIRAC cycle in the path — bump per cycle):
 """
 import json, os, re, sys
 
-SCRATCH = "/private/tmp/claude-501/-Users-oliout-Desktop-CC-projects-AVIARA-APP/cc1f0f2f-31a5-48ef-ab87-7f9423836159/scratchpad/cocesna"
+# Downloads are cached here between runs. Override with AVIARA_CACHE; the
+# default keeps the builders working identically on a laptop and on CI, where
+# no session scratch directory exists.
+CACHE = os.environ.get('AVIARA_CACHE') or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.cache')
+os.makedirs(CACHE, exist_ok=True)
+
+
+SCRATCH = os.path.join(CACHE, 'cocesna')
 OUT = sys.argv[1] if len(sys.argv) > 1 else "src/data/navdata"
 
 COORD_RE = re.compile(r'(\d{6}(?:\.\d+)?)([NS])\D{0,40}?(\d{7}(?:\.\d+)?)([EW])', re.S)
