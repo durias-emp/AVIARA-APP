@@ -217,28 +217,128 @@ function DraggableWaypoint({ position, index, onMove, onRemove, name, removable 
   )
 }
 
-// PolylineEditor — tap or drag the route line to add a point, and renders the
-// line itself. The tap no longer inserts a coordinate outright: it hands the
-// position to the drop picker, which offers what is actually charted there.
-function PolylineEditor({ waypoints, onDrop }) {
+// PolylineEditor — the route line, and the rubber-band drag that bends it.
+//
+// Grab the magenta line anywhere and pull: the two legs either side follow the
+// finger live, and letting go puts a waypoint there. This is the gesture from
+// ForeFlight, and the thing that makes it feel right is that nothing waits for
+// React — the temporary line and dot are Leaflet layers moved directly on each
+// pointer frame. Routing every move through state re-renders the map mid-drag,
+// which is what made earlier attempts stutter and drop the gesture.
+//
+// A tap with no movement still opens the picker; a drag commits the point where
+// it was released and then offers to snap it to whatever is charted there.
+function PolylineEditor({ waypoints, onDrop, onDragInsert }) {
+  const map = useMap()
   const positions = waypoints.map(w => [w.lat, w.lon])
+  const drag = useRef(null)
+  const hitRef = useRef(null)
+
+  // Which leg is nearest — the one the bend belongs to.
+  const segmentAt = (lat, lon) => {
+    let bestSeg = 1, bestDist = Infinity
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const d = crossTrackNM(lat, lon, [waypoints[i].lat, waypoints[i].lon], [waypoints[i + 1].lat, waypoints[i + 1].lon])
+      if (d < bestDist) { bestDist = d; bestSeg = i + 1 }
+    }
+    return bestSeg
+  }
+
+  useEffect(() => {
+    const pointFrom = (ev) => {
+      const t = ev.touches?.[0] ?? ev.changedTouches?.[0] ?? ev
+      if (t.clientX == null) return null
+      return map.containerPointToLatLng(
+        map.mouseEventToContainerPoint({ clientX: t.clientX, clientY: t.clientY }))
+    }
+
+    const onMove = (ev) => {
+      const d = drag.current
+      if (!d) return
+      const ll = pointFrom(ev)
+      if (!ll) return
+      // Past this distance it is a drag, not a tap that wobbled.
+      if (!d.moved && map.latLngToContainerPoint(ll).distanceTo(d.startPx) > 6) d.moved = true
+      if (!d.moved) return
+      ev.preventDefault()
+      d.latlng = ll
+      d.line.setLatLngs([d.prev, ll, d.next])
+      d.dot.setLatLng(ll)
+    }
+
+    const onUp = () => {
+      const d = drag.current
+      if (!d) return
+      drag.current = null
+      map.removeLayer(d.line); map.removeLayer(d.dot)
+      map.dragging.enable()
+      const { lat, lng } = d.latlng
+      if (d.moved) onDragInsert({ lat, lon: lng, seg: d.seg })
+      else onDrop({ lat, lon: lng, seg: d.seg })
+    }
+
+    // Window-level, so a finger that leaves the map mid-drag still finishes the
+    // gesture rather than stranding a half-drawn line.
+    window.addEventListener('pointermove', onMove, { passive: false })
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    window.addEventListener('touchmove', onMove, { passive: false })
+    window.addEventListener('touchend', onUp)
+    // The gesture has to start on a real pointer event. Leaflet's own
+    // `mousedown` on a path is a compatibility event on touch — it arrives
+    // after the finger lifts, far too late to drag anything.
+    const path = hitRef.current?._path
+    const onDown = (ev) => {
+      const ll = pointFrom(ev)
+      if (!ll) return
+      ev.stopPropagation()
+      startDrag(ev, ll)
+    }
+    if (path) {
+      path.style.touchAction = 'none'
+      path.style.cursor = 'grab'
+      path.addEventListener('pointerdown', onDown)
+      path.addEventListener('touchstart', onDown, { passive: false })
+    }
+
+    function startDrag(ev, latlng) {
+      const seg = segmentAt(latlng.lat, latlng.lng)
+      map.dragging.disable()
+      const prev = positions[seg - 1], next = positions[seg]
+      drag.current = {
+        seg, prev, next, latlng, moved: false,
+        startPx: map.latLngToContainerPoint(latlng),
+        line: L.polyline([prev, latlng, next], {
+          color: '#a855f7', weight: 3.5, opacity: 0.95, dashArray: '7 5',
+        }).addTo(map),
+        dot: L.circleMarker(latlng, {
+          radius: 8, color: '#fff', weight: 2.5, fillColor: '#a855f7', fillOpacity: 1,
+        }).addTo(map),
+      }
+      if (ev?.preventDefault && ev.cancelable) ev.preventDefault()
+    }
+
+    return () => {
+      if (path) {
+        path.removeEventListener('pointerdown', onDown)
+        path.removeEventListener('touchstart', onDown)
+      }
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      window.removeEventListener('touchmove', onMove)
+      window.removeEventListener('touchend', onUp)
+      const d = drag.current
+      if (d) { map.removeLayer(d.line); map.removeLayer(d.dot); map.dragging.enable(); drag.current = null }
+    }
+  }, [map, JSON.stringify(positions)])
+
   return (<>
-    {/* Thick invisible hit-area so a finger tap on the line reliably inserts
-        a waypoint — 36px ≈ a fingertip */}
+    {/* Thick invisible hit-area so a finger finds the line — 36px ≈ a fingertip */}
     <Polyline
+      ref={hitRef}
       positions={positions}
       pathOptions={{ color: 'transparent', weight: 36, opacity: 0 }}
-      eventHandlers={{
-        click: (e) => {
-          L.DomEvent.stopPropagation(e)
-          let bestSeg = 1, bestDist = Infinity
-          for (let i = 0; i < waypoints.length - 1; i++) {
-            const d = crossTrackNM(e.latlng.lat, e.latlng.lng, [waypoints[i].lat, waypoints[i].lon], [waypoints[i+1].lat, waypoints[i+1].lon])
-            if (d < bestDist) { bestDist = d; bestSeg = i + 1 }
-          }
-          onDrop({ lat: e.latlng.lat, lon: e.latlng.lng, seg: bestSeg })
-        }
-      }}
     />
     {/* Visible line — ForeFlight-style magenta/purple course line, slightly translucent */}
     <Polyline positions={positions} pathOptions={{ color: '#a855f7', weight: 4, opacity: 0.65 }} />
@@ -540,7 +640,7 @@ function RouteHint() {
 // toggling a layer, TFR data arriving). That's what read as "the map glitches
 // constantly" and, on iOS, remounting mid-tap can also swallow the tap event
 // on nearby chips/buttons.
-function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, onDrop, onWaypointDrop, moveWaypoint, removeWaypoint }) {
+function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, onDrop, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint }) {
   return (<>
     <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' />
@@ -664,7 +764,7 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
         index={waypoints.length-1} onMove={moveWaypoint}
         name={waypoints[waypoints.length-1].name} removable={false} />
     )}
-    {waypoints.length >= 2 && <PolylineEditor waypoints={waypoints} onDrop={onDrop} />}
+    {waypoints.length >= 2 && <PolylineEditor waypoints={waypoints} onDrop={onDrop} onDragInsert={onDragInsert} />}
     {waypoints.length >= 2 && <LongPressAdd waypoints={waypoints} onDrop={onDrop} />}
     {waypoints.slice(1, -1).map((w, i) => (
       <DraggableWaypoint key={w.id} position={[w.lat, w.lon]} index={i + 1} onMove={onWaypointDrop} onRemove={removeWaypoint}
@@ -1098,6 +1198,15 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // charted point a mile or two away.
   const [dropPoint, setDropPoint] = useState(null)
   function openDropPicker(pt) { setDropPoint(pt) }
+
+  // Bending the route line: the point is added where the finger let go, no
+  // confirmation. The picker then opens on it, so snapping to a nearby fix or
+  // field is one tap away — dismissing leaves the coordinate exactly where it
+  // was dropped, which is what the gesture promised.
+  function onDragInsert({ lat, lon, seg }) {
+    insertWaypoint(seg, lat, lon)
+    setDropPoint({ lat, lon, moveIndex: seg })
+  }
 
   // Dragging a waypoint moves it immediately — the point follows the finger and
   // stays where it was let go — and then offers to snap it to whatever is
@@ -2040,7 +2149,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 (route.depPos[0] + route.destPos[0]) / 2,
                 (route.depPos[1] + route.destPos[1]) / 2,
               ]
-              const mapLayerProps = { layers, openaipKey, tfrData, detectedSUAPolys, waypoints, onDrop: openDropPicker, onWaypointDrop, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
+              const mapLayerProps = { layers, openaipKey, tfrData, detectedSUAPolys, waypoints, onDrop: openDropPicker, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
 
               return (<>
                 {/* Inline map */}
