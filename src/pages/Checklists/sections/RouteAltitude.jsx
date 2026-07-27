@@ -533,10 +533,23 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
         their API but prohibit hotlinking tiles, which is what this was doing.
         Cached z8-12; below 8 the chart is unreadable anyway and the mosaic's
         ragged edges look broken, so the basemap shows and the chart appears as
-        you zoom in — the ForeFlight behaviour. */}
+        you zoom in — the ForeFlight behaviour.
+
+        tileSize 128 + zoomOffset 1 is the fix for a soft-looking chart: the
+        service only publishes 256 px tiles at 96 dpi, so on a phone at 3x
+        every chart pixel was being stretched across three device pixels. This
+        pulls the next zoom level down and draws it into half the space, so a
+        tile's own pixels land closer to the screen's. Four times the tiles for
+        the same area, which is why it is worth doing for the chart layers and
+        not the basemap (that one already serves @2x tiles).
+
+        maxNativeZoom is one lower than the service's real limit because the
+        offset is added to it: at map zoom 11 this requests zoom 12, the
+        deepest level the FAA caches. */}
     {layers.sectional && (
       <TileLayer url="https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Sectional/MapServer/tile/{z}/{y}/{x}"
-        opacity={0.9} minZoom={8} maxNativeZoom={12} maxZoom={14}
+        tileSize={128} zoomOffset={1}
+        opacity={1} minZoom={8} maxNativeZoom={11} maxZoom={13}
         className="sectional-layer"
         errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
         attribution='&copy; FAA AIS' />
@@ -547,14 +560,16 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
         over-zooms the tiles, below minZoom the basemap shows. */}
     {layers.ifrlo && (
       <TileLayer url="https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_AreaLow/MapServer/tile/{z}/{y}/{x}"
-        opacity={0.9} minZoom={8} maxNativeZoom={11} maxZoom={13}
+        tileSize={128} zoomOffset={1}
+        opacity={1} minZoom={8} maxNativeZoom={11} maxZoom={13}
         className="sectional-layer"
         errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
         attribution='&copy; FAA AIS' />
     )}
     {layers.ifrhi && (
       <TileLayer url="https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_High/MapServer/tile/{z}/{y}/{x}"
-        opacity={0.9} minZoom={5} maxNativeZoom={9} maxZoom={13}
+        tileSize={128} zoomOffset={1}
+        opacity={1} minZoom={5} maxNativeZoom={8} maxZoom={12}
         className="sectional-layer"
         errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
         attribution='&copy; FAA AIS' />
