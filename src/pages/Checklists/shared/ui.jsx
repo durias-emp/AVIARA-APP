@@ -8,7 +8,15 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
   const rootRef = useRef(null)
   const wasOpenRef = useRef(open)
   const contentRef = useRef(null)
+  const wrapRef = useRef(null)
   const [measuredHeight, setMeasuredHeight] = useState(0)
+  // Once the opening animation has finished the cap comes off entirely. A card
+  // whose height is pinned to a number measured at open time clips anything
+  // that arrives later — a calculated route, a map, a forecast — and because
+  // the clipped content cannot make the pane any taller, there is nothing to
+  // scroll either. The measurement exists to animate the opening, not to
+  // decide how tall the card is allowed to be.
+  const [uncapped, setUncapped] = useState(false)
   // Mount content the first time it's opened, then keep it mounted (rather
   // than unmounting on every close) so the max-height transition has real
   // content to measure/animate instead of instantly popping in/out.
@@ -27,6 +35,18 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
 
   useEffect(() => {
     if (isOpen) setEverOpened(true)
+  }, [isOpen])
+
+  // Closing needs a pixel height to animate away from, so the cap goes back on
+  // at the card's current size before React renders the zero.
+  useLayoutEffect(() => {
+    if (isOpen) return
+    const el = wrapRef.current
+    if (el && el.style.maxHeight === 'none') {
+      el.style.maxHeight = `${contentRef.current?.scrollHeight ?? 0}px`
+      void el.offsetHeight
+    }
+    setUncapped(false)
   }, [isOpen])
 
   // Re-measure whenever the content's own size changes (e.g. async data
@@ -96,8 +116,12 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
       {/* Expanded content — connects flush to the card header. Stays mounted
           once opened so max-height has real content to measure/animate. */}
       {everOpened && (
-        <div style={{
-          maxHeight: isOpen ? measuredHeight : 0,
+        <div ref={wrapRef}
+          onTransitionEnd={e => {
+            if (e.target === e.currentTarget && e.propertyName === 'max-height' && isOpen) setUncapped(true)
+          }}
+          style={{
+          maxHeight: isOpen ? (uncapped ? 'none' : measuredHeight) : 0,
           overflow: 'hidden',
           background: 'var(--bg-card)',
           borderRadius: '0 0 14px 14px',
