@@ -9,9 +9,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <!-- Browser/PWA chrome follows the system appearance, matching --bg in each theme -->
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2f7" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1c1c22" />
+    <!-- Browser/PWA chrome colour. Deliberately a single tag with no media
+         query: iOS reads media-scoped theme-color tags when the app launches
+         and does not re-evaluate them afterwards, so switching the system
+         appearance left the status bar on the colour it started with until the
+         app was killed and reopened. useTheme rewrites this one on every
+         change instead. -->
+    <meta name="theme-color" content="#f2f2f7" />
     <title>AVIARA</title>
   </head>
   <body>
