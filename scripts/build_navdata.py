@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Build compact navdata JSON for AVIARA from FAA NASR CSVs + openAIP navaids.
+"""Build compact navdata JSON for AVIARA from FAA NASR + OurAirports navaids.
 
 Outputs:
   fixes.json   {"AAALL": [lat, lon], ...}            5-letter US GPS/RNAV fixes
   navaids.json {"MCO": [[lat, lon, "NAME", freq], ...], ...}  VOR-family, global
 Coords rounded to 5 decimals (~1 m).
 """
-import csv, json, math, os, sys
+import csv, json, math, os, sys, urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from faa_cycle import CACHE as _CACHE, download, nasr_subset
 
 # Downloads are cached here between runs. Override with AVIARA_CACHE; the
 # default keeps the builders working identically on a laptop and on CI, where
@@ -19,10 +22,19 @@ os.makedirs(CACHE, exist_ok=True)
 SCRATCH = CACHE
 OUT = sys.argv[1] if len(sys.argv) > 1 else SCRATCH
 
+# The subscription is fetched here rather than assumed to be lying in a scratch
+# directory, so the same script runs on a laptop and on the weekly CI refresh.
+FIX_DIR, CYCLE = nasr_subset('FIX')
+NAV_DIR, _ = nasr_subset('NAV')
+AWY_DIR, _ = nasr_subset('AWY')
+OA_NAVAIDS = download(f'{SCRATCH}/navaids_oa.csv',
+                      'https://davidmegginson.github.io/ourairports-data/navaids.csv')
+print(f'NASR cycle {CYCLE}')
+
 # ---------- Fixes (NASR FIX_BASE) ----------
 fixes = {}
 dup_fix = 0
-with open(f"{SCRATCH}/nasr/FIX_BASE.csv", newline="", encoding="utf-8", errors="replace") as f:
+with open(f"{FIX_DIR}/FIX_BASE.csv", newline="", encoding="utf-8", errors="replace") as f:
     for row in csv.DictReader(f):
         fid = row["FIX_ID"].strip().upper()
         if len(fid) != 5 or not fid.isalpha():
@@ -59,7 +71,7 @@ def add_navaid(ident, lat, lon, name, freq):
     lst.append(entry)
 
 nasr_count = 0
-with open(f"{SCRATCH}/nasr/NAV_BASE.csv", newline="", encoding="utf-8", errors="replace") as f:
+with open(f"{NAV_DIR}/NAV_BASE.csv", newline="", encoding="utf-8", errors="replace") as f:
     for row in csv.DictReader(f):
         ntype = row["NAV_TYPE"].strip().upper()
         if ntype not in VOR_TYPES:
@@ -82,7 +94,7 @@ with open(f"{SCRATCH}/nasr/NAV_BASE.csv", newline="", encoding="utf-8", errors="
 OA_VOR = {"VOR", "VOR-DME", "VORTAC", "DME", "TACAN", "VOT"}
 oa_count = 0
 try:
-    with open(f"{SCRATCH}/navaids_oa.csv", newline="", encoding="utf-8", errors="replace") as f:
+    with open(OA_NAVAIDS, newline="", encoding="utf-8", errors="replace") as f:
         for row in csv.DictReader(f):
             if row.get("type") not in OA_VOR:
                 continue
@@ -100,12 +112,19 @@ try:
 except FileNotFoundError:
     print("WARNING: navaids_oa.csv not in scratch — OurAirports layer skipped")
 
-# ---------- Navaids: openAIP global (fills non-US: YVR etc.) ----------
+# ---------- Navaids: openAIP global (optional) ----------
+# openAIP is CC BY-NC and its API key would have to live in CI, so it is no
+# longer part of the automated build. OurAirports covers the same navaids
+# (it is the better source outside the US anyway); if a local operator has
+# fetched the openAIP pages by hand they are still merged.
 # openAIP navaid types: 0 DME, 1 TACAN, 2 NDB, 3 VOR, 4 VOR-DME, 5 VORTAC, 6 DVOR, 7 DVOR-DME, 8 DVORTAC
 OAIP_VOR = {0, 1, 3, 4, 5, 6, 7, 8}
 oaip_count = 0
 for p in range(1, 7):
-    with open(f"{SCRATCH}/oaip_nav_{p}.json") as f:
+    path = f"{SCRATCH}/oaip_nav_{p}.json"
+    if not os.path.exists(path):
+        continue
+    with open(path) as f:
         data = json.load(f)
     for item in data.get("items", []):
         if item.get("type") not in OAIP_VOR:
@@ -122,6 +141,38 @@ for p in range(1, 7):
             pass
         add_navaid(item.get("identifier", ""), lat, lon, item.get("name", ""), freq)
         oaip_count += 1
+
+# ---------- Preserve what NASR does not publish ----------
+# NASR covers the United States. Central America (COCESNA), Mexico (SENEAM) and
+# the worldwide navaid layer are merged into these same files by their own
+# builders, so a US-only rebuild must not delete them: without this, refreshing
+# the cycle would drop 824 Central American and Mexican fixes, 192 airways and
+# 463 navaids — including SAP (San Pedro Sula), GYM (Guaymas) and VUP.
+kept_fix = kept_nav = 0
+if os.path.exists(f"{OUT}/fixes.json"):
+    for ident, coord in json.load(open(f"{OUT}/fixes.json")).items():
+        if ident not in fixes:
+            fixes[ident] = coord
+            kept_fix += 1
+            continue
+        # An ident can exist in both: MANTA is a US fix and a Mexican one, and
+        # duplicates are stored as a list of coordinate pairs. Keeping only the
+        # NASR entry silently deleted the Mexican half.
+        prev = coord if isinstance(coord[0], list) else [coord]
+        here = fixes[ident] if isinstance(fixes[ident][0], list) else [fixes[ident]]
+        for c in prev:
+            if not any(abs(c[0] - x[0]) < 0.02 and abs(c[1] - x[1]) < 0.02 for x in here):
+                here = here + [c]
+                kept_fix += 1
+        fixes[ident] = here if len(here) > 1 else here[0]
+if os.path.exists(f"{OUT}/navaids.json"):
+    for ident, entries in json.load(open(f"{OUT}/navaids.json")).items():
+        here = navaids.setdefault(ident, [])
+        for e in entries:
+            if not any(abs(e[0] - x[0]) < 0.01 and abs(e[1] - x[1]) < 0.01 for x in here):
+                here.append(e)
+                kept_nav += 1
+print(f"preserved from the previous build: {kept_fix} fixes, {kept_nav} navaids")
 
 json.dump(fixes, open(f"{OUT}/fixes.json", "w"), separators=(",", ":"))
 json.dump(navaids, open(f"{OUT}/navaids.json", "w"), separators=(",", ":"))
@@ -141,7 +192,7 @@ for probe in ("MCO", "MIA", "YVR", "OSI", "SFO"):
 awys = {}
 mea_by_from = {}
 trk_by_from = {}
-with open(f"{SCRATCH}/nasr/AWY_SEG_ALT.csv", newline="", encoding="utf-8", errors="replace") as f:
+with open(f"{AWY_DIR}/AWY_SEG_ALT.csv", newline="", encoding="utf-8", errors="replace") as f:
     for row in csv.DictReader(f):
         key = (row["AWY_ID"].strip(), row["AWY_LOCATION"].strip(), row["FROM_POINT"].strip().upper())
         try:
@@ -153,7 +204,7 @@ with open(f"{SCRATCH}/nasr/AWY_SEG_ALT.csv", newline="", encoding="utf-8", error
         except (ValueError, TypeError):
             pass
 
-with open(f"{SCRATCH}/nasr/AWY_BASE.csv", newline="", encoding="utf-8", errors="replace") as f:
+with open(f"{AWY_DIR}/AWY_BASE.csv", newline="", encoding="utf-8", errors="replace") as f:
     for row in csv.DictReader(f):
         awy_id = row["AWY_ID"].strip().upper()
         loc = row["AWY_LOCATION"].strip()
@@ -163,6 +214,35 @@ with open(f"{SCRATCH}/nasr/AWY_BASE.csv", newline="", encoding="utf-8", errors="
         mea = [mea_by_from.get((awy_id, loc, pts[i].upper())) for i in range(len(pts) - 1)]
         trk = [trk_by_from.get((awy_id, loc, pts[i].upper())) for i in range(len(pts) - 1)]
         awys.setdefault(awy_id, []).append({"loc": loc, "pts": pts, "mea": mea, "trk": trk})
+
+# Regional airway variants (loc CA/MX) come from the COCESNA and SENEAM
+# builders and are not in NASR — carry them across this rebuild.
+kept_awy = kept_var = 0
+if os.path.exists(f"{OUT}/airways.json"):
+    for ident, variants in json.load(open(f"{OUT}/airways.json")).items():
+        regional = [v for v in variants if v.get("loc") in ("CA", "MX")]
+        if not regional:
+            continue
+        if ident in awys:
+            # Rebuild in the previous file's order — appending regional variants
+            # at the end would reshuffle which variant expandAirway reaches
+            # first, for no reason other than merge mechanics.
+            fresh = [v for v in awys[ident] if v.get("loc") not in ("CA", "MX")]
+            merged, placed = [], False
+            for v in variants:
+                if v.get("loc") in ("CA", "MX"):
+                    merged.append(v)
+                elif not placed:
+                    merged.extend(fresh)
+                    placed = True
+            if not placed:
+                merged.extend(fresh)
+            awys[ident] = merged
+            kept_var += len(regional)
+        else:
+            awys[ident] = regional
+            kept_awy += 1
+print(f"preserved regional airways: {kept_awy} ids, {kept_var} variants")
 
 json.dump(awys, open(f"{OUT}/airways.json", "w"), separators=(",", ":"))
 print(f"airways: {len(awys)} ids -> {os.path.getsize(f'{OUT}/airways.json')/1e6:.2f} MB")

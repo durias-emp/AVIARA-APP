@@ -18,7 +18,7 @@ Outputs (merged in place, idempotent):
 URLS (AIRAC cycle in the path — bump per cycle):
   https://www.cocesna.org/aipca/AIP_2657/Eurocontrol/COCESNA/2026-07-09-NON%20AIRAC/html/eAIP/ES-CS-ENR-3.1-es-ES.html  (etc.)
 """
-import json, os, re, sys
+import json, os, re, sys, urllib.request
 
 # Downloads are cached here between runs. Override with AVIARA_CACHE; the
 # default keeps the builders working identically on a laptop and on CI, where
@@ -30,6 +30,28 @@ os.makedirs(CACHE, exist_ok=True)
 
 SCRATCH = os.path.join(CACHE, 'cocesna')
 OUT = sys.argv[1] if len(sys.argv) > 1 else "src/data/navdata"
+
+# The eAIP is fetched rather than assumed present, so the weekly refresh can
+# run this unattended. COCESNA puts the publication date in the path, so a new
+# edition needs BASE bumping — the AIRAC date is not derivable the way the FAA
+# cycle is.
+BASE = ('https://www.cocesna.org/aipca/AIP_2657/Eurocontrol/COCESNA/'
+        '2026-07-09-NON%20AIRAC/html/eAIP')
+
+
+def fetch(local, remote):
+    path = os.path.join(SCRATCH, local)
+    if not os.path.exists(path):
+        os.makedirs(SCRATCH, exist_ok=True)
+        print(f'  downloading {local}…')
+        urllib.request.urlretrieve(f'{BASE}/{remote}', path)
+    return path
+
+
+for _local, _remote in (('CS-ENR-3.1.html', 'ES-CS-ENR-3.1-es-ES.html'),
+                        ('CS-ENR-3.2.html', 'ES-CS-ENR-3.2-es-ES.html'),
+                        ('CS-ENR-4.4.html', 'ES-CS-ENR-4.4-es-ES.html')):
+    fetch(_local, _remote)
 
 COORD_RE = re.compile(r'(\d{6}(?:\.\d+)?)([NS])\D{0,40}?(\d{7}(?:\.\d+)?)([EW])', re.S)
 ROUTE_ID_RE = re.compile(r'^[A-Z]{1,2}\d{1,4}$')

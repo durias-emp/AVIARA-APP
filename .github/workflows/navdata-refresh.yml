@@ -40,9 +40,19 @@ jobs:
           node-version: '20'
           cache: npm
 
-      - name: Rebuild the airport pack from the current NASR cycle
+      # Mexico is not rebuilt here: SENEAM publishes PDFs whose URLs are not
+      # derivable, so build_mx_pack.py stays manual. Its data survives the
+      # refresh because build_navdata.py carries regional variants across.
+      - name: Rebuild from the current NASR cycle
         run: |
-          python3 scripts/build_cenamer_airspace.py   # eAIP frequencies feed the next step
+          # US navdata first: fixes, navaids and airways, with the Central
+          # American and Mexican additions carried across (NASR does not
+          # publish those, and a US-only rebuild would otherwise delete them).
+          python3 scripts/build_navdata.py src/data/navdata
+          # Then Central America on top, from the COCESNA eAIP.
+          python3 scripts/build_ca_pack.py src/data/navdata
+          # Airspace and airport details.
+          python3 scripts/build_cenamer_airspace.py
           python3 scripts/build_airport_details.py
 
       - name: Sanity-check the result before committing
@@ -52,14 +62,34 @@ jobs:
         run: |
           python3 - <<'PY'
           import json, sys
+          fail = []
+
           d = json.load(open('src/data/geo/airport_details.json'))
           fields = {k: v for k, v in d.items() if k != '_meta'}
           faa = sum(1 for v in fields.values() if v.get('s') == 'FAA')
           freqs = sum(len(v.get('f', [])) for v in fields.values())
-          print(f'{len(fields)} fields, {faa} from FAA, {freqs} frequencies, '
+          print(f'airports: {len(fields)} fields, {faa} from FAA, {freqs} frequencies, '
                 f'cycle {d["_meta"]["cycles"]["FAA"]}')
           if len(fields) < 20000 or faa < 5000 or freqs < 25000:
-              sys.exit('coverage collapsed — refusing to publish this pack')
+              fail.append('airport coverage collapsed')
+
+          fixes = json.load(open('src/data/navdata/fixes.json'))
+          navaids = json.load(open('src/data/navdata/navaids.json'))
+          awys = json.load(open('src/data/navdata/airways.json'))
+          ca = sum(1 for v in awys.values() for x in v if x.get('loc') == 'CA')
+          mx = sum(1 for v in awys.values() for x in v if x.get('loc') == 'MX')
+          print(f'navdata: {len(fixes)} fixes, {len(navaids)} navaids, {len(awys)} airways '
+                f'({ca} CA variants, {mx} MX variants)')
+          if len(fixes) < 65000 or len(navaids) < 3800 or len(awys) < 1500:
+              fail.append('navdata coverage collapsed')
+          # The regional packs live in the same files as the US data, and a
+          # US-only rebuild deleting them is the specific way this goes wrong,
+          # so they are checked by name rather than by total.
+          if ca < 100 or mx < 150:
+              fail.append('Central American or Mexican airways went missing')
+
+          if fail:
+              sys.exit('; '.join(fail) + ' — refusing to publish')
           PY
 
       - name: Verify the app still builds with it
