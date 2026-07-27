@@ -30,7 +30,9 @@ over ~5 NM across are kept: anything smaller cannot change a glide-range or
 life-jacket decision.
 
 Aerodromes come from OurAirports (public domain, same source as the navaid
-pack). Large and medium fields carry their name; small fields are ident-only,
+pack), in two files: the position list used for route proximity, and a details
+file (runways and frequencies) that replaces scraping a third-party site for
+the same information — worldwide, offline, and with no CORS proxy in the path. Large and medium fields carry their name; small fields are ident-only,
 which halves the file — a strip you would look up by ident anyway. Heliports,
 seaplane bases, balloonports and closed fields are excluded: none of them
 change how you cross an airport's traffic.
@@ -197,3 +199,59 @@ json.dump({'airports': airports,
                    'heliports, seaplane bases and closed fields excluded.'},
           open(ap_out, 'w'), separators=(',', ':'))
 print(f'aerodromes: {len(airports)} fields -> {os.path.getsize(ap_out)/1e6:.2f} MB')
+
+
+# ── Airport details: runways + frequencies ────────────────────────
+# Replaces the SkyVector scrape. Keyed by the same ident as airports.json:
+#   {"IDENT": {"r": [[le, he, lengthFt, surface, headingT], …],
+#              "f": [[type, mhz], …]}}
+# Frequencies outside the VHF aeronautical band are dropped: the community
+# data carries occasional typos (an "approach" frequency of 32.71 MHz) and a
+# wrong frequency is worse than a missing one.
+VHF_LO, VHF_HI = 108.0, 137.0
+
+rw_path = os.path.join(SCRATCH, 'runways.csv')
+fq_path = os.path.join(SCRATCH, 'airport-frequencies.csv')
+for path, url in ((rw_path, 'https://davidmegginson.github.io/ourairports-data/runways.csv'),
+                  (fq_path, 'https://davidmegginson.github.io/ourairports-data/airport-frequencies.csv')):
+    if not os.path.exists(path):
+        print(f'downloading {os.path.basename(path)}…')
+        urllib.request.urlretrieve(url, path)
+
+known = {a[0] for a in airports}
+details = {}
+out_of_band = 0
+
+def num(x):
+    try:
+        return int(float(x))
+    except (TypeError, ValueError):
+        return None
+
+for row in csv.DictReader(open(fq_path, encoding='utf-8')):
+    ident = row['airport_ident']
+    if ident not in known:
+        continue
+    try:
+        mhz = float(row['frequency_mhz'])
+    except ValueError:
+        continue
+    if not (VHF_LO <= mhz <= VHF_HI):
+        out_of_band += 1
+        continue
+    details.setdefault(ident, {}).setdefault('f', []).append([row['type'], round(mhz, 3)])
+
+for row in csv.DictReader(open(rw_path, encoding='utf-8')):
+    ident = row['airport_ident']
+    if ident not in known or row['closed'] == '1':
+        continue
+    details.setdefault(ident, {}).setdefault('r', []).append([
+        row['le_ident'], row['he_ident'], num(row['length_ft']),
+        (row['surface'] or '')[:12], num(row['le_heading_degT']),
+    ])
+
+det_out = f'{OUT}/airport_details.json'
+json.dump(details, open(det_out, 'w'), separators=(',', ':'))
+print(f'airport details: {len(details)} fields '
+      f'({out_of_band} out-of-band frequencies dropped) '
+      f'-> {os.path.getsize(det_out)/1e6:.2f} MB')

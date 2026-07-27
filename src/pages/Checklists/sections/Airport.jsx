@@ -618,6 +618,20 @@ export function AirportItem({ item, isChecked, onToggle }) {
           </>
         )}
 
+        {/* No published frequencies is a real answer for some fields in the
+            bundled data — say so rather than leaving a gap that reads as though
+            the section failed to load. */}
+        {aptData && !aptData.frequencies?.length && (
+          <div style={{ padding: '4px 14px' }}>
+            <div style={{
+              borderRadius: 11, background: 'var(--bg-card-2)', padding: '12px 16px',
+              fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.45,
+            }}>
+              No frequencies published for {icao} in our data — check the Chart Supplement or the AIP.
+            </div>
+          </div>
+        )}
+
         {/* Frequencies — card button that drops down the list */}
         {aptData?.frequencies?.length > 0 && (
           <div style={{ padding: '4px 14px 4px' }}>

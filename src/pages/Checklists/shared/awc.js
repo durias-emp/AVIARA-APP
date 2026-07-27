@@ -1,4 +1,4 @@
-/* ── Airport lookup — AWC proxy + SkyVector scraper ─────────── */
+/* ── Airport lookup — AWC proxy + bundled OurAirports details ── */
 const AWC = '/api/awc'  // Vercel serverless proxy — no CORS issues
 
 // Build URL for our proxy: /api/awc?path=airport&ids=KJFK&format=json
@@ -7,7 +7,7 @@ export function awcUrl(endpoint, params = {}) {
   return `${AWC}?${qs}`
 }
 
-// Fallback CORS proxies for SkyVector (HTML scraping only)
+// Fallback CORS proxies (TFR feeds and other third-party text endpoints)
 const PROXIES = [
   { url: 'https://corsproxy.io/?url=',         wrap: false },
   { url: 'https://api.allorigins.win/raw?url=', wrap: false },
@@ -43,86 +43,60 @@ export async function proxyJSON(url) {
   return JSON.parse(text)
 }
 
-/* Parse SkyVector airport page HTML → { frequencies, runways, elevation, coords, name } */
-function parseSkyVector(html) {
-  const doc = new DOMParser().parseFromString(html, 'text/html')
+/* Airport details — runways and frequencies from the bundled OurAirports
+   pack (see scripts/build_geo_pack.py). This replaced scraping skyvector.com
+   through a public CORS proxy: two third parties in the path for data that is
+   published openly, neither of which worked offline, and one of which forbids
+   it in their terms. Comparing the two over a sample, the bundled data matched
+   on the common frequencies and carried more of them outside the US (MGGT 6 vs
+   3, MSLP 6 vs 3) — but it is community-maintained, so a few fields have none
+   at all and the UI says so rather than showing an empty list. */
+let _details = null
+async function getDetails() {
+  if (!_details) _details = (await import('../../../data/geo/airport_details.json')).default
+  return _details
+}
 
-  // Airport name from <title> or first <h1>
-  const rawTitle = doc.querySelector('title')?.textContent || ''
-  const name = rawTitle.split(' - ')[0].trim()
+// OurAirports type codes -> labels the frequency grouping in Airport.jsx
+// already recognises (it matches on /tower|twr/, /ground|gnd/, and so on).
+const FREQ_LABEL = {
+  TWR: 'Tower', GND: 'Ground', CLD: 'Clearance Delivery', APP: 'Approach',
+  DEP: 'Departure', 'A/D': 'Approach/Departure', ATIS: 'ATIS', CTAF: 'CTAF',
+  UNIC: 'UNICOM', AFIS: 'AFIS', CNTR: 'Center', RDO: 'Radio', RMP: 'Ramp',
+  ARR: 'Arrival', AWOS: 'AWOS', ASOS: 'ASOS', ATF: 'ATF', FSS: 'FSS',
+  EMRG: 'Emergency', OPS: 'Operations', MISC: 'Other',
+}
 
-  const frequencies = []
-  const runways     = []
-  let   elevation   = null
-  let   coords      = null
-  let   country     = null
+const SURFACE_LABEL = raw => {
+  const s = (raw || '').toUpperCase()
+  if (/ASP|ASPH/.test(s)) return 'Asphalt'
+  if (/CON|CONC/.test(s)) return 'Concrete'
+  if (/TURF|GRAS|GRS/.test(s)) return 'Grass'
+  if (/GRVL|GRAVEL|GVL/.test(s)) return 'Gravel'
+  if (/DIRT|GROUND/.test(s)) return 'Dirt'
+  if (/WATER/.test(s)) return 'Water'
+  return raw || null
+}
 
-  // Walk every <tr> — SkyVector renders airport data in definition-style tables
-  doc.querySelectorAll('tr').forEach(row => {
-    const cells = [...row.querySelectorAll('td, th')]
-    if (cells.length < 2) return
-    const label = cells[0].textContent.trim()
-    const value = cells[1].textContent.trim()
+async function bundledDetails(ids) {
+  const all = await getDetails()
+  const hit = ids.map(i => all[i]).find(Boolean)
+  if (!hit) return { frequencies: [], runways: [] }
 
-    // Frequencies — aviation VHF range 108.0–136.975 MHz only
-    const FREQ_RE = /\b(1(?:0[89]|[12]\d|3[0-6])\.\d{1,3})\b/g
-    const allFreqs = [...value.matchAll(FREQ_RE)].map(m => m[1])
-    if (allFreqs.length && label) {
-      const segments = value.split(/;/).map(s => s.trim()).filter(Boolean)
-      allFreqs.forEach((freq, idx) => {
-        const seg = segments[idx] || ''
-        const qualifier = seg.replace(FREQ_RE, '').replace(/Tel\..*/, '').replace(/^\s*;?\s*/, '').trim()
-        const type = qualifier ? `${label} ${qualifier}`.trim() : label
-        if (!frequencies.find(f => f.freq === freq && f.type === type)) {
-          frequencies.push({ type, freq })
-        }
-      })
-    }
+  const frequencies = (hit.f || []).map(([type, mhz]) => ({
+    type: FREQ_LABEL[type] || type,
+    freq: mhz.toFixed(mhz % 1 === 0 ? 1 : 3).replace(/0$/, ''),
+  }))
 
-    // Elevation — label contains "Elev" or value contains "ft"
-    if (!elevation && /elev/i.test(label) && /\d/.test(value)) {
-      elevation = value.replace(/[^\d\s\-ft]/g, '').trim()
-    }
-
-    // Coordinates — label contains "Lat" / "Lon" or value matches coord pattern
-    if (!coords && /lat/i.test(label) && /\d/.test(value)) {
-      coords = value
-    }
-
-    // Country / Location
-    if (!country && /country|location/i.test(label)) {
-      country = value
-    }
-
-    // Runways — label matches runway ID pattern like "14/32" or "07L/25R"
-    if (/^\d{2}[LRC]?\/\d{2}[LRC]?$/.test(label)) {
-      runways.push({ id: label, info: value })
-    }
-  })
-
-  // Also scan individual <td> cells for runway IDs (some SkyVector layouts differ)
-  if (!runways.length) {
-    doc.querySelectorAll('td').forEach(td => {
-      const text = td.textContent.trim()
-      if (/^\d{2}[LRC]?\/\d{2}[LRC]?$/.test(text)) {
-        const next = td.nextElementSibling?.textContent.trim() || ''
-        if (!runways.find(r => r.id === text)) {
-          runways.push({ id: text, info: next })
-        }
-      }
-    })
+  // One row per runway becomes two ends, so each can be judged into the wind.
+  const runways = []
+  for (const [le, he, lenFt, sfc, hdg] of (hit.r || [])) {
+    const len = lenFt ? `${lenFt.toLocaleString()} ft` : null
+    const surface = SURFACE_LABEL(sfc)
+    if (le) runways.push({ id: le, hdg: hdg != null ? Math.round(hdg) % 360 : null, len, sfc: surface, slope: null })
+    if (he) runways.push({ id: he, hdg: hdg != null ? Math.round(hdg + 180) % 360 : null, len, sfc: surface, slope: null })
   }
-
-  // Airport diagram PDF — SkyVector links it as /files/tpp/CYCLE/pdf/XXXXXAD.PDF
-  let diagramUrl = null
-  doc.querySelectorAll('a[href]').forEach(a => {
-    if (!diagramUrl && /AD\.PDF$/i.test(a.getAttribute('href'))) {
-      const href = a.getAttribute('href')
-      diagramUrl = href.startsWith('http') ? href : `https://skyvector.com${href}`
-    }
-  })
-
-  return { name, elevation, coords, country, frequencies, runways, diagramUrl }
+  return { frequencies, runways }
 }
 
 export async function fetchAWC(id) {
@@ -146,44 +120,45 @@ export async function fetchAWC(id) {
 export async function lookupAirport(icao) {
   const id = icao.toUpperCase()
 
-  // Fire SkyVector + AWC in parallel — cuts wait time roughly in half
-  const [svResult, awcResult] = await Promise.allSettled([
-    proxyText(`https://skyvector.com/airport/${id}`),
+  const [detResult, awcResult] = await Promise.allSettled([
+    // ICAO first, then the FAA-style ident small US fields are keyed by
+    bundledDetails([id, id.replace(/^K/, '')]),
     fetchAWC(id),
   ])
 
-  const sv  = svResult.status  === 'fulfilled' ? parseSkyVector(svResult.value) : { name: '', elevation: null, country: null, frequencies: [], runways: [] }
+  const det = detResult.status === 'fulfilled' ? detResult.value : { frequencies: [], runways: [] }
   const awc = awcResult.status === 'fulfilled' ? awcResult.value : null
 
-  if (!sv.name && !awc) throw new Error('not found')
+  if (!awc && !det.frequencies.length && !det.runways.length) throw new Error('not found')
 
-  // Build detailed runway list from AWC data
+  // AWC runways carry gradient and are the fresher source, so they win when
+  // present; the bundled list covers the fields AWC does not know about.
   const detailedRunways = []
   for (const rwy of (awc?.runways || [])) {
     const ids = (rwy.id || '').split('/')
     const align = rwy.alignment
     if (ids[0] && align != null) {
-      const sfcRaw = rwy.surface || ''
-      const sfc = /asph|^a$/i.test(sfcRaw) ? 'Asphalt' : /conc|^c$/i.test(sfcRaw) ? 'Concrete' : /turf|grass|^t$/i.test(sfcRaw) ? 'Grass' : /gravel|^g$/i.test(sfcRaw) ? 'Gravel' : /dirt|^d$/i.test(sfcRaw) ? 'Dirt' : /water|^w$/i.test(sfcRaw) ? 'Water' : sfcRaw || null
       const len = rwy.length ? `${rwy.length.toLocaleString()} ft` : null
+      const sfc = SURFACE_LABEL(rwy.surface)
       detailedRunways.push({ id: ids[0], hdg: Math.round(align) % 360, len, sfc, slope: rwy.gradient ?? null })
       if (ids[1]) detailedRunways.push({ id: ids[1], hdg: Math.round(align + 180) % 360, len, sfc, slope: rwy.gradient != null ? -rwy.gradient : null })
     }
   }
+  const runways = detailedRunways.length ? detailedRunways : det.runways
 
   return {
     icaoId:      id,
-    name:        sv.name || awc?.name || id,
+    name:        awc?.name || id,
     lat:         awc?.lat  ?? null,
     lon:         awc?.lon  ?? null,
     elevFt:      awc?.elev != null ? Math.round(awc.elev * 3.28084) : null,
-    elev:        awc?.elev != null ? `${Math.round(awc.elev * 3.28084)} ft` : sv.elevation || null,
+    elev:        awc?.elev != null ? `${Math.round(awc.elev * 3.28084)} ft` : null,
     state:       awc?.state  ?? null,
-    country:     sv.country  || awc?.country || null,
+    country:     awc?.country ?? null,
     tower:       awc?.tower  ?? null,
-    rwyNum:      detailedRunways.length || sv.runways.length || awc?.rwyNum || null,
-    frequencies: sv.frequencies,
-    runways:     detailedRunways.length ? detailedRunways : sv.runways,
+    rwyNum:      runways.length || awc?.rwyNum || null,
+    frequencies: det.frequencies,
+    runways,
   }
 }
 
