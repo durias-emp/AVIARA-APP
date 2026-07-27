@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Coastline pack — bundled land polygons so AVIARA can tell water from land
-without a network call.
+"""Geo pack — bundled coastline and aerodrome data for overflight analysis,
+so it resolves in the cockpit without a network call.
 
 Source: Natural Earth 1:10m land (public domain), from the official
 natural-earth-vector repository. Natural Earth asks for no attribution and
@@ -29,17 +29,24 @@ crossing is exactly the kind of leg this feature exists to flag. Only lakes
 over ~5 NM across are kept: anything smaller cannot change a glide-range or
 life-jacket decision.
 
+Aerodromes come from OurAirports (public domain, same source as the navaid
+pack). Large and medium fields carry their name; small fields are ident-only,
+which halves the file — a strip you would look up by ident anyway. Heliports,
+seaplane bases, balloonports and closed fields are excluded: none of them
+change how you cross an airport's traffic.
+
 Output: src/data/geo/land.json
   {"polys": [[lat,lon], ...],         # flat vertex store
    "rings": [[[start,count], ...]],   # per polygon, outer ring first
    "bbox":  [[minLat,maxLat,minLon,maxLon], ...],
    "lakePolys" / "lakeRings" / "lakeBbox": the same three, for lakes}
 """
-import json, math, os, sys, urllib.request
+import csv, json, math, os, re, sys, urllib.request
 
 SCRATCH = "/private/tmp/claude-501/-Users-oliout-Desktop-CC-projects-AVIARA-APP/cc1f0f2f-31a5-48ef-ab87-7f9423836159/scratchpad"
 URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_land.geojson'
 LAKES_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_lakes.geojson'
+AIRPORTS_URL = 'https://davidmegginson.github.io/ourairports-data/airports.csv'
 OUT = sys.argv[1] if len(sys.argv) > 1 else 'src/data/geo'
 
 TOLERANCE = float(os.environ.get('TOL', 0.02))    # degrees, ~1.2 NM
@@ -152,3 +159,41 @@ json.dump({'polys': lp, 'rings': lr, 'bbox': lb,
 print(f'land:  {len(lr)} polygons, {lkept} vertices (from {lsrc}, {ldrop} tiny islands dropped)')
 print(f'lakes: {len(kr)} polygons, {kkept} vertices (from {ksrc}, {kdrop} small lakes dropped)')
 print(f'-> {os.path.getsize(path)/1e6:.2f} MB')
+
+
+# ── Aerodromes ────────────────────────────────────────────────────
+# [ident, lat, lon, class, name?] where class is 2 large / 1 medium / 0 small.
+# Names are carried for 2 and 1 only; including them for all 43k small fields
+# adds a megabyte for strips that are identified by code in practice.
+CLASS = {'large_airport': 2, 'medium_airport': 1, 'small_airport': 0}
+
+ap_path = os.path.join(SCRATCH, 'airports.csv')
+if not os.path.exists(ap_path):
+    print('downloading OurAirports…')
+    urllib.request.urlretrieve(AIRPORTS_URL, ap_path)
+
+airports = []
+for row in csv.DictReader(open(ap_path, encoding='utf-8')):
+    cls = CLASS.get(row['type'])
+    if cls is None:
+        continue
+    try:
+        la, lo = round(float(row['latitude_deg']), 4), round(float(row['longitude_deg']), 4)
+    except ValueError:
+        continue
+    ident = row['icao_code'] or row['gps_code'] or row['ident']
+    # OurAirports assigns placeholders like "SV-0001" to fields with no code.
+    # They are not identifiers a pilot can use, so they are not worth listing.
+    if not ident or re.fullmatch(r'[A-Z]{2}-\d+', ident):
+        continue
+    entry = [ident, la, lo, cls]
+    if cls:
+        entry.append(row['name'][:30])
+    airports.append(entry)
+
+ap_out = f'{OUT}/airports.json'
+json.dump({'airports': airports,
+           'note': 'OurAirports, public domain. Large/medium/small airports; '
+                   'heliports, seaplane bases and closed fields excluded.'},
+          open(ap_out, 'w'), separators=(',', ':'))
+print(f'aerodromes: {len(airports)} fields -> {os.path.getsize(ap_out)/1e6:.2f} MB')

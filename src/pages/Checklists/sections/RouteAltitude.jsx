@@ -12,6 +12,7 @@ import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expan
 import { sampleRoute } from '../../../lib/corridor'
 import { analyzeTerrain, MOUNTAIN_FT } from '../../../lib/terrain'
 import { analyzeWater } from '../../../lib/water'
+import { analyzeAerodromes } from '../../../lib/aerodromes'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -867,11 +868,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // Overwater measurement behind the Water chip — distance, longest crossing,
   // and how far from shore the route gets.
   const [waterInfo, setWaterInfo] = useState(null)
+  // Aerodromes near the route — which fields, how far off track.
+  const [aeroInfo, setAeroInfo] = useState(null)
   const [detectedParkNames, setDetectedParkNames] = useState([])
   const [detectedSUANames, setDetectedSUANames]   = useState([])
   const [detectedSUAPolys, setDetectedSUAPolys]   = useState([]) // [{name, typeCode, poly:[lat,lon][]}]
   useEffect(() => {
-    if (waypoints.length < 2) { setDetectedTerrain([]); setTerrainInfo(null); setWaterInfo(null); return }
+    if (waypoints.length < 2) { setDetectedTerrain([]); setTerrainInfo(null); setWaterInfo(null); setAeroInfo(null); return }
     let cancelled = false
 
     async function detect() {
@@ -906,40 +909,15 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       if (hasWater) det.push('water')
       if (hasMountains) det.push('mountains')
 
-      // Aerodromes: query FAA ArcGIS for airports within route bounding box, then filter by corridor
-      // FAA returns lat/lon as DMS strings e.g. "25-48-51.42N" / "080-17-24.42W"
-      const parseDMS = str => {
-        if (!str) return null
-        const m = str.match(/^(\d+)-(\d+)-([\d.]+)([NSEW])$/)
-        if (!m) return null
-        const dec = +m[1] + +m[2]/60 + +m[3]/3600
-        return (m[4] === 'S' || m[4] === 'W') ? -dec : dec
-      }
-      let hasAero = false
-      try {
-        const lats = pts.map(p => p[0]), lons = pts.map(p => p[1])
-        const pad = 0.3 // ~18 NM buffer on bbox
-        const bbox = `${Math.min(...lons)-pad},${Math.min(...lats)-pad},${Math.max(...lons)+pad},${Math.max(...lats)+pad}`
-        const url = `https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/US_Airport/FeatureServer/0/query?where=1%3D1&geometry=${encodeURIComponent(bbox)}&geometryType=esriGeometryEnvelope&spatialRel=esriSpatialRelIntersects&outFields=LATITUDE,LONGITUDE&returnGeometry=false&f=json`
-        const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
-        if (res.ok) {
-          const d = await res.json()
-          const airports = (d.features || []).map(f => ({
-            lat: parseDMS(f.attributes.LATITUDE),
-            lon: parseDMS(f.attributes.LONGITUDE),
-          })).filter(a => a.lat !== null && a.lon !== null)
-          hasAero = airports.some(ap => {
-            for (let s = 0; s < waypoints.length - 1; s++) {
-              const dist = crossTrackNM(ap.lat, ap.lon, [waypoints[s].lat, waypoints[s].lon], [waypoints[s+1].lat, waypoints[s+1].lon])
-              if (dist < 15) return true
-            }
-            return false
-          })
-        }
-      } catch { /* ignore */ }
+      // Aerodromes from the bundled worldwide set (see lib/aerodromes.js).
+      // This was an FAA ArcGIS query, which covers the US only — outside it
+      // the chip simply never appeared, which reads as "no fields near your
+      // route" rather than "not checked".
+      const aero = await analyzeAerodromes(waypoints)
+      setAeroInfo(aero)
+      const hasAero = aero.status === 'ok' && aero.count > 0
 
       if (hasAero) det.push('aero')
-      if (hasAero) det.push('builtup')
       if (selectedAlt && selectedAlt > 10000) det.push('oxygen')
 
       // Bounding box for park + SUA queries
@@ -1724,7 +1702,6 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                   const TERRAIN_DATA = {
                     water:     { label: 'Water',         items: ['Life jacket / flotation device aboard','Glide range reaches shore or vessel','Survival equipment for water temp','Filed flight plan with overwater leg'] },
                     mountains: { label: 'Mountains',     items: ['Terrain clearance — 1,000 ft above highest within 5 NM','Escape route identified for each leg','Turbulence / downdraft margins planned','Density altitude checked at cruise level'] },
-                    builtup:   { label: 'Built-up Areas',items: ['Min 1,000 ft AGL above highest obstacle within 2,000 ft','Emergency landing area identified','Noise abatement procedures noted'] },
                     aero:      { label: 'Aerodromes',    items: ['Cross at min 500 ft above circuit altitude','Monitor CTAF / MF frequency','Note traffic pattern direction'] },
                     oxygen:    { label: 'Oxygen',        items: ['Above 10,000 ft MSL >30 min: O₂ required (crew)','Above 12,500 ft MSL: O₂ required','Passengers: O₂ available above 10,000 ft'] },
                     parks:     { label: 'Nat. Park',     items: ['Check NPS overflight rules — many parks have voluntary/mandatory altitude corridors','Noise-sensitive wildlife areas may have seasonal restrictions','Review park-specific SFAR or LOA if applicable'] },
@@ -2076,6 +2053,39 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                 {activeChip === 'sua' && (
                                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 10, lineHeight: 1.4 }}>
                                     Your route passes through or crosses the boundary of the following airspaces. Each requires a specific action before flight.
+                                  </div>
+                                )}
+
+                                {/* Aerodromes — which fields and how far off track, so
+                                    "monitor CTAF" has a frequency to look up */}
+                                {activeChip === 'aero' && aeroInfo?.status === 'ok' && aeroInfo.fields.length > 0 && (
+                                  <div style={{ borderRadius: 8, background: 'rgba(255,255,255,0.04)', padding: '9px 11px', marginBottom: 10 }}>
+                                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.4px', marginBottom: 6 }}>
+                                      {aeroInfo.count} FIELD{aeroInfo.count === 1 ? '' : 'S'} WITHIN {aeroInfo.withinNm} NM OF TRACK
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                      {aeroInfo.fields.map(f => (
+                                        <div key={f.ident + f.alongNm} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                                          <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', fontFamily: 'monospace', letterSpacing: '0.5px', minWidth: 52 }}>
+                                            {f.ident}
+                                          </span>
+                                          <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {f.name || ''}
+                                          </span>
+                                          <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.6)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                                            {f.distNm} NM · {f.alongNm} NM in
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    {aeroInfo.count > aeroInfo.fields.length && (
+                                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 6 }}>
+                                        + {aeroInfo.count - aeroInfo.fields.length} more, smaller or farther off track
+                                      </div>
+                                    )}
+                                    <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.25)', marginTop: 6, lineHeight: 1.4 }}>
+                                      OurAirports · departure and destination excluded. Verify frequencies on the chart.
+                                    </div>
                                   </div>
                                 )}
 

@@ -178,3 +178,23 @@ export function bboxOf(samples, padNm = 0) {
   }
   return { minLat, maxLat, minLon, maxLon }
 }
+
+// Perpendicular (cross-track) distance from a point to the great circle
+// through a→b, in NM. Signed distance is not needed here, so it comes back
+// absolute. Points beyond either end of the segment are measured to that end,
+// so a field 200 NM past the destination isn't reported as "on track".
+export function crossTrackNm(lat, lon, a, b) {
+  const d13 = haversineNm(a[0], a[1], lat, lon)
+  if (d13 < 1e-6) return 0
+  const brg13 = bearing(a, [lat, lon]) * D2R
+  const brg12 = bearing(a, b) * D2R
+  const legNm = haversineNm(a[0], a[1], b[0], b[1])
+  const xt = Math.asin(Math.sin(d13 / R_NM) * Math.sin(brg13 - brg12)) * R_NM
+  // along-track distance decides whether the perpendicular actually lands on
+  // the segment
+  const at = Math.acos(Math.max(-1, Math.min(1, Math.cos(d13 / R_NM) / Math.cos(xt / R_NM)))) * R_NM
+  const ahead = Math.cos(brg13 - brg12) >= 0
+  if (!ahead) return d13
+  if (at > legNm) return haversineNm(b[0], b[1], lat, lon)
+  return Math.abs(xt)
+}
