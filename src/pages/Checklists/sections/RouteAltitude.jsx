@@ -233,6 +233,7 @@ function PolylineEditor({ waypoints, onDrop, onDragInsert }) {
   const positions = waypoints.map(w => [w.lat, w.lon])
   const drag = useRef(null)
   const hitRef = useRef(null)
+  const visRef = useRef(null)
 
   // Which leg is nearest — the one the bend belongs to.
   const segmentAt = (lat, lon) => {
@@ -242,6 +243,13 @@ function PolylineEditor({ waypoints, onDrop, onDragInsert }) {
       if (d < bestDist) { bestDist = d; bestSeg = i + 1 }
     }
     return bestSeg
+  }
+
+  // The route as it would look with the bend at `seg`.
+  const withBend = (seg, ll) => {
+    const next = positions.map(p => [...p])
+    next.splice(seg, 0, [ll.lat, ll.lng])
+    return next
   }
 
   useEffect(() => {
@@ -262,7 +270,7 @@ function PolylineEditor({ waypoints, onDrop, onDragInsert }) {
       if (!d.moved) return
       ev.preventDefault()
       d.latlng = ll
-      d.line.setLatLngs([d.prev, ll, d.next])
+      d.line.setLatLngs(withBend(d.seg, ll))
       d.dot.setLatLng(ll)
     }
 
@@ -271,6 +279,7 @@ function PolylineEditor({ waypoints, onDrop, onDragInsert }) {
       if (!d) return
       drag.current = null
       map.removeLayer(d.line); map.removeLayer(d.dot)
+      visRef.current?.setStyle({ opacity: 0.65 })
       map.dragging.enable()
       const { lat, lng } = d.latlng
       if (d.moved) onDragInsert({ lat, lon: lng, seg: d.seg })
@@ -305,11 +314,15 @@ function PolylineEditor({ waypoints, onDrop, onDragInsert }) {
       const seg = segmentAt(latlng.lat, latlng.lng)
       map.dragging.disable()
       const prev = positions[seg - 1], next = positions[seg]
+      // The temporary line is the whole route with the bend spliced in, drawn
+      // exactly like the real one — so what you drag is the route itself, not a
+      // dashed preview floating next to the old course.
+      visRef.current?.setStyle({ opacity: 0 })
       drag.current = {
         seg, prev, next, latlng, moved: false,
         startPx: map.latLngToContainerPoint(latlng),
-        line: L.polyline([prev, latlng, next], {
-          color: '#a855f7', weight: 3.5, opacity: 0.95, dashArray: '7 5',
+        line: L.polyline(withBend(seg, latlng), {
+          color: '#a855f7', weight: 4, opacity: 0.65,
         }).addTo(map),
         dot: L.circleMarker(latlng, {
           radius: 8, color: '#fff', weight: 2.5, fillColor: '#a855f7', fillOpacity: 1,
@@ -329,7 +342,12 @@ function PolylineEditor({ waypoints, onDrop, onDragInsert }) {
       window.removeEventListener('touchmove', onMove)
       window.removeEventListener('touchend', onUp)
       const d = drag.current
-      if (d) { map.removeLayer(d.line); map.removeLayer(d.dot); map.dragging.enable(); drag.current = null }
+      if (d) {
+        map.removeLayer(d.line); map.removeLayer(d.dot)
+        visRef.current?.setStyle({ opacity: 0.65 })
+        map.dragging.enable()
+        drag.current = null
+      }
     }
   }, [map, JSON.stringify(positions)])
 
@@ -340,8 +358,10 @@ function PolylineEditor({ waypoints, onDrop, onDragInsert }) {
       positions={positions}
       pathOptions={{ color: 'transparent', weight: 36, opacity: 0 }}
     />
-    {/* Visible line — ForeFlight-style magenta/purple course line, slightly translucent */}
-    <Polyline positions={positions} pathOptions={{ color: '#a855f7', weight: 4, opacity: 0.65 }} />
+    {/* Visible line — ForeFlight-style magenta/purple course line, slightly
+        translucent. Hidden while a drag is in progress: the dragged line takes
+        its place, so the route bends rather than gaining a second line. */}
+    <Polyline ref={visRef} positions={positions} pathOptions={{ color: '#a855f7', weight: 4, opacity: 0.65 }} />
   </>)
 }
 
