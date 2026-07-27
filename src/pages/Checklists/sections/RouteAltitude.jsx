@@ -1949,12 +1949,17 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         {route?.depPos && route?.destPos && (
           <div style={{ marginTop: 10 }}>
 
-            {/* Layer toggles */}
+            {/* Layer toggles — every chart is offered whatever the flight
+                rules. A VFR pilot still wants the enroute chart to see airways,
+                MEAs and the airspace structure, and hiding it made the map
+                depend on a setting that has nothing to do with what you can
+                look at. The rules decide which layer opens by default, not
+                which ones exist. */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
               {[
-                ...(flightRules === 'IFR'
-                  ? [{ id: 'ifrlo', label: 'IFR Low' }, { id: 'ifrhi', label: 'IFR High' }, { id: 'sectional', label: 'Sectional' }]
-                  : [{ id: 'sectional', label: 'Sectional' }]),
+                { id: 'sectional', label: 'Sectional' },
+                { id: 'ifrlo',     label: 'IFR Low' },
+                { id: 'ifrhi',     label: 'IFR High' },
                 { id: 'airspace',  label: 'Airspace' },
                 { id: 'tfr',       label: tfrLoading ? 'TFR…' : 'TFR' },
               ].map(l => (
@@ -2109,9 +2114,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         {/* Layer toggles */}
                         <div style={{ display: 'flex', gap: 7 }}>
                           {[
-                            ...(flightRules === 'IFR'
-                              ? [['ifrlo','LO'],['ifrhi','HI'],['sectional','SECT']]
-                              : [['sectional','SECT']]),
+                            ['sectional','SECT'],
+                            ['ifrlo','LO'],
+                            ['ifrhi','HI'],
                             ['airspace','ARSP'],
                             ['tfr', tfrLoading ? 'TFR…' : (layers.tfr && tfrData?.length === 0 ? 'TFR ·0' : 'TFR')],
                           ].map(([k,label]) => (
