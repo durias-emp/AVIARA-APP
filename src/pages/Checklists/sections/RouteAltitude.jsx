@@ -1166,12 +1166,23 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   async function applyPublished(r) {
     setPubBusy(r.d)
     const tokens = await classifyRoute(r.r, depPosHint.current)
-    setWptRows(tokens.filter(t => t.kind !== 'PROC').map((t, i) => ({
+    const rows = tokens.filter(t => t.kind !== 'PROC').map((t, i) => ({
       id: `wr-pfr-${i}`, text: t.text, resolved: t.resolved, error: null, creating: null,
-    })))
-    setRoute(null); setRE(null)
+    }))
+    setWptRows(rows)
+    // Clear the chart overlays. A published routing is about the points it
+    // goes through, and an enroute chart under it buries them in every other
+    // airway and navaid in the region — the route stops being the thing you
+    // can see. The plain basemap leaves the line and its own waypoints as the
+    // only marked features; the chart chips are one tap away when wanted.
+    setLayers({ sectional: false, ifrlo: false, ifrhi: false, airspace: false, tfr: false })
+    setRE(null)
     setPubBusy(null); setPubOpen(false)
     setPubApplied({ designator: r.label, string: r.r, skipped: tokens.filter(t => t.kind === 'PROC').map(t => t.text) })
+    // Draw it straight away rather than leaving the pilot to press Calculate:
+    // picking a published route is the decision, and the map re-frames onto
+    // the new routing as it appears.
+    await calcRoute({ rows, defaultChart: false })
   }
 
   function addWptRow() {
@@ -1708,7 +1719,10 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       // (V25, J501…) into their fix chain between the neighboring rows.
       // Distance sums per leg; course is the first leg's (what you'd fly
       // off the departure).
-      const rowTokens = wptRows.filter(r => r.resolved).map(r => r.resolved)
+      // over.rows lets a caller that has just built a new set of waypoints
+      // calculate with them immediately, rather than waiting a render for
+      // wptRows state to catch up.
+      const rowTokens = (over.rows ?? wptRows).filter(r => r.resolved).map(r => r.resolved)
       const wpts = []
       const airwayNotes = []
       for (let i = 0; i < rowTokens.length; i++) {
@@ -1772,8 +1786,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         atsTokens: [depId, ...rowTokens.map(t => t.name), destId],
       }
       setRoute(routeObj)
-      // Default chart per flight rules: IFR flights open on the enroute Low
-      setLayers(prev => ({ ...prev, [flightRules === 'IFR' ? 'ifrlo' : 'sectional']: true }))
+      // Default chart per flight rules: IFR flights open on the enroute Low.
+      // Skipped when the caller wants a clean map — picking a published route
+      // turns the charts off deliberately, and this would put one straight
+      // back.
+      if (over.defaultChart !== false) {
+        setLayers(prev => ({ ...prev, [flightRules === 'IFR' ? 'ifrlo' : 'sectional']: true }))
+      }
       // No fly-to here — RouteFitter frames the whole route on map mount,
       // and a lingering target would snap fullscreen away from that framing.
       setMapFlyTarget(null)
