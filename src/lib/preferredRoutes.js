@@ -11,10 +11,10 @@
 // subset and downloads on first use rather than at install (see
 // vite.config.js), so it is there offline once a route has been planned.
 
-import { looksLikeAirway, lookupAirway, resolveWaypoint } from './waypoints'
+import { looksLikeAirway, lookupAirway, resolveWaypoint, preloadNavdata } from './waypoints'
 import { getAirports } from './aerodromes'
 import { haversineNm } from './corridor'
-import { expandProcedure } from './procedures'
+import { expandProcedure, preloadProcedures } from './procedures'
 
 let _routes = null
 async function load() {
@@ -141,6 +141,12 @@ export async function lookupRoutes(dep, dest) {
   const data = await load()
   if (!data) return { exact: [], reverse: [], nearby: [] }
 
+  // Anyone asking what is published for a pair is a tap away from applying
+  // one, and applying it needs three packs that take a second or two to
+  // arrive. Start them now, in parallel, and let them land while the list is
+  // being read. Not awaited: the list itself does not need them.
+  warmRouteData()
+
   const exact = await preferredRoutes(dep, dest)
   // Only worth showing when the real answer is missing — alternatives
   // alongside an exact match are noise, and noise next to a filed route is
@@ -181,6 +187,12 @@ export async function lookupRoutes(dep, dest) {
   return { exact, reverse, nearby }
 }
 
+let _warm = null
+function warmRouteData() {
+  if (!_warm) _warm = Promise.all([preloadNavdata(), preloadProcedures()]).catch(() => null)
+  return _warm
+}
+
 // Split a published route string into tokens the route card can act on.
 //
 // Three kinds come back, and the difference matters:
@@ -195,6 +207,9 @@ export async function lookupRoutes(dep, dest) {
 // departure airport and a STAR to the destination, and a token is a procedure
 // precisely when it is published at one of them.
 export async function classifyRoute(routeString, nearPos, { dep, dest } = {}) {
+  // One wave instead of three. Without this the packs load in sequence,
+  // because each stage of the loop below is what triggers the next one.
+  await warmRouteData()
   const tokens = (routeString || '').trim().split(/\s+/).filter(Boolean)
   const classified = await Promise.all(tokens.map(async (text, i) => {
     if (looksLikeAirway(text) && await lookupAirway(text)) {

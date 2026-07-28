@@ -33,6 +33,11 @@ async function load() {
 // test, and it is asked only after the airway and fix tables have declined
 // the token.
 
+// Warmed alongside the other packs — see preloadNavdata() in waypoints.js.
+export function preloadProcedures() {
+  return load()
+}
+
 export async function lookupProcedure(airport, ident) {
   const data = await load()
   if (!data) return null

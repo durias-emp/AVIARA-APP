@@ -43,7 +43,7 @@ const CHECKLISTS = [
         title: 'AIRPORT',
         num: 3,
         items: [
-          { id: 'apt', label: 'Destination Airport', sub: 'Diagram · Charts · Services · NOTAM · FBO', expand: 'airport' },
+          { id: 'apt', label: 'Airports', sub: 'Destination · En route · Diagram · Services · NOTAM', expand: 'airport' },
         ],
       },
       {
