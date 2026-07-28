@@ -50,7 +50,16 @@ async function fetchGairmet(hazard, timeoutMs) {
   const url = `${AWC}?path=gairmet&format=json&hazard=${hazard}`
   const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
   if (!res.ok) throw new Error(String(res.status))
-  const data = await res.json()
+  // AWC answers 204 with an empty body when the product is current and holds
+  // nothing — no icing G-AIRMETs anywhere in the country, which is ordinary on
+  // a summer afternoon. Parsing that as JSON throws, and the rejection used to
+  // be read as "the service is down", which downgraded coverage to none and
+  // sent the card looking for a modelled substitute. "Asked, and there is
+  // none" is a better answer than either.
+  if (res.status === 204) return []
+  const text = await res.text()
+  if (!text.trim()) return []
+  const data = JSON.parse(text)
   return Array.isArray(data) ? data : []
 }
 

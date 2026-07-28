@@ -18,7 +18,7 @@
 // the recommendation stands on its own whether or not the briefing text is
 // available.
 
-import { bearing, haversineNm } from './corridor'
+import { bearing, haversineNm, sampleRoute } from './corridor'
 import { loadAtmosphere, atAltitude } from './atmosphere'
 import { analyzeHazards, worstAt } from './hazards'
 import { parseAircraftPerf, legEconomics, headwindComponent } from './climbPerf'
@@ -137,9 +137,15 @@ export async function recommendCruise(waypoints, {
   const perf = parseAircraftPerf(aircraft)
   const maxAlt = Math.max(...candidateAlts)
   const atmo = await loadAtmosphere(wps, { departAtISO, maxAltFt: maxAlt, timeoutMs })
-  const hazards = atmo.status === 'ok'
-    ? await analyzeHazards(wps, atmo, { timeoutMs })
-    : { status: 'unavailable', icing: [], turbulence: [], coverage: {}, convective: null }
+  // Hazards do not depend on the winds. Official G-AIRMET icing and
+  // turbulence come from the FAA's AWC, an entirely separate service, and
+  // analyzeHazards already asks for the modelled bands only when it has a
+  // profile to model them from. Gating the whole call on the wind fetch threw
+  // away real, official forecasts whenever Open-Meteo was down or rate
+  // limited — and those bands are not decoration: severe icing is a hard gate
+  // and moderate icing a penalty, so losing them quietly loosened the
+  // altitude advice at exactly the moment there was least else to go on.
+  const hazards = await analyzeHazards(wps, atmo, { timeoutMs })
 
   const degraded = []
   if (atmo.status !== 'ok') degraded.push('winds-aloft-unavailable')
@@ -309,7 +315,16 @@ export async function recommendCruise(waypoints, {
   // Ties go to the lower altitude: less climb, more options, warmer air.
   scored.sort((a, b) => b.score - a.score || a.altFt - b.altFt)
 
+  // Geometry for the days the winds do not arrive: five points along the
+  // track, the same shape loadAtmosphere would have returned.
+  const { samples: csAll } = sampleRoute(wps, { spacingNm: 5, maxSamples: 400 })
+  const csStep = Math.max(1, Math.floor((csAll.length - 1) / 4))
+  const csSamples = []
+  for (let i = 0; i < csAll.length && csSamples.length < 5; i += csStep) csSamples.push(csAll[i])
+  if (csSamples[csSamples.length - 1] !== csAll[csAll.length - 1]) csSamples[csSamples.length - 1] = csAll[csAll.length - 1]
+
   const crossSection = buildCrossSection(atmo, hazards, terrain, {
+    samples: csSamples, lengthNm: distNm,
     recommendedAltFt: scored[0]?.altFt ?? null,
     meaFt: routeMaxMEA,
     ceilingFt: perf?.serviceCeilingFt ?? null,
@@ -341,16 +356,27 @@ export async function recommendCruise(waypoints, {
 // walk without knowing where any of it came from.
 export function buildCrossSection(atmo, hazards, terrain, {
   chosenAltFt = null, recommendedAltFt = null, meaFt = null, ceilingFt = null, maxAltFt = 18000,
+  samples = null, lengthNm = null,
 } = {}) {
-  if (atmo?.status !== 'ok') return null
+  // Only the sky layers need the wind profile. Terrain, official icing and
+  // turbulence bands, the MEA and the service ceiling all come from elsewhere,
+  // and a chart showing an icing band across the altitudes you were choosing
+  // between is worth drawing even on a day the winds never arrived. Without
+  // any geometry at all there is nothing to draw against, so that still
+  // returns null.
+  const ok = atmo?.status === 'ok'
+  const geom = ok
+    ? { pts: atmo.samples, len: atmo.lengthNm }
+    : (samples?.length ? { pts: samples, len: lengthNm } : null)
+  if (!geom) return null
 
-  const x = atmo.samples.map(s => ({ distNm: Math.round(s.distNm), lat: s.lat, lon: s.lon }))
+  const x = geom.pts.map(s => ({ distNm: Math.round(s.distNm), lat: s.lat, lon: s.lon }))
   const levelsFt = []
   for (let a = 1000; a <= Math.max(maxAltFt, 6000); a += 1000) levelsFt.push(a)
 
-  const cloud = atmo.columns.map(col => levelsFt.map(a => atAltitude(col, a)?.cloudPct ?? 0))
+  const cloud = ok ? atmo.columns.map(col => levelsFt.map(a => atAltitude(col, a)?.cloudPct ?? 0)) : []
   const wind = []
-  atmo.columns.forEach((col, i) => {
+  if (ok) atmo.columns.forEach((col, i) => {
     if (i % 2 !== 0 && i !== atmo.columns.length - 1) return   // every other column
     for (let a = 2000; a <= maxAltFt; a += 4000) {
       const c = atAltitude(col, a)
@@ -369,11 +395,14 @@ export function buildCrossSection(atmo, hazards, terrain, {
     : null
 
   return {
-    lengthNm: Math.round(atmo.lengthNm),
+    lengthNm: Math.round(geom.len),
     x, levelsFt, cloud, wind, terrainFt,
-    freezingFt: atmo.surface.map(s => s.freezingFt),
+    freezingFt: ok ? atmo.surface.map(s => s.freezingFt) : null,
     bands: [...(hazards?.icing || []), ...(hazards?.turbulence || [])],
     chosenAltFt, recommendedAltFt, meaFt, ceilingFt, maxAltFt,
+    // The renderer says which layers are missing rather than drawing a chart
+    // that looks complete and happens to have no weather in it.
+    skyMissing: !ok,
   }
 }
 

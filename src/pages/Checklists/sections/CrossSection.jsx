@@ -156,8 +156,15 @@ export default function CrossSection({ data, dep, dest, chosenAltFt }) {
         {data.freezingFt?.some(f => f != null && f <= topFt) && (
           <span><span style={{ color: '#5AC8FA' }}>——</span> freezing level</span>
         )}
-        {data.freezingFt?.every(f => f == null || f > topFt) && (
+        {!data.skyMissing && data.freezingFt?.every(f => f == null || f > topFt) && (
           <span>freezing level above {Math.round(topFt / 1000)},000 ft</span>
+        )}
+        {data.skyMissing && (
+          // Said plainly, because an empty sky on this chart must not be
+          // mistaken for a clear one.
+          <span style={{ color: 'var(--warn)' }}>
+            no cloud, wind or freezing level — the forecast service did not answer
+          </span>
         )}
         <span><span style={{ color: 'rgba(90,200,250,0.9)' }}>▢</span> icing</span>
         <span><span style={{ color: 'var(--warn)' }}>▨</span> turbulence</span>
