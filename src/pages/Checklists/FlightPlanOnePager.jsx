@@ -72,10 +72,10 @@ export default function FlightPlanOnePager({ onClose }) {
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const [route, cruise, perfdist, lastWB, selectedRunway, alternates, pilot, acProfile] = await Promise.all([
+      const [route, cruise, perfdist, lastWB, selectedRunway, alternates, pilot, acProfile, fpType] = await Promise.all([
         get('settings', 'route'), get('settings', 'cruise'), get('settings', 'perfdist'),
         get('settings', 'lastWB'), get('settings', 'selectedRunway'), get('settings', 'alternates'),
-        get('settings', 'pilot'), get('aircraft', 'profile'),
+        get('settings', 'pilot'), get('aircraft', 'profile'), get('settings', 'flightPlanType'),
       ])
 
       const dep = route?.dep?.toUpperCase() || ''
@@ -90,7 +90,7 @@ export default function FlightPlanOnePager({ onClose }) {
 
       if (cancelled) return
       setData({
-        route, cruise, perfdist, lastWB, selectedRunway, alternates, pilot, acProfile,
+        route, cruise, perfdist, lastWB, selectedRunway, alternates, pilot, acProfile, fpType,
         depApt: depApt.status  === 'fulfilled' ? depApt.value  : null,
         destApt: destApt.status === 'fulfilled' ? destApt.value : null,
         depWx: depWx.status   === 'fulfilled' ? depWx.value   : null,
@@ -113,12 +113,18 @@ export default function FlightPlanOnePager({ onClose }) {
     )
   }
 
-  const { route, cruise, perfdist, lastWB, selectedRunway, alternates, pilot, acProfile, depApt, destApt, depWx, destWx } = data
+  const { route, cruise, perfdist, lastWB, selectedRunway, alternates, pilot, acProfile, fpType, depApt, destApt, depWx, destWx } = data
 
   const dep = route?.dep?.toUpperCase() || '—'
   const dest = route?.dest?.toUpperCase() || '—'
   const isHelicopter = acProfile?.category === 'helicopter'
-  const flightRules = cruise?.flightRules || 'VFR'
+  // The Cruise & Fuel section is where the rules were last confirmed against a
+  // fuel plan, so it wins. Falling straight through to VFR when that section
+  // hasn't been filled in was wrong twice over: an IFR flight printed RULES
+  // VFR DAY, and the reserve requirement below silently dropped from 45
+  // minutes to 30. The type picked at the top of the flight plan is the
+  // pilot's stated intent and stands until the fuel plan says otherwise.
+  const flightRules = cruise?.flightRules || fpType?.value?.flightRules || 'VFR'
   const timeOfDay = cruise?.timeOfDay || 'day'
   const reqReserve = reserveReqMinutes(flightRules, isHelicopter, timeOfDay)
 

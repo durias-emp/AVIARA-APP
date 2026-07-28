@@ -50,11 +50,20 @@ function AppRoutes({ theme }) {
     </Suspense>
   )
 
-  // Sign-in is required before anything else — no bypass. A pre-existing
-  // install (real local data, onboarding already done, no account yet)
-  // gets reassuring "back up your data" copy instead of the generic
-  // sign-in screen; the actual sign-in flow is identical either way.
-  if (!session) {
+  // Sign-in is required before anything else. A pre-existing install (real
+  // local data, onboarding already done, no account yet) gets reassuring
+  // "back up your data" copy instead of the generic sign-in screen; the
+  // actual sign-in flow is identical either way.
+  //
+  // The one exception is local development, where signing in on every reload
+  // to reach a screen three taps deep is pure friction. It is gated on BOTH
+  // import.meta.env.DEV — which Vite hardcodes to false in any production
+  // build, so the branch is dead code Rollup strips from the bundle — and an
+  // opt-in flag in .env.local, which is gitignored and never reaches the
+  // deployment. There is no way to turn this on against the real app.
+  const devBypass = import.meta.env.DEV && import.meta.env.VITE_DEV_BYPASS === '1'
+
+  if (!session && !devBypass) {
     const legacy = profile != null && profile.onboardingComplete
     return (
       <Suspense fallback={null}>
