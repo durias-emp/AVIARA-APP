@@ -13,6 +13,7 @@
 // that is the one wrong answer this must never give.
 
 import { sampleRoute, widenCorridor, crossTrackNm, haversineNm } from './corridor'
+import { isDailyLimit, DailyLimitError, isDailyLimitError } from './openMeteoLimit'
 
 const M_TO_FT = 3.28084
 const BATCH = 100
@@ -27,7 +28,12 @@ async function openMeteo(pts, signal) {
   const lat = pts.map(p => p.lat.toFixed(4)).join(',')
   const lon = pts.map(p => p.lon.toFixed(4)).join(',')
   const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`, { signal })
-  if (!res.ok) throw new Error(`open-meteo ${res.status}`)
+  if (!res.ok) {
+    // Marked, so the retry below can tell "try again in a second" from
+    // "try again tomorrow" — and so a long route stops after the first batch
+    // instead of walking every remaining batch into the same wall.
+    throw (await isDailyLimit(res)) ? new DailyLimitError() : new Error(`open-meteo ${res.status}`)
+  }
   const d = await res.json()
   if (!Array.isArray(d.elevation) || d.elevation.length !== pts.length) throw new Error('open-meteo shape')
   return d.elevation
@@ -66,7 +72,12 @@ async function fetchElevations(pts, timeoutMs) {
         let got
         try {
           got = await source(b, AbortSignal.timeout(timeoutMs))
-        } catch {
+        } catch (e) {
+          // A spent daily allowance is not a hiccup: the retry cannot succeed,
+          // and every remaining batch would repeat it. Abandon this source
+          // immediately — the fallback source is a different host and is still
+          // worth asking.
+          if (isDailyLimitError(e)) throw e
           await sleep(1200)
           got = await source(b, AbortSignal.timeout(timeoutMs))
         }

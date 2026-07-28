@@ -18,6 +18,7 @@
 
 import { sampleRoute } from './corridor'
 import { get, put } from './db'
+import { isDailyLimit, DailyLimitError, isDailyLimitError } from './openMeteoLimit'
 
 const API = 'https://api.open-meteo.com/v1/forecast'
 const M_TO_FT = 3.28084
@@ -127,15 +128,22 @@ export async function loadAtmosphere(waypoints, {
   // without a wind column. That is a lot to lose to a transient failure that
   // clears in a second, especially since the terrain analysis on the same
   // screen queries the same host and can be what tripped the limit.
+  //
+  // The exception is the daily allowance. That 429 will not clear before
+  // tomorrow, so the three attempts and their backoff are 5.8 s of measured
+  // delay buying a certainty — and the pilot pays it staring at a card that
+  // has not drawn yet. Recognised, it goes straight to the stored column.
   let payload
   for (let attempt = 0; ; attempt++) {
     try {
       const res = await fetch(`${API}?${params}`, { signal: AbortSignal.timeout(timeoutMs) })
-      if (!res.ok) throw new Error(String(res.status))
+      if (!res.ok) {
+        throw (await isDailyLimit(res)) ? new DailyLimitError() : new Error(String(res.status))
+      }
       payload = await res.json()
       break
-    } catch {
-      if (attempt >= 2) return await lastGood(routeKey)
+    } catch (e) {
+      if (isDailyLimitError(e) || attempt >= 2) return await lastGood(routeKey)
       await new Promise(r => setTimeout(r, 1200 * (attempt + 1)))
     }
   }
