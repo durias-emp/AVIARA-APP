@@ -128,16 +128,17 @@ function MapFlyTo({ target, instant = false }) {
   return null
 }
 
-// A control tower, for the fields along the route.
+// Ink for the markers this app draws on top of a chart — the control tower
+// for a field, the peak for the highest terrain.
 //
-// Ink colour follows whichever chart is underneath, because each one has its
+// Colour follows whichever chart is underneath, because each one has its
 // own palette and a marker that reads as part of the chart is easier to
 // separate from it than one fighting it. What guarantees the contrast is not
 // the colour choice though — it is the white halo the whole glyph is drawn
 // on. Sectionals go from pale green to tan to dark magenta airspace within an
 // inch, so any single ink colour will land on something close to itself
 // somewhere; the halo means that never matters.
-function aerodromeInk(layers) {
+function chartInk(layers) {
   if (layers.ifrhi) return '#0d2f52'        // high charts: pale blue-grey
   if (layers.ifrlo) return '#0f3a2a'        // low charts: white with blue/green ink
   if (layers.sectional) return '#4a1042'    // sectional: tan and green, magenta ink
@@ -191,6 +192,51 @@ function aerodromeIcon(ink, px) {
   return icon
 }
 
+// The highest ground within the corridor, drawn where it actually is.
+//
+// The Mountains card gives a height and a coordinate, which is the right
+// answer to "how high" and no answer at all to "where" — 235 NM along a route
+// is not a place you can picture. One marker turns it into one.
+const PEAK_ICON_CACHE = new Map()
+function peakIcon(ink, px) {
+  const key = `${ink}@${px}`
+  const hit = PEAK_ICON_CACHE.get(key)
+  if (hit) return hit
+  const box = Math.max(30, px + 12)
+  const icon = L.divIcon({
+    className: '', iconSize: [box, box], iconAnchor: [box / 2, box / 2],
+    html: `<div style="width:${box}px;height:${box}px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+      <svg width="${px}" height="${px}" viewBox="0 0 24 24"
+           style="filter:drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff) drop-shadow(0 1px 2px rgba(0,0,0,0.4));">
+        <path d="M1.4 20.2 L8.6 4.2 L12.7 11.6 L15.6 7.4 L22.6 20.2 Z" fill="${ink}"/>
+        <path d="M8.6 4.2 L6.6 8.6 L8.0 8.0 L9.2 9.2 L10.6 8.2 Z" fill="#fff"/>
+        <path d="M15.6 7.4 L14.2 10.0 L15.3 9.7 L16.2 10.6 L17.1 9.8 Z" fill="#fff"/>
+      </svg>
+    </div>`,
+  })
+  PEAK_ICON_CACHE.set(key, icon)
+  return icon
+}
+
+function PeakMarker({ peak, layers, onOpen, focused }) {
+  const map = useMap()
+  const [zoom, setZoom] = useState(() => map.getZoom())
+  useEffect(() => {
+    const sync = () => setZoom(map.getZoom())
+    map.on('zoomend', sync)
+    return () => { map.off('zoomend', sync) }
+  }, [map])
+  if (!peak || peak.lat == null || peak.lon == null) return null
+  const px = aerodromeGlyphPx(zoom)
+  const icon = focused
+    ? peakIcon('#FF9500', Math.round(px * 1.35))
+    : peakIcon(chartInk(layers), px)
+  return (
+    <Marker position={[peak.lat, peak.lon]} icon={icon} zIndexOffset={focused ? 1000 : 0}
+      eventHandlers={{ click: e => { L.DomEvent.stopPropagation(e); onOpen?.() } }} />
+  )
+}
+
 // The fields themselves. Split out so tracking the zoom re-renders these
 // markers and nothing else on the map.
 function AerodromeMarkers({ fields, layers, onAerodrome, highlightIdent }) {
@@ -203,7 +249,7 @@ function AerodromeMarkers({ fields, layers, onAerodrome, highlightIdent }) {
   }, [map])
 
   const px = aerodromeGlyphPx(zoom)
-  const icon = aerodromeIcon(aerodromeInk(layers), px)
+  const icon = aerodromeIcon(chartInk(layers), px)
   // The field whose popup is open is the subject of the view, so it is drawn
   // larger and in the accent colour — otherwise it is indistinguishable from
   // its neighbours at exactly the moment it matters which one you tapped.
@@ -847,7 +893,7 @@ function RouteHint() {
 // toggling a layer, TFR data arriving). That's what read as "the map glitches
 // constantly" and, on iOS, remounting mid-tap can also swallow the tap event
 // on nearby chips/buttons.
-function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes, onAerodrome, openFieldIdent, refitNonce, onDrop, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint }) {
+function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes, onAerodrome, openFieldIdent, peak, onPeak, peakFocused, refitNonce, onDrop, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint }) {
   return (<>
     <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' />
@@ -967,6 +1013,7 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
         of them and a route line under a field of dots is not a route line.
         The rest stay in the list, which is the same set seen another way. */}
     <AerodromeMarkers fields={aerodromes} layers={layers} onAerodrome={onAerodrome} highlightIdent={openFieldIdent} />
+    <PeakMarker peak={peak} layers={layers} onOpen={onPeak} focused={peakFocused} />
     <RouteWaypoints waypoints={waypoints} onDrop={onDrop} onDragInsert={onDragInsert}
       onWaypointDrop={onWaypointDrop} moveWaypoint={moveWaypoint} removeWaypoint={removeWaypoint} />
   </>)
@@ -1410,6 +1457,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // remember that the view has left the route so it can be offered back.
   function openAerodrome(f) {
     setMapFS(true)
+    setPeakFocused(false)
     setActiveChip(null)                       // the chip panel would cover the field
     // Zoom 13 shows the field at airport scale, and the offset lifts it into
     // the band above the popup — the point of tapping it is to look at it.
@@ -1418,8 +1466,21 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setAwayFromRoute(true)
   }
 
+  // Tapping the height in the Mountains card puts the map on that ridge, in
+  // the same band above the sheet the aerodrome popup uses — the number is
+  // the answer to "how high", and this is the answer to "where".
+  function focusPeak() {
+    if (terrainInfo?.status !== 'ok' || terrainInfo.atLat == null) return
+    setMapFS(true)
+    setMapFlyTarget({ lat: terrainInfo.atLat, lon: terrainInfo.atLon, zoom: 11, offsetFrac: 0.26 })
+    setPeakFocused(true)
+    setAwayFromRoute(true)
+    setOpenField(null)
+  }
+
   function backToRoute() {
     setOpenField(null)
+    setPeakFocused(false)
     setAwayFromRoute(false)
     // RouteFitter only fits once in fullscreen — deliberately, so the camera
     // belongs to the pilot — so returning asks for one more fit explicitly.
@@ -1640,6 +1701,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [openField, setOpenField] = useState(null)
   const [awayFromRoute, setAwayFromRoute] = useState(false)
   const [refitNonce, setRefitNonce] = useState(0)
+  const [peakFocused, setPeakFocused] = useState(false)
   // Class B/C/D the ground track crosses, with their vertical limits.
   const [airspaceInfo, setAirspaceInfo] = useState(null)
   // Per-source outcome: 'ok' | 'unavailable' | 'not-covered'. A failed query
@@ -2709,7 +2771,10 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
               const markedFields = openField && !nearest.some(f => f.ident === openField.ident)
                 ? [...nearest, openField]
                 : nearest
-              const mapLayerProps = { layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes: markedFields, onAerodrome: openAerodrome, openFieldIdent: openField?.ident ?? null, refitNonce, onDrop: openDropPicker, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
+              const mapLayerProps = { layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes: markedFields, onAerodrome: openAerodrome, openFieldIdent: openField?.ident ?? null,
+                peak: terrainInfo?.status === 'ok' && terrainInfo.atLat != null
+                  ? { lat: terrainInfo.atLat, lon: terrainInfo.atLon } : null,
+                onPeak: () => setActiveChip('mountains'), peakFocused, refitNonce, onDrop: openDropPicker, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
 
               return (<>
                 {/* Inline map */}
@@ -2807,8 +2872,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         field={openField}
                         onClose={() => setOpenField(null)}
                         onSetAlternate={setAsAlternate}
-                        onDivert={divertTo}
-                        onShowSectional={() => setLayers(l => ({ ...l, sectional: true, ifrlo: false, ifrhi: false }))} />
+                        onDivert={divertTo} />
 
                       {/* The way back. Flying to a field 800 NM along the route
                           leaves the route off-screen, and the fullscreen map
@@ -3276,7 +3340,10 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                 {/* Mountains — the measurement behind the chip, so the
                                     clearance item below is checkable against a number */}
                                 {activeChip === 'mountains' && terrainInfo?.status === 'ok' && (
-                                  <div style={{ borderRadius: 8, background: 'rgba(255,255,255,0.04)', padding: '9px 11px', marginBottom: 10 }}>
+                                  <div
+                                    onClick={terrainInfo.atLat != null ? focusPeak : undefined}
+                                    style={{ borderRadius: 8, background: 'rgba(255,255,255,0.04)', padding: '9px 11px', marginBottom: 10,
+                                      cursor: terrainInfo.atLat != null ? 'pointer' : 'default' }}>
                                     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
                                       <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.4px' }}>
                                         HIGHEST WITHIN {terrainInfo.corridorNm} NM
@@ -3288,6 +3355,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                     <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', marginTop: 4, lineHeight: 1.45 }}>
                                       {terrainInfo.atDistNm} NM along route
                                       {terrainInfo.atLat != null && ` · ${fmtAvCoord(terrainInfo.atLat, terrainInfo.atLon)}`}
+                                      {terrainInfo.atLat != null && (
+                                        <span style={{ color: 'rgba(255,255,255,0.3)' }}> · tap to show on map ›</span>
+                                      )}
                                     </div>
                                     {terrainInfo.clearanceFt != null && (
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7 }}>

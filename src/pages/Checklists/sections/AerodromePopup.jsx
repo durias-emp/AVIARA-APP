@@ -27,7 +27,7 @@ const FREQ_GROUPS = [
   { key: 'app',   label: 'Approach',    match: t => /APP|DEP|CENTER|CTR|RADAR/i.test(t) },
 ]
 
-export default function AerodromePopup({ field, onClose, onSetAlternate, onDivert, onShowSectional }) {
+export default function AerodromePopup({ field, onClose, onSetAlternate, onDivert }) {
   const [details, setDetails] = useState(null)
   const [wx, setWx] = useState(null)          // { metar, station, distNm|0 } | 'none'
   const [loading, setLoading] = useState(true)
@@ -206,11 +206,6 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
         <button onClick={() => onSetAlternate?.(field)} style={btn(false)}>Set as alternate</button>
         <button onClick={() => onDivert?.(field)} style={btn(true)}>Divert here</button>
       </div>
-      <button onClick={() => onShowSectional?.()} style={{
-        marginTop: 7, width: '100%', padding: '8px 0', borderRadius: 9, cursor: 'pointer',
-        background: 'transparent', border: '0.5px solid rgba(255,255,255,0.2)',
-        color: 'rgba(255,255,255,0.7)', fontSize: 11.5, fontWeight: 600,
-      }}>Show sectional here</button>
 
       <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', marginTop: 7, lineHeight: 1.45 }}>
         {details?.freqSource
