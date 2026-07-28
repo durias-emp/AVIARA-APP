@@ -128,10 +128,17 @@
 * {
   scrollbar-width: none;     /* Firefox */
   -ms-overflow-style: none;  /* old Edge */
-  /* Stop a scroll that reaches the end of one container from continuing into
-     its parent — the chain is what produces the rubber-band further up. */
-  overscroll-behavior: contain;
 }
+
+/* Containment belongs on the elements that actually scroll — #root and the
+   checklist panes set it themselves. It used to be on `*`, which broke
+   scrolling outright: overscroll-behavior applies to every scroll container,
+   and `overflow: hidden` makes a box one. So a wheel landing inside any
+   clipped wrapper — the expandable card's body, for one — was captured by
+   that wrapper, which had nothing to scroll, and `contain` then stopped the
+   scroll from reaching the pane. It read as the card being frozen, and only
+   over part of it: move the pointer to a subtree with no clipped ancestor and
+   the same gesture worked, which is what made it look intermittent. */
 *::-webkit-scrollbar {
   display: none;             /* Chrome / Safari / Chromium Edge */
 }
