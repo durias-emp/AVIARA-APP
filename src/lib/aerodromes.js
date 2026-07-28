@@ -65,7 +65,10 @@ export async function analyzeAerodromes(waypoints, { withinNm = CORRIDOR_NM, lim
       const d = haversineNm(lat, lon, s.lat, s.lon)
       if (d < bestAlong) { bestAlong = d; alongNm = s.distNm }
     }
-    hits.push({ ident, name: name || null, cls, clsLabel: CLASS_LABEL[cls],
+    // lat/lon ride along: the list is also what the map flies to and marks,
+    // and re-deriving a field's position from its ident later means a second
+    // lookup for something already in hand here.
+    hits.push({ ident, name: name || null, cls, clsLabel: CLASS_LABEL[cls], lat, lon,
                 distNm: Math.round(best * 10) / 10, alongNm: Math.round(alongNm) })
   }
 

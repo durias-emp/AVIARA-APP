@@ -89,9 +89,15 @@ async function bundledDetails(ids) {
   const hit = ids.map(i => all[i]).find(Boolean)
   if (!hit) return { frequencies: [], runways: [], source: null }
 
+  // Trailing zeros go, but a frequency always keeps a decimal: stripping them
+  // blindly turned Long Beach ground, 133.0, into "133." on the card.
+  const fmtMhz = mhz => {
+    const s = mhz.toFixed(3).replace(/0+$/, '')
+    return s.endsWith('.') ? `${s}0` : s
+  }
   const frequencies = (hit.f || []).map(([type, mhz]) => ({
     type: FREQ_LABEL[type] || type,
-    freq: mhz.toFixed(mhz % 1 === 0 ? 1 : 3).replace(/0$/, ''),
+    freq: fmtMhz(mhz),
   }))
 
   // One row per runway becomes two ends, so each can be judged into the wind.
@@ -141,8 +147,13 @@ export async function lookupAirport(icao) {
 
   if (!awc && !det.frequencies.length && !det.runways.length) throw new Error('not found')
 
-  // AWC runways carry gradient and are the fresher source, so they win when
-  // present; the bundled list covers the fields AWC does not know about.
+  // AWC runways carry gradient and alignment; the bundled NASR list carries
+  // length and surface. Neither is a superset, and letting AWC win outright —
+  // which it used to — threw away every runway length we had: KLGB came back
+  // with six runway ends, no lengths, and "A" for asphalt, because AWC's
+  // records have no length field and a single-letter surface code. Length is
+  // the number that decides whether a field is an option at all, so the two
+  // are merged per runway end instead of one replacing the other.
   const detailedRunways = []
   for (const rwy of (awc?.runways || [])) {
     const ids = (rwy.id || '').split('/')
@@ -154,7 +165,19 @@ export async function lookupAirport(icao) {
       if (ids[1]) detailedRunways.push({ id: ids[1], hdg: Math.round(align + 180) % 360, len, sfc, slope: rwy.gradient != null ? -rwy.gradient : null })
     }
   }
-  const runways = detailedRunways.length ? detailedRunways : det.runways
+  const bundledById = new Map((det.runways || []).map(r => [r.id, r]))
+  const runways = detailedRunways.length
+    ? detailedRunways.map(r => {
+        const b = bundledById.get(r.id)
+        return {
+          ...r,
+          len: r.len ?? b?.len ?? null,
+          // A surface "label" of one or two characters is AWC's raw code that
+          // SURFACE_LABEL could not resolve, not a name worth showing.
+          sfc: (r.sfc && r.sfc.length > 2) ? r.sfc : (b?.sfc ?? null),
+        }
+      })
+    : det.runways
 
   return {
     icaoId:      id,

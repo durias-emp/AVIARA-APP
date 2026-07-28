@@ -7,7 +7,7 @@ import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
 import { get, put } from '../../../lib/db'
 import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
 import { FAA_CHART_CYCLE } from '../shared/faaData'
-import { awcUrl, proxyFetch, fetchAWC, lookupAirport, bearingDeg, haversineNm } from '../shared/awc'
+import { awcUrl, proxyFetch, fetchAWC, lookupAirport, parseMetar, bearingDeg, haversineNm } from '../shared/awc'
 import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expandAirway, getAirwayGeometry, getWorldRef } from '../../../lib/waypoints'
 import { sampleRoute } from '../../../lib/corridor'
 import { analyzeTerrain, MOUNTAIN_FT } from '../../../lib/terrain'
@@ -18,6 +18,7 @@ import { recommendCruise, fmtAlt } from '../../../lib/cruiseAdvisor'
 import { parseAircraftPerf } from '../../../lib/climbPerf'
 import CrossSection from './CrossSection'
 import DropPicker from './DropPicker'
+import AerodromePopup from './AerodromePopup'
 import { fetchBriefing } from '../../../lib/altitudeBrief'
 import { lookupRoutes, classifyRoute } from '../../../lib/preferredRoutes'
 import { expandProcedure } from '../../../lib/procedures'
@@ -113,6 +114,23 @@ function MapFlyTo({ target, instant = false }) {
     if (instant) map.setView([target.lat, target.lon], target.zoom ?? 10, { animate: false })
     else map.flyTo([target.lat, target.lon], target.zoom ?? 10, { duration: 1.2 })
   }, [target])
+  return null
+}
+
+// Re-frame the whole route on demand.
+//
+// This exists because "back to route" first tried to compute a zoom from the
+// route's length, and a zoom level is the wrong thing to guess: what fits
+// depends on the viewport's width, the latitude and the route's shape, not
+// just its distance. An 83 NM route came back at zoom 10, which shows about
+// 26 NM. fitBounds already accounts for all of it, so the nonce just asks
+// Leaflet to do what RouteFitter does on open.
+function RouteRefit({ nonce, positions }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!nonce || positions.length < 2) return
+    map.fitBounds(L.latLngBounds(positions), { padding: [40, 40] })
+  }, [nonce])
   return null
 }
 
@@ -730,7 +748,7 @@ function RouteHint() {
 // toggling a layer, TFR data arriving). That's what read as "the map glitches
 // constantly" and, on iOS, remounting mid-tap can also swallow the tap event
 // on nearby chips/buttons.
-function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, onDrop, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint }) {
+function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes, onAerodrome, refitNonce, onDrop, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint }) {
   return (<>
     <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' />
@@ -837,6 +855,7 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
       )
     })}
     {fit && <RouteFitter positions={waypoints.map(w => [w.lat, w.lon])} once={fitOnce} />}
+    <RouteRefit nonce={refitNonce} positions={waypoints.map(w => [w.lat, w.lon])} />
     <AirspaceZoomer active={layers.airspace} />
     <ChartZoomer active={layers.sectional} min={7} />
     <ChartZoomer active={layers.ifrlo} min={8} />
@@ -844,6 +863,15 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
     {/* Dep/dest endpoints — draggable like any waypoint (fine-tune the start/
         end point around the airport), but never removable. Moving one well
         outside the airport area raises a warning upstream without blocking. */}
+    {/* En-route fields, as small hollow markers distinct from the route's own
+        points — the nearest handful only, because the corridor can hold 160
+        of them and a route line under a field of dots is not a route line.
+        The rest stay in the list, which is the same set seen another way. */}
+    {(aerodromes ?? []).map(f => (
+      <CircleMarker key={`aero-${f.ident}`} center={[f.lat, f.lon]} radius={5}
+        pathOptions={{ color: '#34C759', weight: 2, fillColor: '#0b0b0f', fillOpacity: 0.9 }}
+        eventHandlers={{ click: e => { L.DomEvent.stopPropagation(e); onAerodrome?.(f) } }} />
+    ))}
     <RouteWaypoints waypoints={waypoints} onDrop={onDrop} onDragInsert={onDragInsert}
       onWaypointDrop={onWaypointDrop} moveWaypoint={moveWaypoint} removeWaypoint={removeWaypoint} />
   </>)
@@ -1280,6 +1308,72 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     await calcRoute({ rows, defaultChart: false })
   }
 
+  // ── Tapping a field along the route ──
+  //
+  // The list and the map are the same set of fields seen two ways, so both
+  // entry points land here: fly the map onto the field, open its popup, and
+  // remember that the view has left the route so it can be offered back.
+  function openAerodrome(f) {
+    setMapFS(true)
+    setActiveChip(null)                       // the chip panel would cover the field
+    setMapFlyTarget({ lat: f.lat, lon: f.lon, zoom: 12 })
+    setOpenField(f)
+    setAwayFromRoute(true)
+  }
+
+  function backToRoute() {
+    setOpenField(null)
+    setAwayFromRoute(false)
+    // RouteFitter only fits once in fullscreen — deliberately, so the camera
+    // belongs to the pilot — so returning asks for one more fit explicitly.
+    setMapFlyTarget(null)
+    setRefitNonce(n => n + 1)
+  }
+
+  // Divert: the field becomes the destination, which is the same operation the
+  // map's drop picker already offers for an airport.
+  async function divertTo(f) {
+    setOpenField(null)
+    setAwayFromRoute(false)
+    setDest(f.ident); setDestVal(true)
+    setMapFS(false)
+    await calcRoute({ destId: f.ident, destPos: [f.lat, f.lon] })
+  }
+
+  // Alternate: written into the landing-alternate list the Alternates section
+  // already keeps, so the field arrives there filled in rather than needing
+  // its ident typed again. The section stores takeoff and landing alternates
+  // separately; a field found along the route is a landing alternate.
+  //
+  // The entry is built the same way that section builds its own — the full
+  // airport record plus distance and bearing from the destination — so it
+  // renders identically whichever way it got there.
+  async function setAsAlternate(f) {
+    const [saved, airport, rawMetar] = await Promise.all([
+      get('settings', 'alternates'),
+      lookupAirport(f.ident).catch(() => null),
+      fetch(awcUrl('metar', { ids: f.ident, format: 'raw', hours: '3' }))
+        .then(r => r.text()).catch(() => ''),
+    ])
+    if (!airport) { setOpenField(null); return }
+
+    const ldAlts = saved?.ldAlts ?? []
+    if (ldAlts.some(a => a.icaoId === f.ident)) { setOpenField(null); return }
+
+    const raw = (rawMetar || '').trim()
+    const ref = route?.destPos
+    const entry = {
+      ...airport,
+      raw,
+      wx: raw.length > 8 ? parseMetar(raw) : null,
+      distNm: ref ? Math.round(haversineNm(ref[0], ref[1], f.lat, f.lon)) : null,
+      bearing: ref ? Math.round(bearingDeg(ref[0], ref[1], f.lat, f.lon)) : null,
+      refIcao: route?.dest ?? dest,
+    }
+    await put('settings', { key: 'alternates', toAlts: saved?.toAlts ?? [], ldAlts: [...ldAlts, entry] })
+    setOpenField(null)
+  }
+
   function addWptRow() {
     setWptRows(prev => [...prev, { id: `wr-${Date.now()}`, text: '', resolved: null, error: null, creating: null }])
   }
@@ -1442,6 +1536,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [waterInfo, setWaterInfo] = useState(null)
   // Aerodromes near the route — which fields, how far off track.
   const [aeroInfo, setAeroInfo] = useState(null)
+  // The field whose popup is open, and whether the map has been flown off the
+  // route to reach it. Flying 800 NM up the route to look at an airport is a
+  // one-way trip without somewhere to go back to, so the framing is offered
+  // back explicitly rather than left to the pilot to re-find.
+  const [openField, setOpenField] = useState(null)
+  const [awayFromRoute, setAwayFromRoute] = useState(false)
+  const [refitNonce, setRefitNonce] = useState(0)
   // Class B/C/D the ground track crosses, with their vertical limits.
   const [airspaceInfo, setAirspaceInfo] = useState(null)
   // Per-source outcome: 'ok' | 'unavailable' | 'not-covered'. A failed query
@@ -2500,7 +2601,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 (route.depPos[0] + route.destPos[0]) / 2,
                 (route.depPos[1] + route.destPos[1]) / 2,
               ]
-              const mapLayerProps = { layers, openaipKey, tfrData, detectedSUAPolys, waypoints, onDrop: openDropPicker, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
+              // Only the nearest handful get markers; the full corridor list
+              // stays in the Aerodromes card. Ordered by cross-track distance
+              // already, so this is the closest twelve.
+              const markedFields = (aeroInfo?.status === 'ok' ? aeroInfo.fields : []).slice(0, 12)
+              const mapLayerProps = { layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes: markedFields, onAerodrome: openAerodrome, refitNonce, onDrop: openDropPicker, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
 
               return (<>
                 {/* Inline map */}
@@ -2591,8 +2696,34 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         onChoose={commitDrop}
                         onCancel={() => setDropPoint(null)} />
 
+                      {/* A field along the route, tapped from the map or the
+                          aerodromes list */}
+                      <AerodromePopup
+                        key={openField?.ident ?? 'none'}
+                        field={openField}
+                        onClose={() => setOpenField(null)}
+                        onSetAlternate={setAsAlternate}
+                        onDivert={divertTo}
+                        onShowSectional={() => setLayers(l => ({ ...l, sectional: true, ifrlo: false, ifrhi: false }))} />
+
+                      {/* The way back. Flying to a field 800 NM along the route
+                          leaves the route off-screen, and the fullscreen map
+                          deliberately never re-fits on its own — the camera
+                          belongs to the pilot — so returning is offered rather
+                          than done for them. */}
+                      {awayFromRoute && !openField && (
+                        <button onClick={backToRoute} style={{
+                          position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+                          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 22px)', zIndex: 10025,
+                          background: 'rgba(10,10,10,0.82)', backdropFilter: 'blur(12px)',
+                          border: '0.5px solid rgba(255,255,255,0.2)', borderRadius: 20,
+                          color: '#fff', fontSize: 12, fontWeight: 700, letterSpacing: '0.3px',
+                          padding: '9px 16px', cursor: 'pointer', whiteSpace: 'nowrap',
+                        }}>← Back to route</button>
+                      )}
+
                       {/* Route edit hint — fades after 4s */}
-                      {!dropPoint && <RouteHint />}
+                      {!dropPoint && !openField && <RouteHint />}
 
                       {/* Tier-2 disclosure — only when THIS route leaves the
                           regions we hold current data for, since that's when
@@ -2982,7 +3113,10 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                                       {aeroInfo.fields.map(f => (
-                                        <div key={f.ident + f.alongNm} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                                        <div key={f.ident + f.alongNm}
+                                          onClick={() => openAerodrome(f)}
+                                          style={{ display: 'flex', alignItems: 'baseline', gap: 8, cursor: 'pointer',
+                                            padding: '2px 4px', margin: '0 -4px', borderRadius: 6 }}>
                                           <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', fontFamily: 'monospace', letterSpacing: '0.5px', minWidth: 52 }}>
                                             {f.ident}
                                           </span>
@@ -2992,6 +3126,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                           <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.6)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
                                             {f.distNm} NM · {f.alongNm} NM in
                                           </span>
+                                          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>›</span>
                                         </div>
                                       ))}
                                     </div>
