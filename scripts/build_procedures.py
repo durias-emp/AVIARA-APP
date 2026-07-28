@@ -120,15 +120,27 @@ def parse(zip_path):
             kind = 'r' if trans_raw.startswith('RW') else 'c' if trans_raw in ('', 'ALL') else 'e'
 
         key = (airport, ident)
+        # Undrawable legs are counted per section, not lumped together. They
+        # are not interchangeable: ALTNN2 has seven, and all seven are in
+        # runway transitions — one per runway, of which a departure flies
+        # exactly one. Reporting "7 legs are not drawn" would be true of the
+        # record and false of the flight.
         entry = procs.setdefault(key, {'t': 'SID' if is_sid else 'STAR',
-                                       'c': [], 'e': {}, 'r': {}, 'u': 0})
+                                       'c': [], 'e': {}, 'r': {},
+                                       'uc': 0, 'ue': collections.Counter(),
+                                       'ur': 0})
         trans = rec[20:25].strip()
         seq = rec[26:29].strip()
         fix = rec[29:34].strip()
         pt = rec[47:49].strip()
 
         if pt not in FIX_TERMINATED or not fix:
-            entry['u'] += 1
+            if kind == 'c':
+                entry['uc'] += 1
+            elif kind == 'e':
+                entry['ue'][trans or 'ALL'] += 1
+            else:
+                entry['ur'] += 1
             undrawable[pt or '??'] += 1
             continue
 
@@ -155,8 +167,16 @@ def parse(zip_path):
             trans = {k: v for k, v in trans.items() if v}
             if trans:
                 rec[kind] = trans
-        if entry['u']:
-            rec['u'] = entry['u']
+        # uc: on the common portion, which every flight of this procedure flies.
+        # ue: per enroute transition, charged only to the one actually used.
+        # ur: across all runway transitions, which are never drawn anyway —
+        #     the runway is not known when the route is planned.
+        if entry['uc']:
+            rec['uc'] = entry['uc']
+        if entry['ue']:
+            rec['ue'] = dict(entry['ue'])
+        if entry['ur']:
+            rec['ur'] = entry['ur']
         if not rec['c'] and 'e' not in rec and 'r' not in rec:
             continue                       # nothing drawable at all
         data.setdefault(airport, {})[ident] = rec

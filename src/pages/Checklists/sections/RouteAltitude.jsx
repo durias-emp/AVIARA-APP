@@ -1846,9 +1846,10 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             const hit = await resolveWaypoint(ident, [depLat, depLon])
             if (hit) wpts.push({ kind: hit.kind, name: hit.name, lat: hit.lat, lon: hit.lon, via: t.name })
           }
-          if (res.undrawable || res.partial) {
+          if (res.undrawable || res.partial || res.hasRunwayTransition) {
             procedureNotes.push({ proc: t.name, t: res.t, undrawable: res.undrawable,
-                                  partial: res.partial, transition: res.transition })
+                                  partial: res.partial, transition: res.transition,
+                                  runway: res.hasRunwayTransition })
           }
           continue
         }
@@ -2420,7 +2421,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                   <div key={n.proc}>
                     {n.proc} · {n.t}
                     {n.transition ? ` via ${n.transition}` : ''}
-                    {n.undrawable > 0 && ` — ${n.undrawable} initial ${n.undrawable > 1 ? 'legs are' : 'leg is'} flown on a heading or vector and ${n.undrawable > 1 ? 'are' : 'is'} not drawn`}
+                    {/* The runway-specific segment is where a departure's
+                        heading and vector legs live, and which one applies
+                        isn't known until the runway is — so it is never drawn,
+                        and that is said plainly rather than left to be
+                        inferred from a line that starts in mid-air. */}
+                    {n.runway && ` — ${n.t === 'SID' ? 'begins' : 'ends'} with a runway-specific segment that is not drawn; fly the chart for it`}
+                    {n.undrawable > 0 && ` — ${n.undrawable} further ${n.undrawable > 1 ? 'legs are' : 'leg is'} flown on a heading or vector`}
                     {n.partial && ` — rejoins beyond the portion published for this routing; fly the chart`}
                   </div>
                 ))}

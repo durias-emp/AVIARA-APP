@@ -86,7 +86,16 @@ export async function expandProcedure(airport, ident, neighbour) {
     t: proc.t,
     fixes: dedup,
     transition: picked,
-    undrawable: proc.u ?? 0,
+    // Only the legs on the path actually drawn. The runway transitions are
+    // counted separately and never included here: ALTNN2 carries seven
+    // heading legs, one for each runway at Miami, and a departure flies
+    // exactly one of them. Adding them up would be true of the record and
+    // false of the flight.
+    undrawable: (proc.uc ?? 0) + (picked ? (proc.ue?.[picked] ?? 0) : 0),
+    // The runway-specific first segment is never drawn, because which one
+    // applies is not known until the runway is. That is worth saying on every
+    // departure that has them, not just the ones with heading legs.
+    hasRunwayTransition: Boolean(proc.r && Object.keys(proc.r).length),
     partial,
     availableTransitions: names,
   }
