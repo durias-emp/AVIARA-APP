@@ -86,14 +86,36 @@ function AirspaceZoomer({ active }) {
 // minZoom the chart doesn't render at all). No continuous clamp: the user may
 // zoom out freely and the chart simply hands off to the basemap instead of
 // fighting the gesture.
-function ChartZoomer({ active, min }) {
+// Bring a chart layer into the range where it actually draws.
+//
+// `min` must match the TileLayer's own minZoom. The sectional's was one level
+// below it, so turning SECT on zoomed to 7, the service serves nothing below
+// 8, and the chart appeared to do nothing at all until the user zoomed again
+// by hand.
+//
+// Zooming also moves to the route rather than staying wherever the camera
+// happened to be: a chart is turned on to see the flight on it, and at z8 a
+// view centred somewhere else shows chart with no route on it, which is the
+// same "nothing happened" from the other direction.
+function ChartZoomer({ active, min, positions }) {
   const map = useMap()
   const prev = useRef(active)
   useEffect(() => {
-    // Nudge into chart range only when the user TOGGLES the layer on — not
-    // when a map mounts with the layer already active, which would override
-    // the fit-whole-route framing on fullscreen open.
-    if (active && !prev.current && map.getZoom() < min) map.setZoom(min)
+    // Only when the user TOGGLES the layer on — not when a map mounts with the
+    // layer already active, which would override the fit-whole-route framing
+    // on fullscreen open.
+    if (active && !prev.current && map.getZoom() < min) {
+      // Keep the part of the route they were already looking at: the nearest
+      // route point to the current centre, rather than always the midpoint.
+      const c = map.getCenter()
+      let target = null, best = Infinity
+      for (const p of positions ?? []) {
+        const d = haversineNm(c.lat, c.lng, p[0], p[1])
+        if (d < best) { best = d; target = p }
+      }
+      if (target) map.setView(target, min)
+      else map.setZoom(min)
+    }
     prev.current = active
   }, [active])
   return null
@@ -901,6 +923,7 @@ function RouteHint() {
 // constantly" and, on iOS, remounting mid-tap can also swallow the tap event
 // on nearby chips/buttons.
 function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes, onAerodrome, openFieldIdent, peak, onPeak, peakFocused, refitNonce, onDrop, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint }) {
+  const routePositions = waypoints.map(w => [w.lat, w.lon])
   return (<>
     <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' />
@@ -1006,12 +1029,13 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
         </Polygon>
       )
     })}
-    {fit && <RouteFitter positions={waypoints.map(w => [w.lat, w.lon])} once={fitOnce} />}
-    <RouteRefit nonce={refitNonce} positions={waypoints.map(w => [w.lat, w.lon])} />
+    {fit && <RouteFitter positions={routePositions} once={fitOnce} />}
+    <RouteRefit nonce={refitNonce} positions={routePositions} />
     <AirspaceZoomer active={layers.airspace} />
-    <ChartZoomer active={layers.sectional} min={7} />
-    <ChartZoomer active={layers.ifrlo} min={8} />
-    <ChartZoomer active={layers.ifrhi} min={5} />
+    {/* Each min mirrors its TileLayer's own minZoom below — 8, 8, 5. */}
+    <ChartZoomer active={layers.sectional} min={8} positions={routePositions} />
+    <ChartZoomer active={layers.ifrlo} min={8} positions={routePositions} />
+    <ChartZoomer active={layers.ifrhi} min={5} positions={routePositions} />
     {/* Dep/dest endpoints — draggable like any waypoint (fine-tune the start/
         end point around the airport), but never removable. Moving one well
         outside the airport area raises a warning upstream without blocking. */}
