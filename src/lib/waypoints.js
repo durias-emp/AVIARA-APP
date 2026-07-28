@@ -223,13 +223,19 @@ export async function getAirwayGeometry() {
           while (cLon - prevLon > 180) cLon -= 360
           while (cLon - prevLon < -180) cLon += 360
         }
-        // Anything still over 600 NM is a genuinely bad resolve — break the
-        // line rather than draw a rubber band.
+        // A leg this long is either a genuine oceanic route or a fix that
+        // resolved to the wrong continent. 600 NM caught the second and
+        // severed the first: routes across the Gulf and the eastern Pacific
+        // are drawn between fixes hundreds of miles apart, and cutting them
+        // left the map full of lines that stop over open water. The anchor
+        // pass above is what guards against a bad resolve now, so this only
+        // has to catch what survives it — and nothing legitimate reaches
+        // 1,000 NM between adjacent points.
         if (seg.length) {
           const p = seg[seg.length - 1]
           const dLat = (c[0] - p[0]) * 60
           const dLon = (cLon - p[1]) * 60 * Math.cos(((c[0] + p[0]) / 2) * Math.PI / 180)
-          if (Math.hypot(dLat, dLon) > 600) {
+          if (Math.hypot(dLat, dLon) > 1000) {
             if (seg.length >= 2) lines.push({ id, cls, latlngs: seg, trk: segTrk, mea: segMea })
             seg = []; segTrk = []; segMea = []
             near = c
