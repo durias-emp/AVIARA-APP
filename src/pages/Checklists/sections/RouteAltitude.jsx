@@ -111,8 +111,19 @@ function MapFlyTo({ target, instant = false }) {
   const map = useMap()
   useEffect(() => {
     if (!target) return
-    if (instant) map.setView([target.lat, target.lon], target.zoom ?? 10, { animate: false })
-    else map.flyTo([target.lat, target.lon], target.zoom ?? 10, { duration: 1.2 })
+    const zoom = target.zoom ?? 10
+    let center = L.latLng(target.lat, target.lon)
+    // offsetFrac pushes the subject up out from under a sheet. Centring is the
+    // obvious thing and the wrong one when two thirds of the map is covered by
+    // a popup: the airport you just asked to see ends up behind the panel
+    // describing it. Shifting the map's centre south by a fraction of the
+    // viewport lifts the point into the strip that is actually visible.
+    if (target.offsetFrac) {
+      const pt = map.project(center, zoom).add([0, map.getSize().y * target.offsetFrac])
+      center = map.unproject(pt, zoom)
+    }
+    if (instant) map.setView(center, zoom, { animate: false })
+    else map.flyTo(center, zoom, { duration: 1.2 })
   }, [target])
   return null
 }
@@ -182,7 +193,7 @@ function aerodromeIcon(ink, px) {
 
 // The fields themselves. Split out so tracking the zoom re-renders these
 // markers and nothing else on the map.
-function AerodromeMarkers({ fields, layers, onAerodrome }) {
+function AerodromeMarkers({ fields, layers, onAerodrome, highlightIdent }) {
   const map = useMap()
   const [zoom, setZoom] = useState(() => map.getZoom())
   useEffect(() => {
@@ -191,9 +202,16 @@ function AerodromeMarkers({ fields, layers, onAerodrome }) {
     return () => { map.off('zoomend', sync) }
   }, [map])
 
-  const icon = aerodromeIcon(aerodromeInk(layers), aerodromeGlyphPx(zoom))
+  const px = aerodromeGlyphPx(zoom)
+  const icon = aerodromeIcon(aerodromeInk(layers), px)
+  // The field whose popup is open is the subject of the view, so it is drawn
+  // larger and in the accent colour — otherwise it is indistinguishable from
+  // its neighbours at exactly the moment it matters which one you tapped.
+  const openIcon = aerodromeIcon('#FF9500', Math.round(px * 1.35))
   return (fields ?? []).map(f => (
-    <Marker key={`aero-${f.ident}`} position={[f.lat, f.lon]} icon={icon} interactive={true}
+    <Marker key={`aero-${f.ident}`} position={[f.lat, f.lon]}
+      icon={f.ident === highlightIdent ? openIcon : icon}
+      zIndexOffset={f.ident === highlightIdent ? 1000 : 0} interactive={true}
       eventHandlers={{ click: e => { L.DomEvent.stopPropagation(e); onAerodrome?.(f) } }} />
   ))
 }
@@ -829,7 +847,7 @@ function RouteHint() {
 // toggling a layer, TFR data arriving). That's what read as "the map glitches
 // constantly" and, on iOS, remounting mid-tap can also swallow the tap event
 // on nearby chips/buttons.
-function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes, onAerodrome, refitNonce, onDrop, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint }) {
+function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes, onAerodrome, openFieldIdent, refitNonce, onDrop, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint }) {
   return (<>
     <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' />
@@ -948,7 +966,7 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
         points — the nearest handful only, because the corridor can hold 160
         of them and a route line under a field of dots is not a route line.
         The rest stay in the list, which is the same set seen another way. */}
-    <AerodromeMarkers fields={aerodromes} layers={layers} onAerodrome={onAerodrome} />
+    <AerodromeMarkers fields={aerodromes} layers={layers} onAerodrome={onAerodrome} highlightIdent={openFieldIdent} />
     <RouteWaypoints waypoints={waypoints} onDrop={onDrop} onDragInsert={onDragInsert}
       onWaypointDrop={onWaypointDrop} moveWaypoint={moveWaypoint} removeWaypoint={removeWaypoint} />
   </>)
@@ -1393,7 +1411,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   function openAerodrome(f) {
     setMapFS(true)
     setActiveChip(null)                       // the chip panel would cover the field
-    setMapFlyTarget({ lat: f.lat, lon: f.lon, zoom: 12 })
+    // Zoom 13 shows the field at airport scale, and the offset lifts it into
+    // the band above the popup — the point of tapping it is to look at it.
+    setMapFlyTarget({ lat: f.lat, lon: f.lon, zoom: 13, offsetFrac: 0.26 })
     setOpenField(f)
     setAwayFromRoute(true)
   }
@@ -2681,8 +2701,15 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
               // Only the nearest handful get markers; the full corridor list
               // stays in the Aerodromes card. Ordered by cross-track distance
               // already, so this is the closest twelve.
-              const markedFields = (aeroInfo?.status === 'ok' ? aeroInfo.fields : []).slice(0, 12)
-              const mapLayerProps = { layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes: markedFields, onAerodrome: openAerodrome, refitNonce, onDrop: openDropPicker, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
+              const nearest = (aeroInfo?.status === 'ok' ? aeroInfo.fields : []).slice(0, 12)
+              // Whichever field is open is always marked, even when it came
+              // from further down the list than the twelve drawn by default —
+              // an open popup describing an airport with nothing on the map is
+              // the one case that must not happen.
+              const markedFields = openField && !nearest.some(f => f.ident === openField.ident)
+                ? [...nearest, openField]
+                : nearest
+              const mapLayerProps = { layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes: markedFields, onAerodrome: openAerodrome, openFieldIdent: openField?.ident ?? null, refitNonce, onDrop: openDropPicker, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
 
               return (<>
                 {/* Inline map */}

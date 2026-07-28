@@ -20,7 +20,7 @@
 // Anywhere else, the caller is told the route is not covered rather than shown
 // an empty list.
 
-import { bboxOf, sampleRoute } from './corridor'
+import { sampleRoute } from './corridor'
 
 const URL = 'https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/Class_Airspace/FeatureServer/0/query'
 
@@ -85,6 +85,17 @@ function limitFt(val, code) {
   return Number.isFinite(n) ? n : null
 }
 
+// Thin a sampled path down to at most `max` points, keeping both ends. The
+// route travels in the query string, so it has to stay a sensible length; at
+// 25 NM spacing only a transoceanic route ever reaches the cap.
+function decimate(pts, max) {
+  if (pts.length <= max) return pts
+  const step = (pts.length - 1) / (max - 1)
+  return Array.from({ length: max }, (_, i) => pts[Math.round(i * step)])
+}
+
+const round6 = v => Math.round(v * 1e6) / 1e6
+
 // waypoints: [{lat,lon}, ...]
 // altFt: planned cruise altitude — used to mark which airspaces the cruise
 //   itself sits inside, NOT to filter. A Class B whose ceiling is below the
@@ -101,19 +112,31 @@ async function faaAreas(wps, timeoutMs) {
   // rejects an envelope that large — which surfaced as "unavailable" on a
   // route whose US portion queries perfectly well.
   const inside = samples.filter(s => US_BOXES.some(b => inBox(s, b)))
-  const b = bboxOf(inside.length ? inside : samples, 3)
-  const geom = `${b.minLon},${b.minLat},${b.maxLon},${b.maxLat}`
+  const path = inside.length ? inside : samples
+
+  // Ask about the route, not the rectangle around it.
+  //
+  // This used to send the bounding envelope and every polygon inside it, then
+  // run the crossing test here. A rectangle around a 340 NM route covers most
+  // of a state, so the service answered with 114 airspaces and 6.2 MB of
+  // boundary geometry — over ten seconds on a good connection — of which six
+  // were actually crossed and the rest were discarded. The download regularly
+  // outran the timeout, and the card reported the airspace as unavailable on
+  // routes the service answers perfectly well.
+  //
+  // Sending the route itself as a polyline moves the intersection test to the
+  // server, which is where the geometry already lives. The same query comes
+  // back in 1.8 KB and under a second, and the geometry never has to travel at
+  // all because the only things kept from it were the name, class and limits.
+  const pts = decimate(path, 60).map(s => [round6(s.lon), round6(s.lat)])
   const params = new URLSearchParams({
     where: "CLASS IN ('B','C','D')",
-    geometry: geom,
-    geometryType: 'esriGeometryEnvelope',
+    geometry: JSON.stringify({ paths: [pts], spatialReference: { wkid: 4326 } }),
+    geometryType: 'esriGeometryPolyline',
     inSR: '4326',
     spatialRel: 'esriSpatialRelIntersects',
     outFields: 'NAME,CLASS,LOCAL_TYPE,LOWER_VAL,LOWER_CODE,UPPER_VAL',
-    returnGeometry: 'true',
-    // the raw boundaries carry ~6,000 points each; generalised they are still
-    // far finer than a route-crossing test needs
-    maxAllowableOffset: '0.002',
+    returnGeometry: 'false',
     f: 'json',
   })
 
@@ -131,10 +154,8 @@ async function faaAreas(wps, timeoutMs) {
   const byKey = new Map()
   for (const f of features) {
     const a = f.attributes || {}
-    const rings = f.geometry?.rings || []
-    const hit = rings.some(r => routeCrossesPoly(wps, r.map(([x, y]) => [y, x])))
-    if (!hit) continue
-
+    // No crossing test here any more: the service was asked which airspaces
+    // the route intersects, so everything that came back is one.
     const lowerFt = limitFt(a.LOWER_VAL, a.LOWER_CODE)
     const upperFt = limitFt(a.UPPER_VAL, null)
     // One airspace arrives as several shelves (Miami Class B is eight rings
