@@ -19,7 +19,7 @@ import { parseAircraftPerf } from '../../../lib/climbPerf'
 import CrossSection from './CrossSection'
 import DropPicker from './DropPicker'
 import { fetchBriefing } from '../../../lib/altitudeBrief'
-import { preferredRoutes, classifyRoute } from '../../../lib/preferredRoutes'
+import { lookupRoutes, classifyRoute } from '../../../lib/preferredRoutes'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -27,6 +27,19 @@ L.Icon.Default.mergeOptions({
   iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 })
+
+// The three ways a published routing can relate to the pair being flown, in
+// descending order of how directly it answers the question. The two fallbacks
+// only appear when nothing is published for the pair itself, and each carries
+// the reason it might not apply — a routing that isn't for your route is
+// useful as a starting point and dangerous as an answer.
+const PUB_GROUPS = [
+  { key: 'exact' },
+  { key: 'reverse', heading: 'Published the other way',
+    note: 'Only the opposite direction is published. Often flyable read backwards — but routings are frequently one-way by design, so check it against your clearance.' },
+  { key: 'nearby', heading: 'Published for a nearby field',
+    note: 'Same terminal airspace, same facility, different field at one end. The middle of the routing usually holds; the departure or arrival end may not.' },
+]
 
 function RouteFitter({ positions, once = true }) {
   const map = useMap()
@@ -1207,7 +1220,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // What ATC actually issues between this pair, offered as soon as both ends
   // are known. Empty for most pairs — the FAA publishes routings for about
   // 7,700 of them — and the button simply doesn't appear then.
-  const [pubRoutes, setPubRoutes] = useState([])
+  const [pubRoutes, setPubRoutes] = useState({ exact: [], reverse: [], nearby: [] })
+  const pubCount = pubRoutes.exact.length + pubRoutes.reverse.length + pubRoutes.nearby.length
   const [pubOpen, setPubOpen]     = useState(false)
   const [pubBusy, setPubBusy]     = useState(null)
   const [pubApplied, setPubApplied] = useState(null)
@@ -1218,9 +1232,10 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     // Resolved asynchronously either way — an unvalidated pair settles to an
     // empty list rather than being cleared synchronously, which would cascade
     // a render on every keystroke in the ICAO fields.
-    ;(ready ? preferredRoutes(dep, dest) : Promise.resolve([]))
+    const empty = { exact: [], reverse: [], nearby: [] }
+    ;(ready ? lookupRoutes(dep, dest) : Promise.resolve(empty))
       .then(r => { if (!cancelled) { setPubRoutes(r); if (!ready) { setPubOpen(false); setPubApplied(null) } } })
-      .catch(() => { if (!cancelled) setPubRoutes([]) })
+      .catch(() => { if (!cancelled) setPubRoutes(empty) })
     return () => { cancelled = true }
   }, [dep, dest, depValidated, destValidated])
 
@@ -1231,7 +1246,12 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // guessed at.
   async function applyPublished(r) {
     setPubBusy(r.d)
-    const tokens = await classifyRoute(r.r, depPosHint.current)
+    let tokens = await classifyRoute(r.r, depPosHint.current)
+    // A route published for the opposite direction is read back to front: its
+    // string runs from the field you are flying to. The airway tokens stay
+    // where they are — an airway expands the same either way, it is the fixes
+    // either side of it that swap.
+    if (r.basis === 'reverse') tokens = [...tokens].reverse()
     const rows = tokens.filter(t => t.kind !== 'PROC').map((t, i) => ({
       id: `wr-pfr-${i}`, text: t.text, resolved: t.resolved, error: null, creating: null,
     }))
@@ -1244,7 +1264,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setLayers({ sectional: false, ifrlo: false, ifrhi: false, airspace: false, tfr: false })
     setRE(null)
     setPubBusy(null); setPubOpen(false)
-    setPubApplied({ designator: r.label, string: r.r, skipped: tokens.filter(t => t.kind === 'PROC').map(t => t.text) })
+    setPubApplied({ designator: r.label, string: r.r, basis: r.basis, viaField: r.viaField,
+                    from: r.from, to: r.to,
+                    skipped: tokens.filter(t => t.kind === 'PROC').map(t => t.text) })
     // Draw it straight away rather than leaving the pilot to press Calculate:
     // picking a published route is the decision, and the map re-frames onto
     // the new routing as it appears.
@@ -2059,7 +2081,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         </div>
 
         {/* ── Published routes ── */}
-        {pubRoutes.length > 0 && (
+        {pubCount > 0 && (
           <div style={{ marginBottom: 8 }}>
             <button
               onClick={() => setPubOpen(o => !o)}
@@ -2069,46 +2091,75 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
               }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
-                Published routes ({pubRoutes.length})
+                {pubRoutes.exact.length > 0
+                  ? `Published routes (${pubRoutes.exact.length})`
+                  : `Related routes (${pubCount})`}
               </span>
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
-                {pubOpen ? 'Hide' : 'What ATC issues'}
+                {pubOpen ? 'Hide'
+                  : pubRoutes.exact.length > 0 ? 'What ATC issues'
+                  : 'Nothing published for this pair'}
               </span>
             </button>
 
             {pubOpen && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 6 }}>
-                {pubRoutes.map(r => (
-                  <button
-                    key={`${r.d}-${r.r}`}
-                    onClick={() => applyPublished(r)}
-                    disabled={pubBusy != null}
-                    style={{
-                      textAlign: 'left', padding: '8px 11px', borderRadius: 9, cursor: 'pointer',
-                      background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-                      opacity: pubBusy && pubBusy !== r.d ? 0.5 : 1,
-                    }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.5px', color: 'var(--text)' }}>
-                        {r.label}
-                      </span>
-                      <span style={{
-                        fontSize: 9, fontWeight: 700, letterSpacing: '0.4px', padding: '2px 6px',
-                        borderRadius: 7, background: 'rgba(10,132,255,0.18)', color: '#64a8ff',
-                      }}>{r.typeLabel}</span>
-                      {r.a && <span style={{ fontSize: 9.5, color: 'var(--text-tertiary)' }}>{r.a}</span>}
-                      {pubBusy === r.d && <span style={{ fontSize: 9.5, color: 'var(--text-tertiary)' }}>Loading…</span>}
-                    </div>
-                    <div style={{ fontSize: 11.5, fontFamily: 'monospace', color: 'var(--text-secondary)', lineHeight: 1.4, wordBreak: 'break-word' }}>
-                      {r.r}
-                    </div>
-                    {(r.h || r.ac) && (
-                      <div style={{ fontSize: 9.5, color: 'var(--text-tertiary)', marginTop: 3 }}>
-                        {[r.ac, r.h].filter(Boolean).join(' · ')}
+                {PUB_GROUPS.map(g => pubRoutes[g.key]?.length ? (
+                  <div key={g.key} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {g.key !== 'exact' && (
+                      <div style={{ marginTop: 4 }}>
+                        <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.4px',
+                          color: 'var(--warn)', textTransform: 'uppercase' }}>{g.heading}</div>
+                        <div style={{ fontSize: 9.5, color: 'var(--text-tertiary)', lineHeight: 1.45, marginTop: 2 }}>
+                          {g.note}
+                        </div>
                       </div>
                     )}
-                  </button>
-                ))}
+                    {pubRoutes[g.key].map(r => (
+                      <button
+                        key={`${g.key}-${r.from}-${r.to}-${r.d}-${r.r}`}
+                        onClick={() => applyPublished(r)}
+                        disabled={pubBusy != null}
+                        style={{
+                          textAlign: 'left', padding: '8px 11px', borderRadius: 9, cursor: 'pointer',
+                          background: 'var(--bg-card-2)',
+                          border: `0.5px solid ${g.key === 'exact' ? 'var(--border)' : 'rgba(255,159,10,0.35)'}`,
+                          opacity: pubBusy && pubBusy !== r.d ? 0.5 : 1,
+                        }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.5px', color: 'var(--text)' }}>
+                            {r.label}
+                          </span>
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, letterSpacing: '0.4px', padding: '2px 6px',
+                            borderRadius: 7, background: 'rgba(10,132,255,0.18)', color: '#64a8ff',
+                          }}>{r.typeLabel}</span>
+                          {/* The pair it was actually published for, on the row
+                              itself — a heading scrolls out of sight, and this
+                              is the one thing that must not be missed. */}
+                          {g.key !== 'exact' && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700, letterSpacing: '0.4px', padding: '2px 6px',
+                              borderRadius: 7, background: 'rgba(255,159,10,0.16)', color: 'var(--warn)',
+                            }}>
+                              {r.from} → {r.to}{r.viaDistNm ? ` · ${r.viaDistNm} NM away` : ''}
+                            </span>
+                          )}
+                          {r.a && <span style={{ fontSize: 9.5, color: 'var(--text-tertiary)' }}>{r.a}</span>}
+                          {pubBusy === r.d && <span style={{ fontSize: 9.5, color: 'var(--text-tertiary)' }}>Loading…</span>}
+                        </div>
+                        <div style={{ fontSize: 11.5, fontFamily: 'monospace', color: 'var(--text-secondary)', lineHeight: 1.4, wordBreak: 'break-word' }}>
+                          {r.r}
+                        </div>
+                        {(r.h || r.ac) && (
+                          <div style={{ fontSize: 9.5, color: 'var(--text-tertiary)', marginTop: 3 }}>
+                            {[r.ac, r.h].filter(Boolean).join(' · ')}
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                ) : null)}
                 <div style={{ fontSize: 9.5, color: 'var(--text-tertiary)', lineHeight: 1.45, padding: '2px 2px 0' }}>
                   FAA preferred and tower en-route routes, {' '}NASR current cycle. Tapping one
                   replaces the waypoints below. Verify against your clearance — these are what
@@ -2119,7 +2170,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
             {pubApplied && !pubOpen && (
               <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 5, lineHeight: 1.45 }}>
-                Filled from <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{pubApplied.designator}</span>.
+                Filled from <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{pubApplied.designator}</span>
+                {pubApplied.basis === 'reverse' && (
+                  <span style={{ color: 'var(--warn)' }}>, published {pubApplied.from} → {pubApplied.to} and reversed here</span>
+                )}
+                {pubApplied.basis === 'nearby' && (
+                  <span style={{ color: 'var(--warn)' }}>, published for {pubApplied.from} → {pubApplied.to}, not this pair</span>
+                )}.
                 {pubApplied.skipped.length > 0 && (
                   <> {pubApplied.skipped.join(', ')} {pubApplied.skipped.length > 1 ? 'are' : 'is'} a
                   departure or arrival procedure — file {pubApplied.skipped.length > 1 ? 'them' : 'it'} as
