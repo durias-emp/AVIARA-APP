@@ -239,7 +239,21 @@ function ChecklistDetail({ checklist, onBack }) {
   const complete = done === total
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+    // Pinned to the viewport rather than sized by its ancestors. The pane
+    // below can only scroll if its height is definite, and previously that
+    // height arrived through a six-link chain of flex rules — #root, the app
+    // shell, <main>, this div, the tab shell, the pane — any one of which
+    // failing quietly let the pane stretch to its content, at which point
+    // there is no overflow and nothing scrolls. That failure was observed in
+    // the field (pane 1,762 px tall in a 696 px viewport) without being
+    // reproducible locally, which is exactly the behaviour of a layout that
+    // depends on everything above it. position:fixed depends on nothing.
+    // The body's safe-area padding doesn't reach a fixed child, so the top
+    // inset is re-applied here; the fixed footer already handles the bottom.
+    <div style={{
+      position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
+      paddingTop: 'env(safe-area-inset-top)', background: 'var(--bg)',
+    }}>
       {/* Header */}
       <div style={{ padding: '20px 16px 12px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <BackButton onBack={onBack} />
