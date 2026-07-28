@@ -3393,8 +3393,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                       </div>
                                     )}
                                     <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.25)', marginTop: 6, lineHeight: 1.4 }}>
-                                      Copernicus DEM · {terrainInfo.pointCount} points at {terrainInfo.spacingNm} NM spacing.
-                                      Terrain only — obstacles are not included.
+                                      Copernicus DEM · {terrainInfo.pointCount} points, {terrainInfo.spacingNm} NM
+                                      across the corridor{terrainInfo.finestNm && terrainInfo.finestNm < terrainInfo.spacingNm
+                                        ? ` and ${terrainInfo.finestNm} NM around the peak` : ''}.
+                                      Terrain only — obstacles are not included, and a summit between samples can still
+                                      read low. Cross-check the chart's MEF.
                                     </div>
                                   </div>
                                 )}

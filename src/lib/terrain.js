@@ -12,7 +12,7 @@
 // result says so, because a silent empty result reads as "no mountains" and
 // that is the one wrong answer this must never give.
 
-import { sampleRoute, widenCorridor } from './corridor'
+import { sampleRoute, widenCorridor, crossTrackNm, haversineNm } from './corridor'
 
 const M_TO_FT = 3.28084
 const BATCH = 100
@@ -113,10 +113,37 @@ export async function analyzeTerrain(waypoints, { altFt = null, spacingNm = 5, c
 
   let maxFt = -Infinity, at = null
   const centerlineFt = []
+  const scored = []
   for (let i = 0; i < pts.length; i++) {
     const ft = (metres[i] ?? 0) * M_TO_FT
+    scored.push({ pt: pts[i], ft })
     if (ft > maxFt) { maxFt = ft; at = pts[i] }
     if (pts[i].offsetNm === 0) centerlineFt.push(ft)
+  }
+
+  // Second and third passes: close in on the high ground.
+  //
+  // The lattice above is 5 NM in both directions, and calling the highest of
+  // those samples "the highest within 5 NM" was wrong by a margin that
+  // matters. On a Sierra crossing it reported 7,618 ft; a 1 NM grid over the
+  // same ground finds 8,765 ft less than two miles away. Terrain clearance is
+  // computed off this figure, so an aircraft planned 1,000 ft above it would
+  // have been 150 ft BELOW the ridge it was clearing.
+  //
+  // Sampling the whole corridor finely would cost dozens of requests. The
+  // maximum only ever hides near ground that is already high, so the coarse
+  // pass picks the candidates and two refinements walk in: 1 NM around the
+  // best few, then 0.25 NM around whatever that finds.
+  const refined = await refinePeak(scored, wps, corridorNm, timeoutMs)
+  let finestNm = step
+  let pointCount = pts.length
+  if (refined) {
+    pointCount += refined.pointCount
+    finestNm = refined.finestNm
+    if (refined.ft > maxFt) {
+      maxFt = refined.ft
+      at = { ...refined.pt, distNm: nearestAlongNm(refined.pt, samples) }
+    }
   }
 
   const out = {
@@ -127,12 +154,86 @@ export async function analyzeTerrain(waypoints, { altFt = null, spacingNm = 5, c
     atLon: at?.lon ?? null,
     centerlineFt,
     spacingNm: Math.round(step * 10) / 10,
+    finestNm: Math.round(finestNm * 100) / 100,
     corridorNm,
     lengthNm: Math.round(lengthNm),
-    pointCount: pts.length,
+    pointCount,
   }
   _cache.set(key, out)
   return withClearance(out, altFt)
+}
+
+// A square of sample points around a centre, at the given spacing, keeping
+// only those still inside the corridor — terrain 6 NM off track is not what
+// "highest within 5 NM" is promising, however tall it is.
+function boxWithin(centre, radiusNm, stepNm, wps, corridorNm) {
+  const out = []
+  const n = Math.round(radiusNm / stepNm)
+  const cosLat = Math.max(0.05, Math.cos((centre.lat * Math.PI) / 180))
+  for (let i = -n; i <= n; i++) {
+    for (let j = -n; j <= n; j++) {
+      const lat = centre.lat + (i * stepNm) / 60
+      const lon = centre.lon + (j * stepNm) / (60 * cosLat)
+      let best = Infinity
+      for (let k = 0; k < wps.length - 1; k++) {
+        const d = crossTrackNm(lat, lon, [wps[k].lat, wps[k].lon], [wps[k + 1].lat, wps[k + 1].lon])
+        if (d < best) best = d
+      }
+      if (best <= corridorNm) out.push({ lat, lon })
+    }
+  }
+  return out
+}
+
+// Nearest along-route distance, for labelling where the peak is.
+function nearestAlongNm(pt, samples) {
+  let best = Infinity, at = 0
+  for (const s of samples) {
+    const d = haversineNm(pt.lat, pt.lon, s.lat, s.lon)
+    if (d < best) { best = d; at = s.distNm }
+  }
+  return at
+}
+
+const TOP_CANDIDATES = 3
+
+async function refinePeak(scored, wps, corridorNm, timeoutMs) {
+  const top = [...scored].sort((a, b) => b.ft - a.ft).slice(0, TOP_CANDIDATES)
+  if (!top.length) return null
+
+  let pointCount = 0
+  let best = { ft: top[0].ft, pt: top[0].pt }
+  let finestNm = 1
+
+  // Pass 2 — 1 NM around each candidate, all in one batch.
+  const coarseBox = top.flatMap(c => boxWithin(c.pt, 3, 1, wps, corridorNm))
+  if (coarseBox.length) {
+    const m = await fetchElevations(coarseBox, timeoutMs)
+    if (m) {
+      pointCount += coarseBox.length
+      for (let i = 0; i < coarseBox.length; i++) {
+        const ft = (m[i] ?? 0) * M_TO_FT
+        if (ft > best.ft) best = { ft, pt: coarseBox[i] }
+      }
+    }
+  }
+
+  // Pass 3 — 0.25 NM around whatever that found. A summit is a point, and at
+  // 90 m the DEM can resolve one; the sampling is what has to catch up.
+  const fineBox = boxWithin(best.pt, 1, 0.25, wps, corridorNm)
+  if (fineBox.length) {
+    const m = await fetchElevations(fineBox, timeoutMs)
+    if (m) {
+      pointCount += fineBox.length
+      finestNm = 0.25
+      for (let i = 0; i < fineBox.length; i++) {
+        const ft = (m[i] ?? 0) * M_TO_FT
+        if (ft > best.ft) best = { ft, pt: fineBox[i] }
+      }
+    }
+  }
+
+  return { ...best, pointCount, finestNm }
 }
 
 // §91.177-style margin: 1,000 ft over the highest obstacle within the corridor

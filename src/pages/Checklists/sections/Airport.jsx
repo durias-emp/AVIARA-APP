@@ -368,26 +368,47 @@ export function AirportItem({ item, isChecked, onToggle }) {
           belongs to; the rest of the route's fields are now one tap away. */}
       {destIcao && (
         <div style={{ padding: '12px 14px 0' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <button onClick={() => { setViewIcao(destIcao); setPickerOpen(false) }} style={{
-              padding: '5px 11px', borderRadius: 20, cursor: 'pointer', border: 'none',
-              fontSize: 11.5, fontWeight: 700, letterSpacing: '0.3px',
-              background: atDestination ? 'var(--text)' : 'var(--bg-card-2)',
-              color: atDestination ? 'var(--bg)' : 'var(--text-secondary)',
-            }}>
-              {destIcao} · Destination
-            </button>
-
-            {enroute.length > 0 && (
-              <button onClick={() => setPickerOpen(o => !o)} style={{
-                padding: '5px 11px', borderRadius: 20, cursor: 'pointer', border: 'none',
-                fontSize: 11.5, fontWeight: 700, letterSpacing: '0.3px',
-                background: !atDestination ? 'var(--text)' : 'var(--bg-card-2)',
-                color: !atDestination ? 'var(--bg)' : 'var(--text-secondary)',
+          {/* The same sliding two-segment control the Density Altitude card
+              uses for DEP/ARR — one switcher pattern across the checklist
+              rather than a second one that merely resembles it. */}
+          <div style={{
+            position: 'relative', display: 'flex',
+            background: 'var(--bg-card-2)', borderRadius: 10, padding: 3,
+            cursor: 'pointer', userSelect: 'none',
+          }}>
+            <div style={{
+              position: 'absolute', top: 3, bottom: 3, width: 'calc(50% - 3px)',
+              left: atDestination ? 3 : 'calc(50%)',
+              background: 'var(--accent)', borderRadius: 7,
+              transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1)',
+              pointerEvents: 'none',
+            }} />
+            <div
+              onClick={() => { setViewIcao(destIcao); setPickerOpen(false) }}
+              style={{
+                flex: 1, padding: '5px 10px', zIndex: 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                color: atDestination ? 'var(--accent-fg)' : 'var(--text-secondary)',
               }}>
-                {atDestination ? `En route (${enroute.length})` : `${icao} · En route`}
-              </button>
-            )}
+              <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '1px' }}>
+                {destIcao}
+              </span>
+            </div>
+            <div
+              onClick={() => { if (enroute.length) setPickerOpen(o => !o) }}
+              style={{
+                flex: 1, padding: '5px 10px', zIndex: 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                color: !atDestination ? 'var(--accent-fg)' : 'var(--text-secondary)',
+                opacity: enroute.length ? 1 : 0.45,
+              }}>
+              <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '1px' }}>
+                {atDestination ? 'EN ROUTE' : icao}
+              </span>
+              {enroute.length > 0 && atDestination && (
+                <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.7 }}>{enroute.length}</span>
+              )}
+            </div>
           </div>
 
           {pickerOpen && (
