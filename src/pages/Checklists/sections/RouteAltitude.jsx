@@ -19,6 +19,7 @@ import { parseAircraftPerf } from '../../../lib/climbPerf'
 import CrossSection from './CrossSection'
 import DropPicker from './DropPicker'
 import { fetchBriefing } from '../../../lib/altitudeBrief'
+import { preferredRoutes, classifyRoute } from '../../../lib/preferredRoutes'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -1136,6 +1137,43 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     if (dest.trim().length === 4 && !destValidated && !destChecking) validateDest()
   }, [dest])
 
+  // ── Published routes (FAA preferred / TEC) ──
+  // What ATC actually issues between this pair, offered as soon as both ends
+  // are known. Empty for most pairs — the FAA publishes routings for about
+  // 7,700 of them — and the button simply doesn't appear then.
+  const [pubRoutes, setPubRoutes] = useState([])
+  const [pubOpen, setPubOpen]     = useState(false)
+  const [pubBusy, setPubBusy]     = useState(null)
+  const [pubApplied, setPubApplied] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const ready = depValidated && destValidated
+    // Resolved asynchronously either way — an unvalidated pair settles to an
+    // empty list rather than being cleared synchronously, which would cascade
+    // a render on every keystroke in the ICAO fields.
+    ;(ready ? preferredRoutes(dep, dest) : Promise.resolve([]))
+      .then(r => { if (!cancelled) { setPubRoutes(r); if (!ready) { setPubOpen(false); setPubApplied(null) } } })
+      .catch(() => { if (!cancelled) setPubRoutes([]) })
+    return () => { cancelled = true }
+  }, [dep, dest, depValidated, destValidated])
+
+  // Fill the waypoint rows from a published string. Airways stay as airways —
+  // the existing expansion turns V23 into its fix chain at Calculate time —
+  // and fixes come in resolved. SID/STAR names cannot be expanded without the
+  // FAA CIFP, so they are left out and named, rather than silently dropped or
+  // guessed at.
+  async function applyPublished(r) {
+    setPubBusy(r.d)
+    const tokens = await classifyRoute(r.r, depPosHint.current)
+    setWptRows(tokens.filter(t => t.kind !== 'PROC').map((t, i) => ({
+      id: `wr-pfr-${i}`, text: t.text, resolved: t.resolved, error: null, creating: null,
+    })))
+    setRoute(null); setRE(null)
+    setPubBusy(null); setPubOpen(false)
+    setPubApplied({ designator: r.label, string: r.r, skipped: tokens.filter(t => t.kind === 'PROC').map(t => t.text) })
+  }
+
   function addWptRow() {
     setWptRows(prev => [...prev, { id: `wr-${Date.now()}`, text: '', resolved: null, error: null, creating: null }])
   }
@@ -1931,6 +1969,79 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             )}
           </div>
         </div>
+
+        {/* ── Published routes ── */}
+        {pubRoutes.length > 0 && (
+          <div style={{ marginBottom: 8 }}>
+            <button
+              onClick={() => setPubOpen(o => !o)}
+              style={{
+                width: '100%', padding: '8px 11px', borderRadius: 9,
+                background: 'var(--bg-card-2)', border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+              }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+                Published routes ({pubRoutes.length})
+              </span>
+              <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
+                {pubOpen ? 'Hide' : 'What ATC issues'}
+              </span>
+            </button>
+
+            {pubOpen && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 6 }}>
+                {pubRoutes.map(r => (
+                  <button
+                    key={`${r.d}-${r.r}`}
+                    onClick={() => applyPublished(r)}
+                    disabled={pubBusy != null}
+                    style={{
+                      textAlign: 'left', padding: '8px 11px', borderRadius: 9, cursor: 'pointer',
+                      background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
+                      opacity: pubBusy && pubBusy !== r.d ? 0.5 : 1,
+                    }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.5px', color: 'var(--text)' }}>
+                        {r.label}
+                      </span>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, letterSpacing: '0.4px', padding: '2px 6px',
+                        borderRadius: 7, background: 'rgba(10,132,255,0.18)', color: '#64a8ff',
+                      }}>{r.typeLabel}</span>
+                      {r.a && <span style={{ fontSize: 9.5, color: 'var(--text-tertiary)' }}>{r.a}</span>}
+                      {pubBusy === r.d && <span style={{ fontSize: 9.5, color: 'var(--text-tertiary)' }}>Loading…</span>}
+                    </div>
+                    <div style={{ fontSize: 11.5, fontFamily: 'monospace', color: 'var(--text-secondary)', lineHeight: 1.4, wordBreak: 'break-word' }}>
+                      {r.r}
+                    </div>
+                    {(r.h || r.ac) && (
+                      <div style={{ fontSize: 9.5, color: 'var(--text-tertiary)', marginTop: 3 }}>
+                        {[r.ac, r.h].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                  </button>
+                ))}
+                <div style={{ fontSize: 9.5, color: 'var(--text-tertiary)', lineHeight: 1.45, padding: '2px 2px 0' }}>
+                  FAA preferred and tower en-route routes, {' '}NASR current cycle. Tapping one
+                  replaces the waypoints below. Verify against your clearance — these are what
+                  ATC normally issues, not a guarantee of what you will get.
+                </div>
+              </div>
+            )}
+
+            {pubApplied && !pubOpen && (
+              <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 5, lineHeight: 1.45 }}>
+                Filled from <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{pubApplied.designator}</span>.
+                {pubApplied.skipped.length > 0 && (
+                  <> {pubApplied.skipped.join(', ')} {pubApplied.skipped.length > 1 ? 'are' : 'is'} a
+                  departure or arrival procedure — file {pubApplied.skipped.length > 1 ? 'them' : 'it'} as
+                  published, but the app cannot draw {pubApplied.skipped.length > 1 ? 'them' : 'it'} without
+                  the FAA procedure data.</>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Intermediate waypoints ── */}
         {wptRows.length > 0 && (

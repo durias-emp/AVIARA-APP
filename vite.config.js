@@ -109,7 +109,7 @@ export default defineConfig({
         // not to update at all. It is cached on first use instead (below), so
         // it is still there offline once a route has been planned.
         globIgnores: [
-          '**/assets/{fixes,land,airport_details,world_ref,airports,airways,navaids,cenamer_airspace}-*.js',
+          '**/assets/{fixes,land,airport_details,world_ref,airports,airways,navaids,cenamer_airspace,preferred_routes}-*.js',
         ],
         maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
         runtimeCaching: [
@@ -117,7 +117,7 @@ export default defineConfig({
             // Content-hashed filenames, so a cached copy is never stale — a new
             // build simply asks for a different URL. maxEntries clears the ones
             // previous builds left behind.
-            urlPattern: /\/assets\/(fixes|land|airport_details|world_ref|airports|airways|navaids|cenamer_airspace)-[^/]+\.js$/,
+            urlPattern: /\/assets\/(fixes|land|airport_details|world_ref|airports|airways|navaids|cenamer_airspace|preferred_routes)-[^/]+\.js$/,
             handler: 'CacheFirst',
             options: {
               cacheName: 'aviara-navdata',

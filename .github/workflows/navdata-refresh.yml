@@ -54,6 +54,8 @@ jobs:
           # Airspace and airport details.
           python3 scripts/build_cenamer_airspace.py
           python3 scripts/build_airport_details.py
+          # Published routes: what ATC actually issues between two fields.
+          python3 scripts/build_preferred_routes.py
 
       - name: Sanity-check the result before committing
         # A partial download or a changed FAA layout would show up here as a
@@ -87,6 +89,13 @@ jobs:
           # so they are checked by name rather than by total.
           if ca < 100 or mx < 150:
               fail.append('Central American or Mexican airways went missing')
+
+          pfr = json.load(open('src/data/geo/preferred_routes.json'))
+          pairs = pfr['_meta']['pairs']
+          print(f'preferred routes: {pfr["_meta"]["routes"]} routes over {pairs} pairs, '
+                f'cycle {pfr["_meta"]["cycle"]}')
+          if pairs < 6000:
+              fail.append('published route coverage collapsed')
 
           if fail:
               sys.exit('; '.join(fail) + ' — refusing to publish')
