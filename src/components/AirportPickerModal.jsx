@@ -55,7 +55,7 @@ function usePlaceholderFlip() {
   return display
 }
 
-export default function AirportPickerModal({ onConfirm, onClose }) {
+export default function AirportPickerModal({ onConfirm, onClose, label = 'Home Airport', title = 'Change Airport', confirmLabel = 'Set Airport' }) {
   const [value, setValue]      = useState('')
   const [status, setStatus]    = useState('idle') // idle | checking | valid | invalid
   const [airportName, setName] = useState(null)
@@ -156,13 +156,13 @@ export default function AirportPickerModal({ onConfirm, onClose }) {
             textTransform: 'uppercase', color: 'var(--text-tertiary)',
             marginBottom: 4,
           }}>
-            Home Airport
+            {label}
           </div>
           <div style={{
             fontSize: 19, fontWeight: 700, color: 'var(--text)',
             letterSpacing: '-0.3px', marginBottom: 16,
           }}>
-            Change Airport
+            {title}
           </div>
 
           {/* Input row with dot indicator */}
@@ -263,7 +263,7 @@ export default function AirportPickerModal({ onConfirm, onClose }) {
                 transition: 'all 0.25s',
               }}
             >
-              Set Airport
+              {confirmLabel}
             </button>
           </div>
         </div>

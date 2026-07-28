@@ -720,7 +720,7 @@ function ImValidCard({ data, onChange, warnDays }) {
 // the same currency/profile.airworthy data, so getCurrencyStatus() and the
 // Checklists "IM AIRWORTHY" references keep working unchanged.
 // ---------------------------------------------------------------------------
-export default function Currency() {
+export default function Currency({ onBack }) {
   const { profile: pilotProfile } = usePilotProfile()
   const [data, setData] = useState({})
   const [warnDays] = useState(WARN_DAYS_DEFAULT)
@@ -768,7 +768,7 @@ export default function Currency() {
   return (
     <div style={{ paddingBottom: 40 }}>
       <div style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <BackButton />
+        <BackButton onBack={onBack} />
         <h2 style={{
           fontSize: 28, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)',
           fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',

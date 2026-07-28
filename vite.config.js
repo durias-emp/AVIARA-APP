@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 
 // Dev-only middleware mirroring api/awc.js — Vite's dev server doesn't run
 // Vercel serverless functions, so /api/awc 404s under `npm run dev` even
@@ -73,12 +74,20 @@ function awcDevProxy() {
   }
 }
 
+// Phone testing needs HTTPS + a network-visible host, since phone browsers
+// block location access on a plain http:// LAN address. That's off by
+// default (`npm run dev`) so the regular local workflow is untouched, and
+// only turns on for `npm run dev:phone`.
+const phoneTest = process.env.PHONE_TEST === '1'
+
 export default defineConfig({
+  server: phoneTest ? { host: true } : undefined,
   plugins: [
     awcDevProxy(),
     tfrDevProxy(),
     react(),
     tailwindcss(),
+    ...(phoneTest ? [basicSsl()] : []),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'favicon-32x32.png', 'favicon-16x16.png', 'apple-touch-icon.png'],

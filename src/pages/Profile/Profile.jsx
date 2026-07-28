@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { usePilotProfile } from '../../context/PilotProfile'
 import { useAuth } from '../../context/AuthContext'
 import { BackButton } from '../../components/Shell'
@@ -144,13 +145,16 @@ export default function Profile() {
           </Field>
         </div>
 
-        <div style={{ background: 'var(--bg-card)', border: '0.5px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 16px 4px' }}>
-            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Currency</span>
+        <Link to="/currency" style={{ textDecoration: 'none' }}>
+          <div style={{ background: 'var(--bg-card)', border: '0.5px solid var(--border)', borderRadius: 16, overflow: 'hidden', cursor: 'pointer' }}>
+            <div style={{ padding: '14px 16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Currency</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)' }}>Edit</span>
+            </div>
+            <StatusRow label="Medical validity" status={medicalStatus} expiresOn={medicalStatus.expiresOn} />
+            <StatusRow label="Pilot currency" status={currentStatus} expiresOn={currentStatus.expiresOn} />
           </div>
-          <StatusRow label="Medical validity" status={medicalStatus} expiresOn={medicalStatus.expiresOn} />
-          <StatusRow label="Pilot currency" status={currentStatus} expiresOn={currentStatus.expiresOn} />
-        </div>
+        </Link>
 
         <div style={{ background: 'var(--bg-card)', border: '0.5px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
           <div style={{ padding: '14px 16px 4px' }}>

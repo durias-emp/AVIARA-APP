@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useTheme } from './hooks/useTheme'
 import { PilotProfileProvider, usePilotProfile } from './context/PilotProfile'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -21,6 +21,7 @@ const ResetPassword = lazy(() => import('./pages/SignIn/ResetPassword'))
 function AppRoutes({ theme }) {
   const { session, loading: authLoading, hydrated, recovery } = useAuth()
   const { profile, setProfile } = usePilotProfile()
+  const navigate = useNavigate()
 
   // Seed the profile's contact email from the signed-in account (Google/
   // Apple/email all expose user.email) so it's pre-filled without the pilot
@@ -54,7 +55,9 @@ function AppRoutes({ theme }) {
   // install (real local data, onboarding already done, no account yet)
   // gets reassuring "back up your data" copy instead of the generic
   // sign-in screen; the actual sign-in flow is identical either way.
-  if (!session) {
+  // TEMP LOCAL-ONLY BYPASS (do not commit/push): skip the sign-in gate so
+  // the app UI can be viewed without Supabase configured.
+  if (!session && false) {
     const legacy = profile != null && profile.onboardingComplete
     return (
       <Suspense fallback={null}>
@@ -86,7 +89,7 @@ function AppRoutes({ theme }) {
             <Route path="/checklists" element={<Checklists />} />
             <Route path="/aircraft" element={<Aircraft />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/currency" element={<Currency />} />
+            <Route path="/currency" element={<Currency onBack={() => navigate('/profile')} />} />
             <Route path="/reference" element={<Reference />} />
             <Route path="/weather" element={<Weather />} />
             <Route path="*" element={<Navigate to="/" replace />} />

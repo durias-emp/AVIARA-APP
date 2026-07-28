@@ -8,9 +8,10 @@ import {
 } from '../lib/weather'
 import WeatherAnimation, { getCondition, textColor } from './WeatherAnimation'
 import LottieWeather, { USE_LOTTIE_WEATHER } from './LottieWeather'
-import { IconRefresh } from './Icons'
+import { IconRefresh, IconChevronRight } from './Icons'
 import WeatherDetailOverlay from './WeatherDetailOverlay'
 import { usePilotProfile } from '../context/PilotProfile'
+import HeroLabel, { HERO_LABEL_WIDTH } from './HeroLabel'
 
 const GRID_ICONS = {
   wind: (
@@ -41,7 +42,7 @@ function WxMetric({ icon, value, fg, color, weight, size }) {
   )
 }
 
-export default function WeatherCard({ compact = false, onOpenChange }) {
+export default function WeatherCard({ compact = false, mini = false, onOpenChange, label = 'Weather', onCardClick, showChevron = false, height = 90 }) {
   const { profile } = usePilotProfile()
   const units = profile ?? {}
   const [icao, setIcao]         = useState('')
@@ -58,7 +59,16 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
   const cardRef   = useRef(null)
   const [overlayOpen, setOverlayOpen] = useState(false)
 
+  // When onCardClick is given (the Airports button reusing this card's
+  // weather display), a tap navigates there instead of opening the METAR/
+  // TAF detail overlay — the detail overlay stays reachable, just from
+  // inside that section, not from here.
   function handleCardOpen() {
+    if (onCardClick) {
+      const r = cardRef.current?.getBoundingClientRect()
+      onCardClick(r)
+      return
+    }
     setOverlayOpen(true)
     onOpenChange?.(true)
   }
@@ -175,6 +185,137 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
   const cat = wx?.metar ? parseFltCat(wx.metar) : null
   // eslint-disable-next-line react-hooks/purity
   const isStale = wx?.error || (wx?.fetchedAt && Date.now() - wx.fetchedAt > 3600000)
+
+  // ── Mini tile — the original animated hero card (same background
+  // animation, VFR pill, temp, metrics), recompressed to the same 90px
+  // height as the Pilot/Map/Airports/Aircraft buttons so it lines up with
+  // them, without losing the "live weather" look. ────────────────
+  if (mini) {
+    if (!icao && !pickerOpen) {
+      return (
+        <div onClick={() => setPicker(true)} style={{
+          background: 'var(--bg-card)', borderRadius: 20, boxShadow: 'var(--shadow-sm)',
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '18px 20px', height, boxSizing: 'border-box',
+          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+        }}>
+          <span style={{ fontSize: 22 }}>⛅</span>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Set Home Airport</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>Tap to add live weather</div>
+          </div>
+          {pickerOpen && <AirportPickerModal current={icao} onConfirm={confirmAirport} onClose={() => setPicker(false)} />}
+        </div>
+      )
+    }
+
+    const { type: cType } = getCondition(wx?.metar ?? null)
+    const showCardRain = cType === 'rain' || cType === 'storm'
+
+    return (
+      <>
+        <div
+          ref={cardRef}
+          onClick={handleCardOpen}
+          style={{
+            position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
+            boxShadow: 'var(--shadow-sm)',
+            cursor: 'pointer',
+            height, boxSizing: 'border-box',
+            WebkitTapHighlightColor: 'transparent',
+            userSelect: 'none',
+          }}
+        >
+          {USE_LOTTIE_WEATHER
+            ? <LottieWeather metar={wx?.metar ?? null} />
+            : <WeatherAnimation metar={wx?.metar ?? null} />}
+
+          {showCardRain && <div className="home-card-rain" />}
+
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 0,
+            background: 'linear-gradient(108deg, rgba(0,0,0,0.52) 0%, rgba(0,0,0,0.28) 55%, rgba(0,0,0,0.04) 100%)',
+          }} />
+
+          <HeroLabel>{label}</HeroLabel>
+
+          {showChevron && (
+            <span style={{
+              position: 'absolute', top: '50%', right: 14, transform: 'translateY(-50%)',
+              zIndex: 2, color: '#fff', display: 'flex',
+            }}>
+              <IconChevronRight size={16} />
+            </span>
+          )}
+
+          <div style={{ position: 'relative', zIndex: 1, height: '100%' }}>
+            {cat && (
+              <span style={{
+                position: 'absolute', top: 10, right: showChevron ? 34 : 12, zIndex: 2,
+                fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', color: '#fff',
+                background: cat.color,
+                boxShadow: `0 2px 6px ${cat.color}66`,
+                padding: '3px 8px', borderRadius: 20,
+              }}>{cat.label}</span>
+            )}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              height: '100%', padding: `0 16px 0 ${HERO_LABEL_WIDTH + 14}px`, boxSizing: 'border-box',
+            }}>
+              {/* Left — temp + ICAO */}
+              <div>
+                <div style={{ fontSize: 30, fontWeight: 800, color: fg, letterSpacing: '-1px', lineHeight: 1 }}>
+                  {wx?.metar ? parseTemp(wx.metar, units) : loading ? '…' : '—'}
+                </div>
+                <span
+                  onClick={e => { e.stopPropagation(); setPicker(true) }}
+                  style={{
+                    fontSize: 12, fontWeight: 800, color: fg,
+                    fontFamily: 'monospace', letterSpacing: '0.06em', cursor: 'pointer',
+                  }}
+                >
+                  {icao || '—'}
+                </span>
+              </div>
+
+              {/* Right — wind/vis */}
+              <div style={{
+                textAlign: 'right', display: 'flex',
+                flexDirection: 'column', alignItems: 'flex-end', gap: 3,
+              }}>
+                {wx?.metar ? (
+                  <>
+                    <WxMetric icon="/wind.png"       value={parseWind(wx.metar, units)}          fg={fg} color={fg}      weight={700} size={12} />
+                    <WxMetric icon="/visibility.png" value={`${parseVisib(wx.metar, units)} vis`} fg={fg} color={fgMuted} weight={600} size={11} />
+                  </>
+                ) : loading ? (
+                  <div style={{ fontSize: 11, color: fgMuted }}>Loading…</div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {overlayOpen && createPortal(
+          <WeatherDetailOverlay
+            wx={wx}
+            icao={icao}
+            loading={loading}
+            error={error}
+            isStale={isStale}
+            onClose={handleOverlayClose}
+            onRefresh={() => refresh(icao)}
+            onCopyMetar={copyMetar}
+            copiedText={copiedText}
+            onOpenPicker={() => setPicker(true)}
+          />,
+          document.body
+        )}
+
+        {pickerOpen && <AirportPickerModal current={icao} onConfirm={confirmAirport} onClose={() => setPicker(false)} />}
+      </>
+    )
+  }
 
   // ── Compact banner ───────────────────────────────────────────
   if (compact) {

@@ -1,41 +1,32 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { get, getAll, put } from '../../lib/db'
+import { get, put } from '../../lib/db'
 import { getGlobalCurrencyStatus } from '../../lib/currency'
 import WeatherCard   from '../../components/WeatherCard'
 import CardOverlay   from '../../components/CardOverlay'
-import FlightDetailDrawer from '../../components/FlightDetailDrawer'
-import { IconChevronRight } from '../../components/Icons'
-import Checklists  from '../Checklists/Checklists'
-import Calculators from '../Calculators/Calculators'
-import Currency    from '../Currency/Currency'
-import Reference   from '../Reference/Reference'
-import Aircraft    from '../Aircraft/Aircraft'
+import MapView, { LiveMap } from '../../components/MapView'
+import AirportInfo from '../../components/AirportInfo'
+import ToolsMenu from '../../components/ToolsMenu'
+import { PilotArt, HangarArt, FlightPlanArt } from '../../components/HomeHeroArt'
+import HeroLabel from '../../components/HeroLabel'
+import { BackButton } from '../../components/Shell'
+import { useCurrentLocation } from '../../hooks/useCurrentLocation'
+import { useMapLayer } from '../../hooks/useMapLayer'
+import { IconChevronRight, IconWrench, IconGear } from '../../components/Icons'
+import Checklists from '../Checklists/Checklists'
+import Aircraft   from '../Aircraft/Aircraft'
+import Settings   from '../Settings/Settings'
 
-/* ── Flight record formatting ────────────────────────────── */
-function fmtFlightRoute(flight) {
-  if (flight.route) return flight.route
-  if (flight.dep && flight.dest) return `${flight.dep} → ${flight.dest}`
-  return flight.dep || flight.dest || 'Flight logged'
-}
+// Uniform size for every hero button (Weather, Map, Airports, Hangar,
+// Pilot, Flight Planning) and the Tools/Settings row — small enough that
+// all seven rows plus the disclaimer text fit within one screen's height
+// with no scrolling, on the shortest phones the app supports.
+const HERO_HEIGHT = 64
+const ROW_GAP = 8
 
-function fmtFlightDate(flight) {
-  if (flight.date) return flight.date
-  const iso = flight.savedAt
-  if (!iso) return ''
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function fmtFlightDuration(flight) {
-  if (flight.duration) return flight.duration
-  const h = flight.flightTimeH
-  if (h == null) return '—'
-  const totalMin = Math.round(h * 60)
-  return `${Math.floor(totalMin / 60)}h ${String(totalMin % 60).padStart(2, '0')}m`
-}
-
-/* ── Module card ─────────────────────────────────────────── */
-function ModuleCard({ section, onOpen, icon, label, tint }) {
+/* ── Module card — compact horizontal row, matches the hero buttons'
+   height so the bottom row lines up with everything above it. ── */
+function ModuleCard({ section, onOpen, Icon, label }) {
   const ref = useRef(null)
 
   function handleClick() {
@@ -49,34 +40,23 @@ function ModuleCard({ section, onOpen, icon, label, tint }) {
     <div ref={ref} onClick={handleClick} style={{
       cursor: 'pointer',
       background: 'var(--bg-card)',
-      borderRadius: 20,
+      borderRadius: 16,
       boxShadow: 'var(--shadow-sm)',
       display: 'flex',
-      flexDirection: 'column',
       alignItems: 'center',
-      justifyContent: 'center',
-      textAlign: 'center',
-      gap: 8,
-      height: 108,
-      padding: '14px 10px',
+      gap: 10,
+      height: HERO_HEIGHT,
+      boxSizing: 'border-box',
+      padding: '0 14px',
       minWidth: 0,
       WebkitTapHighlightColor: 'transparent',
     }}>
-      {tint ? (
-        <div style={{
-          width: 28, height: 28, flexShrink: 0, backgroundColor: tint,
-          WebkitMaskImage: `url(${icon})`, maskImage: `url(${icon})`,
-          WebkitMaskSize: 'contain', maskSize: 'contain',
-          WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
-          WebkitMaskPosition: 'center', maskPosition: 'center',
-        }} />
-      ) : (
-        <img src={icon} width={28} height={28}
-          style={{ objectFit: 'contain', flexShrink: 0, filter: 'var(--icon-filter)' }} />
-      )}
+      <span style={{ color: 'var(--text)', display: 'flex', flexShrink: 0 }}>
+        <Icon size={22} />
+      </span>
       <div style={{
         fontSize: 14, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px',
-        overflowWrap: 'break-word', lineHeight: 1.25,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>
         {label}
       </div>
@@ -84,61 +64,8 @@ function ModuleCard({ section, onOpen, icon, label, tint }) {
   )
 }
 
-/* ── Hobbs quick-input — matches the registration text's size/style,
-   sits inline on the same row instead of its own boxed chip ────── */
-const REG_TEXT_STYLE = {
-  fontSize: 11, fontWeight: 600, fontFamily: 'monospace',
-  color: 'var(--text-secondary)', letterSpacing: '1.5px',
-}
-
-function HobbsInput({ hobbsTime, onSave }) {
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft]     = useState('')
-  const inputRef = useRef(null)
-
-  function startEdit(e) {
-    e.stopPropagation()
-    setDraft(hobbsTime != null ? String(hobbsTime) : '')
-    setEditing(true)
-    setTimeout(() => inputRef.current?.focus(), 0)
-  }
-
-  function commit() {
-    setEditing(false)
-    const val = parseFloat(draft)
-    if (!Number.isNaN(val) && val !== hobbsTime) onSave(val)
-  }
-
-  return (
-    <span onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-      <span style={{ ...REG_TEXT_STYLE, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Hobbs</span>
-      {editing ? (
-        <input
-          ref={inputRef}
-          type="number"
-          inputMode="decimal"
-          step="0.1"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={e => e.key === 'Enter' && inputRef.current?.blur()}
-          placeholder={hobbsTime != null ? String(hobbsTime) : '0.0'}
-          style={{
-            ...REG_TEXT_STYLE, width: 54,
-            background: 'none', border: 'none', outline: 'none', padding: 0,
-          }}
-        />
-      ) : (
-        <span onClick={startEdit} style={{ ...REG_TEXT_STYLE, cursor: 'text' }}>
-          {hobbsTime != null ? hobbsTime.toFixed(1) : 'Set'}
-        </span>
-      )}
-    </span>
-  )
-}
-
-/* ── Aircraft card ──────────────────────────────────────── */
-function AircraftCard({ aircraftName, registration, aircraftImage, hobbsTime, onSaveHobbs, onOpen }) {
+/* ── Hangar card ──────────────────────────────────────────── */
+function HangarCard({ aircraftImage, onOpen }) {
   const ref = useRef(null)
 
   function handleClick() {
@@ -149,41 +76,220 @@ function AircraftCard({ aircraftName, registration, aircraftImage, hobbsTime, on
   }
 
   return (
-    <div style={{ padding: '10px 18px 0' }}>
+    <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
       <div ref={ref} onClick={handleClick} style={{
-        background: 'var(--bg-card)', borderRadius: 20,
+        position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
         boxShadow: 'var(--shadow-sm)',
-        display: 'flex', alignItems: 'stretch',
-        overflow: 'hidden', minHeight: 90,
+        height: HERO_HEIGHT, boxSizing: 'border-box',
         cursor: 'pointer',
         WebkitTapHighlightColor: 'transparent',
       }}>
-        <div style={{ flex: 1, padding: '12px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', flexShrink: 0 }} />
-            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Aircraft</span>
+        {aircraftImage ? (
+          <img src={aircraftImage} alt="" style={{
+            position: 'absolute', inset: 0,
+            width: '100%', height: '100%',
+            objectFit: 'cover', objectPosition: 'center',
+          }} />
+        ) : (
+          <HangarArt />
+        )}
+
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 0,
+          background: 'linear-gradient(108deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.3) 55%, rgba(0,0,0,0.05) 100%)',
+        }} />
+
+        <HeroLabel>Hangar</HeroLabel>
+      </div>
+    </div>
+  )
+}
+
+/* ── Map card — a live, non-interactive preview of the real map. The
+   preview map ignores taps/drags/pinches itself (all interaction props
+   below are off) so any tap anywhere on the card always opens the real,
+   fully interactive map instead of panning this little thumbnail. ── */
+const PREVIEW_ZOOM = 12
+
+function MapCard({ onOpen }) {
+  const ref = useRef(null)
+  const { position, status } = useCurrentLocation()
+  const { layer } = useMapLayer()
+
+  function handleClick() {
+    if (ref.current) {
+      const r = ref.current.getBoundingClientRect()
+      onOpen('map', { top: r.top, left: r.left, width: r.width, height: r.height })
+    }
+  }
+
+  return (
+    <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
+      <div
+        ref={ref}
+        onClick={handleClick}
+        role="button"
+        aria-label="Open map"
+        style={{
+          background: 'var(--bg-card)', borderRadius: 20,
+          boxShadow: 'var(--shadow-sm)',
+          overflow: 'hidden', position: 'relative', isolation: 'isolate',
+          height: HERO_HEIGHT,
+          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+        }}>
+        {status !== 'pending' && (
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+            <LiveMap position={position} zoom={PREVIEW_ZOOM} layer={layer} markerRadius={6} interactive={false} />
           </div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.3px', lineHeight: 1.15 }}>
-            {aircraftName || 'No aircraft set'}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-            {registration && (
-              <span style={{ fontSize: 11, fontWeight: 600, fontFamily: 'monospace', color: 'var(--text-secondary)', letterSpacing: '1.5px' }}>
-                {registration}
-              </span>
-            )}
-            <HobbsInput hobbsTime={hobbsTime} onSave={onSaveHobbs} />
-          </div>
+        )}
+        <HeroLabel>Map</HeroLabel>
+      </div>
+    </div>
+  )
+}
+
+/* ── Airports card — doubles as the live weather button (VFR/MVFR/IFR/
+   LIFR color-coded, same as before), since checking weather is part of
+   what the Airports section is for. Tapping it opens Airports directly
+   instead of the standalone METAR/TAF popup. ── */
+function AirportsCard({ onOpen }) {
+  return (
+    <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
+      <WeatherCard
+        mini
+        label="Airports"
+        showChevron
+        height={HERO_HEIGHT}
+        onCardClick={rect => onOpen('airports', rect)}
+      />
+    </div>
+  )
+}
+
+/* ── Flight Planning card ─────────────────────────────────── */
+function FlightPlanCard({ onOpen }) {
+  const ref = useRef(null)
+
+  function handleClick() {
+    if (ref.current) {
+      const r = ref.current.getBoundingClientRect()
+      onOpen('checklists', { top: r.top, left: r.left, width: r.width, height: r.height })
+    }
+  }
+
+  return (
+    <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
+      <div ref={ref} onClick={handleClick} style={{
+        position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
+        boxShadow: 'var(--shadow-sm)',
+        height: HERO_HEIGHT, boxSizing: 'border-box',
+        cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+      }}>
+        <FlightPlanArt />
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 0,
+          background: 'linear-gradient(108deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.16) 55%, rgba(0,0,0,0.02) 100%)',
+        }} />
+        <HeroLabel>Flight</HeroLabel>
+        <span style={{
+          position: 'absolute', top: '50%', right: 18, transform: 'translateY(-50%)',
+          zIndex: 1, color: '#fff', display: 'flex',
+        }}>
+          <IconChevronRight size={18} />
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/* ── Pilot row — small dot reflects currency status, since currency
+   lives inside the Pilot Profile page now rather than its own Home
+   button. ── */
+function PilotRow({ currencyDotColor }) {
+  return (
+    <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
+      <Link to="/profile" style={{ textDecoration: 'none' }}>
+        <div style={{
+          position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
+          boxShadow: 'var(--shadow-sm)',
+          height: HERO_HEIGHT, boxSizing: 'border-box',
+          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+        }}>
+          <PilotArt />
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 0,
+            background: 'linear-gradient(108deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.2) 55%, rgba(0,0,0,0.04) 100%)',
+          }} />
+          <HeroLabel>Pilot</HeroLabel>
+          <span style={{
+            position: 'absolute', top: 10, right: 14, zIndex: 1,
+            width: 9, height: 9, borderRadius: '50%',
+            background: currencyDotColor, boxShadow: '0 0 0 2px rgba(255,255,255,0.7)',
+          }} />
+          <span style={{
+            position: 'absolute', top: '50%', right: 18, transform: 'translateY(-50%)',
+            zIndex: 1, color: '#fff', display: 'flex',
+          }}>
+            <IconChevronRight size={18} />
+          </span>
         </div>
-        <div style={{ width: 150, position: 'relative', flexShrink: 0 }}>
-          {aircraftImage && (
-            <img src={aircraftImage} alt="" style={{
-              position: 'absolute', inset: 0,
-              width: '100%', height: '100%',
-              objectFit: 'contain', objectPosition: 'center',
-            }} />
-          )}
-        </div>
+      </Link>
+    </div>
+  )
+}
+
+/* ── Reorder screen — plain list, up/down arrows. Not drag-and-drop:
+   these rows have real interactive content (live map, weather fetch),
+   and a full drag gesture would fight the app's existing edge-swipe-back
+   gesture — up/down is simpler and just as functional. Changes save
+   immediately, no separate "Save" step. ── */
+const ROW_LABELS = {
+  airports: 'Airports (Weather)',
+  map: 'Map',
+  hangar: 'Hangar',
+  pilot: 'Pilot',
+  flight: 'Flight Planning',
+}
+
+function ReorderScreen({ order, onMove }) {
+  return (
+    <div>
+      <div style={{ padding: '20px 20px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <BackButton />
+        <h2 style={{
+          fontSize: 28, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
+        }}>Reorder Home</h2>
+      </div>
+
+      <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {order.map((key, i) => (
+          <div key={key} style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: 'var(--bg-card)', borderRadius: 14, boxShadow: 'var(--shadow-sm)',
+            padding: '13px 16px',
+          }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{ROW_LABELS[key]}</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={() => onMove(i, -1)}
+                disabled={i === 0}
+                style={{
+                  width: 32, height: 32, borderRadius: 10, border: 'none',
+                  background: 'var(--bg-card-2)', color: i === 0 ? 'var(--text-tertiary)' : 'var(--text)',
+                  fontSize: 16, cursor: i === 0 ? 'default' : 'pointer',
+                }}>↑</button>
+              <button
+                onClick={() => onMove(i, 1)}
+                disabled={i === order.length - 1}
+                style={{
+                  width: 32, height: 32, borderRadius: 10, border: 'none',
+                  background: 'var(--bg-card-2)', color: i === order.length - 1 ? 'var(--text-tertiary)' : 'var(--text)',
+                  fontSize: 16, cursor: i === order.length - 1 ? 'default' : 'pointer',
+                }}>↓</button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -192,26 +298,25 @@ function AircraftCard({ aircraftName, registration, aircraftImage, hobbsTime, on
 /* ── Section content map ──────────────────────────────────── */
 function SectionContent({ section }) {
   if (section === 'checklists') return <Checklists />
-  if (section === 'calc')       return <Calculators />
-  if (section === 'currency')   return <Currency />
-  if (section === 'reference')  return <Reference />
   if (section === 'aircraft')   return <Aircraft />
+  if (section === 'map')        return <MapView />
+  if (section === 'airports')   return <AirportInfo />
+  if (section === 'tools')      return <ToolsMenu />
+  if (section === 'settings')   return <Settings />
   return null
 }
 
+const DEFAULT_ORDER = ['airports', 'map', 'hangar', 'pilot', 'flight']
+
 /* ── Home ────────────────────────────────────────────────── */
 export default function Home() {
-  const [registration, setRegistration]   = useState('')
   const [pilotName, setPilotName]         = useState('')
-  const [aircraftName, setAircraftName]   = useState('')
   const [aircraftImage, setAircraftImage] = useState('')
-  const [hobbsTime, setHobbsTime]         = useState(null)
-  const [weatherExpanded, setWeatherExpanded] = useState(false)
   const [openSection, setOpenSection]     = useState(null)
   const [sectionRect, setSectionRect]     = useState(null)
-  const [flights, setFlights] = useState([])
-  const [selectedFlight, setSelectedFlight] = useState(null)
   const [currencyStatus, setCurrencyStatus] = useState('valid')
+  const [order, setOrder] = useState(DEFAULT_ORDER)
+  const editRef = useRef(null)
 
   function loadCurrencyStatus() {
     get('currency', 'profile').then(d => setCurrencyStatus(getGlobalCurrencyStatus(d ?? {})))
@@ -219,24 +324,19 @@ export default function Home() {
 
   useEffect(() => {
     get('aircraft', 'profile').then(p => {
-      if (p?.registration) setRegistration(p.registration)
-      if (p?.pilotName)    setPilotName(p.pilotName)
-      if (p?.fullName)     setAircraftName(p.fullName)
-      if (p?.image)        setAircraftImage(p.image)
-      if (p?.hobbsTime != null) setHobbsTime(p.hobbsTime)
-    })
-    getAll('flights').then(stored => {
-      if (stored.length > 0) setFlights([...stored].sort((a, b) => b.id - a.id))
+      if (p?.pilotName) setPilotName(p.pilotName)
+      if (p?.image)     setAircraftImage(p.image)
     })
     loadCurrencyStatus()
+    get('settings', 'homeOrder').then(row => {
+      if (!Array.isArray(row?.value)) return
+      // Forward-compatible: keep any saved positions, append new row types
+      // (added in a later app update) that aren't in the saved order yet.
+      const saved = row.value.filter(k => DEFAULT_ORDER.includes(k))
+      const missing = DEFAULT_ORDER.filter(k => !saved.includes(k))
+      setOrder([...saved, ...missing])
+    })
   }, [])
-
-  function greeting() {
-    const h = new Date().getHours()
-    if (h >= 5  && h < 12) return 'Good morning'
-    if (h >= 12 && h < 17) return 'Good afternoon'
-    return 'Good evening'
-  }
 
   function openCard(section, rect) {
     setSectionRect(rect)
@@ -246,206 +346,94 @@ export default function Home() {
   function closeCard() {
     if (openSection === 'aircraft') {
       get('aircraft', 'profile').then(p => {
-        if (p?.registration) setRegistration(p.registration)
-        if (p?.pilotName)    setPilotName(p.pilotName)
-        if (p?.fullName)     setAircraftName(p.fullName)
-        if (p?.image)        setAircraftImage(p.image)
-        if (p?.hobbsTime != null) setHobbsTime(p.hobbsTime)
+        if (p?.pilotName) setPilotName(p.pilotName)
+        if (p?.image)     setAircraftImage(p.image)
       })
     }
     // Airworthiness (on Aircraft) and Checklists (IM SAFE/CURRENT) both write
-    // to the same currency/profile record the Home icon reflects.
-    if (openSection === 'currency' || openSection === 'aircraft' || openSection === 'checklists') {
+    // to the same currency/profile record the Home icon reflects. Editing
+    // currency itself now happens on the separate /currency route (via
+    // Pilot → Profile), which remounts Home on return, so it doesn't need
+    // handling here too.
+    if (openSection === 'aircraft' || openSection === 'checklists') {
       loadCurrencyStatus()
     }
     setOpenSection(null)
     setSectionRect(null)
   }
 
-  async function saveHobbs(val) {
-    setHobbsTime(val)
-    const p = await get('aircraft', 'profile')
-    await put('aircraft', { ...(p ?? {}), id: 'profile', hobbsTime: val, hobbsUpdatedAt: Date.now() })
+  function moveRow(index, dir) {
+    const j = index + dir
+    if (j < 0 || j >= order.length) return
+    const next = [...order]
+    ;[next[index], next[j]] = [next[j], next[index]]
+    setOrder(next)
+    put('settings', { key: 'homeOrder', value: next }).catch(() => {})
   }
 
-  const anyExpanded = weatherExpanded || !!openSection
+  function handleEditClick() {
+    if (editRef.current) {
+      const r = editRef.current.getBoundingClientRect()
+      openCard('reorder', { top: r.top, left: r.left, width: r.width, height: r.height })
+    }
+  }
+
+  const currencyDotColor =
+    currencyStatus === 'expired'  ? 'var(--danger)' :
+    currencyStatus === 'expiring' ? 'var(--warn)' :
+    'var(--ok)'
+
+  function renderRow(key) {
+    if (key === 'airports') return <AirportsCard key={key} onOpen={openCard} />
+    if (key === 'map')      return <MapCard key={key} onOpen={openCard} />
+    if (key === 'hangar')   return <HangarCard key={key} aircraftImage={aircraftImage} onOpen={openCard} />
+    if (key === 'pilot')    return <PilotRow key={key} currencyDotColor={currencyDotColor} />
+    if (key === 'flight')   return <FlightPlanCard key={key} onOpen={openCard} />
+    return null
+  }
 
   return (
     <>
       <div style={{
-        padding: '0 0 32px',
+        height: '100dvh', overflow: 'hidden', boxSizing: 'border-box',
+        display: 'flex', flexDirection: 'column',
+        padding: '10px 0 10px',
       }}>
 
-        {/* ── Header ── */}
-        <div style={{
-          padding: '28px 18px 22px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <div>
-            <div style={{ fontSize: 15, color: 'var(--text-secondary)', letterSpacing: '0.01em', lineHeight: 1 }}>
-              {greeting()}{pilotName ? ',' : ''}
-            </div>
-            <div style={{ fontSize: 36, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.8px', lineHeight: 1.1, marginTop: 4 }}>
-              {pilotName || 'AVIARA'}
-            </div>
-          </div>
-
-          <Link to="/profile" style={{ textDecoration: 'none', flexShrink: 0 }}>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '6px 12px', borderRadius: 20,
-              background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
-            }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.1px' }}>
-                Pilot
-              </span>
-            </div>
-          </Link>
+        {/* ── Edit-order trigger ── */}
+        <div style={{ padding: '0 18px 6px', display: 'flex', justifyContent: 'flex-end' }}>
+          <button ref={editRef} onClick={handleEditClick} style={{
+            background: 'none', border: 'none', padding: '4px 2px',
+            fontSize: 12, fontWeight: 700, color: 'var(--accent)', cursor: 'pointer',
+          }}>
+            Edit Order
+          </button>
         </div>
 
-        {/* ── Weather hero ── */}
-        <div style={{ padding: '0 18px' }}>
-          <WeatherCard compact onOpenChange={setWeatherExpanded} />
-        </div>
+        {order.map(renderRow)}
 
-        {/* ── Aircraft card ── */}
-        <AircraftCard
-          aircraftName={aircraftName}
-          registration={registration}
-          aircraftImage={aircraftImage}
-          hobbsTime={hobbsTime}
-          onSaveHobbs={saveHobbs}
-          onOpen={openCard}
-        />
-
-        {/* ── Module grid ── */}
-        <div style={{ padding: '12px 18px 0' }}>
+        {/* ── Tools / Settings ── */}
+        <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-
-            <ModuleCard
-              section="checklists"
-              onOpen={openCard}
-              icon="/clipboard.png"
-              label="Flight Planning"
-            />
-
-            <ModuleCard
-              section="calc"
-              onOpen={openCard}
-              icon="/E6B CALC.svg"
-              label="Calculators"
-            />
-
-            <ModuleCard
-              section="currency"
-              onOpen={openCard}
-              icon={currencyStatus === 'expired' ? '/cross-circle.svg' : '/cheque.png'}
-              tint={
-                currencyStatus === 'expired'  ? 'var(--danger)' :
-                currencyStatus === 'expiring' ? 'var(--warn)' :
-                'var(--ok)'
-              }
-              label="Currency"
-            />
-
-            <ModuleCard
-              section="reference"
-              onOpen={openCard}
-              icon="/libros.png"
-              label="Quick Reference"
-            />
-
+            <ModuleCard section="tools"    onOpen={openCard} Icon={IconWrench} label="Tools" />
+            <ModuleCard section="settings" onOpen={openCard} Icon={IconGear}   label="Settings" />
           </div>
-
-          {/* ── Flights ── */}
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            marginTop: 24, marginBottom: 10,
-          }}>
-            <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.5px' }}>
-              Flights
-            </span>
-          </div>
-
-          <div style={{
-            background: 'var(--bg-card)',
-            borderRadius: 20,
-            boxShadow: 'var(--shadow-sm)',
-            overflow: 'hidden',
-          }}>
-            {flights.map((flight) => (
-              <div
-                key={flight.id}
-                onClick={() => setSelectedFlight(flight)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '11px 16px',
-                  borderTop: '0.5px solid var(--border)',
-                  cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
-                }}>
-                <div style={{
-                  width: 38, height: 38, borderRadius: 11, flexShrink: 0,
-                  background: 'var(--accent-light)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <img
-                    src={flight.category === 'helicopter' ? '/helicopter.png' : '/modo-avion.png'}
-                    width={18} height={18} alt=""
-                    style={{ objectFit: 'contain', filter: 'var(--icon-filter)' }}
-                  />
-                </div>
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.3px', lineHeight: 1.2 }}>
-                    {fmtFlightRoute(flight)}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    {fmtFlightDate(flight)}
-                  </div>
-                </div>
-
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.3px', lineHeight: 1.2 }}>
-                    {fmtFlightDuration(flight)}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    {flight.registration || flight.aircraft || '—'}
-                  </div>
-                </div>
-
-                <div style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>
-                  <IconChevronRight size={14} />
-                </div>
-              </div>
-            ))}
-
-            {flights.length === 0 && (
-              <div style={{ padding: '12px 16px 28px', textAlign: 'center' }}>
-                <div style={{ fontSize: 13, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-                  No flights logged yet
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
-                  Complete the Flight Plan checklist to log your first flight
-                </div>
-              </div>
-            )}
-          </div>
-
         </div>
 
-        <p style={{ fontSize: 10, color: 'var(--text-tertiary)', textAlign: 'center', padding: '20px 24px 0', lineHeight: 1.5 }}>
+        <p style={{
+          fontSize: 10, color: 'var(--text-tertiary)', textAlign: 'center',
+          padding: '10px 24px 0', lineHeight: 1.4, flexShrink: 0,
+        }}>
           Reference aid only · Always consult current FAR/AIM
         </p>
       </div>
 
       {openSection && sectionRect && (
         <CardOverlay cardRect={sectionRect} onClose={closeCard}>
-          <SectionContent section={openSection} />
+          {openSection === 'reorder'
+            ? <ReorderScreen order={order} onMove={moveRow} />
+            : <SectionContent section={openSection} />}
         </CardOverlay>
-      )}
-
-      {selectedFlight && (
-        <FlightDetailDrawer flight={selectedFlight} onClose={() => setSelectedFlight(null)} />
       )}
     </>
   )
