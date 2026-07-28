@@ -1,7 +1,7 @@
 import 'leaflet/dist/leaflet.css'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { MapContainer, TileLayer, Marker, Polyline, Polygon, CircleMarker, Popup, ZoomControl, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Polyline, Polygon, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
 import { get, put } from '../../../lib/db'
@@ -908,6 +908,89 @@ function LongPressAdd({ waypoints, onDrop }) {
       </div>
     </Popup>
   </>)
+}
+
+// Close and zoom as one control group.
+//
+// These were two separate things that happened to sit near each other: a dark
+// blurred CLOSE pill in the app's own idiom, and Leaflet's default white zoom
+// box underneath it. Two visual languages, ten pixels apart, both doing the
+// same job of "controls floating over the chart".
+//
+// Leaflet's control is dropped rather than restyled. Overriding
+// .leaflet-control-zoom means fighting a stylesheet that also owns the
+// disabled state, the seam between the buttons and the corner radii — and the
+// result still would not match, because Leaflet's control cannot hold a third
+// button that isn't a zoom.
+//
+// Disabled states are kept: at max or min zoom the button dims and stops
+// responding, exactly as Leaflet's does, because a control that looks live and
+// does nothing reads as a broken app.
+function MapControlStack({ onClose }) {
+  const map = useMap()
+  const [zoom, setZoom] = useState(() => map.getZoom())
+  const ref = useRef(null)
+
+  // zoomend alone is not enough. Switching chart layers changes the map's
+  // limits without changing the zoom — the sectional does not exist below
+  // zoom 8 — so the buttons have to re-evaluate on zoomlevelschange too, or
+  // "−" stays live at a floor it can no longer go below.
+  const sync = () => setZoom(map.getZoom())
+  useMapEvents({ zoomend: sync, zoomlevelschange: sync })
+
+  // Without this, a drag started on the buttons pans the map underneath and a
+  // double-click to zoom in twice zooms the map instead.
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    L.DomEvent.disableClickPropagation(el)
+    L.DomEvent.disableScrollPropagation(el)
+  }, [])
+
+  const atMax = zoom >= map.getMaxZoom()
+  const atMin = zoom <= map.getMinZoom()
+
+  const btn = (label, onClick, { disabled = false, first = false, last = false, size = 17 } = {}) => (
+    <button
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      aria-label={label === '✕' ? 'Close map' : label === '+' ? 'Zoom in' : 'Zoom out'}
+      style={{
+        width: 38, height: 38, padding: 0, margin: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'transparent', border: 'none',
+        // Hairlines between the buttons, not around them — the group carries
+        // its own outer border, so an edge here would double up.
+        borderBottom: last ? 'none' : '0.5px solid rgba(255,255,255,0.14)',
+        color: disabled ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.9)',
+        fontSize: size, fontWeight: 500, lineHeight: 1,
+        cursor: disabled ? 'default' : 'pointer',
+        borderTopLeftRadius: first ? 9 : 0, borderTopRightRadius: first ? 9 : 0,
+        borderBottomLeftRadius: last ? 9 : 0, borderBottomRightRadius: last ? 9 : 0,
+        WebkitTapHighlightColor: 'transparent',
+      }}
+    >{label}</button>
+  )
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: 'absolute', zIndex: 10005,
+        top: 'calc(env(safe-area-inset-top, 0px) + 14px)', right: 12,
+        display: 'flex', flexDirection: 'column',
+        background: 'rgba(10,10,10,0.75)',
+        backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+        border: '0.5px solid rgba(255,255,255,0.18)',
+        borderRadius: 9, overflow: 'hidden',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.28)',
+      }}
+    >
+      {btn('✕', onClose, { first: true, size: 15 })}
+      {btn('+', () => map.zoomIn(), { disabled: atMax })}
+      {btn('−', () => map.zoomOut(), { disabled: atMin, last: true })}
+    </div>
+  )
 }
 
 // How much of the card stays on screen once it is swiped away — enough to be
@@ -2971,12 +3054,10 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         <MapContainer center={mapCenter} zoom={7}
                           style={{ height: '100%', width: '100%' }}
                           zoomControl={false} attributionControl={false}>
-                          {/* Leaflet's default corner is top-left, directly
-                              under the layer chips — the zoom buttons ended up
-                              half-covered by them. Top-right puts them under
-                              CLOSE instead, where the bar is only one button
-                              wide; the CSS below clears its height. */}
-                          <ZoomControl position="topright" />
+                          {/* Leaflet's own zoom control is replaced by
+                              MapControlStack, which puts close and zoom in one
+                              group — see the note on that component. */}
+                          <MapControlStack onClose={() => setMapFS(false)} />
                           <MapInvalidator />
                           <MapLayers fit={true} {...mapLayerProps} />
                           <MapFlyTo target={mapFlyTarget} />
@@ -3093,17 +3174,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                             }}>{label}</button>
                           ))}
                         </div>
-                        {/* Close */}
-                        <button onClick={() => setMapFS(false)} style={{
-                          background: 'rgba(10,10,10,0.75)', backdropFilter: 'blur(12px)',
-                          border: '0.5px solid rgba(255,255,255,0.18)', borderRadius: 7,
-                          color: 'rgba(255,255,255,0.85)', fontSize: 10.5, fontWeight: 700,
-                          letterSpacing: '0.4px', padding: '7px 10px', cursor: 'pointer',
-                          flexShrink: 0, alignSelf: 'flex-start', whiteSpace: 'nowrap',
-                          // Survives the cleared view: the way out must never
-                          // be one of the things that got out of the way.
-                          pointerEvents: 'auto',
-                        }}>✕ CLOSE</button>
+                        {/* Close now lives in MapControlStack, grouped with
+                            the zoom buttons on the right. */}
                       </div>
 
                       {/* Bottom panel */}

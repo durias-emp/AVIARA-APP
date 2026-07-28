@@ -640,10 +640,3 @@ input[type="number"]::-webkit-outer-spin-button {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* The fullscreen map's own control bar — layer chips and CLOSE — sits across
-   the top, and Leaflet's zoom buttons were landing underneath it. Drop them
-   clear of the bar, including the status-bar inset the bar itself allows for,
-   so both stay tappable. */
-.leaflet-top.leaflet-right {
-  margin-top: calc(52px + env(safe-area-inset-top, 0px));
-}
