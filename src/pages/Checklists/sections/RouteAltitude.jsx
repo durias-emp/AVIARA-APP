@@ -170,7 +170,62 @@ function crossTrackNM(la, lo, a, b) {
 }
 
 // DraggableWaypoint — draggable intermediate marker (touch-safe)
-function DraggableWaypoint({ position, index, onMove, onRemove, name, removable = true }) {
+// Which waypoint labels there is actually room for.
+//
+// An airway expands into every fix along it — V23 and V8 between KSAN and KLAX
+// bring eight — and on a 240 px inline map their labels land on top of each
+// other in an unreadable stack. The dots all stay, because they are the shape
+// of the route; the text is what gets thinned.
+//
+// Priority order, so what survives is what a pilot actually needs: the two
+// endpoints always, then the points they entered themselves (the turning
+// points that define the routing), then the fixes an airway expanded into. A
+// label is kept only if its box clears every label already placed, measured in
+// screen space so the answer changes as you zoom — zoom in and the fixes
+// reappear one by one as the room opens up.
+function useLabelRoom(waypoints) {
+  const map = useMap()
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const bump = () => setTick(t => t + 1)
+    map.on('zoomend', bump); map.on('moveend', bump); map.on('resize', bump)
+    return () => { map.off('zoomend', bump); map.off('moveend', bump); map.off('resize', bump) }
+  }, [map])
+
+  return useMemo(() => {
+    const keep = new Set()
+    const placed = []
+    const last = waypoints.length - 1
+    // 10px monospace, ~6px per character, plus the pill's padding.
+    const halfWidth = w => ((w.name?.length ?? 3) * 6 + 14) / 2
+    const mid = waypoints.map((_, i) => i).slice(1, -1)
+    const order = [
+      0, last,
+      ...mid.filter(i => !waypoints[i].via),
+      ...mid.filter(i => waypoints[i].via),
+    ]
+    for (const i of order) {
+      const w = waypoints[i]
+      if (!w || keep.has(i) || !Number.isFinite(w.lat)) continue
+      let pt
+      try { pt = map.latLngToContainerPoint([w.lat, w.lon]) } catch { continue }
+      const half = halfWidth(w)
+      const clear = placed.every(p => Math.abs(p.x - pt.x) > (p.half + half + 4) || Math.abs(p.y - pt.y) > 20)
+      // The endpoints are never dropped — a route with no idea where it starts
+      // or ends is worse than a crowded one.
+      if (i !== 0 && i !== last && !clear) continue
+      placed.push({ x: pt.x, y: pt.y, half })
+      keep.add(i)
+    }
+    return keep
+    // `tick` looks unused to the linter and is the whole point: the projected
+    // positions come from the map, which is not a reactive value, so the view
+    // counter is what says "recompute, the screen moved".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, tick, waypoints])
+}
+
+function DraggableWaypoint({ position, index, onMove, onRemove, name, showLabel = true, removable = true }) {
   const markerRef = useRef(null)
   // touch-action:none is critical — prevents browser scroll from hijacking the drag
   // Waypoints look identical to the dep/dest airport dots (white, dark ring);
@@ -181,7 +236,7 @@ function DraggableWaypoint({ position, index, onMove, onRemove, name, removable 
   // rebuilds its DOM element and kills any in-progress drag after a few
   // pixels ("can only move it little by little"). Memoize on the label.
   const icon = useMemo(() => {
-    const label = name
+    const label = name && showLabel
       ? `<div style="position:absolute;top:34px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.72);color:#fff;font:700 10px monospace;letter-spacing:0.5px;border-radius:5px;padding:1px 6px;white-space:nowrap;">${name}</div>`
       : ''
     // 44×44 touch target (Apple HIG minimum) around a 14px visual dot —
@@ -192,7 +247,7 @@ function DraggableWaypoint({ position, index, onMove, onRemove, name, removable 
         <div style="width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid #333;box-shadow:0 1px 6px rgba(0,0,0,0.4);box-sizing:border-box;"></div>${label}
       </div>`
     })
-  }, [name])
+  }, [name, showLabel])
   useEffect(() => {
     const marker = markerRef.current
     if (!marker) return
@@ -775,6 +830,16 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
     {/* Dep/dest endpoints — draggable like any waypoint (fine-tune the start/
         end point around the airport), but never removable. Moving one well
         outside the airport area raises a warning upstream without blocking. */}
+    <RouteWaypoints waypoints={waypoints} onDrop={onDrop} onDragInsert={onDragInsert}
+      onWaypointDrop={onWaypointDrop} moveWaypoint={moveWaypoint} removeWaypoint={removeWaypoint} />
+  </>)
+}
+
+// The route's own markers, split out so the label-room calculation can use the
+// map instance without every layer above re-running when the view changes.
+function RouteWaypoints({ waypoints, onDrop, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint }) {
+  const room = useLabelRoom(waypoints)
+  return (<>
     {waypoints[0] && (
       <DraggableWaypoint key={waypoints[0].id} position={[waypoints[0].lat, waypoints[0].lon]}
         index={0} onMove={moveWaypoint} name={waypoints[0].name} removable={false} />
@@ -790,7 +855,8 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
     {waypoints.slice(1, -1).map((w, i) => (
       <DraggableWaypoint key={w.id} position={[w.lat, w.lon]} index={i + 1} onMove={onWaypointDrop} onRemove={removeWaypoint}
         // unnamed map-dropped points carry the same WPT n label as the card
-        name={w.name || `WPT ${waypoints.slice(0, i + 1).filter(p => !p.name).length + 1}`} kind={w.kind} />
+        name={w.name || `WPT ${waypoints.slice(0, i + 1).filter(p => !p.name).length + 1}`} kind={w.kind}
+        showLabel={room.has(i + 1)} />
     ))}
   </>)
 }
@@ -1247,7 +1313,10 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     if (route?.depPos && route?.destPos) {
       setWaypoints([
         { id: 'dep',  lat: route.depPos[0],  lon: route.depPos[1],  name: dep },
-        ...(route.wpts ?? []).map((w, i) => ({ id: `named-${i}-${w.name}`, lat: w.lat, lon: w.lon, name: w.name, kind: w.kind })),
+        // `via` rides along: it marks a fix an airway expanded into rather
+        // than a point the pilot entered, which is what lets the map drop its
+        // label first when there isn't room for every one.
+        ...(route.wpts ?? []).map((w, i) => ({ id: `named-${i}-${w.name}`, lat: w.lat, lon: w.lon, name: w.name, kind: w.kind, via: w.via })),
         { id: 'dest', lat: route.destPos[0], lon: route.destPos[1], name: dest },
       ])
     }
