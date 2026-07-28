@@ -195,7 +195,13 @@ function nearestAlongNm(pt, samples) {
   return at
 }
 
-const TOP_CANDIDATES = 3
+// Two candidates, not three. Every request here goes to the same host and the
+// same free-tier quota as the winds-aloft call on the same screen, and losing
+// the wind column costs the altitude advice and the whole cross-section. The
+// second candidate is cheap insurance against the highest coarse sample
+// sitting on a shoulder; a third almost never changes the answer and is not
+// worth spending another slice of the budget on.
+const TOP_CANDIDATES = 2
 
 async function refinePeak(scored, wps, corridorNm, timeoutMs) {
   const top = [...scored].sort((a, b) => b.ft - a.ft).slice(0, TOP_CANDIDATES)

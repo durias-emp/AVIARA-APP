@@ -325,7 +325,10 @@ export async function recommendCruise(waypoints, {
     perf,
     crossSection,
     atmosphere: atmo.status === 'ok'
-      ? { model: atmo.model, hourISO: atmo.hourISO, samples: atmo.samples.length }
+      // stale/ageMin ride along so the card can say the winds are the last
+      // set that arrived rather than presenting them as current.
+      ? { model: atmo.model, hourISO: atmo.hourISO, samples: atmo.samples.length,
+          stale: atmo.stale ?? false, ageMin: atmo.ageMin ?? null }
       : { status: atmo.status },
     hazards,
     degraded,

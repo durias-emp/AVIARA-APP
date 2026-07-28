@@ -17,6 +17,7 @@
 //     wind into a southerly.
 
 import { sampleRoute } from './corridor'
+import { get, put } from './db'
 
 const API = 'https://api.open-meteo.com/v1/forecast'
 const M_TO_FT = 3.28084
@@ -47,6 +48,17 @@ const SURFACE = ['freezing_level_height', 'cape', 'visibility',
 const _cache = new Map()
 const keyOf = (pts, hour, maxAltFt) =>
   pts.map(p => `${p.lat.toFixed(2)},${p.lon.toFixed(2)}`).join(';') + `@${hour}/${maxAltFt}`
+
+// The same corridor, without the hour — what a stored column is filed under,
+// so a forecast fetched for 14:00Z is still findable at 15:00Z.
+const routeKeyOf = (pts, maxAltFt) =>
+  pts.map(p => `${p.lat.toFixed(2)},${p.lon.toFixed(2)}`).join(';') + `/${maxAltFt}`
+
+// How old a stored wind column may be before it stops being worth showing.
+// Winds aloft are a forecast product with hours of validity, so three is
+// generous without being dishonest — and the age travels with the data so the
+// card can say it.
+const STALE_LIMIT_MIN = 180
 
 function levelsFor(maxAltFt) {
   // one level above the ceiling of interest, so the top is interpolated rather
@@ -92,6 +104,7 @@ export async function loadAtmosphere(waypoints, {
   const levels = levelsFor(maxAltFt)
   const hourKey = new Date(departAtISO || Date.now()).toISOString().slice(0, 13)
   const key = keyOf(samples, hourKey, maxAltFt)
+  const routeKey = routeKeyOf(samples, maxAltFt)
   if (_cache.has(key)) return _cache.get(key)
 
   const hourly = [
@@ -107,17 +120,28 @@ export async function loadAtmosphere(waypoints, {
     forecast_days: '3',
   })
 
+  // One attempt used to be the whole story, and any hiccup — most often a
+  // rate-limit 429 from the free tier — took the winds aloft with it. The
+  // altitude advice then fell back to terrain, airspace and rules, and the
+  // weather cross-section disappeared entirely, because it cannot be drawn
+  // without a wind column. That is a lot to lose to a transient failure that
+  // clears in a second, especially since the terrain analysis on the same
+  // screen queries the same host and can be what tripped the limit.
   let payload
-  try {
-    const res = await fetch(`${API}?${params}`, { signal: AbortSignal.timeout(timeoutMs) })
-    if (!res.ok) throw new Error(String(res.status))
-    payload = await res.json()
-  } catch {
-    return { status: 'unavailable' }
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(`${API}?${params}`, { signal: AbortSignal.timeout(timeoutMs) })
+      if (!res.ok) throw new Error(String(res.status))
+      payload = await res.json()
+      break
+    } catch {
+      if (attempt >= 2) return await lastGood(routeKey)
+      await new Promise(r => setTimeout(r, 1200 * (attempt + 1)))
+    }
   }
 
   const locs = Array.isArray(payload) ? payload : [payload]
-  if (!locs.length || !locs[0]?.hourly?.time) return { status: 'unavailable' }
+  if (!locs.length || !locs[0]?.hourly?.time) return await lastGood(routeKey)
 
   const h = hourIndex(locs[0].hourly.time, departAtISO)
   const columns = locs.map(loc => {
@@ -160,7 +184,26 @@ export async function loadAtmosphere(waypoints, {
     surface,
   }
   _cache.set(key, out)
+  // Kept for the next time the network says no. Fire-and-forget: a storage
+  // failure must not cost the caller the data it already has.
+  put('settings', { key: 'wxAloft', routeKey, savedAt: Date.now(), data: out }).catch(() => {})
   return out
+}
+
+// The last wind column fetched for this corridor, if it is recent enough to
+// still describe the air. Returned marked stale and with its age, so the card
+// can show the profile and say how old it is rather than showing nothing —
+// the same bargain the METAR cache already makes.
+async function lastGood(routeKey) {
+  try {
+    const saved = await get('settings', 'wxAloft')
+    if (!saved || saved.routeKey !== routeKey || !saved.data) return { status: 'unavailable' }
+    const ageMin = Math.round((Date.now() - saved.savedAt) / 60000)
+    if (ageMin > STALE_LIMIT_MIN) return { status: 'unavailable' }
+    return { ...saved.data, stale: true, ageMin }
+  } catch {
+    return { status: 'unavailable' }
+  }
 }
 
 // Linear interpolation of one column to an arbitrary altitude. Below the

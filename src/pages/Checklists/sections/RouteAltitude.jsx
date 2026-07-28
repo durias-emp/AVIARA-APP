@@ -489,6 +489,10 @@ function PolylineEditor({ waypoints, onDragInsert }) {
   const drag = useRef(null)
   const hitRef = useRef(null)
   const visRef = useRef(null)
+  // Every temporary layer this editor has put on the map. drag.current only
+  // ever holds the newest pair; this holds all of them, so cleanup can sweep
+  // up anything an interrupted gesture left behind.
+  const tempLayers = useRef([])
 
   // Which leg is nearest — the one the bend belongs to.
   const segmentAt = (lat, lon) => {
@@ -537,6 +541,7 @@ function PolylineEditor({ waypoints, onDragInsert }) {
       if (!d) return
       drag.current = null
       map.removeLayer(d.line); map.removeLayer(d.dot)
+      tempLayers.current = tempLayers.current.filter(l => l !== d.line && l !== d.dot)
       visRef.current?.setStyle({ opacity: 0.65 })
       map.dragging.enable()
       const { lat, lng } = d.latlng
@@ -560,6 +565,13 @@ function PolylineEditor({ waypoints, onDragInsert }) {
     // after the finger lifts, far too late to drag anything.
     const path = hitRef.current?._path
     const onDown = (ev) => {
+      // One finger fires BOTH pointerdown and touchstart. Without this guard
+      // startDrag ran twice and the second call overwrote drag.current — so
+      // the first temporary line and dot lost their only reference and stayed
+      // on the map forever, a stray purple course line and vertex that no
+      // amount of deleting waypoints would clear, because nothing knew they
+      // existed any more.
+      if (drag.current) return
       const ll = pointFrom(ev)
       if (!ll) return
       ev.stopPropagation()
@@ -569,7 +581,8 @@ function PolylineEditor({ waypoints, onDragInsert }) {
       path.style.touchAction = 'none'
       path.style.cursor = 'grab'
       path.addEventListener('pointerdown', onDown)
-      path.addEventListener('touchstart', onDown, { passive: false })
+      // Only where pointer events do not exist, so the two never both fire.
+      if (!window.PointerEvent) path.addEventListener('touchstart', onDown, { passive: false })
     }
 
     function startDrag(ev, latlng) {
@@ -590,6 +603,7 @@ function PolylineEditor({ waypoints, onDragInsert }) {
           radius: 8, color: '#fff', weight: 2.5, fillColor: '#a855f7', fillOpacity: 1,
         }).addTo(map),
       }
+      tempLayers.current.push(drag.current.line, drag.current.dot)
       if (ev?.preventDefault && ev.cancelable) ev.preventDefault()
     }
 
@@ -605,11 +619,15 @@ function PolylineEditor({ waypoints, onDragInsert }) {
       window.removeEventListener('touchend', onUp)
       const d = drag.current
       if (d) {
-        map.removeLayer(d.line); map.removeLayer(d.dot)
         visRef.current?.setStyle({ opacity: 0.65 })
         map.dragging.enable()
         drag.current = null
       }
+      // Sweep every temporary layer, not just the current drag's pair.
+      for (const layer of tempLayers.current) {
+        if (map.hasLayer(layer)) map.removeLayer(layer)
+      }
+      tempLayers.current = []
     }
   }, [map, JSON.stringify(positions)])
 
@@ -1188,6 +1206,7 @@ function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick, brief, brie
 
       <div style={{ marginTop: 7, fontSize: 9.5, color: 'var(--text-tertiary)', lineHeight: 1.45 }}>
         {wx && `${advice.atmosphere.model}, ${wx}. `}
+        {advice.atmosphere?.stale && `Winds are the last set that reached us, ${advice.atmosphere.ageMin} min old — the forecast service did not answer. `}
         {modelled && 'Icing and turbulence outside US coverage are modelled from the forecast profile, not an official product. '}
         VFR cloud clearance is checked vertically only. Pilot retains final authority.
       </div>
