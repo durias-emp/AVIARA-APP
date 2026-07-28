@@ -461,7 +461,7 @@ function DraggableWaypoint({ position, index, onMove, onRemove, name, showLabel 
 //
 // A tap with no movement still opens the picker; a drag commits the point where
 // it was released and then offers to snap it to whatever is charted there.
-function PolylineEditor({ waypoints, onDrop, onDragInsert }) {
+function PolylineEditor({ waypoints, onDragInsert }) {
   const map = useMap()
   const positions = waypoints.map(w => [w.lat, w.lon])
   const drag = useRef(null)
@@ -498,8 +498,11 @@ function PolylineEditor({ waypoints, onDrop, onDragInsert }) {
       if (!d) return
       const ll = pointFrom(ev)
       if (!ll) return
-      // Past this distance it is a drag, not a tap that wobbled.
-      if (!d.moved && map.latLngToContainerPoint(ll).distanceTo(d.startPx) > 6) d.moved = true
+      // Past this distance it is a drag, not a tap that wobbled. 6px was
+      // inside the noise of a finger resting on a line — routes picked up
+      // bends nobody asked for. A deliberate pull moves much further than
+      // this before the user expects anything to happen.
+      if (!d.moved && map.latLngToContainerPoint(ll).distanceTo(d.startPx) > 18) d.moved = true
       if (!d.moved) return
       ev.preventDefault()
       d.latlng = ll
@@ -515,8 +518,12 @@ function PolylineEditor({ waypoints, onDrop, onDragInsert }) {
       visRef.current?.setStyle({ opacity: 0.65 })
       map.dragging.enable()
       const { lat, lng } = d.latlng
+      // Only a pull does anything. Tapping the line used to open the "add to
+      // route" picker, which made the single easiest thing to hit by accident
+      // — a magenta line across the whole map — into a waypoint prompt. The
+      // deliberate ways to add a point are still both there: pull the line, or
+      // press and hold anywhere.
       if (d.moved) onDragInsert({ lat, lon: lng, seg: d.seg })
-      else onDrop({ lat, lon: lng, seg: d.seg })
     }
 
     // Window-level, so a finger that leaves the map mid-drag still finishes the
@@ -878,7 +885,7 @@ function RouteHint() {
       animation: 'fadeOut 0.6s ease 2.9s forwards',
     }}>
       <span style={{ fontSize: 16 }}>✦</span>
-      <span style={{ fontSize: 12, color: '#fff', fontWeight: 500 }}>Tap the line or hold the map to add · drag a point to move it</span>
+      <span style={{ fontSize: 12, color: '#fff', fontWeight: 500 }}>Pull the line to bend it · hold the map to add a point · drag a point to move it</span>
       <style>{`@keyframes fadeOut { to { opacity: 0 } }`}</style>
     </div>
   )
@@ -1034,7 +1041,7 @@ function RouteWaypoints({ waypoints, onDrop, onDragInsert, onWaypointDrop, moveW
         index={waypoints.length-1} onMove={moveWaypoint}
         name={waypoints[waypoints.length-1].name} removable={false} />
     )}
-    {waypoints.length >= 2 && <PolylineEditor waypoints={waypoints} onDrop={onDrop} onDragInsert={onDragInsert} />}
+    {waypoints.length >= 2 && <PolylineEditor waypoints={waypoints} onDragInsert={onDragInsert} />}
     {waypoints.length >= 2 && <LongPressAdd waypoints={waypoints} onDrop={onDrop} />}
     {waypoints.slice(1, -1).map((w, i) => (
       <DraggableWaypoint key={w.id} position={[w.lat, w.lon]} index={i + 1} onMove={onWaypointDrop} onRemove={removeWaypoint}
@@ -1618,21 +1625,36 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [dropPoint, setDropPoint] = useState(null)
   function openDropPicker(pt) { setDropPoint(pt) }
 
-  // Bending the route line: the point is added where the finger let go, no
-  // confirmation. The picker then opens on it, so snapping to a nearby fix or
-  // field is one tap away — dismissing leaves the coordinate exactly where it
-  // was dropped, which is what the gesture promised.
+  // Bending the route line proposes a point; it does not add one.
+  //
+  // This used to insert on release and leave the waypoint behind when the
+  // picker was dismissed, so an accidental pull left a bend in the route that
+  // had to be hunted down and deleted. Nothing enters the route until the
+  // picker is confirmed, and closing it leaves the route exactly as it was.
   function onDragInsert({ lat, lon, seg }) {
-    insertWaypoint(seg, lat, lon)
-    setDropPoint({ lat, lon, moveIndex: seg })
+    setDropPoint({ lat, lon, seg })
   }
 
-  // Dragging a waypoint moves it immediately — the point follows the finger and
-  // stays where it was let go — and then offers to snap it to whatever is
-  // charted there. Nothing is undone if the picker is dismissed.
+  // Dragging an existing waypoint is different: the marker has already moved
+  // under the finger, so the map would lie if the route did not follow. It
+  // moves, and the original position is remembered so dismissing the picker
+  // puts it back rather than silently keeping a position nobody confirmed.
   function onWaypointDrop(index, latlng) {
+    const before = waypoints[index]
     moveWaypoint(index, latlng)
-    setDropPoint({ lat: latlng.lat, lon: latlng.lng, moveIndex: index })
+    setDropPoint({
+      lat: latlng.lat, lon: latlng.lng, moveIndex: index,
+      revertTo: before ? { lat: before.lat, lon: before.lon, name: before.name ?? null } : null,
+    })
+  }
+
+  // Closing the picker undoes whatever the gesture did on the way in.
+  function cancelDrop() {
+    const d = dropPoint
+    if (d?.revertTo && d.moveIndex != null) {
+      setWaypoints(prev => prev.map((w, i) => (i === d.moveIndex ? { ...w, ...d.revertTo } : w)))
+    }
+    setDropPoint(null)
   }
 
   function commitDrop(choice) {
@@ -2863,7 +2885,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         mode={dropPoint?.moveIndex != null ? 'move' : 'insert'}
                         canAppend={waypoints.length >= 2}
                         onChoose={commitDrop}
-                        onCancel={() => setDropPoint(null)} />
+                        onCancel={cancelDrop} />
 
                       {/* A field along the route, tapped from the map or the
                           aerodromes list */}
