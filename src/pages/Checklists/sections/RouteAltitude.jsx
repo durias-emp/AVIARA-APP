@@ -117,6 +117,87 @@ function MapFlyTo({ target, instant = false }) {
   return null
 }
 
+// A control tower, for the fields along the route.
+//
+// Ink colour follows whichever chart is underneath, because each one has its
+// own palette and a marker that reads as part of the chart is easier to
+// separate from it than one fighting it. What guarantees the contrast is not
+// the colour choice though — it is the white halo the whole glyph is drawn
+// on. Sectionals go from pale green to tan to dark magenta airspace within an
+// inch, so any single ink colour will land on something close to itself
+// somewhere; the halo means that never matters.
+function aerodromeInk(layers) {
+  if (layers.ifrhi) return '#0d2f52'        // high charts: pale blue-grey
+  if (layers.ifrlo) return '#0f3a2a'        // low charts: white with blue/green ink
+  if (layers.sectional) return '#4a1042'    // sectional: tan and green, magenta ink
+  return '#12233b'                          // plain basemap: cream and pale blue
+}
+
+// How big the tower is drawn, by zoom.
+//
+// One fixed size cannot serve both ends: at route zoom a dozen 26px towers
+// crowd the line they are meant to annotate, and zoomed in on a field the same
+// glyph is a speck against a chart. So it grows with the view — small enough
+// to read as an annotation when the whole route is on screen, large enough to
+// be the subject when you are looking at one field.
+function aerodromeGlyphPx(zoom) {
+  const t = Math.max(0, Math.min(1, (zoom - 7) / 6))     // z7 and below → min, z13+ → max
+  return Math.round(13 + t * 17)                          // 13px … 30px
+}
+
+const AERO_ICON_CACHE = new Map()
+function aerodromeIcon(ink, px) {
+  const key = `${ink}@${px}`
+  const hit = AERO_ICON_CACHE.get(key)
+  if (hit) return hit
+  // The touch target stays comfortably bigger than the glyph, but does not
+  // hold at 44px when the glyph is 13: at route zoom the fields sit close
+  // together and full-size boxes would overlap into each other's taps.
+  const box = Math.max(30, px + 12)
+  const icon = L.divIcon({
+    className: '', iconSize: [box, box], iconAnchor: [box / 2, box / 2],
+    html: `<div style="width:${box}px;height:${box}px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+      <svg width="${px}" height="${px}" viewBox="0 0 24 24"
+           style="filter:drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff) drop-shadow(0 1px 2px rgba(0,0,0,0.4));">
+        <g fill="${ink}">
+          <circle cx="12" cy="3.1" r="2.15"/>
+          <rect x="11.15" y="4.7" width="1.7" height="2.5"/>
+          <rect x="4.8" y="7.1" width="14.4" height="2.3" rx="0.2"/>
+          <path d="M6.3 9.4h11.4v5.3l-2.7 3.1H9l-2.7-3.1z"/>
+          <rect x="9.1" y="18.1" width="5.8" height="4.5"/>
+          <path d="M3.5 1.6a6.6 6.6 0 0 0 0 8.2" fill="none" stroke="${ink}" stroke-width="1.9" stroke-linecap="round"/>
+          <path d="M20.5 1.6a6.6 6.6 0 0 1 0 8.2" fill="none" stroke="${ink}" stroke-width="1.9" stroke-linecap="round"/>
+        </g>
+        <g fill="#fff">
+          <rect x="7.5" y="10.4" width="2.2" height="3.2"/>
+          <rect x="10.9" y="10.4" width="2.2" height="3.2"/>
+          <rect x="14.3" y="10.4" width="2.2" height="3.2"/>
+        </g>
+      </svg>
+    </div>`,
+  })
+  AERO_ICON_CACHE.set(key, icon)
+  return icon
+}
+
+// The fields themselves. Split out so tracking the zoom re-renders these
+// markers and nothing else on the map.
+function AerodromeMarkers({ fields, layers, onAerodrome }) {
+  const map = useMap()
+  const [zoom, setZoom] = useState(() => map.getZoom())
+  useEffect(() => {
+    const sync = () => setZoom(map.getZoom())
+    map.on('zoomend', sync)
+    return () => { map.off('zoomend', sync) }
+  }, [map])
+
+  const icon = aerodromeIcon(aerodromeInk(layers), aerodromeGlyphPx(zoom))
+  return (fields ?? []).map(f => (
+    <Marker key={`aero-${f.ident}`} position={[f.lat, f.lon]} icon={icon} interactive={true}
+      eventHandlers={{ click: e => { L.DomEvent.stopPropagation(e); onAerodrome?.(f) } }} />
+  ))
+}
+
 // Re-frame the whole route on demand.
 //
 // This exists because "back to route" first tried to compute a zoom from the
@@ -867,11 +948,7 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
         points — the nearest handful only, because the corridor can hold 160
         of them and a route line under a field of dots is not a route line.
         The rest stay in the list, which is the same set seen another way. */}
-    {(aerodromes ?? []).map(f => (
-      <CircleMarker key={`aero-${f.ident}`} center={[f.lat, f.lon]} radius={5}
-        pathOptions={{ color: '#34C759', weight: 2, fillColor: '#0b0b0f', fillOpacity: 0.9 }}
-        eventHandlers={{ click: e => { L.DomEvent.stopPropagation(e); onAerodrome?.(f) } }} />
-    ))}
+    <AerodromeMarkers fields={aerodromes} layers={layers} onAerodrome={onAerodrome} />
     <RouteWaypoints waypoints={waypoints} onDrop={onDrop} onDragInsert={onDragInsert}
       onWaypointDrop={onWaypointDrop} moveWaypoint={moveWaypoint} removeWaypoint={removeWaypoint} />
   </>)

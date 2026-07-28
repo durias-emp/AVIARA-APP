@@ -72,7 +72,13 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
   const metar = wx && wx !== 'none' ? wx.metar : null
   const raw = metar?.rawOb ?? null
   // parseFltCat returns the category's own descriptor, not its key.
-  const cat = raw ? parseFltCat(metar) : null
+  //
+  // The badge only appears for the field's OWN report. A borrowed observation
+  // is captioned "conditions there, not here" a few lines down, and a green
+  // VFR badge beside the ident would quietly contradict that — CA84 showing
+  // VFR on the strength of a METAR from 6 NM away is the app asserting
+  // something nobody measured.
+  const cat = raw && wx.distNm === 0 ? parseFltCat(metar) : null
 
   const grouped = []
   const used = new Set()
@@ -108,7 +114,9 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
           </div>
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 2,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {details?.name || field.name || field.clsLabel}
+            {/* lookupAirport falls back to the ident when it has no name, so
+                a small strip read "CA84" twice. Its class is more use. */}
+            {[details?.name, field.name].find(n => n && n !== field.ident) || field.clsLabel}
           </div>
         </div>
         <span onClick={onClose} style={{ fontSize: 17, color: 'rgba(255,255,255,0.4)', cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}>✕</span>
