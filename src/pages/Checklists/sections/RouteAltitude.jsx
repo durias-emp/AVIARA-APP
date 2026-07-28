@@ -1,7 +1,7 @@
 import 'leaflet/dist/leaflet.css'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { MapContainer, TileLayer, Marker, Polyline, Polygon, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Polyline, Polygon, CircleMarker, Popup, ZoomControl, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
 import { get, put } from '../../../lib/db'
@@ -2349,7 +2349,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       <div style={{ position: 'absolute', inset: 0, background: '#e8e0d8' }}>
                         <MapContainer center={mapCenter} zoom={7}
                           style={{ height: '100%', width: '100%' }}
-                          zoomControl={true} attributionControl={false}>
+                          zoomControl={false} attributionControl={false}>
+                          {/* Leaflet's default corner is top-left, directly
+                              under the layer chips — the zoom buttons ended up
+                              half-covered by them. Top-right puts them under
+                              CLOSE instead, where the bar is only one button
+                              wide; the CSS below clears its height. */}
+                          <ZoomControl position="topright" />
                           <MapInvalidator />
                           <MapLayers fit={true} {...mapLayerProps} />
                           <MapFlyTo target={mapFlyTarget} />
@@ -2406,12 +2412,15 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                           inset or they'd sit right under (and look cut off by) the status bar */}
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10001,
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '14px 16px',
+                        gap: 6, padding: '14px 12px',
                         paddingTop: 'calc(14px + env(safe-area-inset-top))',
                         background: 'linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%)',
                       }}>
-                        {/* Layer toggles */}
-                        <div style={{ display: 'flex', gap: 7 }}>
+                        {/* Layer toggles. They shrink and wrap rather than
+                            running off the right edge of a narrow phone —
+                            five chips plus CLOSE is more than 375 px of
+                            comfortable width. */}
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', minWidth: 0 }}>
                           {[
                             ['sectional','SECT'],
                             ['ifrlo','LO'],
@@ -2424,8 +2433,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                               backdropFilter: 'blur(12px)',
                               border: layers[k] ? 'none' : '0.5px solid rgba(255,255,255,0.18)',
                               borderRadius: 7, color: layers[k] ? '#000' : 'rgba(255,255,255,0.85)',
-                              fontSize: 11, fontWeight: 700, letterSpacing: '0.5px',
-                              padding: '7px 11px', cursor: 'pointer',
+                              fontSize: 10.5, fontWeight: 700, letterSpacing: '0.4px',
+                              padding: '7px 9px', cursor: 'pointer', flexShrink: 0,
                             }}>{label}</button>
                           ))}
                         </div>
@@ -2433,8 +2442,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         <button onClick={() => setMapFS(false)} style={{
                           background: 'rgba(10,10,10,0.75)', backdropFilter: 'blur(12px)',
                           border: '0.5px solid rgba(255,255,255,0.18)', borderRadius: 7,
-                          color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: 700,
-                          letterSpacing: '0.5px', padding: '7px 13px', cursor: 'pointer',
+                          color: 'rgba(255,255,255,0.85)', fontSize: 10.5, fontWeight: 700,
+                          letterSpacing: '0.4px', padding: '7px 10px', cursor: 'pointer',
+                          flexShrink: 0, alignSelf: 'flex-start', whiteSpace: 'nowrap',
                         }}>✕ CLOSE</button>
                       </div>
 
