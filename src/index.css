@@ -255,6 +255,40 @@ body {
   }
 }
 
+/* ── Screens whose scroller is nested inside the shell ──────────
+   The checklist scrolls in a pane inside the shell rather than in #root.
+   Centring the shell at a reading width made that pane 780 px wide in the
+   middle of the window, and the 250 px of empty space either side of it
+   belonged to #root — which has nothing to scroll. A wheel out there moved
+   nothing, and a scroll never chains down into a child, so on a desktop
+   window the checklist simply would not scroll unless the pointer happened
+   to be over the content column. (At phone widths there are no margins, which
+   is why this only ever showed up on a big screen.)
+
+   So the shell goes full width on those screens and the reading width moves
+   inside, onto the content itself — the scroller now reaches both edges of
+   the window and a wheel anywhere over it works. */
+.app-shell--bleed {
+  max-width: none;
+}
+
+.content-column {
+  width: 100%;
+  margin: 0 auto;
+}
+
+@media (min-width: 600px) {
+  .content-column {
+    max-width: 700px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .content-column {
+    max-width: 780px;
+  }
+}
+
 /* ── Fixed footer bar (checklist tab bar + action buttons) ───
    position:fixed pins to the true device viewport regardless of
    any dvh/ancestor-height mismatch — mirrors .app-shell's centered

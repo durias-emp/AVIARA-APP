@@ -149,7 +149,9 @@ export default function ChecklistTabShell({
               overflowY: 'auto', WebkitOverflowScrolling: 'touch',
               overscrollBehaviorY: 'contain',
             }}>
-              <div style={{ paddingBottom: footerHeight }}>
+              {/* The pane itself spans the whole window so a wheel anywhere
+                  over it scrolls; the reading width lives here instead. */}
+              <div className="content-column" style={{ paddingBottom: footerHeight }}>
                 <PaneActivityProvider onActiveChange={onActiveChangeFns[i]}>
                   <StepPane
                     key={`${section.title}-${resetKey}`}

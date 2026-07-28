@@ -71,7 +71,7 @@ export default function Shell({ children }) {
   // Without the distinction the checklist's nested panes stretch to their
   // content and nothing scrolls at all.
   return (
-    <div className={`app-shell${isHome || ownsInternalScroll ? ' app-shell--fill' : ''}`}>
+    <div className={`app-shell${isHome || ownsInternalScroll ? ' app-shell--fill' : ''}${ownsInternalScroll ? ' app-shell--bleed' : ''}`}>
       <main ref={swipeRef} style={{ flex: 1, overflowY: isHome || ownsInternalScroll ? 'hidden' : 'auto', display: ownsInternalScroll ? 'flex' : 'block', flexDirection: 'column', minHeight: 0 }}>
         {children}
       </main>
