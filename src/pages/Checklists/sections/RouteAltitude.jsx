@@ -910,6 +910,58 @@ function LongPressAdd({ waypoints, onDrop }) {
   </>)
 }
 
+// How much of the card stays on screen once it is swiped away — enough to be
+// an obvious grab bar and to be hit reliably with a thumb, not so much that it
+// eats the chart it just got out of the way of.
+const CARD_PEEK_PX = 26
+
+// Vertical swipe on the fullscreen bottom card.
+//
+// The card is dense with buttons and carries a horizontally scrolling route
+// strip, so the gesture has to be sure of itself before it acts:
+//
+//   * it must travel far enough to be a swipe rather than a wobble during a tap
+//   * it must be more vertical than horizontal, or scrubbing the route strip
+//     sideways would dismiss the card
+//   * having fired, it suppresses the click that would otherwise land on
+//     whatever button the finger happened to start on — a swipe that also
+//     presses something is the one outcome nobody wants
+//
+// Only pointer events are bound. Both pointerdown and touchstart fire for one
+// finger, and listening for both is exactly the bug that left ghost layers on
+// the map after a drag.
+function useCardSwipe({ onDown, onUp, thresholdPx = 44 }) {
+  const st = useRef(null)
+
+  const suppressNextClick = () => {
+    const kill = e => { e.stopPropagation(); e.preventDefault() }
+    window.addEventListener('click', kill, { capture: true, once: true })
+    // If no click follows (the usual case on touch), drop the trap rather than
+    // leaving it armed for an unrelated click later.
+    setTimeout(() => window.removeEventListener('click', kill, { capture: true }), 400)
+  }
+
+  return {
+    onPointerDown: e => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return
+      st.current = { x: e.clientX, y: e.clientY, fired: false }
+    },
+    onPointerMove: e => {
+      const s = st.current
+      if (!s || s.fired) return
+      const dy = e.clientY - s.y
+      const dx = e.clientX - s.x
+      if (Math.abs(dy) < thresholdPx) return
+      if (Math.abs(dy) < Math.abs(dx) * 1.5) { st.current = null; return }
+      s.fired = true
+      suppressNextClick()
+      if (dy > 0) onDown?.(); else onUp?.()
+    },
+    onPointerUp:     () => { st.current = null },
+    onPointerCancel: () => { st.current = null },
+  }
+}
+
 // Fade-out hint shown once when fullscreen opens
 function RouteHint() {
   const [visible, setVisible] = useState(true)
@@ -1359,6 +1411,16 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   }, [])
   const [mapFullscreen, setMapFS]   = useState(false)
   const [showRefs, setShowRefs]     = useState(false)
+  // Cleared view: the pilot swipes the bottom card down and everything but the
+  // close button and the zoom control gets out of the way, so the chart can be
+  // read the way a paper chart is read. Cleared on every entry to fullscreen
+  // rather than in an effect, so reopening the map never starts in a state the
+  // pilot has to undo and no render cascades to do it.
+  const [mapClear, setMapClear]     = useState(false)
+  const cardSwipe = useCardSwipe({
+    onDown: () => setMapClear(true),
+    onUp:   () => setMapClear(false),
+  })
   const [activeChip, setActiveChip] = useState(null) // id of chip whose popup is open
 
   // ── Named intermediate waypoints (Garmin/ForeFlight style) ──
@@ -1506,7 +1568,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // entry points land here: fly the map onto the field, open its popup, and
   // remember that the view has left the route so it can be offered back.
   function openAerodrome(f) {
-    setMapFS(true)
+    setMapClear(false); setMapFS(true)
     setPeakFocused(false)
     setActiveChip(null)                       // the chip panel would cover the field
     // Zoom 13 shows the field at airport scale, and the offset lifts it into
@@ -1521,7 +1583,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // the answer to "how high", and this is the answer to "where".
   function focusPeak() {
     if (terrainInfo?.status !== 'ok' || terrainInfo.atLat == null) return
-    setMapFS(true)
+    setMapClear(false); setMapFS(true)
     setMapFlyTarget({ lat: terrainInfo.atLat, lon: terrainInfo.atLon, zoom: 11, offsetFrac: 0.26 })
     setPeakFocused(true)
     setAwayFromRoute(true)
@@ -2844,7 +2906,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
               return (<>
                 {/* Inline map */}
                 <div style={{ borderRadius: 10, overflow: 'hidden', height: 240, position: 'relative', cursor: 'pointer' }}
-                  onClick={() => { setMapFlyTarget(null); setMapFS(true) }}>
+                  onClick={() => { setMapFlyTarget(null); setMapClear(false); setMapFS(true) }}>
                   <MapContainer center={route.depPos} zoom={10}
                     style={{ height: '100%', width: '100%' }}
                     zoomControl={false} attributionControl={false}
@@ -2944,7 +3006,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                           deliberately never re-fits on its own — the camera
                           belongs to the pilot — so returning is offered rather
                           than done for them. */}
-                      {awayFromRoute && !openField && (
+                      {awayFromRoute && !openField && !mapClear && (
                         <button onClick={backToRoute} style={{
                           position: 'absolute', left: '50%', transform: 'translateX(-50%)',
                           bottom: 'calc(env(safe-area-inset-bottom, 0px) + 22px)', zIndex: 10025,
@@ -2956,13 +3018,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       )}
 
                       {/* Route edit hint — fades after 4s */}
-                      {!dropPoint && !openField && <RouteHint />}
+                      {!dropPoint && !openField && !mapClear && <RouteHint />}
 
                       {/* Tier-2 disclosure — only when THIS route leaves the
                           regions we hold current data for, since that's when
                           the pilot is actually looking at the 2012 reference
                           airways. */}
-                      {(layers.ifrlo || layers.ifrhi) && routeLeavesTier1 && (
+                      {(layers.ifrlo || layers.ifrhi) && routeLeavesTier1 && !mapClear && (
                         <div style={{
                           position: 'absolute', left: 12, top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
                           zIndex: 10002, pointerEvents: 'none',
@@ -2976,7 +3038,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       )}
 
                       {/* Off-airport endpoint warning — informative, never blocking */}
-                      {endpointWarning && (
+                      {endpointWarning && !mapClear && (
                         <div style={{
                           position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
                           left: '50%', transform: 'translateX(-50%)', zIndex: 10003,
@@ -2998,13 +3060,22 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         gap: 6, padding: '14px 12px',
                         paddingTop: 'calc(14px + env(safe-area-inset-top))',
-                        background: 'linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%)',
+                        // The scrim exists to keep the chips legible over a
+                        // busy chart. With the chips gone it is just a stain
+                        // across the top of the map, so it goes too.
+                        background: mapClear ? 'none' : 'linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%)',
+                        pointerEvents: 'none',
                       }}>
                         {/* Layer toggles. They shrink and wrap rather than
                             running off the right edge of a narrow phone —
                             five chips plus CLOSE is more than 375 px of
                             comfortable width. */}
-                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', minWidth: 0 }}>
+                        <div style={{
+                          display: 'flex', gap: 5, flexWrap: 'wrap', minWidth: 0,
+                          opacity: mapClear ? 0 : 1,
+                          pointerEvents: mapClear ? 'none' : 'auto',
+                          transition: 'opacity 200ms',
+                        }}>
                           {[
                             ['sectional','SECT'],
                             ['ifrlo','LO'],
@@ -3029,11 +3100,16 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                           color: 'rgba(255,255,255,0.85)', fontSize: 10.5, fontWeight: 700,
                           letterSpacing: '0.4px', padding: '7px 10px', cursor: 'pointer',
                           flexShrink: 0, alignSelf: 'flex-start', whiteSpace: 'nowrap',
+                          // Survives the cleared view: the way out must never
+                          // be one of the things that got out of the way.
+                          pointerEvents: 'auto',
                         }}>✕ CLOSE</button>
                       </div>
 
                       {/* Bottom panel */}
-                      <div style={{
+                      <div
+                        {...cardSwipe}
+                        style={{
                         position: 'absolute', bottom: 16, left: 16, right: 16, zIndex: 10001,
                         height: 'auto', minHeight: 210,
                         background: 'rgba(8,8,10,0.92)',
@@ -3044,7 +3120,33 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         boxShadow: '0 8px 40px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.06) inset',
                         display: 'flex', flexDirection: 'column',
                         overflow: 'visible',
+                        // Cleared: slide the card down until only the grab bar
+                        // clears the bottom edge. Translating rather than
+                        // unmounting keeps the card's state — the open picker,
+                        // the scrolled route strip — exactly as it was left.
+                        transform: mapClear ? `translateY(calc(100% + 16px - ${CARD_PEEK_PX}px))` : 'translateY(0)',
+                        transition: 'transform 260ms cubic-bezier(0.32, 0.72, 0, 1)',
+                        touchAction: 'pan-x',
                       }}>
+                        {/* Grab bar. Doubles as the peek: when the card is
+                            cleared this strip is the only part still on
+                            screen, so what the pilot swipes up is the same
+                            thing they swiped down. */}
+                        <div
+                          onClick={() => mapClear && setMapClear(false)}
+                          style={{
+                            height: CARD_PEEK_PX, flexShrink: 0, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                          aria-label={mapClear ? 'Show route panel' : 'Hide route panel'}
+                        >
+                          <div style={{
+                            width: 38, height: 4, borderRadius: 2,
+                            background: mapClear ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.22)',
+                            transition: 'background 200ms',
+                          }} />
+                        </div>
+
                         {/* Route strip */}
                         <div style={{
                           padding: '11px 18px 9px',
@@ -3514,7 +3616,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       </div>
 
                       {/* References sheet */}
-                      {showRefs && (
+                      {showRefs && !mapClear && (
                         <div style={{
                           position: 'absolute', bottom: 242, left: 'auto', right: 16, zIndex: 10002,
                           width: 260,
