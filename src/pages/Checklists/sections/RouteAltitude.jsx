@@ -3010,7 +3010,12 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                   if (r) put('settings', { ...r, cruiseAlt: alt }).catch(() => {})
                 })
               }} />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            {/* minmax(0, 1fr) rather than 1fr: a grid column's automatic
+                minimum is its content's min-content width, so one long gate
+                reason ("Not worth it on 95 NM — climb and descent use up the
+                leg") widened its column until the second column ran off the
+                side of the screen and took half the altitudes with it. */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
               {altitudes.map(alt => {
                 const selected = selectedAlt === alt
                 const belowMEA = isIFR && routeMaxMEA != null && alt < routeMaxMEA
@@ -3030,7 +3035,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                     border: `0.5px solid ${selected ? 'var(--text)'
                       : best ? 'var(--ok)'
                       : belowMEA ? 'rgba(255,159,10,0.5)' : 'var(--border)'}`,
-                    borderRadius: 8, padding: '7px 0',
+                    borderRadius: 8, padding: '7px 8px', minWidth: 0,
                     fontSize: 13, fontWeight: 600,
                     color: selected ? 'var(--bg)' : gate ? 'var(--text-tertiary)'
                       : belowMEA ? 'var(--warn)' : 'var(--text)',
@@ -3045,8 +3050,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       <span style={{
                         fontSize: 9, fontWeight: 500,
                         color: selected ? 'var(--bg)' : gate ? 'var(--text-tertiary)' : 'var(--text-secondary)',
-                        opacity: 0.85, maxWidth: '95%', overflow: 'hidden',
-                        textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        opacity: 0.85, width: '100%', lineHeight: 1.35,
+                        // A gate reason is the whole point of a gated
+                        // altitude, so it wraps to two lines and is readable
+                        // rather than being cut off mid-word on one.
+                        display: '-webkit-box', WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                        overflowWrap: 'anywhere',
                       }}>
                         {gate ? gate.gates[0].label : `${cand.econ ? Math.round(cand.econ.blockMin) + ' min · ' : ''}${cand.score}`}
                       </span>
