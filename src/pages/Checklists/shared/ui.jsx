@@ -47,8 +47,42 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
   // that could not be scrolled or interacted with.
   useEffect(() => {
     if (!isOpen) return
-    const id = setTimeout(() => setUncapped(true), 340)   // transition is 300ms
-    return () => clearTimeout(id)
+
+    // A page that is not being looked at is not animating anything — and it is
+    // exactly where a clock-based release goes wrong, because a hidden page has
+    // its timers clamped to about once a second and stops producing frames
+    // altogether. That is long enough for a card to sit clipped at the height
+    // its content happened to have when it opened, with the map, the forecast
+    // and the altitude table below the cut and no way to scroll to them. There
+    // is no animation to protect here, so drop the cap at once.
+    // Synchronous on purpose: the extra render is the fix. Deferring it is
+    // what leaves the card clipped in the very case this branch exists for.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (document.visibilityState !== 'visible') { setUncapped(true); return }
+
+    // On a visible page, count the transition out in frames rather than by a
+    // timer: frames are what the animation is actually made of, so this stays
+    // in step with it whatever the main thread is doing.
+    let raf = 0
+    const start = performance.now()
+    const tick = now => {
+      if (now - start >= 320) setUncapped(true)          // transition is 300ms
+      else raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+
+    // Backstops: a window that is occluded rather than hidden can stop
+    // painting without a visibilitychange, and the timer covers that; the
+    // event covers a page hidden part-way through the animation.
+    const timer = setTimeout(() => setUncapped(true), 600)
+    const onVisibility = () => { if (document.visibilityState !== 'visible') setUncapped(true) }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [isOpen])
 
   // Closing needs a pixel height to animate away from, so the cap goes back on
