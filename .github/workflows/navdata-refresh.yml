@@ -56,6 +56,9 @@ jobs:
           python3 scripts/build_airport_details.py
           # Published routes: what ATC actually issues between two fields.
           python3 scripts/build_preferred_routes.py
+          # SIDs and STARs, from the CIFP — the named first and last thirds
+          # of those routes.
+          python3 scripts/build_procedures.py
 
       - name: Sanity-check the result before committing
         # A partial download or a changed FAA layout would show up here as a
@@ -96,6 +99,13 @@ jobs:
                 f'cycle {pfr["_meta"]["cycle"]}')
           if pairs < 6000:
               fail.append('published route coverage collapsed')
+
+          proc = json.load(open('src/data/navdata/procedures.json'))
+          pm = proc['_meta']
+          print(f'procedures: {pm["sids"]} SIDs and {pm["stars"]} STARs at '
+                f'{pm["airports"]} airports, cycle {pm["cycle"]}')
+          if pm['airports'] < 600 or pm['sids'] < 1800 or pm['stars'] < 1500:
+              fail.append('procedure coverage collapsed')
 
           if fail:
               sys.exit('; '.join(fail) + ' — refusing to publish')

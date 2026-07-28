@@ -20,6 +20,7 @@ import CrossSection from './CrossSection'
 import DropPicker from './DropPicker'
 import { fetchBriefing } from '../../../lib/altitudeBrief'
 import { lookupRoutes, classifyRoute } from '../../../lib/preferredRoutes'
+import { expandProcedure } from '../../../lib/procedures'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -1239,22 +1240,28 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     return () => { cancelled = true }
   }, [dep, dest, depValidated, destValidated])
 
-  // Fill the waypoint rows from a published string. Airways stay as airways —
-  // the existing expansion turns V23 into its fix chain at Calculate time —
-  // and fixes come in resolved. SID/STAR names cannot be expanded without the
-  // FAA CIFP, so they are left out and named, rather than silently dropped or
-  // guessed at.
+  // Fill the waypoint rows from a published string. Every kind of token keeps
+  // the name it is filed under and expands underneath: airways into their fix
+  // chains, SIDs and STARs into theirs, plain fixes resolved outright. A
+  // procedure name that is not published at this airport stays as text — the
+  // route string can reference one we have no record of, and inventing a path
+  // for it would be worse than showing the name.
   async function applyPublished(r) {
     setPubBusy(r.d)
-    let tokens = await classifyRoute(r.r, depPosHint.current)
+    let tokens = await classifyRoute(r.r, depPosHint.current, { dep, dest })
     // A route published for the opposite direction is read back to front: its
     // string runs from the field you are flying to. The airway tokens stay
     // where they are — an airway expands the same either way, it is the fixes
     // either side of it that swap.
     if (r.basis === 'reverse') tokens = [...tokens].reverse()
-    const rows = tokens.filter(t => t.kind !== 'PROC').map((t, i) => ({
-      id: `wr-pfr-${i}`, text: t.text, resolved: t.resolved, error: null, creating: null,
-    }))
+    const rows = tokens
+      .filter(t => t.kind !== 'PROC' || t.procedure)
+      .map((t, i) => ({
+        id: `wr-pfr-${i}`, text: t.text, error: null, creating: null,
+        resolved: t.procedure
+          ? { kind: 'PROC', name: t.text, role: t.procedure.t, fixCount: t.procedure.fixes.length }
+          : t.resolved,
+      }))
     setWptRows(rows)
     // Clear the chart overlays. A published routing is about the points it
     // goes through, and an enroute chart under it buries them in every other
@@ -1266,7 +1273,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setPubBusy(null); setPubOpen(false)
     setPubApplied({ designator: r.label, string: r.r, basis: r.basis, viaField: r.viaField,
                     from: r.from, to: r.to,
-                    skipped: tokens.filter(t => t.kind === 'PROC').map(t => t.text) })
+                    skipped: tokens.filter(t => t.kind === 'PROC' && !t.procedure).map(t => t.text) })
     // Draw it straight away rather than leaving the pilot to press Calculate:
     // picking a published route is the decision, and the map re-frames onto
     // the new routing as it appears.
@@ -1816,8 +1823,35 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       const rowTokens = (over.rows ?? wptRows).filter(r => r.resolved).map(r => r.resolved)
       const wpts = []
       const airwayNotes = []
+      const procedureNotes = []
       for (let i = 0; i < rowTokens.length; i++) {
         const t = rowTokens[i]
+        // A SID or STAR expands the same way an airway does — the row keeps
+        // the published name, because that is what gets filed and read back,
+        // and the fixes underneath it are what gets drawn. Which transition
+        // applies is decided by the fix on the other side of it in the route,
+        // exactly as the clearance reads: "CWARD2 SLI" leaves at SLI.
+        if (t.kind === 'PROC') {
+          const isDeparture = t.role === 'SID'
+          const neighbour = isDeparture
+            ? rowTokens[i + 1]?.name ?? destId
+            : wpts[wpts.length - 1]?.name ?? depId
+          const res = await expandProcedure(isDeparture ? depId : destId, t.name, neighbour)
+          if (!res) {
+            const err = new Error(`${t.name} is not a published procedure at ${isDeparture ? depId : destId}`)
+            err.userMessage = err.message
+            throw err
+          }
+          for (const ident of res.fixes) {
+            const hit = await resolveWaypoint(ident, [depLat, depLon])
+            if (hit) wpts.push({ kind: hit.kind, name: hit.name, lat: hit.lat, lon: hit.lon, via: t.name })
+          }
+          if (res.undrawable || res.partial) {
+            procedureNotes.push({ proc: t.name, t: res.t, undrawable: res.undrawable,
+                                  partial: res.partial, transition: res.transition })
+          }
+          continue
+        }
         if (t.kind !== 'AWY') {
           wpts.push({ kind: t.kind, name: t.name, lat: t.lat, lon: t.lon, ...(t.via ? { via: t.via } : {}) })
           continue
@@ -1838,6 +1872,15 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         for (const f of res.fixes) wpts.push(f)
         if (res.maxMEA != null) airwayNotes.push({ awy: t.name, mea: res.maxMEA })
       }
+      // A procedure or airway normally ends on the very fix the next token
+      // names — "CWARD2 SLI" leaves the departure at SLI, and SLI is then
+      // filed again as the next point. Flown, that is one fix; left in, it is
+      // a zero-length leg that shows up as a doubled label on the map and an
+      // extra row in the navigation log.
+      for (let i = wpts.length - 1; i > 0; i--) {
+        if (wpts[i].name && wpts[i].name === wpts[i - 1].name) wpts.splice(i, 1)
+      }
+
       const chain = [[depLat, depLon], ...wpts.map(w => [w.lat, w.lon]), [dstLat, dstLon]]
       let dist = 0
       for (let i = 0; i < chain.length - 1; i++) {
@@ -1872,6 +1915,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         dest: destId,
         wpts,
         airwayNotes,
+        procedureNotes,
         // Compact filed-route tokens (airways kept as V25 etc.) — drives the
         // row restore and the one-pager's ATS route string.
         atsTokens: [depId, ...rowTokens.map(t => t.name), destId],
@@ -2207,11 +2251,18 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       </span>
                       <span style={{
                         fontSize: 9, fontWeight: 700, letterSpacing: '0.5px', padding: '2px 7px', borderRadius: 8,
-                        background: row.resolved.kind === 'VOR' ? 'rgba(139,92,246,0.18)' : row.resolved.kind === 'GPS' ? 'rgba(52,199,89,0.15)' : row.resolved.kind === 'AWY' ? 'rgba(10,132,255,0.18)' : 'rgba(255,159,10,0.15)',
-                        color:      row.resolved.kind === 'VOR' ? '#a78bfa' : row.resolved.kind === 'GPS' ? 'var(--ok)' : row.resolved.kind === 'AWY' ? '#64a8ff' : 'var(--warn)',
+                        background: row.resolved.kind === 'VOR' ? 'rgba(139,92,246,0.18)' : row.resolved.kind === 'GPS' ? 'rgba(52,199,89,0.15)' : row.resolved.kind === 'AWY' ? 'rgba(10,132,255,0.18)' : row.resolved.kind === 'PROC' ? 'rgba(255,214,10,0.18)' : 'rgba(255,159,10,0.15)',
+                        color:      row.resolved.kind === 'VOR' ? '#a78bfa' : row.resolved.kind === 'GPS' ? 'var(--ok)' : row.resolved.kind === 'AWY' ? '#64a8ff' : row.resolved.kind === 'PROC' ? '#FFD60A' : 'var(--warn)',
                       }}>
-                        {row.resolved.kind}
+                        {/* A procedure row reads SID or STAR, not "PROC" —
+                            that is the word on the chart and in the clearance. */}
+                        {row.resolved.kind === 'PROC' ? row.resolved.role : row.resolved.kind}
                       </span>
+                      {row.resolved.kind === 'PROC' && (
+                        <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
+                          {row.resolved.fixCount} fixes
+                        </span>
+                      )}
                       {row.resolved.kind === 'VOR' && row.resolved.vorName && (
                         <span style={{ fontSize: 10, color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {row.resolved.vorName}{row.resolved.freq ? ` · ${row.resolved.freq}` : ''}
@@ -2356,6 +2407,23 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             {route.airwayNotes?.length > 0 && (
               <div style={{ fontSize: 11, color: '#64a8ff', fontWeight: 600, marginBottom: 8 }}>
                 {route.airwayNotes.map(n => `${n.awy} · MEA up to ${n.mea.toLocaleString()} ft`).join('   ')}
+              </div>
+            )}
+            {/* What the procedure expansion could not draw. The initial legs of
+                a departure are often flown on a heading until an altitude or
+                until ATC turns you — where those go depends on the day, so
+                there is no line for them and the count says so rather than the
+                map implying a path that was never published. */}
+            {route.procedureNotes?.length > 0 && (
+              <div style={{ fontSize: 10.5, color: 'var(--warn)', lineHeight: 1.45, marginBottom: 8 }}>
+                {route.procedureNotes.map(n => (
+                  <div key={n.proc}>
+                    {n.proc} · {n.t}
+                    {n.transition ? ` via ${n.transition}` : ''}
+                    {n.undrawable > 0 && ` — ${n.undrawable} initial ${n.undrawable > 1 ? 'legs are' : 'leg is'} flown on a heading or vector and ${n.undrawable > 1 ? 'are' : 'is'} not drawn`}
+                    {n.partial && ` — rejoins beyond the portion published for this routing; fly the chart`}
+                  </div>
+                ))}
               </div>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>

@@ -14,6 +14,7 @@
 import { looksLikeAirway, lookupAirway, resolveWaypoint } from './waypoints'
 import { getAirports } from './aerodromes'
 import { haversineNm } from './corridor'
+import { expandProcedure } from './procedures'
 
 let _routes = null
 async function load() {
@@ -190,14 +191,32 @@ export async function lookupRoutes(dep, dest) {
 //         needs the FAA CIFP, which this app does not carry. They are shown
 //         as published and left out of the waypoint rows rather than being
 //         guessed at.
-export async function classifyRoute(routeString, nearPos) {
+// dep/dest let the last step ask the procedure tables: a SID belongs to the
+// departure airport and a STAR to the destination, and a token is a procedure
+// precisely when it is published at one of them.
+export async function classifyRoute(routeString, nearPos, { dep, dest } = {}) {
   const tokens = (routeString || '').trim().split(/\s+/).filter(Boolean)
-  return Promise.all(tokens.map(async text => {
+  const classified = await Promise.all(tokens.map(async (text, i) => {
     if (looksLikeAirway(text) && await lookupAirway(text)) {
       return { text, kind: 'AWY', resolved: { kind: 'AWY', name: text } }
     }
     const hit = await resolveWaypoint(text, nearPos)
     if (hit) return { text, kind: 'FIX', resolved: hit }
+
+    // A departure is named first in the string and an arrival last, so the
+    // token's position says which airport to ask — and asking the right one
+    // stops a STAR at the destination being mistaken for a SID off the
+    // departure when both fields happen to publish the same name.
+    const first = i === 0
+    const airport = first ? dep : dest
+    // The fix on the other side of the procedure name is the transition:
+    // "CWARD2 SLI" leaves at SLI, "SIE CAMRN5" arrives from SIE.
+    const neighbour = first ? tokens[i + 1] : tokens[i - 1]
+    if (airport) {
+      const expanded = await expandProcedure(airport, text, neighbour)
+      if (expanded) return { text, kind: 'PROC', resolved: null, procedure: expanded }
+    }
     return { text, kind: 'PROC', resolved: null }
   }))
+  return classified
 }
