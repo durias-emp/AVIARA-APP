@@ -17,11 +17,18 @@
 import { sampleRoute, haversineNm } from './corridor'
 
 let _land = null
+// The coastline is no longer precached — it downloads the first time a route
+// is analysed and stays cached after that. Before that first fetch it needs a
+// connection, so a failure here is a real state the caller has to report
+// rather than quietly read as "no water on this route".
 export async function getLand() {
   if (_land) return _land
-  const d = (await import('../data/geo/land.json')).default
-  _land = d
-  return d
+  try {
+    _land = (await import('../data/geo/land.json')).default
+    return _land
+  } catch {
+    return null
+  }
 }
 
 // Ray casting against one ring (array of [lat,lon] taken from the flat store).
@@ -116,6 +123,7 @@ export async function analyzeWater(waypoints, { spacingNm = 5 } = {}) {
   if (wps.length < 2) return { status: 'empty' }
 
   const land = await getLand()
+  if (!land) return { status: 'unavailable' }
   const { samples, spacingNm: step, lengthNm } = sampleRoute(wps, { spacingNm, maxSamples: 400 })
 
   const wet = samples.map(s => !isLand(s.lat, s.lon, land))

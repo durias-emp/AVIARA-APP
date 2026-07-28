@@ -6,22 +6,26 @@
 // found on the chart. So a drop offers what is actually there first, and the
 // raw coordinate as the fallback it should be.
 //
-// Everything here is bundled — fixes, navaids and airports are all already on
-// the device — so the picker opens instantly and works with no signal.
+// The data — fixes, navaids, airports — ships with the app but downloads on
+// first use rather than at install (see vite.config.js), so the picker opens
+// instantly and works with no signal once a route has been planned once.
 
 import { haversineNm } from './corridor'
 import { getAirports } from './aerodromes'
 
 let _nav = null
 async function loadNav() {
-  if (!_nav) {
+  if (_nav) return _nav
+  try {
     const [f, n] = await Promise.all([
       import('../data/navdata/fixes.json'),
       import('../data/navdata/navaids.json'),
     ])
     _nav = { fixes: f.default, navaids: n.default }
+    return _nav
+  } catch {
+    return { fixes: {}, navaids: {} }   // offline before first download
   }
-  return _nav
 }
 
 const CLASS_LABEL = ['Small', 'Medium', 'Large']
@@ -34,6 +38,7 @@ const CLASS_LABEL = ['Small', 'Medium', 'Large']
 // sorted by distance, biggest airports first among equals.
 export async function nearbyPoints(lat, lon, { withinNm = 10, limit = 12 } = {}) {
   const [{ fixes, navaids }, airports] = await Promise.all([loadNav(), getAirports()])
+  if (!airports) return []
 
   // A degree of latitude is 60 NM; longitude shrinks with the cosine. This box
   // is only a prefilter — the real test is the haversine below.

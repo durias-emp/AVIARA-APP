@@ -15,11 +15,16 @@ import { bboxOf, crossTrackNm, haversineNm, sampleRoute } from './corridor'
 export const CORRIDOR_NM = 10
 
 let _airports = null
+// Downloaded on first use rather than precached (see vite.config.js), so this
+// can fail while offline before that first fetch.
 export async function getAirports() {
   if (_airports) return _airports
-  const d = (await import('../data/geo/airports.json')).default
-  _airports = d.airports
-  return _airports
+  try {
+    _airports = (await import('../data/geo/airports.json')).default.airports
+    return _airports
+  } catch {
+    return null
+  }
 }
 
 const CLASS_LABEL = ['Small', 'Medium', 'Large']
@@ -36,6 +41,7 @@ export async function analyzeAerodromes(waypoints, { withinNm = CORRIDOR_NM, lim
   if (wps.length < 2) return { status: 'empty' }
 
   const airports = await getAirports()
+  if (!airports) return { status: 'unavailable' }
   const { samples, lengthNm } = sampleRoute(wps, { spacingNm: 25 })
   const box = bboxOf(samples, withinNm + 5)
 

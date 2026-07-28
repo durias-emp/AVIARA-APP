@@ -39,8 +39,13 @@ const touchesCenamer = wps => wps.some(w => inBox(w, CENAMER_BOX))
 
 let _cenamer = null
 async function getCenamer() {
-  if (!_cenamer) _cenamer = (await import('../data/geo/cenamer_airspace.json')).default.areas
-  return _cenamer
+  if (_cenamer) return _cenamer
+  try {
+    _cenamer = (await import('../data/geo/cenamer_airspace.json')).default.areas
+    return _cenamer
+  } catch {
+    return null    // not downloaded yet and offline — reported, not assumed empty
+  }
 }
 
 function pointInPoly(pt, poly) {
@@ -152,6 +157,7 @@ async function faaAreas(wps, timeoutMs) {
 // border instead of publishing coordinates.
 async function cenamerAreas(wps) {
   const all = await getCenamer()
+  if (!all) return null
   return all
     .filter(a => routeCrossesPoly(wps, a.poly))
     .map(a => ({
@@ -179,8 +185,9 @@ export async function analyzeAirspace(waypoints, { altFt = null, timeoutMs = 100
   // The bundled pack cannot fail, so a live failure only sinks the whole
   // result when it was the only source that applied.
   if (faa.status === 'unavailable' && !ca) return { status: 'unavailable' }
+  if (ca && cen === null && !us) return { status: 'unavailable' }
 
-  const areas = [...faa.areas.map(a => ({ ...a, ref: 'AMSL', approx: false, source: 'FAA' })), ...cen]
+  const areas = [...faa.areas.map(a => ({ ...a, ref: 'AMSL', approx: false, source: 'FAA' })), ...(cen || [])]
     .map(x => ({
       ...x,
       // An AGL floor cannot be compared with a planned MSL altitude without

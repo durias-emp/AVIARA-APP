@@ -101,10 +101,30 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        // The bundled navdata (fixes.json chunk, ~2 MB) exceeds workbox's
-        // 2 MiB default — raise so waypoint lookup works offline.
-        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        // The aeronautical data — fixes, coastline, airport details, the
+        // world reference layer, airports, airways, navaids — is deliberately
+        // NOT precached. Together it is over 10 MB, and precaching means the
+        // phone must download all of it before a new version will activate: on
+        // a weak connection the install fails, retries, and the app appears
+        // not to update at all. It is cached on first use instead (below), so
+        // it is still there offline once a route has been planned.
+        globIgnores: [
+          '**/assets/{fixes,land,airport_details,world_ref,airports,airways,navaids,cenamer_airspace}-*.js',
+        ],
+        maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
         runtimeCaching: [
+          {
+            // Content-hashed filenames, so a cached copy is never stale — a new
+            // build simply asks for a different URL. maxEntries clears the ones
+            // previous builds left behind.
+            urlPattern: /\/assets\/(fixes|land|airport_details|world_ref|airports|airways|navaids|cenamer_airspace)-[^/]+\.js$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'aviara-navdata',
+              expiration: { maxEntries: 16, purgeOnQuotaError: true },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
           {
             urlPattern: /^https:\/\/aviationweather\.gov\/.*/i,
             handler: 'NetworkFirst',
