@@ -1693,7 +1693,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     // Draw it straight away rather than leaving the pilot to press Calculate:
     // picking a published route is the decision, and the map re-frames onto
     // the new routing as it appears.
-    await calcRoute({ rows, defaultChart: false })
+    await calcRoute({ rows })
   }
 
   // ── Tapping a field along the route ──
@@ -2446,13 +2446,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         atsTokens: [depId, ...rowTokens.map(t => t.name), destId],
       }
       setRoute(routeObj)
-      // Default chart per flight rules: IFR flights open on the enroute Low.
-      // Skipped when the caller wants a clean map — picking a published route
-      // turns the charts off deliberately, and this would put one straight
-      // back.
-      if (over.defaultChart !== false) {
-        setLayers(prev => ({ ...prev, [flightRules === 'IFR' ? 'ifrlo' : 'sectional']: true }))
-      }
+      // No chart is switched on here. Calculating a route used to open the
+      // enroute Low for IFR and the sectional for VFR, which put a dense chart
+      // under the one thing the pilot had just asked to see — the line between
+      // two airports — in the small preview where it is least legible. The
+      // preview starts bare; the chart buttons are right above it, and once a
+      // layer is chosen it stays chosen, including when the fullscreen map is
+      // closed and the preview comes back.
       // No fly-to here — RouteFitter frames the whole route on map mount,
       // and a lingering target would snap fullscreen away from that framing.
       setMapFlyTarget(null)
