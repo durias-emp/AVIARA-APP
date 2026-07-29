@@ -133,19 +133,40 @@ function MapFlyTo({ target, instant = false }) {
   const map = useMap()
   useEffect(() => {
     if (!target) return
+    if (!Number.isFinite(target.lat) || !Number.isFinite(target.lon)) return
     const zoom = target.zoom ?? 10
-    let center = L.latLng(target.lat, target.lon)
-    // offsetFrac pushes the subject up out from under a sheet. Centring is the
-    // obvious thing and the wrong one when two thirds of the map is covered by
-    // a popup: the airport you just asked to see ends up behind the panel
-    // describing it. Shifting the map's centre south by a fraction of the
-    // viewport lifts the point into the strip that is actually visible.
-    if (target.offsetFrac) {
-      const pt = map.project(center, zoom).add([0, map.getSize().y * target.offsetFrac])
-      center = map.unproject(pt, zoom)
+
+    const go = () => {
+      // Leaflet's flyTo easing divides by the container size. On a map that
+      // has not been laid out yet that is a division by zero, and the NaN
+      // reaches L.latLng, which throws and takes the whole card down with it.
+      // A fly-to can absolutely arrive that early — tapping the Mountains chip
+      // opens fullscreen and asks for the peak in the same breath.
+      const size = map.getSize()
+      if (!size.x || !size.y) return false
+
+      let center = L.latLng(target.lat, target.lon)
+      // offsetFrac pushes the subject up out from under a sheet. Centring is
+      // the obvious thing and the wrong one when two thirds of the map is
+      // covered by a popup: the airport you just asked to see ends up behind
+      // the panel describing it. Shifting the map's centre south by a fraction
+      // of the viewport lifts the point into the strip that is actually
+      // visible.
+      if (target.offsetFrac) {
+        const pt = map.project(center, zoom).add([0, size.y * target.offsetFrac])
+        center = map.unproject(pt, zoom)
+      }
+      if (instant) map.setView(center, zoom, { animate: false })
+      else map.flyTo(center, zoom, { duration: 1.2 })
+      return true
     }
-    if (instant) map.setView(center, zoom, { animate: false })
-    else map.flyTo(center, zoom, { duration: 1.2 })
+
+    if (go()) return
+    // Not laid out yet. Leaflet fires resize once the container has a size,
+    // which is the earliest moment this can succeed.
+    const onResize = () => { if (go()) map.off('resize', onResize) }
+    map.on('resize', onResize)
+    return () => map.off('resize', onResize)
   }, [target])
   return null
 }
@@ -1505,6 +1526,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     onUp:   () => setMapClear(false),
   })
   const [activeChip, setActiveChip] = useState(null) // id of chip whose popup is open
+  // Which chip was opened by a deliberate tap, as opposed to a pointer
+  // passing over it. A pinned panel survives the cursor leaving. State rather
+  // than a ref: it is read inside the map's render-time block, where a ref
+  // read cannot be proven safe.
+  const [chipPinned, setChipPinned] = useState(null)
 
   // ── Named intermediate waypoints (Garmin/ForeFlight style) ──
   // Each row: { id, text, resolved: {kind,name,lat,lon,...}|null, error,
@@ -1678,6 +1704,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   function openAerodrome(f) {
     setMapClear(false); setMapFS(true)
     setPeakFocused(false)
+    setChipPinned(null)
     setActiveChip(null)                       // the chip panel would cover the field
     // Zoom 13 shows the field at airport scale, and the offset lifts it into
     // the band above the popup — the point of tapping it is to look at it.
@@ -3400,9 +3427,29 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                     return (
                                       <div key={id} style={{ position: 'relative' }}>
                                         <span
-                                          onClick={() => setActiveChip(isActive ? null : id)}
+                                          onClick={() => {
+                                            // Pinned, not merely active. On a mouse the chip is
+                                            // already active by the time the click lands, because
+                                            // the pointer entered it first — testing isActive here
+                                            // would read every desktop click as "close".
+                                            const wasPinned = chipPinned === id
+                                            setChipPinned(wasPinned ? null : id)
+                                            setActiveChip(wasPinned ? null : id)
+                                            // Mountains is the one chip with a place attached to
+                                            // it. Opening the panel and then hunting for the
+                                            // coordinate line inside it was two steps for one
+                                            // question — "where is it?" — so the tap that opens
+                                            // it also flies there, the way tapping a tower goes
+                                            // to the field. The fly-to lifts the peak into the
+                                            // band above the sheet, so the panel stays readable
+                                            // over it.
+                                            if (!wasPinned && id === 'mountains') focusPeak()
+                                          }}
+                                          // Hover previews the panel; it never moves the map,
+                                          // which would drag the chart under a passing cursor.
+                                          // A pinned chip ignores the pointer leaving.
                                           onMouseEnter={() => setActiveChip(id)}
-                                          onMouseLeave={() => setActiveChip(null)}
+                                          onMouseLeave={() => { if (chipPinned !== id) setActiveChip(null) }}
                                           style={{
                                             fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 4,
                                             background: isActive ? c.activeBg : c.bg,
@@ -3471,7 +3518,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                             return (
                               <div
                                 onMouseEnter={() => setActiveChip(activeChip)}
-                                onMouseLeave={() => setActiveChip(null)}
+                                onMouseLeave={() => { if (!chipPinned) setActiveChip(null) }}
                                 style={{
                                   position: 'absolute', bottom: 'calc(100% + 10px)', left: 0, right: 0,
                                   zIndex: 10010,
@@ -3486,7 +3533,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                 {/* Header */}
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                                   <div style={{ fontSize: 13, fontWeight: 700, color: c.accent, letterSpacing: '0.2px' }}>{td.label}</div>
-                                  <span onClick={() => setActiveChip(null)} style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>✕</span>
+                                  <span onClick={() => { setChipPinned(null); setActiveChip(null) }} style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>✕</span>
                                 </div>
                                 {activeChip === 'sua' && (
                                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 10, lineHeight: 1.4 }}>
