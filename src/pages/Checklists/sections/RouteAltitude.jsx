@@ -1770,6 +1770,18 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setOpenField(null)
   }
 
+  // Tapping the peak on the map is the same act as tapping the Mountains
+  // chip, and it should feel like tapping a control tower: fly in, focus it,
+  // open the card that explains it — and on closing, fly back out to exactly
+  // the view that was there before. The peak stops at zoom 11 where a tower
+  // goes to 13, because what makes a summit worth looking at is the ground
+  // around it; at 13 the ridge fills the screen and the route leaves it.
+  function openMountains() {
+    setChipPinned('mountains')
+    setActiveChip('mountains')
+    focusPeak()
+  }
+
   function backToRoute() {
     setOpenField(null)
     setPeakFocused(false)
@@ -3086,7 +3098,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
               const mapLayerProps = { layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes: markedFields, onAerodrome: openAerodrome, openFieldIdent: openField?.ident ?? null,
                 peak: terrainInfo?.status === 'ok' && terrainInfo.atLat != null
                   ? { lat: terrainInfo.atLat, lon: terrainInfo.atLon } : null,
-                onPeak: () => setActiveChip('mountains'), peakFocused, refitNonce, onDrop: openDropPicker, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
+                onPeak: openMountains, peakFocused, refitNonce, onDrop: openDropPicker, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
 
               return (<>
                 {/* Inline map */}
