@@ -1699,6 +1699,49 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // ── Tapping a field along the route ──
   //
   // The list and the map are the same set of fields seen two ways, so both
+  // The camera as it was before a subject was focused.
+  //
+  // Tapping a field or the peak zooms somewhere specific; closing that card
+  // used to re-fit the whole route, which is not where the pilot was. If they
+  // had zoomed into a valley to read the terrain, looked at one airport, and
+  // closed it, the map threw the valley away. Saved once per excursion, so
+  // peak then field then close still returns to the original view rather than
+  // to the peak.
+  // The Leaflet instance, handed over by MapContainer's ref. State rather
+  // than a ref: a state setter as a ref callback is read-safe during render,
+  // which a ref object passed through JSX is not.
+  const [fsMap, setFsMap] = useState(null)
+  const [savedView, setSavedView] = useState(null)
+
+  const rememberView = () => {
+    if (!fsMap || savedView) return
+    try {
+      const c = fsMap.getCenter()
+      setSavedView({ lat: c.lat, lon: c.lng, zoom: fsMap.getZoom() })
+    } catch { /* map not ready; the refit fallback still applies */ }
+  }
+
+  // Back to wherever the map was, exactly — same centre, same zoom, and no
+  // offsetFrac, since nothing is being lifted clear of a sheet any more.
+  // Closing the Mountains panel is the same gesture as closing an aerodrome
+  // popup: the excursion is over, so the camera goes back where it was.
+  const closeChipPanel = id => {
+    setChipPinned(null)
+    setActiveChip(null)
+    if (id === 'mountains' && peakFocused) {
+      setPeakFocused(false)
+      setAwayFromRoute(false)
+      restoreView()
+    }
+  }
+
+  const restoreView = () => {
+    if (!savedView) return false
+    setMapFlyTarget({ lat: savedView.lat, lon: savedView.lon, zoom: savedView.zoom })
+    setSavedView(null)
+    return true
+  }
+
   // entry points land here: fly the map onto the field, open its popup, and
   // remember that the view has left the route so it can be offered back.
   function openAerodrome(f) {
@@ -1706,6 +1749,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setPeakFocused(false)
     setChipPinned(null)
     setActiveChip(null)                       // the chip panel would cover the field
+    rememberView()
     // Zoom 13 shows the field at airport scale, and the offset lifts it into
     // the band above the popup — the point of tapping it is to look at it.
     setMapFlyTarget({ lat: f.lat, lon: f.lon, zoom: 13, offsetFrac: 0.26 })
@@ -1719,6 +1763,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   function focusPeak() {
     if (terrainInfo?.status !== 'ok' || terrainInfo.atLat == null) return
     setMapClear(false); setMapFS(true)
+    rememberView()
     setMapFlyTarget({ lat: terrainInfo.atLat, lon: terrainInfo.atLon, zoom: 11, offsetFrac: 0.26 })
     setPeakFocused(true)
     setAwayFromRoute(true)
@@ -1729,8 +1774,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setOpenField(null)
     setPeakFocused(false)
     setAwayFromRoute(false)
-    // RouteFitter only fits once in fullscreen — deliberately, so the camera
-    // belongs to the pilot — so returning asks for one more fit explicitly.
+    // Where the pilot was beats where the route is. Only when there is no
+    // saved view — the subject was opened from the card, not from the map —
+    // does this fall back to framing the route. RouteFitter fits once in
+    // fullscreen, deliberately, so that needs asking for explicitly.
+    if (restoreView()) return
     setMapFlyTarget(null)
     setRefitNonce(n => n + 1)
   }
@@ -3106,6 +3154,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       {/* Map — full height */}
                       <div style={{ position: 'absolute', inset: 0, background: '#e8e0d8' }}>
                         <MapContainer center={mapCenter} zoom={7}
+                          ref={setFsMap}
                           style={{ height: '100%', width: '100%' }}
                           zoomControl={false} attributionControl={false}>
                           {/* Leaflet's own zoom control is replaced by
@@ -3132,7 +3181,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       <AerodromePopup
                         key={openField?.ident ?? 'none'}
                         field={openField}
-                        onClose={() => setOpenField(null)}
+                        onClose={() => { setOpenField(null); setAwayFromRoute(false); restoreView() }}
                         onSetAlternate={setAsAlternate}
                         onDivert={divertTo} />
 
@@ -3433,8 +3482,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                             // the pointer entered it first — testing isActive here
                                             // would read every desktop click as "close".
                                             const wasPinned = chipPinned === id
-                                            setChipPinned(wasPinned ? null : id)
-                                            setActiveChip(wasPinned ? null : id)
+                                            if (wasPinned) { closeChipPanel(id); return }
+                                            setChipPinned(id)
+                                            setActiveChip(id)
                                             // Mountains is the one chip with a place attached to
                                             // it. Opening the panel and then hunting for the
                                             // coordinate line inside it was two steps for one
@@ -3533,7 +3583,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                 {/* Header */}
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                                   <div style={{ fontSize: 13, fontWeight: 700, color: c.accent, letterSpacing: '0.2px' }}>{td.label}</div>
-                                  <span onClick={() => { setChipPinned(null); setActiveChip(null) }} style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>✕</span>
+                                  <span onClick={() => closeChipPanel(activeChip)} style={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>✕</span>
                                 </div>
                                 {activeChip === 'sua' && (
                                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 10, lineHeight: 1.4 }}>
