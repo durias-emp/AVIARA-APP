@@ -19,12 +19,10 @@ const CHECKLISTS = [
     color: 'var(--text-secondary)',
     sections: [
       {
-        title: 'EN ROUTE',
+        title: 'ROUTE',
         num: 1,
         items: [
-          { id: 'route', label: 'Route and Altitude', sub: 'Charts · Airspace · TFR · Overflight', expand: 'altitude', items: [
-            { id: 'route-a', label: 'Charts', sub: 'Sectional · TAC · Chart Supplement', expand: 'charts' },
-          ]},
+          { id: 'route', label: 'Route and Altitude', sub: 'Charts · Airspace · TFR · Overflight', expand: 'altitude' },
           { id: 'wx', label: 'Weather', sub: 'PROG · METAR · TAF · AIRMET · SIGMET · Winds', expand: 'metar' },
           { id: 'alternates', label: 'Alternate(s)', sub: 'Distance · Weather · Fuel · IFR 1-2-3', expand: 'alternates' },
         ],
@@ -44,6 +42,10 @@ const CHECKLISTS = [
         num: 3,
         items: [
           { id: 'apt', label: 'Airports', sub: 'Destination · En route · Diagram · Services · NOTAM', expand: 'airport' },
+          // Moved here from the route section: these are the published charts
+          // and the Chart Supplement for the fields, which is airport work.
+          // The id is unchanged, so anyone who had already ticked it keeps it.
+          { id: 'route-a', label: 'Charts', sub: 'Sectional · TAC · Chart Supplement', expand: 'charts' },
         ],
       },
       {
