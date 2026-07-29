@@ -189,6 +189,63 @@ function freezingFrom(column) {
   return null
 }
 
+// Position of an FB station, by its own ident or by an ICAO code (KABQ, CYYZ).
+// Null when we hold no position for it, which the caller must handle rather
+// than fall back to some other station's wind.
+export function stationPos(id) {
+  const s = (id || '').trim().toUpperCase()
+  if (!s) return null
+  const key = s.length === 4 && /^[KC]/.test(s) ? s.slice(1) : s
+  const p = STATIONS[key]
+  return p ? { lat: p[0], lon: p[1], ident: key } : null
+}
+
+// The wind at one point and one altitude — what the performance card needs.
+//
+// Interpolated from the three nearest stations, at the actual altitude rather
+// than snapped to the nearest published level, and it reports which stations
+// it used and how far away the closest one was. A wind borrowed from 300 NM
+// away is not the wind at your departure, and the pilot is entitled to know
+// which it is.
+//
+// Returns null rather than a substitute when nothing is close enough.
+export async function fbWindAt(lat, lon, altFt, { departAtISO = null, timeoutMs = 8000, maxStationNm = 250 } = {}) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(altFt)) return null
+
+  let stations
+  try {
+    const res = await fetch(`${AWC}?path=windtemp&region=us&fcst=${fcstFor(departAtISO)}`,
+      { signal: AbortSignal.timeout(timeoutMs) })
+    if (!res.ok) return null
+    stations = parseBulletin(await res.text())
+  } catch {
+    return null
+  }
+  if (!stations.length) return null
+
+  const near = stations
+    .map(s => ({ s, d: haversineNm(lat, lon, s.lat, s.lon) }))
+    .sort((a, b) => a.d - b.d)
+  if (!near.length || near[0].d > maxStationNm) return null
+
+  // Clamped, not extrapolated: the product starts at 3,000 ft and stops at
+  // 39,000, and the label reports the altitude actually used.
+  const usedFt = Math.min(39000, Math.max(3000, altFt))
+  const got = interpolate({ lat, lon }, stations, usedFt)
+  if (!got || got.windKt == null) return null
+
+  return {
+    dirDeg: got.windDirDeg,
+    kt: got.windKt,
+    tempC: got.tempC,
+    levelFt: Math.round(usedFt),
+    clamped: usedFt !== altFt,
+    nearestIdent: near[0].s.ident,
+    nearestNm: Math.round(near[0].d),
+    usedStations: near.slice(0, 3).map(n => n.s.ident),
+  }
+}
+
 // samples: [{lat, lon, distNm}] — the same points loadAtmosphere would use.
 //
 // Returns the loadAtmosphere shape with the sky layers empty, or

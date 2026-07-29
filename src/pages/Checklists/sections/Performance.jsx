@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { get, put } from '../../../lib/db'
 import { ExpandableCard, DoneButton } from '../shared/ui'
-import { awcUrl, proxyFetch, proxyJSON } from '../shared/awc'
+import { awcUrl, proxyJSON, lookupAirport } from '../shared/awc'
+import { fbWindAt, stationPos } from '../../../lib/fbWinds'
 import { getWBConfig } from '../../../lib/aircraftWB'
 import WBChecklistItem from '../WBChecklistItem'
 
@@ -1002,112 +1003,62 @@ export function CruiseItem({ item, isChecked, onToggle }) {
   const [windError, setWindError] = useState(null)
   const [aircraftLabel, setAircraftLabel] = useState('')
 
-  // Fetch winds aloft when altitude is set
+  // Winds aloft at the cruise altitude, for the ground speed and fuel plan.
+  //
+  // The parsing lives in fbWinds.js, which the route card's fallback wind
+  // column also uses. This card used to carry its own copy, and the two had
+  // already drifted: that one read the bulletin by splitting on whitespace,
+  // which shifts every level down for a station reporting nothing at 3,000 ft,
+  // dropped the temperature above 24,000 ft where the sign is implicit, and —
+  // worst — fell back to the FIRST station in the bulletin when the departure
+  // was not an FB site, presenting Abilene's wind as though it were yours.
+  //
+  // The shared version interpolates the three nearest stations to the actual
+  // field, at the actual altitude, and says which stations it used.
   useEffect(() => {
     const alt = parseFloat(cruiseAlt)
     if (!open || isNaN(alt) || alt < 1000) return
+    let cancelled = false
     setWinding(true)
     setWindError(null)
     setWindsAloft(null)
 
-    // AWC windtemp returns plain text — parse the FAA winds aloft format
-    // e.g. "MIA 1105 0305+16 3505+11 9900+06 3607-07 3506-18 301633 291844 332153"
-    // Columns correspond to: 3000 6000 9000 12000 18000 24000 30000 34000 39000
-    const ALL_LEVELS = [3000, 6000, 9000, 12000, 18000, 24000, 30000, 34000, 39000]
-    const closest = ALL_LEVELS.reduce((a, b) => Math.abs(b - alt) < Math.abs(a - alt) ? b : a)
-    const colIdx  = ALL_LEVELS.indexOf(closest) // 0-based column after station name
-
-    const parseToken = (token, lvl) => {
-      if (!token || token.trim() === '') return null
-      token = token.trim()
-      // Tokens: "DDSS", "DDSS+TT", "DDSS-TT", "9900", "9900+TT", "////+TT", "------"
-      if (token.startsWith('/') || token.startsWith('-') || token.length < 4) return null
-      const dirCode = parseInt(token.substring(0, 2))
-      let spd = parseInt(token.substring(2, 4))
-      let dir = dirCode * 10
-      // Speed ≥100kt: dir encoded as dir/10 + 50
-      if (dirCode > 36 && dirCode <= 86) { dir = (dirCode - 50) * 10; spd += 100 }
-      if (dirCode === 99) { dir = 0; spd = 0 } // light & variable
-      if (isNaN(dir) || isNaN(spd)) return null
-      const tempMatch = token.match(/([+-]\d+)$/)
-      const temp = tempMatch ? parseInt(tempMatch[1]) : null
-      return { dir, spd, temp, level: lvl }
-    }
-
-    const parseText = (text) => {
-      const lines = text.split('\n')
-      // Find the FT header line to confirm column order
-      const ftLine = lines.find(l => l.match(/^\s*FT\s+3000/))
-      // Extract column positions from FT line if available
-      let colStarts = null
-      if (ftLine) {
-        const matches = [...ftLine.matchAll(/\b(\d{4,5})\b/g)]
-        colStarts = matches.map(m => ({ lvl: parseInt(m[1]), idx: m.index }))
-      }
-
-      // Station ID to look for (strip ICAO prefix K/C)
-      const stationId = depIcao.replace(/^[KC]/, '').toUpperCase()
-
-      // Score lines: prefer match to dep airport, fall back to any valid line
-      let bestLine = null
-      let fallbackLine = null
-      for (const line of lines) {
-        const m = line.match(/^([A-Z]{3})\s+(.+)/)
-        if (!m) continue
-        if (m[1] === stationId) { bestLine = line; break }
-        if (!fallbackLine) fallbackLine = line
-      }
-      const dataLine = bestLine || fallbackLine
-      if (!dataLine) return null
-
-      const parts = dataLine.trim().split(/\s+/)
-      // parts[0] = station, parts[1..] = wind values
-      // 3000ft has no temp so only 4 chars; others 7-8 chars
-      // Map by column index
-      if (colStarts) {
-        // Use column positions for precise mapping
-        for (const { lvl, idx } of colStarts) {
-          if (Math.abs(lvl - alt) <= Math.abs(closest - alt) + 1500) {
-            const token = dataLine.substring(idx, idx + 9).trim().split(/\s/)[0]
-            const parsed = parseToken(token, lvl)
-            if (parsed) return parsed
-          }
-        }
-      }
-      // Fallback: positional — parts[1] = 3000, parts[2] = 6000, etc.
-      const tryIndices = [colIdx + 1, colIdx, colIdx + 2].filter(i => i >= 1 && i < parts.length)
-      for (const i of tryIndices) {
-        const parsed = parseToken(parts[i], ALL_LEVELS[i - 1] || closest)
-        if (parsed) return parsed
-      }
-      return null
-    }
-
     ;(async () => {
-      let text = null
-      for (const fcst of ['06', '12', '24']) {
-        const url = awcUrl('windtemp', { region: 'us', fcst })
+      // The departure is usually an FB station itself; when it is not, its
+      // coordinates still place it among the stations that surround it.
+      let pos = stationPos(depIcao)
+      if (!pos && depIcao) {
         try {
-          const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
-          if (res.ok) { text = await res.text(); break }
-        } catch { /* ignore */ }
-        try { text = await proxyFetch(url, 8000); break } catch { /* ignore */ }
+          const apt = await lookupAirport(depIcao)
+          if (Number.isFinite(apt?.lat) && Number.isFinite(apt?.lon)) pos = { lat: apt.lat, lon: apt.lon }
+        } catch { /* falls through to the error below */ }
       }
-
-      if (!text || text.length < 50) {
-        setWindError('Forecast unavailable')
+      if (cancelled) return
+      if (!pos) {
+        setWindError(depIcao ? `No winds-aloft coverage near ${depIcao}` : 'Set a departure airport')
         setWinding(false)
         return
       }
 
-      const result = parseText(text)
-      if (result) {
-        setWindsAloft(result)
+      const w = await fbWindAt(pos.lat, pos.lon, alt)
+      if (cancelled) return
+      if (!w) {
+        setWindError('Forecast unavailable')
       } else {
-        setWindError('No data for this altitude')
+        setWindsAloft({
+          // dir 0 / spd 0 is how this card has always shown light and variable.
+          dir: w.dirDeg ?? 0,
+          spd: Math.round(w.kt),
+          temp: w.tempC == null ? null : Math.round(w.tempC),
+          level: w.levelFt,
+          station: w.nearestIdent,
+          stationNm: w.nearestNm,
+        })
       }
       setWinding(false)
     })()
+
+    return () => { cancelled = true }
   }, [open, cruiseAlt, depIcao])
 
   // ── Calculations ─────────────────────────────────────────────
@@ -1260,6 +1211,15 @@ export function CruiseItem({ item, isChecked, onToggle }) {
             <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.6px',
               textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
               Winds Aloft{windsAloft ? ` · ${windsAloft.level.toLocaleString()} ft` : ''}
+              {/* Which station the forecast actually came from. Only shown
+                  when it is far enough away to matter — near the field it is
+                  noise, but a wind interpolated from 90 NM away is a fact the
+                  pilot should be able to see. */}
+              {windsAloft?.station && windsAloft.stationNm > 40 && (
+                <span style={{ fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'none', letterSpacing: 0 }}>
+                  {' '}· nearest {windsAloft.station}, {windsAloft.stationNm} NM
+                </span>
+              )}
             </span>
           </div>
 
