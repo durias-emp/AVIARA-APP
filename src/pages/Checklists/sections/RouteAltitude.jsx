@@ -1511,8 +1511,33 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   //             creating: {lat,lon}|null } — `creating` holds the inline
   //             lat/lon form for defining a new USER waypoint.
   const [wptRows, setWptRows] = useState([])
+
   // Coordinate hint for disambiguating duplicate idents — nearest wins.
   const depPosHint = useRef(null)
+
+  // Changing an endpoint throws away the routing between the old pair.
+  //
+  // Waypoints only mean anything between the two airports they were entered
+  // for. This used to leave them behind: file KMIA-KJFK, switch to KSFO-KSEA,
+  // and the card still listed ALTNN2, DUCEN, JFK and ROBUC3 — a Miami
+  // departure and a New York arrival on a San Francisco flight, all of which
+  // would have gone straight into the calculated route.
+  //
+  // Done in the setters rather than in an effect on [dep, dest], because the
+  // restored route arrives by setting exactly those values and an effect
+  // cannot tell that apart from the pilot retyping the field. Here, restore
+  // simply does not go through these.
+  function endpointChanging(next, current) {
+    if (next === current) return
+    setWptRows(prev => (prev.length ? [] : prev))
+    // The published routing and the calculated result describe the pair that
+    // just went away.
+    setPubApplied(null)
+    setRoute(null)
+    setRE(null)
+  }
+  const changeDep = v => { endpointChanging(v, dep); setDep(v) }
+  const changeDest = v => { endpointChanging(v, dest); setDest(v) }
 
   // Restore saved route on mount; fall back to homeAirport for the FROM field
   useEffect(() => {
@@ -1688,9 +1713,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   async function divertTo(f) {
     setOpenField(null)
     setAwayFromRoute(false)
-    setDest(f.ident); setDestVal(true)
+    changeDest(f.ident); setDestVal(true)
     setMapFS(false)
-    await calcRoute({ destId: f.ident, destPos: [f.lat, f.lon] })
+    // rows: [] because changeDest has just emptied them and this call would
+    // otherwise read the pre-clear closure and put them straight back.
+    await calcRoute({ destId: f.ident, destPos: [f.lat, f.lon], rows: [] })
   }
 
   // Alternate: written into the landing-alternate list the Alternates section
@@ -1850,9 +1877,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     if (as === 'destination' && name) {
       // Re-file the route to end here. The coordinates come from the bundled
       // pack, so a strip the weather service has never heard of still routes.
-      setDest(name); setDestVal(true); setDestErr(null)
+      changeDest(name); setDestVal(true); setDestErr(null)
       setDropPoint(null)
-      calcRoute({ dest: name, destPos: [lat, lon] })
+      calcRoute({ dest: name, destPos: [lat, lon], rows: [] })
       return
     }
     if (dropPoint?.moveIndex != null) {
@@ -2502,7 +2529,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                     {dep}
                   </span>
                   <button
-                    onClick={() => { setDep(''); setDepVal(false); setDepErr(null); setRoute(null); setRE(null) }}
+                    onClick={() => { changeDep(''); setDepVal(false); setDepErr(null) }}
                     style={{
                       background: 'none', border: 'none', padding: '2px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -2518,7 +2545,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
               <div>
                 <input
                   value={dep}
-                  onChange={e => { setDep(e.target.value.toUpperCase()); setDepErr(null); setRoute(null); setRE(null) }}
+                  onChange={e => { changeDep(e.target.value.toUpperCase()); setDepErr(null) }}
                   onKeyDown={e => e.key === 'Enter' && validateDep()}
                   onBlur={() => dep.trim().length >= 3 && validateDep()}
                   placeholder="KMIA"
@@ -2560,7 +2587,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                     {dest}
                   </span>
                   <button
-                    onClick={() => { setDest(''); setDestVal(false); setDestErr(null); setRoute(null); setRE(null) }}
+                    onClick={() => { changeDest(''); setDestVal(false); setDestErr(null) }}
                     style={{
                       background: 'none', border: 'none', padding: '2px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -2576,7 +2603,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
               <div>
                 <input
                   value={dest}
-                  onChange={e => { setDest(e.target.value.toUpperCase()); setDestErr(null); setRoute(null); setRE(null) }}
+                  onChange={e => { changeDest(e.target.value.toUpperCase()); setDestErr(null) }}
                   onKeyDown={e => e.key === 'Enter' && validateDest()}
                   onBlur={() => dest.trim().length >= 3 && validateDest()}
                   placeholder="MGGT"
@@ -3244,9 +3271,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                 const isDep = i === 0
                                 const isDest = i === waypoints.length - 1
                                 const clear = isDep
-                                  ? () => { setDep(''); setDepVal(false); setDepErr(null); setRoute(null); setRE(null) }
+                                  ? () => { changeDep(''); setDepVal(false); setDepErr(null) }
                                   : isDest
-                                  ? () => { setDest(''); setDestVal(false); setDestErr(null); setRoute(null); setRE(null) }
+                                  ? () => { changeDest(''); setDestVal(false); setDestErr(null) }
                                   : () => removeWaypoint(i)
                                 return (
                                   <div key={w.id} style={{
