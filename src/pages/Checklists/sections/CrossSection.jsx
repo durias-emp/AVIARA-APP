@@ -159,6 +159,11 @@ export default function CrossSection({ data, dep, dest, chosenAltFt }) {
         {!data.skyMissing && data.freezingFt?.every(f => f == null || f > topFt) && (
           <span>freezing level above {Math.round(topFt / 1000)},000 ft</span>
         )}
+        {data.cloudMissing && (
+          // Wind and temperature are real here; cloud simply is not part of
+          // the FB product. Saying which is missing beats one vague caveat.
+          <span style={{ color: 'var(--warn)' }}>no cloud layer — FAA winds aloft carries wind and temperature only</span>
+        )}
         {data.skyMissing && (
           // Said plainly, because an empty sky on this chart must not be
           // mistaken for a clear one.

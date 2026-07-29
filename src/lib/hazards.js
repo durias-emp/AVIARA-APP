@@ -207,7 +207,11 @@ export async function analyzeHazards(waypoints, atmo, { timeoutMs = 10000 } = {}
 
   // Model-derived indications wherever the official product does not reach.
   if (atmo?.status === 'ok') {
-    if (coverage.icing !== 'official') {
+    // The modelled icing envelope needs humidity and cloud. The FB fallback
+    // carries neither, and every comparison against null quietly returns
+    // false — which would produce an empty band list labelled 'modelled',
+    // i.e. "we checked and found nothing" when nothing was checked.
+    if (coverage.icing !== 'official' && !atmo.cloudMissing) {
       icing = collapse(atmo.columns.map(icingFromProfile), 'icing', atmo.samples)
       coverage.icing = icing.length ? 'modelled' : 'modelled'
     }

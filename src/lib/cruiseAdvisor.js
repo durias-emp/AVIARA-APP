@@ -403,6 +403,9 @@ export function buildCrossSection(atmo, hazards, terrain, {
     // The renderer says which layers are missing rather than drawing a chart
     // that looks complete and happens to have no weather in it.
     skyMissing: !ok,
+    // The FB fallback carries wind and temperature but no cloud or humidity,
+    // so the chart is real and the cloud shading is simply not part of it.
+    cloudMissing: ok && atmo.cloudMissing === true,
   }
 }
 

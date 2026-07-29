@@ -19,6 +19,7 @@
 import { sampleRoute } from './corridor'
 import { get, put } from './db'
 import { isDailyLimit, DailyLimitError, isDailyLimitError } from './openMeteoLimit'
+import { loadFbWinds } from './fbWinds'
 
 const API = 'https://api.open-meteo.com/v1/forecast'
 const M_TO_FT = 3.28084
@@ -88,7 +89,7 @@ function hourIndex(times, departAtISO) {
 //                ascending in altitude, for sample i
 // or { status:'unavailable' } / { status:'empty' }
 export async function loadAtmosphere(waypoints, {
-  departAtISO = null, maxAltFt = 18000, sampleCount = 5, timeoutMs = 12000,
+  departAtISO = null, maxAltFt = 18000, sampleCount = null, timeoutMs = 12000,
 } = {}) {
   const wps = (waypoints || []).filter(w => Number.isFinite(w?.lat) && Number.isFinite(w?.lon))
   if (wps.length < 2) return { status: 'empty' }
@@ -96,10 +97,16 @@ export async function loadAtmosphere(waypoints, {
   // Evenly spaced points along the actual track. Five is deliberate: the model
   // grid is 9-25 km, so twenty samples over 300 NM return the same air several
   // times over and only inflate the payload.
+  //
+  // Short routes get three. Open-Meteo bills by variables times locations, not
+  // by request, so the sample count is most of the cost of a route — and on a
+  // 60 NM hop five points sit well inside a single grid cell, returning the
+  // same air five times for five times the quota.
   const { samples: all, lengthNm } = sampleRoute(wps, { spacingNm: 5, maxSamples: 400 })
-  const step = Math.max(1, Math.floor((all.length - 1) / (sampleCount - 1)))
+  const count = sampleCount ?? (lengthNm < 150 ? 3 : 5)
+  const step = Math.max(1, Math.floor((all.length - 1) / (count - 1)))
   const samples = []
-  for (let i = 0; i < all.length && samples.length < sampleCount; i += step) samples.push(all[i])
+  for (let i = 0; i < all.length && samples.length < count; i += step) samples.push(all[i])
   if (samples[samples.length - 1] !== all[all.length - 1]) samples[samples.length - 1] = all[all.length - 1]
 
   const levels = levelsFor(maxAltFt)
@@ -143,13 +150,13 @@ export async function loadAtmosphere(waypoints, {
       payload = await res.json()
       break
     } catch (e) {
-      if (isDailyLimitError(e) || attempt >= 2) return await lastGood(routeKey)
+      if (isDailyLimitError(e) || attempt >= 2) return await fallback(samples, routeKey, { departAtISO, maxAltFt, lengthNm, timeoutMs })
       await new Promise(r => setTimeout(r, 1200 * (attempt + 1)))
     }
   }
 
   const locs = Array.isArray(payload) ? payload : [payload]
-  if (!locs.length || !locs[0]?.hourly?.time) return await lastGood(routeKey)
+  if (!locs.length || !locs[0]?.hourly?.time) return await fallback(samples, routeKey, { departAtISO, maxAltFt, lengthNm, timeoutMs })
 
   const h = hourIndex(locs[0].hourly.time, departAtISO)
   const columns = locs.map(loc => {
@@ -196,6 +203,21 @@ export async function loadAtmosphere(waypoints, {
   // failure must not cost the caller the data it already has.
   put('settings', { key: 'wxAloft', routeKey, savedAt: Date.now(), data: out }).catch(() => {})
   return out
+}
+
+// When Open-Meteo will not answer, in order of what is worth having.
+//
+// The FAA's FB bulletin goes first even though it carries less: it is a
+// current official forecast with no quota, and a fresh wind beats a stale one
+// for every decision this card makes. The stored column is richer — it has
+// cloud and humidity — but it is by definition the past, and a wind two hours
+// old is a worse basis for a climb than a wind issued this cycle.
+//
+// Both are labelled. Neither is presented as the live model.
+async function fallback(samples, routeKey, { departAtISO, maxAltFt, lengthNm, timeoutMs }) {
+  const fb = await loadFbWinds(samples, { departAtISO, maxAltFt, lengthNm, timeoutMs })
+  if (fb.status === 'ok') return fb
+  return await lastGood(routeKey)
 }
 
 // The last wind column fetched for this corridor, if it is recent enough to
