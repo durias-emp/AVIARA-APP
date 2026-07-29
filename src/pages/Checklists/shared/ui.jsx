@@ -1,9 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { usePaneActivity } from './PaneActivity'
+import { useCardLayout } from './CardLayout'
 
 /* ── Expandable card shell — used by every checklist item ────── */
 export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, children, forceOpen, hideCheckmark }) {
-  const isOpen = forceOpen || open
+  const { stretch, solo } = useCardLayout()
+  // A step with one card has nothing to choose between, so it arrives open.
+  const isOpen = forceOpen || solo || open
+  // Only a collapsed card divides the height. An open one is as tall as what
+  // it contains, and squeezing a map or a chart into a share of the screen is
+  // the opposite of what opening it was for.
+  const filling = stretch && !isOpen
   usePaneActivity(isOpen)
   const rootRef = useRef(null)
   const wasOpenRef = useRef(open)
@@ -123,23 +130,30 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
     return () => observer.disconnect()
   }, [everOpened, uncapped])
 
-  const Header = forceOpen ? 'div' : 'button'
+  const locked = forceOpen || solo
+  const Header = locked ? 'div' : 'button'
 
   return (
-    <div ref={rootRef} style={{ marginBottom: 8 }}>
+    <div ref={rootRef} style={{
+      marginBottom: 8,
+      ...(filling ? { flex: '1 1 0', minHeight: 46, display: 'flex', flexDirection: 'column' } : null),
+    }}>
       <div style={{
         background: 'var(--bg-card)',
         borderRadius: isOpen ? '14px 14px 0 0' : 14,
         boxShadow: 'var(--shadow-sm)',
         overflow: 'hidden',
+        ...(filling ? { flex: 1, display: 'flex' } : null),
       }}>
         {/* Tappable header */}
         <Header
-          onClick={forceOpen ? undefined : () => setOpen(o => !o)}
+          onClick={locked ? undefined : () => setOpen(o => !o)}
           style={{
             width: '100%', background: 'none', border: 'none',
-            cursor: forceOpen ? 'default' : 'pointer', padding: '13px 14px', textAlign: 'left',
+            cursor: locked ? 'default' : 'pointer', padding: '13px 14px', textAlign: 'left',
             boxSizing: 'border-box', display: 'block',
+            // Centred in the taller card rather than sitting at the top of it.
+            ...(filling ? { display: 'flex', flexDirection: 'column', justifyContent: 'center' } : null),
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

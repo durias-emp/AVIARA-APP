@@ -148,13 +148,24 @@ export default function ChecklistTabShell({
               width: `${100 / n}%`, flexShrink: 0, height: '100%',
               overflowY: 'auto', WebkitOverflowScrolling: 'touch',
               overscrollBehaviorY: 'contain',
+              // A flex column so the content column can be told to fill the
+              // pane's height. A percentage min-height would resolve against
+              // an auto-height parent and quietly do nothing.
+              display: 'flex', flexDirection: 'column',
             }}>
               {/* The pane itself spans the whole window so a wheel anywhere
                   over it scrolls; the reading width lives here instead. */}
-              <div className="content-column" style={{ paddingBottom: footerHeight }}>
+              <div className="content-column" style={{
+                paddingBottom: footerHeight,
+                // Grow past the pane when the content is taller, fill it when
+                // it is shorter — which is what lets collapsed cards share the
+                // screen instead of stacking at the top of it.
+                flex: '1 0 auto', display: 'flex', flexDirection: 'column',
+              }}>
                 <PaneActivityProvider onActiveChange={onActiveChangeFns[i]}>
                   <StepPane
                     key={`${section.title}-${resetKey}`}
+                    stretch={!paneOpen[i]}
                     section={section}
                     checked={checked}
                     onToggle={onToggle}
