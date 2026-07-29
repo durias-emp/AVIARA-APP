@@ -137,10 +137,10 @@ function MapFlyTo({ target, instant = false }) {
     const zoom = target.zoom ?? 10
 
     const go = () => {
-      // Leaflet's flyTo easing divides by the container size. On a map that
+      // Leaflet's camera maths divide by the container size. On a map that
       // has not been laid out yet that is a division by zero, and the NaN
       // reaches L.latLng, which throws and takes the whole card down with it.
-      // A fly-to can absolutely arrive that early — tapping the Mountains chip
+      // A move can absolutely arrive that early — tapping the Mountains chip
       // opens fullscreen and asks for the peak in the same breath.
       const size = map.getSize()
       if (!size.x || !size.y) return false
@@ -156,8 +156,23 @@ function MapFlyTo({ target, instant = false }) {
         const pt = map.project(center, zoom).add([0, size.y * target.offsetFrac])
         center = map.unproject(pt, zoom)
       }
+      // setView, not flyTo. Leaflet's flyTo does not interpolate between two
+      // views — it flies a parabolic arc, zooming out far enough to span the
+      // distance before zooming back in on the target. Tapping a field then
+      // reads as the map retreating to the route overview and only then
+      // approaching, which is the opposite of what the tap asked for. An
+      // animated setView moves from where the map already is, and the zoom
+      // only ever goes one way.
+      //
+      // animate: true is load-bearing twice over. It opts out of Leaflet's
+      // "is the target still on screen" test, which would otherwise refuse to
+      // animate to anything off the current view — i.e. exactly the taps this
+      // is for. The map's zoomAnimationThreshold is raised alongside it, since
+      // the default of 4 refuses a route overview at zoom 7 going to a subject
+      // at 13. Duration is not passed: the zoom animation runs on a fixed
+      // 250 ms CSS transition and ignores it.
       if (instant) map.setView(center, zoom, { animate: false })
-      else map.flyTo(center, zoom, { duration: 1.2 })
+      else map.setView(center, zoom, { animate: true })
       return true
     }
 
@@ -3174,6 +3189,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         <MapContainer center={mapCenter} zoom={7}
                           ref={setFsMap}
                           style={{ height: '100%', width: '100%' }}
+                          zoomAnimationThreshold={10}
                           zoomControl={false} attributionControl={false}>
                           {/* Leaflet's own zoom control is replaced by
                               MapControlStack, which puts close and zoom in one
