@@ -1019,6 +1019,13 @@ function MapControlStack({ onClose }) {
 // eats the chart it just got out of the way of.
 const CARD_PEEK_PX = 26
 
+// How close the map goes when a subject on it is tapped — a field, or the
+// highest ground. One number for both: they are the same gesture and the same
+// kind of answer to "where is it", and two zooms made the map feel like it had
+// two minds about being tapped. 13 is airport scale, close enough to see the
+// runway layout under the marker.
+const SUBJECT_ZOOM = 13
+
 // Vertical swipe on the fullscreen bottom card.
 //
 // The card is dense with buttons and carries a horizontally scrolling route
@@ -1750,9 +1757,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setChipPinned(null)
     setActiveChip(null)                       // the chip panel would cover the field
     rememberView()
-    // Zoom 13 shows the field at airport scale, and the offset lifts it into
-    // the band above the popup — the point of tapping it is to look at it.
-    setMapFlyTarget({ lat: f.lat, lon: f.lon, zoom: 13, offsetFrac: 0.26 })
+    // The offset lifts it into the band above the popup — the point of
+    // tapping it is to look at it.
+    setMapFlyTarget({ lat: f.lat, lon: f.lon, zoom: SUBJECT_ZOOM, offsetFrac: 0.26 })
     setOpenField(f)
     setAwayFromRoute(true)
   }
@@ -1764,18 +1771,17 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     if (terrainInfo?.status !== 'ok' || terrainInfo.atLat == null) return
     setMapClear(false); setMapFS(true)
     rememberView()
-    setMapFlyTarget({ lat: terrainInfo.atLat, lon: terrainInfo.atLon, zoom: 11, offsetFrac: 0.26 })
+    setMapFlyTarget({ lat: terrainInfo.atLat, lon: terrainInfo.atLon, zoom: SUBJECT_ZOOM, offsetFrac: 0.26 })
     setPeakFocused(true)
     setAwayFromRoute(true)
     setOpenField(null)
   }
 
   // Tapping the peak on the map is the same act as tapping the Mountains
-  // chip, and it should feel like tapping a control tower: fly in, focus it,
-  // open the card that explains it — and on closing, fly back out to exactly
-  // the view that was there before. The peak stops at zoom 11 where a tower
-  // goes to 13, because what makes a summit worth looking at is the ground
-  // around it; at 13 the ridge fills the screen and the route leaves it.
+  // chip, and it behaves like tapping a control tower: fly in, focus it, open
+  // the card that explains it — and on closing, fly back out to exactly the
+  // view that was there before. Same zoom as a tower, so the two subjects on
+  // this map are approached identically.
   function openMountains() {
     setChipPinned('mountains')
     setActiveChip('mountains')
