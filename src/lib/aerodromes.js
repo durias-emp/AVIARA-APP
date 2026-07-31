@@ -6,13 +6,27 @@
 // This uses the bundled OurAirports set instead: worldwide, offline, and the
 // same public-domain source the navaid pack already draws on.
 //
-// It also tightens the corridor from 15 NM to 10. At 15 NM nearly every route
-// in the developed world triggers the chip, and a signal that is always on
-// carries no information.
+// The corridor is per size, not one number for everything.
+//
+// A single 10 NM radius treats a private grass strip and an international hub
+// identically, and gets both wrong: the strip is noise at 10 NM, while
+// Guatemala City sat 39 NM off a track that flew straight past it and was
+// never mentioned. What makes a field worth knowing about en route is whether
+// you could use it and whether its airspace reaches you, and both scale with
+// the field.
+//
+// So: a large field is worth a look from 40 NM — that is roughly where its
+// terminal airspace begins and well inside gliding-plus-diversion range at
+// altitude. A medium field from 20. A small one only if it is genuinely
+// underneath, which is what 10 NM means.
 
 import { bboxOf, crossTrackNm, haversineNm, sampleRoute } from './corridor'
 
-export const CORRIDOR_NM = 10
+// Indexed by the OurAirports class: 0 small, 1 medium, 2 large.
+export const CORRIDOR_BY_CLASS = [10, 20, 40]
+// The widest of them, for the bounding box and for anything that still wants
+// a single number to describe the search.
+export const CORRIDOR_NM = Math.max(...CORRIDOR_BY_CLASS)
 
 let _airports = null
 // Downloaded on first use rather than precached (see vite.config.js), so this
@@ -36,14 +50,17 @@ const CLASS_LABEL = ['Small', 'Medium', 'Large']
 //
 // Departure and destination are excluded — the pilot knows about those, and
 // listing them pushes the fields they don't know about off the end.
-export async function analyzeAerodromes(waypoints, { withinNm = CORRIDOR_NM, limit = 12 } = {}) {
+export async function analyzeAerodromes(waypoints, { withinNm = null, limit = 20 } = {}) {
   const wps = (waypoints || []).filter(w => Number.isFinite(w?.lat) && Number.isFinite(w?.lon))
   if (wps.length < 2) return { status: 'empty' }
 
   const airports = await getAirports()
   if (!airports) return { status: 'unavailable' }
   const { samples, lengthNm } = sampleRoute(wps, { spacingNm: 25 })
-  const box = bboxOf(samples, withinNm + 5)
+  // withinNm overrides every class when given; otherwise each class brings
+  // its own radius and the box has to cover the widest of them.
+  const limitFor = cls => withinNm ?? (CORRIDOR_BY_CLASS[cls] ?? CORRIDOR_BY_CLASS[0])
+  const box = bboxOf(samples, (withinNm ?? CORRIDOR_NM) + 5)
 
   const ends = [wps[0], wps[wps.length - 1]]
   const hits = []
@@ -56,7 +73,7 @@ export async function analyzeAerodromes(waypoints, { withinNm = CORRIDOR_NM, lim
       const d = crossTrackNm(lat, lon, [wps[i].lat, wps[i].lon], [wps[i + 1].lat, wps[i + 1].lon])
       if (d < best) best = d
     }
-    if (best > withinNm) continue
+    if (best > limitFor(cls)) continue
     // the field you departed from or are landing at is not en-route traffic
     if (ends.some(e => haversineNm(lat, lon, e.lat, e.lon) < 2)) continue
     // distance along route, for ordering the list the way it will be flown
@@ -80,7 +97,8 @@ export async function analyzeAerodromes(waypoints, { withinNm = CORRIDOR_NM, lim
     status: 'ok',
     fields: hits.slice(0, limit),
     count: hits.length,
-    withinNm,
+    withinNm: withinNm ?? null,
+    corridorByClass: withinNm ? null : CORRIDOR_BY_CLASS,
     lengthNm: Math.round(lengthNm),
   }
 }

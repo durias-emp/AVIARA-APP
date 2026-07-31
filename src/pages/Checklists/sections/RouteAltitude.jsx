@@ -3911,7 +3911,10 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                 {activeChip === 'aero' && aeroInfo?.status === 'ok' && aeroInfo.fields.length > 0 && (
                                   <div style={{ borderRadius: 8, background: 'rgba(255,255,255,0.04)', padding: '9px 11px', marginBottom: 10 }}>
                                     <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.4px', marginBottom: 6 }}>
-                                      {aeroInfo.count} FIELD{aeroInfo.count === 1 ? '' : 'S'} WITHIN {aeroInfo.withinNm} NM OF TRACK
+                                      {aeroInfo.count} FIELD{aeroInfo.count === 1 ? '' : 'S'}{' '}
+                                      {aeroInfo.withinNm
+                                        ? `WITHIN ${aeroInfo.withinNm} NM OF TRACK`
+                                        : 'NEAR TRACK'}
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                                       {aeroInfo.fields.map(f => (
