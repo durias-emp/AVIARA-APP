@@ -176,15 +176,36 @@ export async function recommendCruise(waypoints, {
         assumed: perf.assumed.ceiling,
       })
     }
-    if (!hasOxygen && altFt > 12500) {
-      gates.push({ label: 'Oxygen required above 12,500 ft (§91.211) — none declared' })
-    }
 
     const wind = windAlong(atmo, altFt)
     const hwKt = wind?.hwKt ?? 0
     const econ = perf ? legEconomics(perf, altFt, distNm, hwKt, fieldElevFt) : null
     if (econ && !econ.reachable) {
       gates.push({ label: `Not worth it on ${Math.round(distNm)} NM — ${econ.reason}` })
+    }
+
+    // 91.211 is two rules, not one. Between 12,500 and 14,000 the crew needs
+    // oxygen only for the part of the flight spent up there lasting more than
+    // 30 minutes; above 14,000 it is required throughout. Treating everything
+    // over 12,500 as forbidden ruled out altitudes that are perfectly legal,
+    // and on a route where terrain had already taken the lower ones it left
+    // the pilot with nothing at all.
+    //
+    // The 30 minutes is measured against cruise time, which is close enough:
+    // the climb through the band adds a few minutes and the descent takes
+    // them back, and a flight near the boundary is one to think about anyway.
+    // Without an aircraft on file there is no cruise time, but there is still
+    // a distance, and no light aircraft crosses 1,200 NM in half an hour. A
+    // nominal 120 kt is plenty to tell twenty minutes from ten hours, and
+    // leaving it unknown meant the rule quietly did not apply: the first run
+    // of this recommended 13,500 ft without oxygen for a 1,192 NM flight.
+    const minutesAtAlt = econ?.cruiseMin ?? (distNm / 120) * 60
+    if (!hasOxygen && altFt > 14000) {
+      gates.push({ label: 'Above 14,000 ft the crew needs oxygen throughout (91.211). None declared.' })
+    } else if (!hasOxygen && altFt > 12500 && minutesAtAlt > 30) {
+      gates.push({
+        label: `${Math.round(minutesAtAlt)} min above 12,500 ft needs oxygen past the first 30 (91.211). None declared.`,
+      })
     }
 
     const cloud = cloudAlong(atmo, altFt)
@@ -256,8 +277,17 @@ export async function recommendCruise(waypoints, {
         add({ B: 6, C: 3, D: 2 }[worst.cls] || 0, `Class ${worst.cls} at cruise`, worst.name)
       }
     }
-    if (altFt > 12500) add(10, 'oxygen required', 'above 12,500 ft (§91.211)')
-    else if (altFt > 10000) add(3, 'oxygen after 30 min', '10,000–12,500 ft (§91.211)')
+    // Legal without oxygen for a short enough leg, and still worth a mark
+    // against it: the margin is thin and the rule is measured in minutes.
+    if (altFt > 12500) {
+      add(10, hasOxygen ? 'oxygen in use' : 'oxygen needed past 30 min',
+          `${Math.round(minutesAtAlt)} min at altitude`)
+    } else if (altFt > 10000) {
+      // No regulation here. The AIM recommends oxygen above 10,000 by day and
+      // night vision starts going long before that, so this is a nudge and is
+      // labelled as one rather than dressed up as a rule.
+      add(3, 'thin air', 'above 10,000 ft, oxygen recommended')
+    }
     if (perf && altFt > 0.9 * perf.serviceCeilingFt) {
       add(10, 'near the service ceiling', 'little climb rate or manoeuvre margin left')
     }

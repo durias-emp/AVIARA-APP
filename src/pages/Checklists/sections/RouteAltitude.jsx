@@ -2149,6 +2149,19 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // charted point a mile or two away.
   // True while the map is open specifically to be asked "where?" — a tap
   // places a point instead of dismissing one.
+  // Oxygen on board. The altitude engine has always known about 91.211 and
+  // has never had a way to be told the answer, so it assumed the worst and
+  // ruled out every altitude above 12,500 on every flight. Kept on the card
+  // rather than buried in the aircraft profile: it is a per flight fact, a
+  // rented bottle one week and nothing the next.
+  const [hasOxygen, setHasOxygen] = useState(false)
+  useEffect(() => { get('settings', 'oxygen').then(r => { if (r?.value != null) setHasOxygen(!!r.value) }) }, [])
+  const toggleOxygen = () => setHasOxygen(prev => {
+    const next = !prev
+    put('settings', { key: 'oxygen', value: next }).catch(() => {})
+    return next
+  })
+
   const [pickMode, setPickMode] = useState(false)
   // The standalone "where am I going" map, shown before a route exists.
   // Holds the departure it opened over rather than a bare flag, so render
@@ -2826,13 +2839,14 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       terrain: terrainInfo,
       airspace: airspaceInfo,
       fieldElevFt: route?.depElevFt ?? 0,
+      hasOxygen,
     }).then(res => { if (!cancelled) { setAdvice(res); setAdviceBusy(false); setBrief(null) } })
       .catch(() => { if (!cancelled) { setAdvice({ status: 'unavailable' }); setAdviceBusy(false) } })
     return () => { cancelled = true }
   }, [
     JSON.stringify(waypoints.map(w => [+w.lat.toFixed(3), +w.lon.toFixed(3)])),
     flightRules, etd?.slice(0, 13), aircraft?.id, altitudes?.length, routeMaxMEA,
-    terrainInfo?.maxFt, airspaceInfo?.count,
+    terrainInfo?.maxFt, airspaceInfo?.count, hasOxygen,
   ])
 
   // True when any point of the planned route sits outside the regions we hold
@@ -4300,6 +4314,41 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 )}
               </div>
             )}
+            {/* Oxygen. Shown next to the altitudes because that is where the
+                answer changes what you see: without it every altitude above
+                12,500 ft is either penalised or ruled out. */}
+            <button
+              onClick={toggleOxygen}
+              style={{
+                marginTop: 10, width: '100%', display: 'flex', alignItems: 'center', gap: 9,
+                padding: '9px 11px', borderRadius: 9, cursor: 'pointer', textAlign: 'left',
+                background: hasOxygen ? 'rgba(48,209,88,0.12)' : 'var(--bg-card-2)',
+                border: `0.5px solid ${hasOxygen ? 'var(--ok)' : 'var(--border)'}`,
+              }}>
+              <div style={{
+                width: 16, height: 16, borderRadius: 5, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: hasOxygen ? 'var(--ok)' : 'transparent',
+                border: `1.5px solid ${hasOxygen ? 'var(--ok)' : 'var(--border-strong)'}`,
+              }}>
+                {hasOxygen && (
+                  <svg width={9} height={9} viewBox="0 0 24 24" fill="none" style={{ color: '#000' }}>
+                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+                  Supplemental oxygen on board
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, lineHeight: 1.4 }}>
+                  {hasOxygen
+                    ? 'Altitudes above 12,500 ft stay available.'
+                    : 'Without it, 12,500 to 14,000 ft is limited to 30 minutes and above 14,000 is out (91.211).'}
+                </div>
+              </div>
+            </button>
+
             <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
               Above 18,000 ft MSL is Class A airspace, IFR only.
             </div>

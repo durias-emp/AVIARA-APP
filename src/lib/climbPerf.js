@@ -177,6 +177,9 @@ export function legEconomics(perf, altFt, distNm, hwKt = 0, elevFt = 0) {
     hwKt,
     tasKt: tasAt(perf, altFt),
     climbMin: climb.minutes,
+    // Time actually spent at the cruise altitude, which is what the oxygen
+    // rule is measured against rather than the whole block time.
+    cruiseMin,
     climbNm: climb.distNm,
     descentNm: desc.distNm,
     cruiseNm,
