@@ -2,19 +2,22 @@ import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { get, put } from '../../lib/db'
 import { getGlobalCurrencyStatus } from '../../lib/currency'
-import WeatherCard   from '../../components/WeatherCard'
+import { loadWeather, parseFltCat, parseWind, parseVisib, parseTemp } from '../../lib/weather'
+import { getCondition } from '../../components/WeatherAnimation'
+import { usePilotProfile } from '../../context/PilotProfile'
+import { useActiveAircraft } from '../../context/ActiveAircraft'
+import AirportPickerModal from '../../components/AirportPickerModal'
 import CardOverlay   from '../../components/CardOverlay'
 import MapView, { LiveMap } from '../../components/MapView'
 import AirportInfo from '../../components/AirportInfo'
 import ToolsMenu from '../../components/ToolsMenu'
-import { PilotArt, HangarArt, FlightPlanArt } from '../../components/HomeHeroArt'
-import HeroLabel from '../../components/HeroLabel'
-import { BackButton } from '../../components/Shell'
+import { AirportScene, PilotArt, HangarArt, FlightPlanArt } from '../../components/HomeHeroArt'
+import HeroLabel, { HERO_LABEL_WIDTH } from '../../components/HeroLabel'
 import { useCurrentLocation } from '../../hooks/useCurrentLocation'
 import { useMapLayer } from '../../hooks/useMapLayer'
-import { IconChevronRight, IconWrench, IconGear } from '../../components/Icons'
+import { IconWrench, IconGear } from '../../components/Icons'
 import Checklists from '../Checklists/Checklists'
-import Aircraft   from '../Aircraft/Aircraft'
+import Hangar     from '../Aircraft/Hangar'
 import Settings   from '../Settings/Settings'
 
 // Uniform size for every hero button (Weather, Map, Airports, Hangar,
@@ -37,7 +40,9 @@ function ModuleCard({ section, onOpen, Icon, label }) {
   }
 
   return (
-    <div ref={ref} onClick={handleClick} style={{
+    <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label={`Open ${label}`}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
+      style={{
       cursor: 'pointer',
       background: 'var(--bg-card)',
       borderRadius: 16,
@@ -65,8 +70,9 @@ function ModuleCard({ section, onOpen, Icon, label }) {
 }
 
 /* ── Hangar card ──────────────────────────────────────────── */
-function HangarCard({ aircraftImage, onOpen }) {
+function HangarCard({ aircraftImage, aircraftCount = 0, onOpen }) {
   const ref = useRef(null)
+  const empty = aircraftCount === 0
 
   function handleClick() {
     if (ref.current) {
@@ -77,14 +83,25 @@ function HangarCard({ aircraftImage, onOpen }) {
 
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div ref={ref} onClick={handleClick} style={{
+      <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label={empty ? 'Add aircraft' : 'Open hangar'}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
+        style={{
         position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
         boxShadow: 'var(--shadow-sm)',
         height: HERO_HEIGHT, boxSizing: 'border-box',
         cursor: 'pointer',
         WebkitTapHighlightColor: 'transparent',
       }}>
-        {aircraftImage ? (
+        {empty ? (
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            background: 'var(--bg-card-2)',
+          }}>
+            <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent)', lineHeight: 1 }}>+</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Add Aircraft</span>
+          </div>
+        ) : aircraftImage ? (
           <img src={aircraftImage} alt="" style={{
             position: 'absolute', inset: 0,
             width: '100%', height: '100%',
@@ -94,12 +111,14 @@ function HangarCard({ aircraftImage, onOpen }) {
           <HangarArt />
         )}
 
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 0,
-          background: 'linear-gradient(108deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.3) 55%, rgba(0,0,0,0.05) 100%)',
-        }} />
+        {!empty && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 0,
+            background: 'linear-gradient(108deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.3) 55%, rgba(0,0,0,0.05) 100%)',
+          }} />
+        )}
 
-        <HeroLabel>Hangar</HeroLabel>
+        {!empty && <HeroLabel>Hangar</HeroLabel>}
       </div>
     </div>
   )
@@ -148,20 +167,117 @@ function MapCard({ onOpen }) {
   )
 }
 
-/* ── Airports card — doubles as the live weather button (VFR/MVFR/IFR/
-   LIFR color-coded, same as before), since checking weather is part of
-   what the Airports section is for. Tapping it opens Airports directly
-   instead of the standalone METAR/TAF popup. ── */
-function AirportsCard({ onOpen }) {
+/* ── Airports card — the airport tower/runway scene stays the primary
+   image; current conditions (sun, clouds, rain, snow, storm) are just a
+   small flourish layered on top of it, not the main picture. ICAO + VFR/
+   MVFR/IFR/LIFR pill sit together on the left; temp/wind/vis stay small
+   and off to the right so nothing overlaps. ── */
+function AirportsHeroCard({ onOpen }) {
+  const { profile } = usePilotProfile()
+  const units = profile ?? {}
+  const [icao, setIcao] = useState('')
+  const [pickerOpen, setPicker] = useState(false)
+  const [wx, setWx] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    get('settings', 'homeAirport').then(row => {
+      if (row?.value) setIcao(row.value)
+      else setPicker(true)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!icao) return
+    setLoading(true)
+    get('weather', icao).then(cached => { if (cached) setWx(cached) })
+    loadWeather(icao).then(setWx).catch(() => {}).finally(() => setLoading(false))
+  }, [icao])
+
+  function handleClick() {
+    if (ref.current) {
+      const r = ref.current.getBoundingClientRect()
+      onOpen('airports', { top: r.top, left: r.left, width: r.width, height: r.height })
+    }
+  }
+
+  function confirmAirport(id) {
+    put('settings', { key: 'homeAirport', value: id })
+    setIcao(id)
+    setPicker(false)
+  }
+
+  if (!icao && !pickerOpen) {
+    return (
+      <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
+        <div onClick={() => setPicker(true)} style={{
+          background: 'var(--bg-card)', borderRadius: 20, boxShadow: 'var(--shadow-sm)',
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '0 20px', height: HERO_HEIGHT, boxSizing: 'border-box',
+          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+        }}>
+          <span style={{ fontSize: 20 }}>✈️</span>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Set Home Airport</div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Tap to look one up</div>
+          </div>
+        </div>
+        {pickerOpen && <AirportPickerModal current={icao} onConfirm={confirmAirport} onClose={() => setPicker(false)} />}
+      </div>
+    )
+  }
+
+  const cat = wx?.metar ? parseFltCat(wx.metar) : null
+  const { type: condition } = getCondition(wx?.metar ?? null)
+
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <WeatherCard
-        mini
-        label="Airports"
-        showChevron
-        height={HERO_HEIGHT}
-        onCardClick={rect => onOpen('airports', rect)}
-      />
+      <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label="Open airports"
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
+        style={{
+        position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
+        boxShadow: 'var(--shadow-sm)',
+        height: HERO_HEIGHT, boxSizing: 'border-box',
+        cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+      }}>
+        <AirportScene condition={condition} />
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 0,
+          background: 'linear-gradient(108deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.2) 55%, rgba(0,0,0,0.04) 100%)',
+        }} />
+        <HeroLabel>Airports</HeroLabel>
+
+        <div style={{
+          position: 'relative', zIndex: 1, height: '100%',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: `0 14px 0 ${HERO_LABEL_WIDTH + 14}px`, boxSizing: 'border-box',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <span style={{ fontSize: 16, fontWeight: 800, color: '#fff', fontFamily: 'monospace', letterSpacing: '0.06em' }}>
+              {icao}
+            </span>
+            {cat && (
+              <span style={{
+                fontSize: 9, fontWeight: 800, letterSpacing: '0.05em', color: '#fff',
+                background: cat.color, padding: '2px 7px', borderRadius: 20,
+                boxShadow: `0 1px 4px ${cat.color}66`, flexShrink: 0,
+              }}>{cat.label}</span>
+            )}
+          </div>
+
+          <div style={{ textAlign: 'right', fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.85)', lineHeight: 1.5, flexShrink: 0 }}>
+            {wx?.metar ? (
+              <>
+                <div>{parseTemp(wx.metar, units)} · {parseWind(wx.metar, units)}</div>
+                <div style={{ color: 'rgba(255,255,255,0.65)' }}>{parseVisib(wx.metar, units)} vis</div>
+              </>
+            ) : (
+              <span style={{ color: 'rgba(255,255,255,0.65)' }}>{loading ? 'Loading…' : '—'}</span>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -179,7 +295,9 @@ function FlightPlanCard({ onOpen }) {
 
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div ref={ref} onClick={handleClick} style={{
+      <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label="Open flight planning"
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
+        style={{
         position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
         boxShadow: 'var(--shadow-sm)',
         height: HERO_HEIGHT, boxSizing: 'border-box',
@@ -190,13 +308,7 @@ function FlightPlanCard({ onOpen }) {
           position: 'absolute', inset: 0, zIndex: 0,
           background: 'linear-gradient(108deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.16) 55%, rgba(0,0,0,0.02) 100%)',
         }} />
-        <HeroLabel>Flight</HeroLabel>
-        <span style={{
-          position: 'absolute', top: '50%', right: 18, transform: 'translateY(-50%)',
-          zIndex: 1, color: '#fff', display: 'flex',
-        }}>
-          <IconChevronRight size={18} />
-        </span>
+        <HeroLabel>FPL</HeroLabel>
       </div>
     </div>
   )
@@ -226,12 +338,6 @@ function PilotRow({ currencyDotColor }) {
             width: 9, height: 9, borderRadius: '50%',
             background: currencyDotColor, boxShadow: '0 0 0 2px rgba(255,255,255,0.7)',
           }} />
-          <span style={{
-            position: 'absolute', top: '50%', right: 18, transform: 'translateY(-50%)',
-            zIndex: 1, color: '#fff', display: 'flex',
-          }}>
-            <IconChevronRight size={18} />
-          </span>
         </div>
       </Link>
     </div>
@@ -242,67 +348,18 @@ function PilotRow({ currencyDotColor }) {
    these rows have real interactive content (live map, weather fetch),
    and a full drag gesture would fight the app's existing edge-swipe-back
    gesture — up/down is simpler and just as functional. Changes save
-   immediately, no separate "Save" step. ── */
-const ROW_LABELS = {
-  airports: 'Airports (Weather)',
-  map: 'Map',
-  hangar: 'Hangar',
-  pilot: 'Pilot',
-  flight: 'Flight Planning',
-}
-
-function ReorderScreen({ order, onMove }) {
-  return (
-    <div>
-      <div style={{ padding: '20px 20px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <BackButton />
-        <h2 style={{
-          fontSize: 28, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)',
-          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
-        }}>Reorder Home</h2>
-      </div>
-
-      <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {order.map((key, i) => (
-          <div key={key} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            background: 'var(--bg-card)', borderRadius: 14, boxShadow: 'var(--shadow-sm)',
-            padding: '13px 16px',
-          }}>
-            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{ROW_LABELS[key]}</span>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button
-                onClick={() => onMove(i, -1)}
-                disabled={i === 0}
-                style={{
-                  width: 32, height: 32, borderRadius: 10, border: 'none',
-                  background: 'var(--bg-card-2)', color: i === 0 ? 'var(--text-tertiary)' : 'var(--text)',
-                  fontSize: 16, cursor: i === 0 ? 'default' : 'pointer',
-                }}>↑</button>
-              <button
-                onClick={() => onMove(i, 1)}
-                disabled={i === order.length - 1}
-                style={{
-                  width: 32, height: 32, borderRadius: 10, border: 'none',
-                  background: 'var(--bg-card-2)', color: i === order.length - 1 ? 'var(--text-tertiary)' : 'var(--text)',
-                  fontSize: 16, cursor: i === order.length - 1 ? 'default' : 'pointer',
-                }}>↓</button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
+   immediately, no separate "Save" step — now lives inside Settings
+   rather than as its own Home button (see Settings.jsx's own ROW_LABELS
+   for the reorder list's display names). ── */
 
 /* ── Section content map ──────────────────────────────────── */
-function SectionContent({ section }) {
+function SectionContent({ section, order, onMoveRow }) {
   if (section === 'checklists') return <Checklists />
-  if (section === 'aircraft')   return <Aircraft />
+  if (section === 'aircraft')   return <Hangar />
   if (section === 'map')        return <MapView />
   if (section === 'airports')   return <AirportInfo />
   if (section === 'tools')      return <ToolsMenu />
-  if (section === 'settings')   return <Settings />
+  if (section === 'settings')   return <Settings order={order} onMoveRow={onMoveRow} />
   return null
 }
 
@@ -310,23 +367,18 @@ const DEFAULT_ORDER = ['airports', 'map', 'hangar', 'pilot', 'flight']
 
 /* ── Home ────────────────────────────────────────────────── */
 export default function Home() {
-  const [pilotName, setPilotName]         = useState('')
-  const [aircraftImage, setAircraftImage] = useState('')
+  const { aircraftId, aircraftList, refreshAircraftList } = useActiveAircraft()
   const [openSection, setOpenSection]     = useState(null)
   const [sectionRect, setSectionRect]     = useState(null)
   const [currencyStatus, setCurrencyStatus] = useState('valid')
   const [order, setOrder] = useState(DEFAULT_ORDER)
-  const editRef = useRef(null)
-
+  const activeAircraft = aircraftList?.find(a => a.id === aircraftId)
+  const aircraftImage = activeAircraft?.image ?? ''
   function loadCurrencyStatus() {
     get('currency', 'profile').then(d => setCurrencyStatus(getGlobalCurrencyStatus(d ?? {})))
   }
 
   useEffect(() => {
-    get('aircraft', 'profile').then(p => {
-      if (p?.pilotName) setPilotName(p.pilotName)
-      if (p?.image)     setAircraftImage(p.image)
-    })
     loadCurrencyStatus()
     get('settings', 'homeOrder').then(row => {
       if (!Array.isArray(row?.value)) return
@@ -344,11 +396,11 @@ export default function Home() {
   }
 
   function closeCard() {
+    // The Hangar overlay can create/edit/delete aircraft while open — refresh
+    // the list so this screen's preview image and the hero card's empty/
+    // non-empty state stay in sync with whatever changed in there.
     if (openSection === 'aircraft') {
-      get('aircraft', 'profile').then(p => {
-        if (p?.pilotName) setPilotName(p.pilotName)
-        if (p?.image)     setAircraftImage(p.image)
-      })
+      refreshAircraftList()
     }
     // Airworthiness (on Aircraft) and Checklists (IM SAFE/CURRENT) both write
     // to the same currency/profile record the Home icon reflects. Editing
@@ -371,22 +423,15 @@ export default function Home() {
     put('settings', { key: 'homeOrder', value: next }).catch(() => {})
   }
 
-  function handleEditClick() {
-    if (editRef.current) {
-      const r = editRef.current.getBoundingClientRect()
-      openCard('reorder', { top: r.top, left: r.left, width: r.width, height: r.height })
-    }
-  }
-
   const currencyDotColor =
     currencyStatus === 'expired'  ? 'var(--danger)' :
     currencyStatus === 'expiring' ? 'var(--warn)' :
     'var(--ok)'
 
   function renderRow(key) {
-    if (key === 'airports') return <AirportsCard key={key} onOpen={openCard} />
+    if (key === 'airports') return <AirportsHeroCard key={key} onOpen={openCard} />
     if (key === 'map')      return <MapCard key={key} onOpen={openCard} />
-    if (key === 'hangar')   return <HangarCard key={key} aircraftImage={aircraftImage} onOpen={openCard} />
+    if (key === 'hangar')   return <HangarCard key={key} aircraftImage={aircraftImage} aircraftCount={aircraftList?.length ?? 0} onOpen={openCard} />
     if (key === 'pilot')    return <PilotRow key={key} currencyDotColor={currencyDotColor} />
     if (key === 'flight')   return <FlightPlanCard key={key} onOpen={openCard} />
     return null
@@ -397,18 +442,8 @@ export default function Home() {
       <div style={{
         height: '100dvh', overflow: 'hidden', boxSizing: 'border-box',
         display: 'flex', flexDirection: 'column',
-        padding: '10px 0 10px',
+        padding: '14px 0 10px',
       }}>
-
-        {/* ── Edit-order trigger ── */}
-        <div style={{ padding: '0 18px 6px', display: 'flex', justifyContent: 'flex-end' }}>
-          <button ref={editRef} onClick={handleEditClick} style={{
-            background: 'none', border: 'none', padding: '4px 2px',
-            fontSize: 12, fontWeight: 700, color: 'var(--accent)', cursor: 'pointer',
-          }}>
-            Edit Order
-          </button>
-        </div>
 
         {order.map(renderRow)}
 
@@ -430,9 +465,7 @@ export default function Home() {
 
       {openSection && sectionRect && (
         <CardOverlay cardRect={sectionRect} onClose={closeCard}>
-          {openSection === 'reorder'
-            ? <ReorderScreen order={order} onMove={moveRow} />
-            : <SectionContent section={openSection} />}
+          <SectionContent section={openSection} order={order} onMoveRow={moveRow} />
         </CardOverlay>
       )}
     </>

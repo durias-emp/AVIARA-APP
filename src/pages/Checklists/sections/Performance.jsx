@@ -1,9 +1,22 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { get, put } from '../../../lib/db'
 import { ExpandableCard, DoneButton } from '../shared/ui'
-import { awcUrl, proxyFetch, proxyJSON } from '../shared/awc'
+import { awcUrl, proxyJSON } from '../shared/awc'
+import { fetchWindsAloft, nearestWind } from '../../../lib/windsAloft'
 import { getWBConfig } from '../../../lib/aircraftWB'
+import { getPerfChart, interpolateChart } from '../../../lib/aircraftPerf'
+import { scopedSettingsKey } from '../../../lib/aircraft'
+import { useActiveAircraft } from '../../../context/ActiveAircraft'
+import { useRegion } from '../../../context/Region'
+import { getRuleset } from '../../../lib/regulations'
+import RuleInfo from '../../../components/RuleInfo'
 import WBChecklistItem from '../WBChecklistItem'
+
+// The Phase-1 regulatory engine only has real citations for US/Canada — the
+// jurisdiction-toggle inside RuleInfo compares against whichever of the two
+// isn't currently active. Outside those two (International/Other) there's
+// nothing to compare against, so no alt is offered.
+const ALT_REGION = { us: 'ca', ca: 'us' }
 
 /* ── Density Altitude calculator ────────────────────────────── */
 export function DensityAltItem({ item, isChecked, onToggle }) {
@@ -337,12 +350,14 @@ function PerfSmallInput({ label, value, onChange, unit }) {
 
 /* ── Takeoff / Landing distance calculator ───────────────────── */
 export function PerfDistItem({ item, isChecked, onToggle }) {
+  const { aircraftId } = useActiveAircraft()
   const [open,    setOpen]   = useState(false)
   const [tab,     setTab]    = useState('dep') // 'dep' = Takeoff | 'arr' = Landing
   // Guards the persist effect below from firing with blank initial state
   // before the restore effect (which only runs once the card is opened) has
   // had a chance to load any previously-saved values.
   const perfRestored = useRef(false)
+  const [aircraftProfile, setAircraftProfile] = useState(null) // for getPerfChart() below
 
   // ── POH reference ─────────────────────────────────────────────
   const [toGR,    setToGR]   = useState('')    // TO ground roll
@@ -421,7 +436,12 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
   useEffect(() => {
     if (!open) return
     const parsePerf = v => v ? String(parseFloat(String(v).replace(/,/g, '')) || '') : ''
-    Promise.all([get('settings', 'perfdist'), get('aircraft', 'profile'), get('settings', 'lastWB')]).then(([saved, profile, lastWB]) => {
+    Promise.all([
+      get('settings', scopedSettingsKey('perfdist', aircraftId)),
+      aircraftId ? get('aircraft', aircraftId) : null,
+      get('settings', scopedSettingsKey('lastWB', aircraftId)),
+    ]).then(([saved, profile, lastWB]) => {
+      setAircraftProfile(profile)
       if (saved?.dep?.pohBase != null) setDep(prev => ({ ...prev, pohBase: saved.dep.pohBase }))
       if (saved?.arr?.pohBase != null) setArr(prev => ({ ...prev, pohBase: saved.arr.pohBase }))
       if (saved?.toGR     != null) setToGR(saved.toGR)
@@ -457,15 +477,16 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
         r?.dest ? fetchTab(r.dest, true)  : Promise.resolve(),
       ])
     })
-  }, [open])
+  }, [open, aircraftId])
 
   // ── Persist ───────────────────────────────────────────────────
   useEffect(() => {
     if (!perfRestored.current) return
-    put('settings', { key: 'perfdist', toGR, toOver, ldgGR, ldgOver, dep, arr }).catch(() => {})
-  }, [toGR, toOver, ldgGR, ldgOver, dep, arr])
+    put('settings', { key: scopedSettingsKey('perfdist', aircraftId), toGR, toOver, ldgGR, ldgOver, dep, arr }).catch(() => {})
+  }, [toGR, toOver, ldgGR, ldgOver, dep, arr, aircraftId])
 
   // ── Calculations for current tab ─────────────────────────────
+  const isDepTab = tab === 'dep'
   const baseFt   = parseFloat(cur.pohBase) || 0
   const daFt     = cur.da ?? 0
   const slopePct = parseFloat(cur.slope) || 0
@@ -475,7 +496,27 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
   const hwComp   = (!isNaN(wDir) && !isNaN(wSpd))
     ? Math.round(wSpd * Math.cos((wDir - rwyHdg) * Math.PI / 180)) : 0
 
-  const daFactor   = 1 + Math.max(0, daFt - baseFt) / 1000 * 0.10
+  // Digitized POH chart lookup for the active leg (takeoff on the dep tab,
+  // landing on the arr tab) — interpolated against the chart's real
+  // pressure-altitude/OAT grid when the aircraft has one, in place of the
+  // flat manually-entered ground-roll/over-50ft figures below.
+  const curPaFt = (() => {
+    const e = parseFloat(cur.elevFt), a = parseFloat(cur.altSetting)
+    return (!isNaN(e) && !isNaN(a)) ? e + (29.92 - a) * 1000 : null
+  })()
+  const activeChart = getPerfChart(aircraftProfile, isDepTab ? 'takeoff' : 'landing')
+  const interp = activeChart ? interpolateChart(activeChart, curPaFt, parseFloat(cur.oat)) : null
+  const effToGR    = (isDepTab && interp)  ? interp.groundRoll : toGR
+  const effToOver  = (isDepTab && interp)  ? interp.over50     : toOver
+  const effLdgGR   = (!isDepTab && interp) ? interp.groundRoll : ldgGR
+  const effLdgOver = (!isDepTab && interp) ? interp.over50     : ldgOver
+
+  // When the chart covers the active leg, its interpolation already
+  // reflects the real PA/OAT combination — skipping the heuristic +10%/
+  // 1000ft altitude adjustment avoids double-counting that same effect.
+  // Wind/surface/slope/weight still apply on top either way, same as a
+  // real POH layers those adjustments onto its own base chart value.
+  const daFactor   = interp ? 1 : (1 + Math.max(0, daFt - baseFt) / 1000 * 0.10)
   const windFactor = hwComp >= 0
     ? Math.max(0.5, 1 - (hwComp / 9) * 0.10)
     : Math.min(2.5, 1 + (Math.abs(hwComp) / 2) * 0.10)
@@ -486,8 +527,10 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
   // Weight factor — POH ground-roll/50ft numbers are calibrated at a chart
   // baseline weight (usually max gross); distance scales roughly with the
   // square of the weight ratio (lift/energy relationship), clamped so a
-  // missing or clearly-wrong weight entry can't blow up the estimate.
-  const pohW    = parseFloat(cur.pohWeight) || 0
+  // missing or clearly-wrong weight entry can't blow up the estimate. Prefer
+  // the digitized chart's own baseline weight over the manually-entered one
+  // when a chart is in use.
+  const pohW    = (interp && activeChart?.baselineWeight) ? activeChart.baselineWeight : (parseFloat(cur.pohWeight) || 0)
   const actualW = parseFloat(cur.actualWeight) || 0
   const weightFactor = (pohW > 0 && actualW > 0)
     ? Math.min(1.5, Math.max(0.5, (actualW / pohW) ** 2))
@@ -497,15 +540,14 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
   const combinedLD = daFactor * windFactor * surfFactor * slopeFactorLD * weightFactor
 
   const calc = (base, f) => base && !isNaN(parseFloat(base)) ? Math.round(parseFloat(base) * f) : null
-  const isDepTab = tab === 'dep'
-  const toGRc    = calc(toGR,   combinedTO)
-  const toOverc  = calc(toOver, combinedTO)
-  const ldgGRc   = calc(ldgGR,  combinedLD)
-  const ldgOverc = calc(ldgOver, combinedLD)
-  const accelStop= calc(toGR,   combinedTO * 1.25)
+  const toGRc    = calc(effToGR,   combinedTO)
+  const toOverc  = calc(effToOver, combinedTO)
+  const ldgGRc   = calc(effLdgGR,  combinedLD)
+  const ldgOverc = calc(effLdgOver, combinedLD)
+  const accelStop= calc(effToGR,   combinedTO * 1.25)
 
   // POH filled enough to show results
-  const allFilled = toGR && toOver && ldgGR && ldgOver
+  const allFilled = effToGR && effToOver && effLdgGR && effLdgOver
 
   // ── Sub-components ────────────────────────────────────────────
   const SmallInput = PerfSmallInput
@@ -697,9 +739,9 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
 
         {/* ── POH reference (shared) ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <div style={{ fontSize: 9, color: 'var(--text-tertiary)', fontWeight: 700,
+          <div style={{ fontSize: 9, color: interp ? 'var(--accent)' : 'var(--text-tertiary)', fontWeight: 700,
             letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-            POH Reference · Sea Level / Std Day
+            {interp ? `Using Digitized ${isDepTab ? 'Takeoff' : 'Landing'} Chart` : 'POH Reference · Sea Level / Std Day'}
           </div>
         </div>
 
@@ -738,21 +780,31 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
           </FieldTip>
         </div>
 
-        {/* 2×2 grid: Takeoff left, Landing right */}
+        {/* 2×2 grid: Takeoff left, Landing right — a field renders read-only
+            with an accent tint when its value comes from a digitized POH
+            chart (editing it wouldn't do anything, since the interpolated
+            value always wins over the flat one while a chart is in use). */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 16 }}>
           {[
-            { label: 'TO Ground Roll',  tip: 'Distance from brake release to lift-off, per your POH.',             val: toGR,   set: setToGR   },
-            { label: 'LDG Ground Roll', tip: 'Distance from touchdown to full stop, per your POH.',                val: ldgGR,  set: setLdgGR  },
-            { label: 'TO Over 50ft',    tip: 'Distance from brake release to clearing a 50ft obstacle, POH value.',val: toOver, set: setToOver  },
-            { label: 'LDG Over 50ft',   tip: 'Distance from 50ft height to full stop. Compare against runway length.',val:ldgOver,set: setLdgOver },
-          ].map(({ label, tip, val, set }) => (
-            <FieldTip key={label} label={label} tip={tip}>
-              <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-card-2)',
+            { label: 'TO Ground Roll',  tip: 'Distance from brake release to lift-off, per your POH.',             val: effToGR,   set: setToGR,   fromChart: isDepTab && interp },
+            { label: 'LDG Ground Roll', tip: 'Distance from touchdown to full stop, per your POH.',                val: effLdgGR,  set: setLdgGR,  fromChart: !isDepTab && interp },
+            { label: 'TO Over 50ft',    tip: 'Distance from brake release to clearing a 50ft obstacle, POH value.',val: effToOver, set: setToOver,  fromChart: isDepTab && interp },
+            { label: 'LDG Over 50ft',   tip: 'Distance from 50ft height to full stop. Compare against runway length.',val:effLdgOver,set: setLdgOver, fromChart: !isDepTab && interp },
+          ].map(({ label, tip, val, set, fromChart }) => (
+            <FieldTip key={label} label={fromChart ? `${label} · chart` : label} tip={fromChart ? `${tip} From your digitized POH chart at this leg's pressure altitude/OAT.` : tip}>
+              <div style={{ display: 'flex', alignItems: 'center',
+                background: fromChart ? 'var(--accent-light, rgba(10,132,255,0.12))' : 'var(--bg-card-2)',
                 borderRadius: 8, padding: '8px 10px', gap: 3 }}>
-                <input type="number" value={val} onChange={e => set(e.target.value)} placeholder="—"
-                  style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
-                    fontSize: 17, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
-                    width: 0, minWidth: 0 }} />
+                {fromChart ? (
+                  <span style={{ flex: 1, fontSize: 17, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace' }}>
+                    {Math.round(val)}
+                  </span>
+                ) : (
+                  <input type="number" value={val} onChange={e => set(e.target.value)} placeholder="—"
+                    style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
+                      fontSize: 17, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
+                      width: 0, minWidth: 0 }} />
+                )}
                 <span style={{ fontSize: 10, color: 'var(--text-tertiary)', flexShrink: 0 }}>ft</span>
               </div>
             </FieldTip>
@@ -903,15 +955,19 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
 
 /* ── Cruise / Fuel / Endurance calculator ────────────────────── */
 export function CruiseItem({ item, isChecked, onToggle }) {
+  const { aircraftId } = useActiveAircraft()
+  const { region, ruleset } = useRegion()
   const [open, setOpen] = useState(false)
 
   // POH inputs
   const [tas,       setTas]       = useState('')   // cruise TAS knots
   const [burnRate,  setBurnRate]  = useState('')   // GPH
+  const [powerSetting, setPowerSetting] = useState('') // RPM / %power — only used if a cruise chart exists
   const [fuelOnBoard, setFuelOnBoard] = useState('') // usable gallons
   const [flightRules, setFlightRules] = useState('VFR') // VFR | IFR
   const [timeOfDay, setTimeOfDay] = useState('day') // day | night — VFR reserve only (91.151)
   const [isHelicopter, setIsHelicopter] = useState(false)
+  const [aircraftProfile, setAircraftProfile] = useState(null) // for getPerfChart() below
 
   // Auto-filled
   const [routeDist, setRouteDist] = useState(null) // nm
@@ -926,12 +982,16 @@ export function CruiseItem({ item, isChecked, onToggle }) {
   const cruiseRestored = useRef(false)
   useEffect(() => {
     if (!cruiseRestored.current) return
-    put('settings', { key: 'cruise', tas, burnRate, fuelOnBoard, flightRules, cruiseAlt, timeOfDay }).catch(() => {})
-  }, [tas, burnRate, fuelOnBoard, flightRules, cruiseAlt, timeOfDay])
+    put('settings', { key: scopedSettingsKey('cruise', aircraftId), tas, burnRate, powerSetting, fuelOnBoard, flightRules, cruiseAlt, timeOfDay }).catch(() => {})
+  }, [tas, burnRate, powerSetting, fuelOnBoard, flightRules, cruiseAlt, timeOfDay, aircraftId])
 
   useEffect(() => {
     if (!open) return
-    Promise.all([get('settings', 'cruise'), get('aircraft', 'profile')]).then(([s, profile]) => {
+    Promise.all([
+      get('settings', scopedSettingsKey('cruise', aircraftId)),
+      aircraftId ? get('aircraft', aircraftId) : null,
+    ]).then(([s, profile]) => {
+      setAircraftProfile(profile)
       if (!cruiseRestored.current) {
         // First open: seed from aircraft profile, then overlay any saved user values
         const profileTas      = profile?.vspeeds?.cruise ? String(parseFloat(profile.vspeeds.cruise) || '') : ''
@@ -946,6 +1006,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
       if (s?.flightRules) setFlightRules(s.flightRules)
       if (s?.cruiseAlt)   setCruiseAlt(s.cruiseAlt)
       if (s?.timeOfDay)   setTimeOfDay(s.timeOfDay)
+      if (s?.powerSetting) setPowerSetting(s.powerSetting)
       setIsHelicopter(profile?.category === 'helicopter')
       cruiseRestored.current = true
     })
@@ -974,7 +1035,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
       if (r?.cruiseAlt) setCruiseAlt(String(r.cruiseAlt))
     })
 
-  }, [open])
+  }, [open, aircraftId])
 
   // Always-on listener — reacts to aircraft preset changes from the takeoff/landing card
   useEffect(() => {
@@ -1000,99 +1061,19 @@ export function CruiseItem({ item, isChecked, onToggle }) {
     setWindError(null)
     setWindsAloft(null)
 
-    // AWC windtemp returns plain text — parse the FAA winds aloft format
-    // e.g. "MIA 1105 0305+16 3505+11 9900+06 3607-07 3506-18 301633 291844 332153"
-    // Columns correspond to: 3000 6000 9000 12000 18000 24000 30000 34000 39000
-    const ALL_LEVELS = [3000, 6000, 9000, 12000, 18000, 24000, 30000, 34000, 39000]
-    const closest = ALL_LEVELS.reduce((a, b) => Math.abs(b - alt) < Math.abs(a - alt) ? b : a)
-    const colIdx  = ALL_LEVELS.indexOf(closest) // 0-based column after station name
-
-    const parseToken = (token, lvl) => {
-      if (!token || token.trim() === '') return null
-      token = token.trim()
-      // Tokens: "DDSS", "DDSS+TT", "DDSS-TT", "9900", "9900+TT", "////+TT", "------"
-      if (token.startsWith('/') || token.startsWith('-') || token.length < 4) return null
-      const dirCode = parseInt(token.substring(0, 2))
-      let spd = parseInt(token.substring(2, 4))
-      let dir = dirCode * 10
-      // Speed ≥100kt: dir encoded as dir/10 + 50
-      if (dirCode > 36 && dirCode <= 86) { dir = (dirCode - 50) * 10; spd += 100 }
-      if (dirCode === 99) { dir = 0; spd = 0 } // light & variable
-      if (isNaN(dir) || isNaN(spd)) return null
-      const tempMatch = token.match(/([+-]\d+)$/)
-      const temp = tempMatch ? parseInt(tempMatch[1]) : null
-      return { dir, spd, temp, level: lvl }
-    }
-
-    const parseText = (text) => {
-      const lines = text.split('\n')
-      // Find the FT header line to confirm column order
-      const ftLine = lines.find(l => l.match(/^\s*FT\s+3000/))
-      // Extract column positions from FT line if available
-      let colStarts = null
-      if (ftLine) {
-        const matches = [...ftLine.matchAll(/\b(\d{4,5})\b/g)]
-        colStarts = matches.map(m => ({ lvl: parseInt(m[1]), idx: m.index }))
-      }
-
-      // Station ID to look for (strip ICAO prefix K/C)
-      const stationId = depIcao.replace(/^[KC]/, '').toUpperCase()
-
-      // Score lines: prefer match to dep airport, fall back to any valid line
-      let bestLine = null
-      let fallbackLine = null
-      for (const line of lines) {
-        const m = line.match(/^([A-Z]{3})\s+(.+)/)
-        if (!m) continue
-        if (m[1] === stationId) { bestLine = line; break }
-        if (!fallbackLine) fallbackLine = line
-      }
-      const dataLine = bestLine || fallbackLine
-      if (!dataLine) return null
-
-      const parts = dataLine.trim().split(/\s+/)
-      // parts[0] = station, parts[1..] = wind values
-      // 3000ft has no temp so only 4 chars; others 7-8 chars
-      // Map by column index
-      if (colStarts) {
-        // Use column positions for precise mapping
-        for (const { lvl, idx } of colStarts) {
-          if (Math.abs(lvl - alt) <= Math.abs(closest - alt) + 1500) {
-            const token = dataLine.substring(idx, idx + 9).trim().split(/\s/)[0]
-            const parsed = parseToken(token, lvl)
-            if (parsed) return parsed
-          }
-        }
-      }
-      // Fallback: positional — parts[1] = 3000, parts[2] = 6000, etc.
-      const tryIndices = [colIdx + 1, colIdx, colIdx + 2].filter(i => i >= 1 && i < parts.length)
-      for (const i of tryIndices) {
-        const parsed = parseToken(parts[i], ALL_LEVELS[i - 1] || closest)
-        if (parsed) return parsed
-      }
-      return null
-    }
-
+    // Fetches the FAA windtemp text once and keeps every reported level
+    // (see lib/windsAloft.js) — CruiseItem only ever displays the nearest
+    // reported level to the planned altitude, same as before the refactor.
     ;(async () => {
-      let text = null
-      for (const fcst of ['06', '12', '24']) {
-        const url = awcUrl('windtemp', { region: 'us', fcst })
-        try {
-          const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
-          if (res.ok) { text = await res.text(); break }
-        } catch { /* ignore */ }
-        try { text = await proxyFetch(url, 8000); break } catch { /* ignore */ }
-      }
-
-      if (!text || text.length < 50) {
+      const result = await fetchWindsAloft(depIcao)
+      if (result.status !== 'ok') {
         setWindError('Forecast unavailable')
         setWinding(false)
         return
       }
-
-      const result = parseText(text)
-      if (result) {
-        setWindsAloft(result)
+      const nearest = nearestWind(result.levels, alt)
+      if (nearest) {
+        setWindsAloft(nearest)
       } else {
         setWindError('No data for this altitude')
       }
@@ -1101,11 +1082,19 @@ export function CruiseItem({ item, isChecked, onToggle }) {
   }, [open, cruiseAlt, depIcao])
 
   // ── Calculations ─────────────────────────────────────────────
-  const tasN   = parseFloat(tas)
-  const burnN  = parseFloat(burnRate)
+  const altN   = parseFloat(cruiseAlt)
+
+  // Digitized cruise chart — interpolated {tas, ff} replaces the flat
+  // manually-entered TAS/fuel-burn when the aircraft has one, at this leg's
+  // planned altitude and power setting. Falls back to the flat values
+  // exactly as before when there's no chart or the power setting is blank.
+  const cruiseChart = getPerfChart(aircraftProfile, 'cruise')
+  const cruiseInterp = cruiseChart ? interpolateChart(cruiseChart, altN, parseFloat(powerSetting)) : null
+
+  const tasN   = cruiseInterp ? cruiseInterp.tas : parseFloat(tas)
+  const burnN  = cruiseInterp ? cruiseInterp.ff  : parseFloat(burnRate)
   const fobN   = parseFloat(fuelOnBoard)
   const distN  = routeDist
-  const altN   = parseFloat(cruiseAlt)
 
   // Wind correction angle & ground speed
   let groundSpeed = tasN
@@ -1121,19 +1110,18 @@ export function CruiseItem({ item, isChecked, onToggle }) {
   const enduranceH    = (!isNaN(fobN) && !isNaN(burnN) && burnN > 0) ? fobN / burnN : null
   const reserveH      = (enduranceH != null && flightTimeH != null) ? enduranceH - flightTimeH : null
   const reserveMin    = reserveH != null ? Math.round(reserveH * 60) : null
-  // 91.151 (VFR fuel reserve) applies to airplanes only — 30 min day / 45 min
-  // night — and explicitly excludes rotorcraft. Helicopters have no codified
-  // Part 91 VFR reserve minimum; 20 min is the common operator/industry
-  // standard, not an FAR citation. 91.167 (IFR, 45 min after the alternate)
-  // applies to both categories the same, so only the VFR side differs.
-  const reqReserveMin = flightRules === 'IFR'
-    ? 45
-    : isHelicopter ? 20 : (timeOfDay === 'night' ? 45 : 30)
-  const reserveRuleNote = flightRules === 'IFR'
-    ? 'FAR 91.167 — 45 min after alternate'
-    : isHelicopter
-      ? '20 min — operator standard, no FAR 91.151 minimum for helicopters'
-      : `FAR 91.151 — 30 min day / 45 min night (${timeOfDay})`
+  // Reserve minutes are jurisdiction-dependent (see src/lib/regulations.js)
+  // — the active region's ruleset supplies both the required minutes and
+  // the citation to show via RuleInfo below.
+  const reserveInputs = { flightRules, isHelicopter, timeOfDay }
+  const reserveResult = ruleset.computed.reserveMinutes(ruleset, reserveInputs)
+  const reqReserveMin = reserveResult.value
+  const reserveRuleNote = reserveResult.steps.join(' — ')
+  const altRegionKey = ALT_REGION[region]
+  const altReserveResult = altRegionKey ? (() => {
+    const altRuleset = getRuleset(altRegionKey)
+    return altRuleset.computed.reserveMinutes(altRuleset, reserveInputs)
+  })() : null
   const goNoGo        = reserveMin != null ? reserveMin >= reqReserveMin : null
 
   const fmtTime = (h) => {
@@ -1311,24 +1299,52 @@ export function CruiseItem({ item, isChecked, onToggle }) {
             </span>
           </div>
         )}
+        {/* Power setting only matters (and only shows) once the aircraft has
+            a digitized cruise chart — it's the chart's second axis, alongside
+            cruise altitude above. Without a chart, TAS/burn are just entered
+            directly, same as always. */}
+        {cruiseChart && (
+          <div style={{ marginBottom: 10 }}>
+            <FieldTip label={`Power Setting (${cruiseChart.axis2.label})`} tip="Matched against your digitized cruise chart, alongside cruise altitude, to look up TAS and fuel flow.">
+              <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-card-2)',
+                borderRadius: 8, padding: '8px 10px', gap: 4 }}>
+                <input type="number" value={powerSetting} onChange={e => setPowerSetting(e.target.value)}
+                  placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
+                    fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
+                    width: 0, minWidth: 0 }} />
+                <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{cruiseChart.axis2.unit}</span>
+              </div>
+            </FieldTip>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-          <FieldTip label="Cruise TAS" tip="True Airspeed from your POH at your planned power setting and altitude. Usually found in the cruise performance table.">
-            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-card-2)',
+          <FieldTip label={cruiseInterp ? 'Cruise TAS · chart' : 'Cruise TAS'} tip="True Airspeed from your POH at your planned power setting and altitude. Usually found in the cruise performance table.">
+            <div style={{ display: 'flex', alignItems: 'center',
+              background: cruiseInterp ? 'var(--accent-light, rgba(10,132,255,0.12))' : 'var(--bg-card-2)',
               borderRadius: 8, padding: '8px 10px', gap: 4 }}>
-              <input type="number" value={tas} onChange={e => setTas(e.target.value)}
-                placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
-                  fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
-                  width: 0, minWidth: 0 }} />
+              {cruiseInterp ? (
+                <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace' }}>{Math.round(tasN)}</span>
+              ) : (
+                <input type="number" value={tas} onChange={e => setTas(e.target.value)}
+                  placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
+                    fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
+                    width: 0, minWidth: 0 }} />
+              )}
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>kt</span>
             </div>
           </FieldTip>
-          <FieldTip label="Fuel Burn" tip="How many gallons per hour your engine burns at cruise. From POH cruise performance table at your power setting.">
-            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-card-2)',
+          <FieldTip label={cruiseInterp ? 'Fuel Burn · chart' : 'Fuel Burn'} tip="How many gallons per hour your engine burns at cruise. From POH cruise performance table at your power setting.">
+            <div style={{ display: 'flex', alignItems: 'center',
+              background: cruiseInterp ? 'var(--accent-light, rgba(10,132,255,0.12))' : 'var(--bg-card-2)',
               borderRadius: 8, padding: '8px 10px', gap: 4 }}>
-              <input type="number" value={burnRate} onChange={e => setBurnRate(e.target.value)}
-                placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
-                  fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
-                  width: 0, minWidth: 0 }} />
+              {cruiseInterp ? (
+                <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace' }}>{burnN.toFixed(1)}</span>
+              ) : (
+                <input type="number" value={burnRate} onChange={e => setBurnRate(e.target.value)}
+                  placeholder="—" style={{ flex: 1, background: 'none', border: 'none', outline: 'none',
+                    fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace',
+                    width: 0, minWidth: 0 }} />
+              )}
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>GPH</span>
             </div>
           </FieldTip>
@@ -1443,8 +1459,12 @@ export function CruiseItem({ item, isChecked, onToggle }) {
                         </span>
                         <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>min</span>
                       </div>
-                      <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                        {flightRules} minimum: {reqReserveMin} min ({isHelicopter ? 'Helicopter' : 'Airplane'})
+                      <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span>{flightRules} minimum: {reqReserveMin} min ({isHelicopter ? 'Helicopter' : 'Airplane'})</span>
+                        <RuleInfo
+                          citation={reserveResult.citation}
+                          alt={altReserveResult ? { label: altRegionKey === 'us' ? 'United States' : 'Canada', citation: altReserveResult.citation } : null}
+                        />
                       </div>
                       <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>
                         {reserveRuleNote}

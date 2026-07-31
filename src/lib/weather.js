@@ -116,18 +116,28 @@ function speedFromKt(kt, unit) {
   return Math.round(kt)
 }
 
-export function parseWind(metar, units = {}) {
-  if (!metar) return '—'
+// Direction and speed as separate strings — for layouts (like the airport
+// diagram card) that stack them on their own lines instead of one run of
+// text. parseWind() below is just this joined back into the original
+// single-string format every other call site already expects.
+export function parseWindParts(metar, units = {}) {
+  if (!metar) return { dir: null, speed: '—' }
   const { wdir, wspd, wgst } = metar
   const unit = units.unitSpeed ?? 'KT'
   const unitLabel = unit === 'KM/H' ? 'km/h' : unit === 'MPH' ? 'mph' : 'kt'
   const spd = speedFromKt(wspd, unit)
   const gst = wgst ? speedFromKt(wgst, unit) : null
-  if (!wspd || wspd === 0) return 'Calm'
+  if (!wspd || wspd === 0) return { dir: null, speed: 'Calm' }
+  const speed = `${spd}${gst ? `G${gst}` : ''} ${unitLabel}`
   // wdir can be a number or the string "VRB"
-  if (!wdir || wdir === 'VRB') return `VRB ${spd}${gst ? `G${gst}` : ''} ${unitLabel}`
-  const dir = String(Math.round(Number(wdir))).padStart(3, '0')
-  return `${dir}° ${spd}${gst ? `G${gst}` : ''} ${unitLabel}`
+  if (!wdir || wdir === 'VRB') return { dir: 'VRB', speed }
+  return { dir: `${String(Math.round(Number(wdir))).padStart(3, '0')}°`, speed }
+}
+
+export function parseWind(metar, units = {}) {
+  if (!metar) return '—'
+  const { dir, speed } = parseWindParts(metar, units)
+  return dir ? `${dir} ${speed}` : speed
 }
 
 export function parseVisib(metar, units = {}) {

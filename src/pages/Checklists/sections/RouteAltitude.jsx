@@ -7,13 +7,26 @@ import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
 import { get, put } from '../../../lib/db'
 import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
 import { FAA_CHART_CYCLE } from '../shared/faaData'
-import { awcUrl, proxyFetch, fetchAWC, lookupAirport, bearingDeg, haversineNm } from '../shared/awc'
+import { awcUrl, proxyFetch, proxyJSON, fetchAWC, lookupAirport, bearingDeg, haversineNm } from '../shared/awc'
 import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expandAirway, getAirwayGeometry, getWorldRef } from '../../../lib/waypoints'
 import { sampleRoute } from '../../../lib/corridor'
 import { analyzeTerrain, MOUNTAIN_FT } from '../../../lib/terrain'
 import { analyzeWater } from '../../../lib/water'
 import { analyzeAerodromes } from '../../../lib/aerodromes'
 import { analyzeAirspace } from '../../../lib/airspace'
+import { scopedSettingsKey } from '../../../lib/aircraft'
+import { useActiveAircraft } from '../../../context/ActiveAircraft'
+import { useRegion } from '../../../context/Region'
+import { getRuleset } from '../../../lib/regulations'
+import RuleInfo from '../../../components/RuleInfo'
+import { getPerfChart, interpolateChart } from '../../../lib/aircraftPerf'
+import { fetchWindsAloft, windAt } from '../../../lib/windsAloft'
+import { integrateClimb, isaOat } from '../../../lib/climbPerformance'
+import { fetchTfrAltitudes } from '../../../lib/tfrAltitude'
+import { fetchIcingTurbulence, hazardRiskAt } from '../../../lib/hazardWx'
+import { scoreAltitudes } from '../../../lib/altitudeOptimizer'
+
+const ALT_REGION = { us: 'ca', ca: 'us' }
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -681,14 +694,34 @@ function AirportLabels({ dep, dest, depPos, destPos, onFlyTo }) {
 
 /* ── Altitude + Route calculator ─────────────────────────────── */
 export function AltitudeItem({ item, isChecked, onToggle }) {
+  const { aircraftId } = useActiveAircraft()
+  const { region, ruleset } = useRegion()
   const [open, setOpen]           = useState(false)
   const [course, setCourse]       = useState('')
   const [selectedAlt, setSelectedAlt] = useState(null)
   const [isHelicopter, setIsHelicopter] = useState(false)
+  const [aircraftProfile, setAircraftProfile] = useState(null)
 
   useEffect(() => {
-    get('aircraft', 'profile').then(profile => setIsHelicopter(profile?.category === 'helicopter'))
-  }, [])
+    if (!aircraftId) return
+    get('aircraft', aircraftId).then(profile => {
+      setIsHelicopter(profile?.category === 'helicopter')
+      setAircraftProfile(profile ?? null)
+    })
+  }, [aircraftId])
+
+  // Deterministic "Recommended altitude" scoring — see lib/altitudeOptimizer.js.
+  // Never an LLM call: every factor here is a real, explainable number, and
+  // the legal altitude buttons below are never removed/disabled by this —
+  // only annotated, so the pilot always keeps final say.
+  const [scored, setScored] = useState(null)
+  // Which candidate's "why this altitude" breakdown is on screen — null
+  // means "show whichever is currently recommended" (the default), a real
+  // altitude means the pilot explicitly tapped that button's ⓘ to compare
+  // it instead. Entirely separate from selectedAlt/setSelectedAlt (the
+  // actual planned altitude) — peeking at another candidate's numbers never
+  // changes what's planned.
+  const [expandedAlt, setExpandedAlt] = useState(null)
 
   // Route inputs
   const [dep, setDep]              = useState('')
@@ -1068,6 +1101,39 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     return hits
   }, [tfrData, JSON.stringify(waypoints.map(w => [+w.lat.toFixed(3), +w.lon.toFixed(3)]))])
 
+  // Floor/ceiling for each laterally-conflicting TFR — a genuinely separate
+  // fetch from the lateral polygons above, since the WFS layer they come
+  // from carries no altitude field at all (see lib/tfrAltitude.js's header
+  // comment). Only fetched for TFRs the route already intersects — never a
+  // bulk fetch across every active TFR.
+  const [tfrAltInfo, setTfrAltInfo] = useState({})
+  useEffect(() => {
+    if (!tfrConflicts.length) { setTfrAltInfo({}); return }
+    let cancelled = false
+    ;(async () => {
+      const entries = await Promise.all(tfrConflicts.map(async (tfr) => [tfr.id, await fetchTfrAltitudes(tfr.id)]))
+      if (!cancelled) setTfrAltInfo(Object.fromEntries(entries))
+    })()
+    return () => { cancelled = true }
+  }, [tfrConflicts])
+
+  // Expands each lateral conflict into one entry per altitude band found for
+  // it (a single TFR can have several, e.g. an inner/outer ring). Only
+  // MSL-referenced bands become `confirmed3D` — AGL bands can't be compared
+  // to a candidate MSL cruise altitude without the TFR's local ground
+  // elevation, which isn't available here, so they stay a soft, informational
+  // penalty (see lib/altitudeOptimizer.js) rather than a false "confirmed".
+  const tfrConflictsForScoring = tfrConflicts.flatMap(tfr => {
+    const bands = tfrAltInfo[tfr.id]
+    if (!bands?.length) return [{ desc: tfr.desc || tfr.type, floorFt: null, ceilingFt: null, confirmed3D: false }]
+    return bands.map(b => ({
+      desc: `${tfr.desc || tfr.type} (${b.floorFt.toLocaleString()}–${b.ceilingFt.toLocaleString()} ft ${b.ref})`,
+      floorFt: b.ref === 'MSL' ? b.floorFt : null,
+      ceilingFt: b.ref === 'MSL' ? b.ceilingFt : null,
+      confirmed3D: b.ref === 'MSL',
+    }))
+  })
+
   function saveKey(k) {
     const trimmed = k.trim()
     setOAKey(trimmed)
@@ -1354,20 +1420,101 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const valid    = !isNaN(c) && c >= 0 && c <= 360
   const isEast   = valid && c <= 179
   const direction = valid ? (isEast ? 'Eastbound' : 'Westbound') : null
-  // VFR cruising altitudes are hemispheric thousands + 500 (§91.159); IFR
-  // are plain thousands (§91.179) — odd eastbound, even westbound.
+  // Jurisdiction-aware cruising-altitude table (see src/lib/regulations.js)
+  // — odd/even hemispheric rule by track, whose exact structure (the US's
+  // VFR +500 ft offset vs Canada's shared VFR/IFR table) differs by region.
   const isIFR = flightRules === 'IFR'
-  const altitudes = valid
-    ? (isIFR
-        ? (isEast ? [3000,5000,7000,9000,11000,13000,15000,17000]
-                  : [4000,6000,8000,10000,12000,14000,16000])
-        : (isEast ? [3500,5500,7500,9500,11500,13500,15500,17500]
-                  : [4500,6500,8500,10500,12500,14500,16500]))
-    : null
+  const altResult = valid ? ruleset.computed.cruisingAltitude(ruleset, { courseDeg: c, isIFR }) : null
+  const altitudes = altResult?.value ?? null
+  const altRegionKey = ALT_REGION[region]
+  const altAltResult = (valid && altRegionKey) ? (() => {
+    const altRuleset = getRuleset(altRegionKey)
+    return altRuleset.computed.cruisingAltitude(altRuleset, { courseDeg: c, isIFR })
+  })() : null
   // Highest MEA among the airways in the calculated route — altitudes below
   // it are flagged (never blocked; ATC may still assign segment-specific).
   const routeMaxMEA = route?.airwayNotes?.length
     ? Math.max(...route.airwayNotes.map(n => n.mea)) : null
+
+  // Score the legal altitude candidates — time/fuel/wind/terrain/TFR, all
+  // real numbers (see lib/altitudeOptimizer.js's own header comment for why
+  // this is deterministic arithmetic rather than an LLM call). Runs whenever
+  // the legal candidate list, route, or aircraft changes; never blocks or
+  // reorders the altitude buttons themselves — `scored` only adds annotation.
+  useEffect(() => {
+    if (!altitudes?.length || waypoints.length < 2 || !route?.distNm) { setScored(null); return }
+    let cancelled = false
+
+    ;(async () => {
+      const [windResult, cruiseSettings, aptResult, metarResult, hazardData] = await Promise.all([
+        dep ? fetchWindsAloft(dep) : Promise.resolve({ status: 'unavailable' }),
+        aircraftId ? get('settings', scopedSettingsKey('cruise', aircraftId)) : Promise.resolve(null),
+        dep ? proxyJSON(awcUrl('airport', { ids: dep, format: 'json' })).catch(() => null) : Promise.resolve(null),
+        dep ? proxyJSON(awcUrl('metar', { ids: dep, format: 'json' })).catch(() => null) : Promise.resolve(null),
+        fetchIcingTurbulence(waypoints),
+      ])
+      if (cancelled) return
+
+      // Departure elevation + a one-time ISA-deviation estimate (actual METAR
+      // temp vs. standard-day temp at that elevation) for the climb
+      // integration below — defaults to sea level / standard day if either
+      // fetch fails, never blocking the rest of the scoring.
+      const depElevFt = aptResult?.[0]?.elev != null ? aptResult[0].elev * 3.28084
+        : (metarResult?.[0]?.elev != null ? metarResult[0].elev * 3.28084 : 0)
+      const isaDevC = metarResult?.[0]?.temp != null ? metarResult[0].temp - isaOat(depElevFt) : 0
+
+      // Prefer the digitized cruise chart at whatever power setting the pilot
+      // already entered in the Cruise & Fuel checklist item; fall back to the
+      // aircraft's flat cruise TAS/burn-rate fields exactly like CruiseItem's
+      // own no-chart fallback (Performance.jsx) — never fabricates a number.
+      const cruiseChart = getPerfChart(aircraftProfile, 'cruise')
+      const powerSetting = parseFloat(cruiseSettings?.powerSetting)
+      const flatTas = parseFloat(aircraftProfile?.vspeeds?.cruise)
+      const flatFf  = parseFloat(aircraftProfile?.burnRate?.cruise)
+      const cruiseByAlt = (alt) => {
+        const interp = (cruiseChart && !isNaN(powerSetting)) ? interpolateChart(cruiseChart, alt, powerSetting) : null
+        if (interp) return { tasKt: interp.tas, ffGph: interp.ff }
+        if (!isNaN(flatTas)) return { tasKt: flatTas, ffGph: !isNaN(flatFf) ? flatFf : null }
+        return null
+      }
+
+      const windByAlt = windResult.status === 'ok' ? (alt) => windAt(windResult.levels, alt) : null
+      // analyzeTerrain caches its (network-bound) corridor sampling by route
+      // — per-candidate calls below are cheap local clearance math, not N
+      // network round-trips (see lib/terrain.js).
+      const terrainByAlt = (alt) => analyzeTerrain(waypoints, { altFt: alt })
+
+      // Time/fuel/distance to climb from the field to each candidate — see
+      // lib/climbPerformance.js. Gracefully degrades to null (cruise-only
+      // comparison, flagged via a caveat) when the aircraft has no digitized
+      // climb chart, exactly like the rest of this module's factors.
+      const climbBurnGph = parseFloat(aircraftProfile?.burnRate?.climb)
+      const climbTasKt = parseFloat(aircraftProfile?.vspeeds?.vy)
+      const climbByAlt = (alt) => integrateClimb(aircraftProfile, {
+        fromFt: depElevFt, toFt: alt, oatC: (a) => isaOat(a, isaDevC),
+        climbBurnGph: !isNaN(climbBurnGph) ? climbBurnGph : null,
+        climbTasKt: !isNaN(climbTasKt) ? climbTasKt : null,
+      })
+
+      // Icing/turbulence — see lib/hazardWx.js. Gracefully returns null per
+      // altitude when the AWC fetch fails entirely (hazardData.status !==
+      // 'ok'), the same degrade path as every other factor here.
+      const hazardByAlt = hazardData.status === 'ok' ? (alt) => hazardRiskAt(hazardData, waypoints, alt) : null
+
+      const result = await scoreAltitudes(altitudes, {
+        isIFR, courseDeg: c, totalDistNm: route.distNm, routeMaxMEA,
+        cruiseByAlt, climbByAlt, windByAlt, terrainByAlt, hazardByAlt,
+        waterResult: waterInfo, tfrConflicts: tfrConflictsForScoring,
+      })
+      if (!cancelled) setScored(result)
+    })()
+
+    return () => { cancelled = true }
+  }, [JSON.stringify(altitudes), waypoints, route?.distNm, dep, aircraftId, aircraftProfile, isIFR, c, routeMaxMEA, waterInfo, JSON.stringify(tfrConflictsForScoring)])
+
+  const bestScored = scored?.length
+    ? scored.filter(s => !s.disqualified && s.score != null).sort((a, b) => b.score - a.score)[0] ?? null
+    : null
 
   // True when any point of the planned route sits outside the regions we hold
   // current navdata for — drives the Tier-2 reference disclosure on the map.
@@ -2400,35 +2547,97 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
         {altitudes && (
           <>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>
-              {isIFR
-                ? (isEast ? 'Odd thousands (IFR)' : 'Even thousands (IFR)')
-                : (isEast ? 'Odd thousands + 500 ft' : 'Even thousands + 500 ft')}
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span>{altResult.steps[altResult.steps.length - 1]}</span>
+              <RuleInfo
+                citation={altResult.citation}
+                alt={altAltResult ? { label: altRegionKey === 'us' ? 'United States' : 'Canada', citation: altAltResult.citation } : null}
+              />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
               {altitudes.map(alt => {
                 const selected = selectedAlt === alt
                 const belowMEA = isIFR && routeMaxMEA != null && alt < routeMaxMEA
+                const altScore = scored?.find(s => s.altitude === alt) ?? null
+                const isRecommended = bestScored?.altitude === alt
+                const isExpanded = (expandedAlt ?? bestScored?.altitude) === alt
                 return (
-                  <button key={alt} onClick={() => {
-                  const next = selected ? null : alt
-                  setSelectedAlt(next)
-                  get('settings', 'route').then(r => {
-                    if (r) put('settings', { ...r, cruiseAlt: next }).catch(() => {})
-                  })
-                }} style={{
-                    background: selected ? 'var(--text)' : 'var(--bg-card-2)',
-                    border: `0.5px solid ${selected ? 'var(--text)' : belowMEA ? 'rgba(255,159,10,0.5)' : 'var(--border)'}`,
-                    borderRadius: 8, padding: '7px 0',
-                    fontSize: 13, fontWeight: 600,
-                    color: selected ? 'var(--bg)' : belowMEA ? 'var(--warn)' : 'var(--text)',
-                    cursor: 'pointer', transition: 'all 0.18s', textAlign: 'center',
-                  }}>
-                    {alt.toLocaleString()} ft{belowMEA ? ' ⚠' : ''}
-                  </button>
+                  <div key={alt} style={{ position: 'relative' }}>
+                    <button onClick={() => {
+                    const next = selected ? null : alt
+                    setSelectedAlt(next)
+                    get('settings', 'route').then(r => {
+                      if (r) put('settings', { ...r, cruiseAlt: next }).catch(() => {})
+                    })
+                  }} style={{
+                      width: '100%', position: 'relative',
+                      background: selected ? 'var(--text)' : 'var(--bg-card-2)',
+                      border: `0.5px solid ${selected ? 'var(--text)' : belowMEA ? 'rgba(255,159,10,0.5)' : isRecommended ? 'var(--accent)' : 'var(--border)'}`,
+                      borderRadius: 8, padding: '7px 0',
+                      fontSize: 13, fontWeight: 600,
+                      color: selected ? 'var(--bg)' : belowMEA ? 'var(--warn)' : 'var(--text)',
+                      cursor: 'pointer', transition: 'all 0.18s', textAlign: 'center',
+                    }}>
+                      {isRecommended && (
+                        <span style={{
+                          position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)',
+                          fontSize: 8, fontWeight: 800, letterSpacing: '0.4px', textTransform: 'uppercase',
+                          color: 'var(--accent-fg)', background: 'var(--accent)',
+                          borderRadius: 20, padding: '2px 6px', whiteSpace: 'nowrap',
+                        }}>
+                          Recommended
+                        </span>
+                      )}
+                      {alt.toLocaleString()} ft{belowMEA ? ' ⚠' : ''}
+                      {altScore?.disqualified && !belowMEA ? ' ⚠' : ''}
+                    </button>
+                    {altScore && (
+                      <button
+                        onClick={() => setExpandedAlt(prev => (prev ?? bestScored?.altitude) === alt ? null : alt)}
+                        aria-label={`Why ${alt.toLocaleString()} ft`}
+                        style={{
+                          position: 'absolute', bottom: 4, right: 4, width: 16, height: 16, borderRadius: '50%',
+                          border: `1px solid ${selected ? 'var(--bg)' : 'var(--text-tertiary)'}`, background: 'none', padding: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                          color: selected ? 'var(--bg)' : 'var(--text-tertiary)', opacity: isExpanded ? 1 : 0.55,
+                          fontSize: 9, fontWeight: 700, fontFamily: 'Georgia, serif', fontStyle: 'italic', lineHeight: 1,
+                        }}>
+                        i
+                      </button>
+                    )}
+                  </div>
                 )
               })}
             </div>
+            {scored && !bestScored && (
+              <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+                Not enough data to recommend an altitude yet — enter cruise performance for this aircraft, or check back once the route/winds finish loading.
+              </div>
+            )}
+            {(() => {
+              const shown = scored?.find(s => s.altitude === (expandedAlt ?? bestScored?.altitude)) ?? null
+              if (!shown) return null
+              const b = shown.breakdown
+              const parts = []
+              if (b.timeMin != null) parts.push(`${Math.round(b.timeMin)} min`)
+              if (b.fuelGal != null) parts.push(`${b.fuelGal.toFixed(1)} gal`)
+              if (b.windComponentKt != null) parts.push(`${b.windComponentKt >= 0 ? '+' : ''}${b.windComponentKt}kt ${b.windComponentKt >= 0 ? 'HW' : 'TW'}`)
+              const isTop = bestScored?.altitude === shown.altitude
+              return (
+                <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+                  <span style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                    {shown.altitude.toLocaleString()} ft{isTop ? ' recommended' : ''}
+                  </span>
+                  {parts.length > 0 && <> · {parts.join(' · ')}</>}
+                  {b.terrain?.status === 'ok' && b.terrain.meetsMin === false && <> · ⚠ terrain clearance under 1,000 ft</>}
+                  {b.water?.overwater && <> · over water</>}
+                  {b.icingTurbulence && b.icingTurbulence.risk !== 'none' && <> · ⚠ {b.icingTurbulence.risk} icing/turbulence</>}
+                  {b.tfr?.note && <> · ⚠ {b.tfr.note}</>}
+                  {shown.disqualifyReasons?.length > 0 && <div style={{ marginTop: 2, color: 'var(--warn)' }}>⚠ {shown.disqualifyReasons.join('; ')}</div>}
+                  {b.caveats?.length > 0 && <div style={{ marginTop: 2, fontStyle: 'italic' }}>{b.caveats[0]}</div>}
+                </div>
+              )
+            })()}
             {isIFR && routeMaxMEA != null && (
               <div style={{ marginTop: 8, fontSize: 11, color: 'var(--warn)', lineHeight: 1.5 }}>
                 ⚠ Altitudes below {routeMaxMEA.toLocaleString()} ft are under the highest MEA on
@@ -2441,7 +2650,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                   Planned: {selectedAlt.toLocaleString()} ft MSL
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                  {direction} · {isEast ? 'Odd' : 'Even'} thousands{isIFR ? '' : ' + 500 ft'} · {isIFR ? '§91.179' : '§91.159'}
+                  {direction} · {altResult.citation?.ref ? `${altResult.citation.label}` : altResult.steps[altResult.steps.length - 1]}
                 </div>
                 {isIFR && routeMaxMEA != null && selectedAlt < routeMaxMEA && (
                   <div style={{ fontSize: 11, color: 'var(--warn)', fontWeight: 600, marginTop: 4 }}>
@@ -2453,16 +2662,6 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
               Above 18,000 ft MSL is Class A airspace, IFR only.
             </div>
-
-            <a href={isIFR
-                ? 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.179'
-                : 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.159'}
-              target="_blank" rel="noreferrer" style={{
-              display: 'block', marginTop: 10, textAlign: 'center', padding: '8px 0', borderRadius: 9,
-              background: 'var(--bg-card-2)', textDecoration: 'none', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
-            }}>
-              {isIFR ? '14 CFR §91.179' : '14 CFR §91.159'}
-            </a>
           </>
         )}
       </div>

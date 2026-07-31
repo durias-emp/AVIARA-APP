@@ -1,8 +1,14 @@
-import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
+import { useEffect, useRef, useState } from 'react'
+import { MapContainer, TileLayer, CircleMarker, Polyline, Polygon, Popup, ZoomControl, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { BackButton } from './Shell'
+import { HomeButton } from './Shell'
 import { useCurrentLocation } from '../hooks/useCurrentLocation'
 import { useMapLayer } from '../hooks/useMapLayer'
+import { useMapOverlays } from '../hooks/useMapOverlays'
+import { FLTCAT } from '../lib/weather'
+import MapLayersMenu from './MapLayersMenu'
+import FlightPlanBar from './FlightPlanBar'
+import GpsInfoBar from './GpsInfoBar'
 
 // Center of the continental US — only used if location is denied/unavailable.
 export const FALLBACK_CENTER = [39.8, -98.6]
@@ -77,7 +83,7 @@ export function MapLayers({ layer }) {
 // double-mount tearing down and recreating the underlying Leaflet map out
 // from under an in-flight `setView`). Shared by the full map and the
 // home-screen preview so both behave identically.
-export function LiveMap({ position, zoom, layer, markerRadius = 8, interactive = true }) {
+export function LiveMap({ position, zoom, layer, markerRadius = 8, interactive = true, zoomControlPosition, children }) {
   const interactionProps = interactive ? {} : {
     zoomControl: false, dragging: false, scrollWheelZoom: false,
     doubleClickZoom: false, touchZoom: false, keyboard: false, boxZoom: false,
@@ -88,8 +94,10 @@ export function LiveMap({ position, zoom, layer, markerRadius = 8, interactive =
       zoom={position ? zoom : 4}
       style={{ width: '100%', height: '100%' }}
       attributionControl={false}
+      zoomControl={false}
       {...interactionProps}
     >
+      {interactive && <ZoomControl position={zoomControlPosition || 'topleft'} />}
       <MapLayers layer={layer} />
       {position && (
         <CircleMarker
@@ -98,73 +106,174 @@ export function LiveMap({ position, zoom, layer, markerRadius = 8, interactive =
           pathOptions={{ color: '#fff', weight: 3, fillColor: '#0a84ff', fillOpacity: 1 }}
         />
       )}
+      {children}
     </MapContainer>
   )
 }
 
-function LayerSwitcher({ layer, setLayer }) {
+// Radar — public NEXRAD mosaic tiles from the Iowa Environmental Mesonet
+// (IEM), no API key required. Refreshes every 5 min, matching IEM's own
+// update cadence.
+function RadarLayer() {
+  const [bust, setBust] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setBust(b => b + 1), 5 * 60 * 1000)
+    return () => clearInterval(t)
+  }, [])
   return (
-    <div style={{
-      position: 'absolute', bottom: 16, left: 16, right: 16, zIndex: 500,
-      display: 'flex', overflowX: 'auto', gap: 8,
-      background: 'var(--bg-card)', borderRadius: 14,
-      boxShadow: 'var(--shadow-sm)', padding: 6,
-    }}>
-      {LAYER_OPTIONS.map(opt => (
-        <button
-          key={opt.key}
-          onClick={() => setLayer(opt.key)}
-          style={{
-            flexShrink: 0, padding: '8px 14px', borderRadius: 10, border: 'none',
-            background: layer === opt.key ? 'var(--accent)' : 'transparent',
-            color: layer === opt.key ? 'var(--accent-fg)' : 'var(--text)',
-            fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-          }}>
-          {opt.label}
-        </button>
+    <TileLayer
+      key={bust}
+      url="https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png"
+      opacity={0.55}
+      attribution="&copy; Iowa Environmental Mesonet — NEXRAD"
+    />
+  )
+}
+
+// Flight Category — colored dot per reporting station in view (VFR green /
+// MVFR blue / IFR red / LIFR purple), same colors used everywhere else in
+// the app. Refetches on pan/zoom, debounced so panning doesn't spam the API.
+function FlightCategoryLayer() {
+  const map = useMap()
+  const [stations, setStations] = useState([])
+  const timer = useRef(null)
+
+  useEffect(() => {
+    function load() {
+      const z = map.getZoom()
+      if (z < 6) { setStations([]); return }
+      const b = map.getBounds()
+      const bbox = `${b.getSouth().toFixed(2)},${b.getWest().toFixed(2)},${b.getNorth().toFixed(2)},${b.getEast().toFixed(2)}`
+      fetch(`/api/awc?path=metar&format=json&bbox=${bbox}`)
+        .then(r => r.ok ? r.json() : [])
+        .then(list => setStations(Array.isArray(list) ? list.slice(0, 400) : []))
+        .catch(() => {})
+    }
+    load()
+    function onMove() {
+      clearTimeout(timer.current)
+      timer.current = setTimeout(load, 600)
+    }
+    map.on('moveend', onMove)
+    return () => { map.off('moveend', onMove); clearTimeout(timer.current) }
+  }, [map])
+
+  return stations.map((s, i) => {
+    const cat = FLTCAT[s.fltCat] ?? FLTCAT.VFR
+    return (
+      <CircleMarker key={`${s.icaoId}-${i}`} center={[s.lat, s.lon]} radius={6}
+        pathOptions={{ color: '#fff', weight: 1.5, fillColor: cat.color, fillOpacity: 0.95 }}>
+        <Popup><div style={{ fontSize: 12, fontWeight: 700 }}>{s.icaoId} · {cat.label}</div></Popup>
+      </CircleMarker>
+    )
+  })
+}
+
+// TFRs — FAA GeoServer WFS via our /api/tfr proxy (same source and parsing
+// as the Route & Altitude planner's TFR layer). Fetched once per session.
+function TfrLayer() {
+  const [tfrs, setTfrs] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/tfr', { signal: AbortSignal.timeout(15000) })
+      .then(r => r.text())
+      .then(raw => {
+        const geo = JSON.parse(raw)
+        if (cancelled || !geo?.features?.length) return
+        const parsed = geo.features.map(f => {
+          const p = f.properties
+          let polygon = null, lat = null, lon = null
+          if (f.geometry?.type === 'Polygon') {
+            polygon = f.geometry.coordinates[0].map(([lo, la]) => [la, lo])
+            lat = polygon[0][0]; lon = polygon[0][1]
+          } else if (f.geometry?.type === 'Point') {
+            [lon, lat] = f.geometry.coordinates
+          } else if (f.geometry?.type === 'MultiPolygon') {
+            polygon = f.geometry.coordinates[0][0].map(([lo, la]) => [la, lo])
+            lat = polygon[0][0]; lon = polygon[0][1]
+          }
+          return { id: p.NOTAM_KEY ?? f.id ?? '?', type: p.LEGAL ?? 'TFR', desc: p.TITLE ?? '', lat, lon, polygon }
+        }).filter(t => t.lat !== null)
+        setTfrs(parsed)
+      }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  return tfrs.map((t, i) => t.polygon?.length > 2 ? (
+    <Polygon key={i} positions={t.polygon} pathOptions={{ color: '#FF3B30', fillColor: '#FF3B30', fillOpacity: 0.18, weight: 2 }}>
+      <Popup><div style={{ fontSize: 12, maxWidth: 200 }}><strong>{t.type}</strong><br />{t.desc.slice(0, 120)}</div></Popup>
+    </Polygon>
+  ) : (
+    <CircleMarker key={i} center={[t.lat, t.lon]} radius={10} pathOptions={{ color: '#FF3B30', fillColor: '#FF3B30', fillOpacity: 0.25, weight: 2 }}>
+      <Popup><div style={{ fontSize: 12, maxWidth: 200 }}><strong>{t.type}</strong><br />{t.desc.slice(0, 120)}</div></Popup>
+    </CircleMarker>
+  ))
+}
+
+// The typed-route preview from FlightPlanBar — a simple line + waypoint
+// dots, fit into view once per new route (not on every render, so the user
+// can freely pan/zoom afterward without the map yanking back).
+function RoutePreview({ route }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!route?.length) return
+    map.fitBounds(route.map(w => [w.lat, w.lon]), { padding: [48, 48] })
+  }, [route])
+  if (!route?.length) return null
+  return (
+    <>
+      <Polyline positions={route.map(w => [w.lat, w.lon])} pathOptions={{ color: '#a855f7', weight: 4, opacity: 0.75 }} />
+      {route.map((w, i) => (
+        <CircleMarker key={i} center={[w.lat, w.lon]} radius={7}
+          pathOptions={{ color: '#fff', weight: 2.5, fillColor: '#a855f7', fillOpacity: 1 }}>
+          <Popup><div style={{ fontSize: 12, fontWeight: 700 }}>{w.name}{w.label ? ` — ${w.label}` : ''}</div></Popup>
+        </CircleMarker>
       ))}
-    </div>
+    </>
   )
 }
 
 export default function MapView() {
   const { position, error, status } = useCurrentLocation()
   const { layer, setLayer } = useMapLayer()
+  const { overlays, toggleOverlay } = useMapOverlays()
+  const [route, setRoute] = useState(null)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ padding: '20px 20px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <BackButton />
-        <h2 style={{
-          fontSize: 28, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)',
-          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
-        }}>Map</h2>
+    <div style={{ height: '100%', position: 'relative', isolation: 'isolate' }}>
+      {status === 'pending' ? (
+        <div style={{
+          height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'var(--text-secondary)', fontSize: 14,
+        }}>
+          Finding your location…
+        </div>
+      ) : (
+        <LiveMap position={position} zoom={LOCATION_ZOOM} layer={layer} zoomControlPosition="bottomright">
+          {overlays.radar && <RadarLayer />}
+          {overlays.flightCategory && <FlightCategoryLayer />}
+          {overlays.tfr && <TfrLayer />}
+          <RoutePreview route={route} />
+        </LiveMap>
+      )}
+
+      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 600 }}>
+        <HomeButton />
       </div>
 
-      <div style={{ flex: 1, position: 'relative', marginTop: 16 }}>
-        {status === 'pending' ? (
-          <div style={{
-            height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--text-secondary)', fontSize: 14,
-          }}>
-            Finding your location…
-          </div>
-        ) : (
-          <LiveMap position={position} zoom={LOCATION_ZOOM} layer={layer} />
-        )}
+      {(status === 'error' || status === 'unsupported') && (
+        <div style={{
+          position: 'absolute', top: 68, left: 12, right: 12, zIndex: 500,
+          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
+          fontSize: 13, color: 'var(--text-secondary)', boxShadow: 'var(--shadow-sm)',
+        }}>
+          {error}
+        </div>
+      )}
 
-        {(status === 'error' || status === 'unsupported') && (
-          <div style={{
-            position: 'absolute', top: 12, left: 12, right: 12, zIndex: 500,
-            background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
-            fontSize: 13, color: 'var(--text-secondary)', boxShadow: 'var(--shadow-sm)',
-          }}>
-            {error}
-          </div>
-        )}
-
-        <LayerSwitcher layer={layer} setLayer={setLayer} />
-      </div>
+      {status !== 'pending' && <FlightPlanBar onRouteChange={setRoute} />}
+      <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={toggleOverlay} />
+      {status !== 'pending' && <GpsInfoBar route={route} />}
     </div>
   )
 }

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { BackButton } from '../../components/Shell'
 import { get, put, del } from '../../lib/db'
 import { trackEvent } from '../../lib/analytics'
+import { scopedSettingsKey } from '../../lib/aircraft'
+import { useActiveAircraft } from '../../context/ActiveAircraft'
 import ChecklistTabShell from './ChecklistTabShell'
 import FlightPlanOnePager from './FlightPlanOnePager'
 import FlightPlanTypePicker from './FlightPlanTypePicker'
@@ -90,6 +92,7 @@ export default function Checklists() {
 
 /* ── Checklist detail — full-screen tabbed steps ─────────────── */
 function ChecklistDetail({ checklist, onBack }) {
+  const { aircraftId } = useActiveAircraft()
   const [checked, setChecked]         = useState(new Set())
   const [customItems, setCustomItems] = useState({ PILOT: [] })
   const [resetKey, setResetKey]       = useState(0)
@@ -189,11 +192,11 @@ function ChecklistDetail({ checklist, onBack }) {
     await Promise.all([
       del('settings', 'route'),
       del('settings', 'densityalt'),
-      del('settings', 'perfdist'),
-      del('settings', 'cruise'),
+      del('settings', scopedSettingsKey('perfdist', aircraftId)),
+      del('settings', scopedSettingsKey('cruise', aircraftId)),
       del('settings', 'alternates'),
       del('settings', 'selectedRunway'),
-      del('settings', 'lastWB'),
+      del('settings', scopedSettingsKey('lastWB', aircraftId)),
       del('settings', 'flightPlanType'),
     ]).catch(() => {})
 
@@ -305,6 +308,7 @@ function ChecklistDetail({ checklist, onBack }) {
 }
 
 function CompleteButton({ pct, complete, checklist, onComplete, onAddStep }) {
+  const { aircraftId } = useActiveAircraft()
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
 
@@ -316,9 +320,9 @@ function CompleteButton({ pct, complete, checklist, onComplete, onAddStep }) {
       // Pull everything the pilot filled in
       const [route, cruise, preset, acProfile] = await Promise.all([
         get('settings', 'route'),
-        get('settings', 'cruise'),
+        get('settings', scopedSettingsKey('cruise', aircraftId)),
         get('settings', 'aircraft_preset'),
-        get('aircraft', 'profile'),
+        aircraftId ? get('aircraft', aircraftId) : null,
       ])
 
       const dep  = route?.dep  || ''

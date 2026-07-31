@@ -2,7 +2,7 @@ import { openDB } from 'idb'
 import { SYNCED_STORES, pushToCloud } from './sync'
 
 const DB_NAME = 'pqrh'
-const DB_VERSION = 3
+const DB_VERSION = 4
 
 let _db = null
 
@@ -24,6 +24,12 @@ async function db() {
         // Bookkeeping for the cloud-backup push hook below — one row per
         // synced store name, tracking whether its last push succeeded.
         db.createObjectStore('syncMeta', { keyPath: 'store' })
+      }
+      if (oldVersion < 4) {
+        // Cached OpenStreetMap runway/taxiway/apron/building geometry for the
+        // Airports section's diagram — a disposable fetch cache like
+        // `weather`, not pilot data, so it's excluded from cloud sync too.
+        db.createObjectStore('airportDiagram', { keyPath: 'icao' })
       }
     },
     blocking() {

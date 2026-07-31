@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { IconRefresh } from '../../../components/Icons'
 import { get, put } from '../../../lib/db'
+import { scopedSettingsKey } from '../../../lib/aircraft'
+import { useActiveAircraft } from '../../../context/ActiveAircraft'
 import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
 import { FAA_AIRPORTS, FAA_DTPP_BASE } from '../shared/faaData'
 import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
@@ -17,6 +19,7 @@ function parseDMSAlt(dms) {
 }
 
 export function AlternatesItem({ item, isChecked, onToggle }) {
+  const { aircraftId } = useActiveAircraft()
   const [open, setOpen]       = useState(false)
   const [depIcao, setDepIcao] = useState('')
   const [destIcao, setDestIcao] = useState('')
@@ -92,7 +95,7 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
 
   useEffect(() => {
     if (!open) return
-    get('settings', 'cruise').then(c => { if (c?.burnRate) setBurnRate(parseFloat(c.burnRate) || 10) })
+    get('settings', scopedSettingsKey('cruise', aircraftId)).then(c => { if (c?.burnRate) setBurnRate(parseFloat(c.burnRate) || 10) })
     get('settings', 'route').then(r => {
       if (!r) return
       const d = (r.dep  || '').toUpperCase()
@@ -107,7 +110,7 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
       if (a?.toAlts) setToAlts(a.toAlts)
       if (a?.ldAlts) setLdAlts(a.ldAlts)
     }).catch(() => {})
-  }, [open])
+  }, [open, aircraftId])
 
   // Persist chosen alternates so the Flight Plan one-pager can read them —
   // this list was previously local-only and vanished when the card closed.

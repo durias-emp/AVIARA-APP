@@ -1,17 +1,10 @@
 import { useState, useEffect } from 'react'
 import { get } from '../../lib/db'
 import { loadWeather, parseWind, parseVisib, parseCloudLayers, parseFltCat } from '../../lib/weather'
+import { scopedSettingsKey } from '../../lib/aircraft'
+import { useActiveAircraft } from '../../context/ActiveAircraft'
+import { useRegion } from '../../context/Region'
 import { lookupAirport } from './shared/awc'
-
-// Same reserve-minutes logic as the Cruise & Fuel checklist item (91.151 —
-// airplanes only, 30 min day / 45 min night; helicopters have no codified
-// Part 91 VFR reserve, 20 min is the common operator standard; 91.167 IFR
-// 45 min applies to both). Kept as a small local copy rather than a shared
-// import since CruiseItem's version is entangled with its own component state.
-function reserveReqMinutes(flightRules, isHelicopter, timeOfDay) {
-  if (flightRules === 'IFR') return 45
-  return isHelicopter ? 20 : (timeOfDay === 'night' ? 45 : 30)
-}
 
 function windComponents(wdir, wspd, rwyHdg) {
   if (wdir == null || wspd == null || rwyHdg == null || isNaN(wdir) || isNaN(wspd)) return null
@@ -65,6 +58,8 @@ function StageHead({ label, active, dimmed, onClick }) {
 }
 
 export default function FlightPlanOnePager({ onClose }) {
+  const { aircraftId } = useActiveAircraft()
+  const { ruleset } = useRegion()
   const [loading, setLoading] = useState(true)
   const [stage, setStage] = useState(null) // null = nothing highlighted, all stages equal weight
   const [data, setData] = useState(null)
@@ -73,9 +68,9 @@ export default function FlightPlanOnePager({ onClose }) {
     let cancelled = false
     async function load() {
       const [route, cruise, perfdist, lastWB, selectedRunway, alternates, pilot, acProfile] = await Promise.all([
-        get('settings', 'route'), get('settings', 'cruise'), get('settings', 'perfdist'),
-        get('settings', 'lastWB'), get('settings', 'selectedRunway'), get('settings', 'alternates'),
-        get('settings', 'pilot'), get('aircraft', 'profile'),
+        get('settings', 'route'), get('settings', scopedSettingsKey('cruise', aircraftId)), get('settings', scopedSettingsKey('perfdist', aircraftId)),
+        get('settings', scopedSettingsKey('lastWB', aircraftId)), get('settings', 'selectedRunway'), get('settings', 'alternates'),
+        get('settings', 'pilot'), aircraftId ? get('aircraft', aircraftId) : null,
       ])
 
       const dep = route?.dep?.toUpperCase() || ''
@@ -100,7 +95,7 @@ export default function FlightPlanOnePager({ onClose }) {
     }
     load()
     return () => { cancelled = true }
-  }, [])
+  }, [aircraftId])
 
   if (loading || !data) {
     return (
@@ -120,7 +115,10 @@ export default function FlightPlanOnePager({ onClose }) {
   const isHelicopter = acProfile?.category === 'helicopter'
   const flightRules = cruise?.flightRules || 'VFR'
   const timeOfDay = cruise?.timeOfDay || 'day'
-  const reqReserve = reserveReqMinutes(flightRules, isHelicopter, timeOfDay)
+  // Jurisdiction-aware (see src/lib/regulations.js) — this strip is styled
+  // as a printable dispatch release, so unlike the interactive Cruise & Fuel
+  // checklist item it just shows the resulting number, no RuleInfo trigger.
+  const reqReserve = ruleset.computed.reserveMinutes(ruleset, { flightRules, isHelicopter, timeOfDay }).value
 
   // Takeoff runway comes from the distance calculator's departure tab;
   // landing runway prefers the pilot's explicit tower-assigned/wind-analysis

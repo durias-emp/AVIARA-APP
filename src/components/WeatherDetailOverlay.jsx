@@ -194,7 +194,7 @@ function RawTextRow({ title, text, onCopy, copiedText, last, colorize }) {
         <div style={{
           fontSize: 12,
           fontFamily: '"SF Mono", ui-monospace, Menlo, Consolas, monospace',
-          lineHeight: 1.65, wordBreak: 'break-all',
+          lineHeight: 1.65,
         }}>
           {lines.map((l, i) => (
             <div key={i} style={{ color: l.color }}>{l.text}</div>
@@ -205,7 +205,7 @@ function RawTextRow({ title, text, onCopy, copiedText, last, colorize }) {
           margin: 0, fontSize: 12,
           color: 'rgba(255,255,255,0.72)',
           fontFamily: '"SF Mono", ui-monospace, Menlo, Consolas, monospace',
-          lineHeight: 1.55, wordBreak: 'break-all',
+          lineHeight: 1.55,
         }}>
           {text}
         </p>

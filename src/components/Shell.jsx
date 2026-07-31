@@ -12,6 +12,53 @@ function IconChevronLeft({ size = 20 }) {
   )
 }
 
+function IconHouse({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M4 11.5L12 4l8 7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M6 10v9a1 1 0 0 0 1 1h4v-5a1 1 0 0 1 1-1h0a1 1 0 0 1 1 1v5h4a1 1 0 0 0 1-1v-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+// Same "go back" resolution as BackButton (onBack prop → close the overlay
+// → navigate home), just with a house glyph instead of a chevron — for
+// full-bleed screens (the full-screen Map) where a floating icon reads
+// better than a titled header row.
+export function HomeButton({ onBack }) {
+  const navigate     = useNavigate()
+  const closeOverlay = useOverlayClose()
+
+  function handleBack() {
+    if (onBack)        { onBack();        return }
+    if (closeOverlay)  { closeOverlay();  return }
+    navigate('/')
+  }
+
+  return (
+    <button
+      onClick={handleBack}
+      aria-label="Back to Home"
+      style={{
+        width: 40,
+        height: 40,
+        borderRadius: '50%',
+        border: 'none',
+        background: 'var(--bg-card)',
+        boxShadow: 'var(--shadow-sm)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        color: 'var(--text)',
+        flexShrink: 0,
+        WebkitTapHighlightColor: 'transparent',
+      }}>
+      <IconHouse size={18} />
+    </button>
+  )
+}
+
 export function BackButton({ onBack }) {
   const navigate      = useNavigate()
   const closeOverlay  = useOverlayClose()

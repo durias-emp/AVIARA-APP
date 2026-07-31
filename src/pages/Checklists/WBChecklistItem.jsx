@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { get, put } from '../../lib/db'
 import { getWBConfig, calculateWB } from '../../lib/aircraftWB'
+import { scopedSettingsKey } from '../../lib/aircraft'
+import { useActiveAircraft } from '../../context/ActiveAircraft'
 import { DoneButton } from './shared/ui'
 import FuelConverter from '../../components/FuelConverter'
 
@@ -189,6 +191,7 @@ function LatCGChart({ cfg, result, ok }) {
 
 // ── Main W&B checklist card ───────────────────────────────────────────────────
 export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableCard }) {
+  const { aircraftId } = useActiveAircraft()
   const [open, setOpen]       = useState(false)
   const [metric, setMetric]   = useState(false)
   const [cfg, setCfg]         = useState(null)
@@ -197,7 +200,8 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
   const [showFuelConv, setShowFuelConv] = useState(false)
 
   useEffect(() => {
-    get('aircraft', 'profile').then(p => {
+    if (!aircraftId) { setCfg(null); return }
+    get('aircraft', aircraftId).then(p => {
       const config = p ? getWBConfig(p) : null
       setCfg(config)
       if (config) {
@@ -207,7 +211,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
         setWeights(blank)
       }
     })
-  }, [])
+  }, [aircraftId])
 
   const result = useMemo(() => {
     if (!cfg) return null
@@ -227,8 +231,8 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
   // weights alone (a station can be loaded with baggage, not a person).
   const [souls, setSouls] = useState('')
   useEffect(() => {
-    get('settings', 'lastWB').then(saved => { if (saved?.souls != null) setSouls(String(saved.souls)) })
-  }, [])
+    get('settings', scopedSettingsKey('lastWB', aircraftId)).then(saved => { if (saved?.souls != null) setSouls(String(saved.souls)) })
+  }, [aircraftId])
 
   // Expose the computed takeoff weight, CG, and envelope status so the
   // Performance section's distance calculator and the Flight Plan one-pager
@@ -236,7 +240,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
   useEffect(() => {
     if (result?.allUp?.weight > 0) {
       put('settings', {
-        key: 'lastWB',
+        key: scopedSettingsKey('lastWB', aircraftId),
         weight: result.allUp.weight,
         maxTOW: cfg?.maxTOW ?? null,
         longCG: isFinite(result.allUp.longCG) ? result.allUp.longCG : null,
@@ -245,7 +249,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
         souls: souls !== '' ? parseInt(souls, 10) : null,
       }).catch(() => {})
     }
-  }, [result, cfg, overallOK, souls])
+  }, [result, cfg, overallOK, souls, aircraftId])
 
   return (
     <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>

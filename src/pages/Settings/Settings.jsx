@@ -1,12 +1,19 @@
-import { useEffect, useState } from 'react'
 import { BackButton } from '../../components/Shell'
-import { get, put } from '../../lib/db'
+import { useRegion } from '../../context/Region'
 
 const REGIONS = [
   { key: 'us', label: 'United States', sub: 'FAA / FAR-AIM' },
   { key: 'ca', label: 'Canada', sub: 'Transport Canada / CARs' },
   { key: 'intl', label: 'International / Other', sub: 'Generic ICAO references' },
 ]
+
+const ROW_LABELS = {
+  airports: 'Airports',
+  map: 'Map',
+  hangar: 'Hangar',
+  pilot: 'Pilot',
+  flight: 'Flight Planning',
+}
 
 function SectionLabel({ children }) {
   return (
@@ -19,19 +26,8 @@ function SectionLabel({ children }) {
   )
 }
 
-export default function Settings({ onBack }) {
-  const [region, setRegion] = useState('us')
-
-  useEffect(() => {
-    get('settings', 'region').then(row => {
-      if (row?.value) setRegion(row.value)
-    })
-  }, [])
-
-  function selectRegion(key) {
-    setRegion(key)
-    put('settings', { key: 'region', value: key }).catch(() => {})
-  }
+export default function Settings({ onBack, order, onMoveRow }) {
+  const { region, setRegion } = useRegion()
 
   return (
     <div style={{ paddingBottom: 40 }}>
@@ -52,7 +48,7 @@ export default function Settings({ onBack }) {
           {REGIONS.map((r, i) => (
             <div
               key={r.key}
-              onClick={() => selectRegion(r.key)}
+              onClick={() => setRegion(r.key)}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '13px 16px', borderTop: i === 0 ? 'none' : '0.5px solid var(--border)',
@@ -75,6 +71,41 @@ export default function Settings({ onBack }) {
             </div>
           ))}
         </div>
+
+        {Array.isArray(order) && order.length > 0 && (
+          <>
+            <SectionLabel>Home Screen Order</SectionLabel>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {order.map((key, i) => (
+                <div key={key} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  background: 'var(--bg-card)', borderRadius: 14, boxShadow: 'var(--shadow-sm)',
+                  padding: '12px 16px',
+                }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{ROW_LABELS[key] ?? key}</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={() => onMoveRow(i, -1)}
+                      disabled={i === 0}
+                      style={{
+                        width: 30, height: 30, borderRadius: 9, border: 'none',
+                        background: 'var(--bg-card-2)', color: i === 0 ? 'var(--text-tertiary)' : 'var(--text)',
+                        fontSize: 15, cursor: i === 0 ? 'default' : 'pointer',
+                      }}>↑</button>
+                    <button
+                      onClick={() => onMoveRow(i, 1)}
+                      disabled={i === order.length - 1}
+                      style={{
+                        width: 30, height: 30, borderRadius: 9, border: 'none',
+                        background: 'var(--bg-card-2)', color: i === order.length - 1 ? 'var(--text-tertiary)' : 'var(--text)',
+                        fontSize: 15, cursor: i === order.length - 1 ? 'default' : 'pointer',
+                      }}>↓</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         <SectionLabel>About</SectionLabel>
         <div style={{ background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>

@@ -96,6 +96,24 @@ async function lookupNamed(ident, nearPos) {
   return null
 }
 
+// Nearest VOR/NDB to a point, for the GPS info bar's "Nearest Navaid" field.
+// A full scan of the worldwide navaid table — fine as an occasional lookup,
+// not something to run on every GPS tick (callers should throttle).
+export async function findNearestNavaid(lat, lon) {
+  const { navaids } = await loadNavdata()
+  let best = null, bestD = Infinity
+  for (const [ident, entries] of Object.entries(navaids)) {
+    for (const [nLat, nLon, name, freq] of entries) {
+      const d = dist2(lat, lon, nLat, nLon)
+      if (d < bestD) {
+        bestD = d
+        best = { ident, name, freq, lat: nLat, lon: nLon }
+      }
+    }
+  }
+  return best
+}
+
 // ── Airways (V/J/Q/T routes) ────────────────────────────────────
 let _airways = null
 async function loadAirways() {

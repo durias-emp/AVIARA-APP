@@ -2,6 +2,8 @@ import { Suspense, lazy, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useTheme } from './hooks/useTheme'
 import { PilotProfileProvider, usePilotProfile } from './context/PilotProfile'
+import { ActiveAircraftProvider } from './context/ActiveAircraft'
+import { RegionProvider } from './context/Region'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import BackOverrideProvider from './context/BackOverrideProvider'
 import Shell from './components/Shell'
@@ -9,7 +11,7 @@ import Shell from './components/Shell'
 const Home        = lazy(() => import('./pages/Home/Home'))
 const Calculators = lazy(() => import('./pages/Calculators/Calculators'))
 const Checklists  = lazy(() => import('./pages/Checklists/Checklists'))
-const Aircraft    = lazy(() => import('./pages/Aircraft/Aircraft'))
+const Hangar      = lazy(() => import('./pages/Aircraft/Hangar'))
 const Currency    = lazy(() => import('./pages/Currency/Currency'))
 const Reference   = lazy(() => import('./pages/Reference/Reference'))
 const Weather     = lazy(() => import('./pages/Weather/Weather'))
@@ -87,7 +89,7 @@ function AppRoutes({ theme }) {
             <Route path="/" element={<Home />} />
             <Route path="/calc" element={<Calculators />} />
             <Route path="/checklists" element={<Checklists />} />
-            <Route path="/aircraft" element={<Aircraft />} />
+            <Route path="/aircraft" element={<Hangar />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/currency" element={<Currency onBack={() => navigate('/profile')} />} />
             <Route path="/reference" element={<Reference />} />
@@ -106,9 +108,13 @@ export default function App() {
   return (
     <AuthProvider>
       <PilotProfileProvider>
-        <BrowserRouter>
-          <AppRoutes theme={theme} />
-        </BrowserRouter>
+        <ActiveAircraftProvider>
+          <RegionProvider>
+            <BrowserRouter>
+              <AppRoutes theme={theme} />
+            </BrowserRouter>
+          </RegionProvider>
+        </ActiveAircraftProvider>
       </PilotProfileProvider>
     </AuthProvider>
   )
