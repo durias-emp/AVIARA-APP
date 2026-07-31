@@ -1131,6 +1131,23 @@ function TapToPlace({ onPlace }) {
   return null
 }
 
+// The crosshair from public/crosshair.svg, drawn as a mask rather than an
+// <img>. The file is a black glyph and would be invisible on a dark card;
+// masking paints it in currentColor, so it follows the button's own text —
+// including going tertiary when the button is disabled.
+function CrosshairIcon({ size = 13 }) {
+  return (
+    <span aria-hidden="true" style={{
+      width: size, height: size, display: 'inline-block', flexShrink: 0,
+      background: 'currentColor',
+      WebkitMaskImage: 'url(/crosshair.svg)', maskImage: 'url(/crosshair.svg)',
+      WebkitMaskSize: 'contain', maskSize: 'contain',
+      WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+      WebkitMaskPosition: 'center', maskPosition: 'center',
+    }} />
+  )
+}
+
 // How much of the card stays on screen once it is swiped away — enough to be
 // an obvious grab bar and to be hit reliably with a thumb, not so much that it
 // eats the chart it just got out of the way of.
@@ -3173,10 +3190,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             color: (!hasWaypoint && !dep.trim()) ? 'var(--text-tertiary)' : 'var(--text-secondary)',
             fontSize: 12, fontWeight: 600, border: 'none',
             cursor: (!hasWaypoint && !dep.trim()) ? 'default' : 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>
           {hasWaypoint ? '+ Add waypoint'
             : !dep.trim() ? 'Enter a departure to pick on the map'
-            : !dest.trim() ? '📍 Pick destination on the map'
+            : !dest.trim() ? <><CrosshairIcon /> Pick destination on the map</>
             : '+ Add waypoint from the map'}
         </button>
 
