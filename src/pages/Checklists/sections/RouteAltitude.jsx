@@ -1042,6 +1042,95 @@ function MapControlStack({ onClose }) {
   )
 }
 
+// Choosing where you are flying to, on the map.
+//
+// The route map only exists once a route does, and a route needs two ends —
+// which is exactly the assumption this breaks. Plenty of flying is to places
+// that have no ICAO code to type into the TO field: a ranch strip, a lake, a
+// section corner, a friend's grass runway. Those pilots need to point at it.
+//
+// Deliberately spare: a basemap, the departure, and whatever the pilot taps.
+// No charts, no airspace, no terrain — this map answers one question, and the
+// full map with all its layers is one Calculate away.
+function PickDestinationMap({ depPos, depIdent, onClose, onPick }) {
+  const [pt, setPt] = useState(null)
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#e8e0d8' }}>
+      <div style={{ position: 'absolute', inset: 0 }}>
+        <MapContainer center={depPos} zoom={8}
+          style={{ height: '100%', width: '100%' }}
+          zoomAnimationThreshold={10}
+          zoomControl={false} attributionControl={false}>
+          <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' />
+          <MapInvalidator />
+          <TapToPlace onPlace={setPt} />
+          <CircleMarker center={depPos} radius={7}
+            pathOptions={{ color: '#fff', weight: 2.5, fillColor: '#111', fillOpacity: 1 }} />
+          {pt && (
+            <CircleMarker center={[pt.lat, pt.lon]} radius={7}
+              pathOptions={{ color: '#fff', weight: 2.5, fillColor: '#0a84ff', fillOpacity: 1 }} />
+          )}
+        </MapContainer>
+      </div>
+
+      {/* Departure label, so the one fixed point on this map is named */}
+      <div style={{
+        position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 14px)', left: 12,
+        zIndex: 10002, pointerEvents: 'none',
+        background: 'rgba(10,10,10,0.75)', backdropFilter: 'blur(12px)',
+        border: '0.5px solid rgba(255,255,255,0.18)', borderRadius: 9,
+        padding: '7px 10px', color: '#fff', fontSize: 11, fontWeight: 700, letterSpacing: '0.4px',
+      }}>
+        FROM {depIdent}
+      </div>
+
+      <button onClick={onClose} style={{
+        position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 14px)', right: 12,
+        zIndex: 10005, width: 38, height: 38, padding: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(10,10,10,0.75)', backdropFilter: 'blur(12px)',
+        border: '0.5px solid rgba(255,255,255,0.18)', borderRadius: 9,
+        color: 'rgba(255,255,255,0.9)', fontSize: 15, cursor: 'pointer',
+      }}>✕</button>
+
+      {!pt && (
+        <div style={{
+          position: 'absolute', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 26px)',
+          left: '50%', transform: 'translateX(-50%)', zIndex: 10002, pointerEvents: 'none',
+          background: 'rgba(10,132,255,0.92)', backdropFilter: 'blur(10px)',
+          borderRadius: 20, padding: '9px 16px', maxWidth: '86%',
+          fontSize: 12, fontWeight: 600, color: '#fff', textAlign: 'center',
+        }}>
+          Tap where you are flying to
+        </div>
+      )}
+
+      <DropPicker
+        key={pt ? `${pt.lat.toFixed(4)},${pt.lon.toFixed(4)}` : 'none'}
+        point={pt}
+        mode="destination"
+        canAppend={false}
+        onChoose={choice => onPick(choice)}
+        onCancel={() => setPt(null)} />
+    </div>
+  )
+}
+
+// A plain tap, guarded: everything downstream feeds L.latLng, which throws on
+// a NaN and would take the card with it.
+function TapToPlace({ onPlace }) {
+  useMapEvents({
+    click(e) {
+      if (Number.isFinite(e.latlng?.lat) && Number.isFinite(e.latlng?.lng)) {
+        onPlace({ lat: e.latlng.lat, lon: e.latlng.lng })
+      }
+    },
+  })
+  return null
+}
+
 // How much of the card stays on screen once it is swiped away — enough to be
 // an obvious grab bar and to be hit reliably with a thumb, not so much that it
 // eats the chart it just got out of the way of.
@@ -1892,16 +1981,55 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // list, adding another is usually typing one, and the map is still one long
   // press away.
   async function pickWaypointOnMap() {
+    // No destination yet: the map is being asked where the flight is going,
+    // not where it detours. That map is its own thing, because the route map
+    // cannot exist until a route does.
+    if (!dest.trim()) {
+      // It has to open somewhere the pilot recognises, and the only anchor
+      // available before a route is the departure — so resolve it first if
+      // typing it never triggered a lookup.
+      if (!depPosHint.current) await validateDep()
+      if (!depPosHint.current) { setRE('Could not place that departure airport on the map'); return }
+      setRE(null)
+      setPickDest({ pos: depPosHint.current, ident: dep.trim().toUpperCase() })
+      return
+    }
+
     let r = route
     if (!r) {
-      // Nothing to open — there is no map until the route has two ends.
-      if (!dep.trim() || !dest.trim()) { addWptRow(); return }
       r = await calcRoute()
       if (!r) return                 // calcRoute has already shown why
     }
     setPickMode(true)
     setMapClear(false)
     setMapFS(true)
+  }
+
+  // A place chosen on the destination map. A typed name is saved first, so
+  // the same spot can be found by name from any route field afterwards —
+  // which is the whole point of naming it.
+  async function commitDestination(choice) {
+    const { lat, lon, name, saveAs } = choice
+    let ident = name
+    if (saveAs) {
+      try {
+        await saveUserWaypoint(saveAs, lat, lon)
+        ident = saveAs
+      } catch (e) {
+        // Almost always "that name is already a real waypoint" — worth saying,
+        // and the flight can still be planned to the coordinate.
+        setRE(e.message)
+        ident = null
+      }
+    }
+    // Unnamed and uncharted: the coordinate is the identifier, which is what
+    // it is on a ForeFlight route line too.
+    const label = ident || fmtAvCoord(lat, lon)
+    setPickDest(null)
+    changeDest(label)
+    setDestVal(true)
+    setDestErr(null)
+    await calcRoute({ dest: label, destPos: [lat, lon], rows: [] })
   }
   function patchWptRow(id, patch) {
     setWptRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r))
@@ -1986,6 +2114,10 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // True while the map is open specifically to be asked "where?" — a tap
   // places a point instead of dismissing one.
   const [pickMode, setPickMode] = useState(false)
+  // The standalone "where am I going" map, shown before a route exists.
+  // Holds the departure it opened over rather than a bare flag, so render
+  // never has to read a ref to find out where to centre.
+  const [pickDest, setPickDest] = useState(null)
   const [dropPoint, setDropPoint] = useState(null)
   function openDropPicker(pt) { setDropPoint(pt) }
 
@@ -3023,19 +3155,29 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
           </div>
         )}
 
-        {/* "Has a waypoint yet" has to count both places one can live. A row
-            is a typed fix; a point picked on the map goes straight into the
-            route's waypoint list and never becomes a row, so counting rows
-            alone left the button still offering the map after the pilot had
-            just used it. */}
+        {/* Three jobs, one button, decided by what the route is missing.
+            No destination — the map is asking where the flight goes. A
+            destination but no waypoints — the map is asking where it detours.
+            Waypoints already — a text row, because by then the pilot is
+            naming fixes they can see, and the map is a long press away.
+
+            "Has a waypoint yet" counts both places one can live: a typed row,
+            and a point picked on the map, which goes straight into the route's
+            waypoint list and never becomes a row. */}
         <button
           onClick={hasWaypoint ? addWptRow : pickWaypointOnMap}
+          disabled={!hasWaypoint && !dep.trim()}
           style={{
             width: '100%', padding: '7px 0', borderRadius: 9, marginBottom: 8,
-            background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
-            fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
+            background: 'var(--bg-card-2)',
+            color: (!hasWaypoint && !dep.trim()) ? 'var(--text-tertiary)' : 'var(--text-secondary)',
+            fontSize: 12, fontWeight: 600, border: 'none',
+            cursor: (!hasWaypoint && !dep.trim()) ? 'default' : 'pointer',
           }}>
-          {hasWaypoint ? '+ Add waypoint' : '+ Add waypoint from the map'}
+          {hasWaypoint ? '+ Add waypoint'
+            : !dep.trim() ? 'Enter a departure to pick on the map'
+            : !dest.trim() ? '📍 Pick destination on the map'
+            : '+ Add waypoint from the map'}
         </button>
 
         <button
@@ -3052,6 +3194,14 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         </button>
 
         {routeError && <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 8 }}>{routeError}</div>}
+
+        {pickDest && createPortal(
+          <PickDestinationMap
+            depPos={pickDest.pos}
+            depIdent={pickDest.ident}
+            onClose={() => setPickDest(null)}
+            onPick={commitDestination} />,
+          document.body)}
 
         {/* Route result */}
         {route && (

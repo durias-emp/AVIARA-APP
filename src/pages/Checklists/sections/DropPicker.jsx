@@ -20,13 +20,19 @@ const KIND_STYLE = {
 }
 
 // point:    { lat, lon } where the finger landed
-// mode:     'insert' when adding to the route, 'move' when a waypoint was dragged
+// mode:     'insert' when adding to the route, 'move' when a waypoint was
+//           dragged, 'destination' when the map was opened to choose where
+//           the flight is going
 // onChoose: (target) => void
-//           target = { lat, lon, name|null, as: 'insert'|'append'|'move'|'destination' }
+//           target = { lat, lon, name|null, saveAs|null,
+//                      as: 'insert'|'append'|'move'|'destination' }
+//           saveAs is a name the pilot typed for a bare coordinate; the caller
+//           stores it so the same place can be found by name next time.
 export default function DropPicker({ point, mode = 'insert', canAppend = true, onChoose, onCancel }) {
   const [filter, setFilter] = useState('all')
   const [options, setOptions] = useState(null)
   const [selected, setSelected] = useState(null)
+  const [customName, setCustomName] = useState('')
 
   useEffect(() => {
     if (!point) return
@@ -42,9 +48,14 @@ export default function DropPicker({ point, mode = 'insert', canAppend = true, o
   const shown = (options || []).filter(p => FILTERS.find(f => f.id === filter).match(p))
   // The coordinate is always available, and is what you get if nothing is
   // selected — the drop still means something even in the middle of nowhere.
+  // A charted point brings its own ident. A bare coordinate can be given one,
+  // and naming it is what makes it findable again — the name is saved as a
+  // user waypoint, so typing it into any route field later brings this exact
+  // spot back.
+  const typed = customName.trim().toUpperCase()
   const target = selected
-    ? { lat: selected.lat, lon: selected.lon, name: selected.ident }
-    : { lat: point.lat, lon: point.lon, name: null }
+    ? { lat: selected.lat, lon: selected.lon, name: selected.ident, saveAs: null }
+    : { lat: point.lat, lon: point.lon, name: typed || null, saveAs: typed || null }
 
   const btn = (label, as, primary) => (
     <button onClick={() => onChoose({ ...target, as })} style={{
@@ -114,6 +125,32 @@ export default function DropPicker({ point, mode = 'insert', canAppend = true, o
         ))}
       </div>
 
+      {/* Naming a coordinate. Only for a bare position — a charted point
+          already has the name everyone else uses for it, and inventing a
+          second one for the same spot is how two pilots end up describing
+          different places with the same word. */}
+      {!selected && mode !== 'move' && (
+        <div style={{ marginTop: 9 }}>
+          <input
+            value={customName}
+            onChange={e => setCustomName(e.target.value.slice(0, 10))}
+            placeholder="Name this place (optional) — e.g. CAMP"
+            maxLength={10}
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            style={{
+              width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 9,
+              background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.14)',
+              color: '#fff', fontSize: 13, fontWeight: 600, letterSpacing: '0.5px',
+              fontFamily: 'inherit', outline: 'none', textTransform: 'uppercase',
+            }} />
+          <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.32)', marginTop: 5, lineHeight: 1.45 }}>
+            Saved on this device — type the name into any route field later and it comes back here.
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 7, marginTop: 10 }}>
         {mode === 'move'
           ? btn('Move here', 'move', true)
@@ -123,15 +160,22 @@ export default function DropPicker({ point, mode = 'insert', canAppend = true, o
             </>)}
       </div>
 
-      {/* Only an airport can become the destination — a fix cannot be landed
-          at, and offering it there would produce a route that cannot be filed. */}
-      {mode !== 'move' && selected?.kind === 'AIRPORT' && (
+      {/* Any point can be the destination, charted or not. Pilots fly to
+          ranch strips, lakes and section corners, and a planner that insists
+          on an ICAO code cannot plan those flights. What the coordinate
+          cannot do is be filed as an identifier on an ICAO form — so it is
+          offered plainly, and named if the pilot wants it named. */}
+      {mode !== 'move' && (
         <button onClick={() => onChoose({ ...target, as: 'destination' })} style={{
           marginTop: 7, width: '100%', padding: '10px 0', borderRadius: 9, cursor: 'pointer',
-          background: 'transparent', border: '0.5px solid var(--ok)',
-          color: 'var(--ok)', fontSize: 12.5, fontWeight: 700,
+          background: mode === 'destination' ? 'var(--ok)' : 'transparent',
+          border: '0.5px solid var(--ok)',
+          color: mode === 'destination' ? '#000' : 'var(--ok)',
+          fontSize: 12.5, fontWeight: 700,
         }}>
-          Make {selected.ident} the destination
+          {selected
+            ? `Make ${selected.ident} the destination`
+            : typed ? `Fly to ${typed}` : 'Fly to this point'}
         </button>
       )}
 
