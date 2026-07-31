@@ -5,8 +5,8 @@ import App from './App.jsx'
 
 // A new build activates immediately (the service worker is generated with
 // skipWaiting and clientsClaim) but the page already on screen keeps running
-// the code it loaded with. On a phone that page can survive for days —
-// swiping a PWA away often resumes it rather than restarting it — so fixes
+// the code it loaded with. On a phone that page can survive for days. 
+// swiping a PWA away often resumes it rather than restarting it, so fixes
 // appear not to have shipped. Reload once when a new worker takes over.
 //
 // The guard matters: on a first visit the worker also claims the page, and
@@ -21,7 +21,7 @@ if ('serviceWorker' in navigator) {
   })
   // And ask whether there is a newer build each time the app comes back to the
   // foreground. Without this the check only happens on a cold start, which on
-  // a phone can be days apart — long enough for a fix to look like it never
+  // a phone can be days apart. Long enough for a fix to look like it never
   // shipped.
   const checkForUpdate = () => {
     if (document.visibilityState !== 'visible') return

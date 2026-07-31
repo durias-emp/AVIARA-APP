@@ -1,10 +1,10 @@
-// Aircraft performance for altitude selection — what it costs to get up there,
+// Aircraft performance for altitude selection. What it costs to get up there,
 // and what you get back once you are.
 //
 // The altitude engine needs to answer "does climbing higher pay for itself over
 // this leg?", which needs four numbers the profile stores as prose strings
 // ('124 kt', '6.1 GPH', '1,000 fpm', '14,000 ft DA') and two it may not store
-// at all. Everything here is pure — no network, no IndexedDB — so it can be
+// at all. Everything here is pure. No network, no IndexedDB, so it can be
 // checked against the book figures in the POH.
 //
 // Nothing is silently invented: any value that had to be inferred is listed in
@@ -53,7 +53,7 @@ const DEFAULTS = {
 }
 
 // profile: the IndexedDB aircraft/profile record.
-// Returns null only when there is no usable cruise speed at all — without that
+// Returns null only when there is no usable cruise speed at all, without that
 // the whole model is guesswork and the caller should say so instead.
 export function parseAircraftPerf(profile) {
   if (!profile) return null
@@ -116,7 +116,7 @@ function absoluteCeiling(perf) {
 // Time, fuel and ground distance to climb between two altitudes.
 //
 // Climb rate falls linearly with altitude, so the time is the integral of
-// dh/ROC(h) — closed form, and it correctly runs away as the absolute ceiling
+// dh/ROC(h): closed form, and it correctly runs away as the absolute ceiling
 // is approached rather than pretending the aircraft still climbs there.
 export function climbTo(perf, fromFt, toFt, hwKt = 0) {
   if (!perf || toFt <= fromFt) return { minutes: 0, gallons: 0, distNm: 0 }
@@ -135,7 +135,7 @@ export function climbTo(perf, fromFt, toFt, hwKt = 0) {
 }
 
 // Descent is flown at a chosen rate rather than a performance limit, so it is
-// simple arithmetic — but it has to be modelled, because it is half of why a
+// simple arithmetic, but it has to be modelled, because it is half of why a
 // high altitude does not pay on a short leg.
 export function descentFrom(perf, fromFt, toFt, hwKt = 0) {
   if (!perf || fromFt <= toFt) return { minutes: 0, gallons: 0, distNm: 0 }
@@ -153,7 +153,7 @@ export function descentFrom(perf, fromFt, toFt, hwKt = 0) {
 // tailwind); the climb and descent use half of it, since they spend their time
 // in the lower half of the column.
 //
-// Returns reachable:false when the climb and descent alone eat the leg — that
+// Returns reachable:false when the climb and descent alone eat the leg. That
 // is the arithmetic reason a 50 NM hop never recommends 12,000 ft, rather than
 // a hardcoded rule about short legs.
 export function legEconomics(perf, altFt, distNm, hwKt = 0, elevFt = 0) {

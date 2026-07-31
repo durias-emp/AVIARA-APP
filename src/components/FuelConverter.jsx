@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { conv, FUEL } from '../lib/calculators'
 
-// Jet-A gal/lbs/kg/liters converter — enter any one unit, the other three
+// Jet-A gal/lbs/kg/liters converter: enter any one unit, the other three
 // recompute from Jet-A density (6.7 lb/USG, 0.80 kg/L). Same component is
 // used standalone in Calculators and embedded inside Weight & Balance.
 const FUEL_UNITS = [

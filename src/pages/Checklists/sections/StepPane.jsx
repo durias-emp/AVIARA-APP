@@ -36,11 +36,11 @@ function SubPills({ sub, isChecked }) {
   )
 }
 
-/* ── Item rows — expandable items via EXPAND_MAP, plain checkable rows otherwise ── */
+/* ── Item rows: expandable items via EXPAND_MAP, plain checkable rows otherwise ── */
 function StepItems({ items, checked, onToggle, total, top = false }) {
   const { stretch } = useCardLayout()
   // Each item sits in a wrapper that is the flex child of the pane, so the
-  // wrapper is what has to take a share of the height — styling the card
+  // wrapper is what has to take a share of the height. Styling the card
   // inside it achieves nothing while its parent is still content-sized.
   // Only the top-level list divides the pane; a nested list belongs to its
   // parent card's share.
@@ -103,7 +103,7 @@ function StepItems({ items, checked, onToggle, total, top = false }) {
   )
 }
 
-/* ── One section's full content — built-in items + pilot-added custom items ── */
+/* ── One section's full content. Built-in items + pilot-added custom items ── */
 export default function StepPane({ section, checked, onToggle, total, customItems, onDeleteCustomItem, onUpdateCustomItemValue, stretch = false }) {
   const custom = customItems[section.title] ?? []
 

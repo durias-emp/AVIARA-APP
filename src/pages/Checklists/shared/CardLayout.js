@@ -12,7 +12,7 @@ import { createContext, useContext } from 'react'
 //            height between them instead of stacking at the top of an
 //            otherwise empty screen
 //   solo     this step has exactly one card, so there is nothing to choose
-//            between — it opens on arrival and has no collapsed state
+//            between: it opens on arrival and has no collapsed state
 export const CardLayoutContext = createContext({ stretch: false, solo: false })
 
 export const useCardLayout = () => useContext(CardLayoutContext)

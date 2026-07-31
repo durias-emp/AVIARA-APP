@@ -7,7 +7,7 @@ import LightGun from './topics/LightGun'
 import Marshalling from './topics/Marshalling'
 import AirLaw from './topics/AirLaw'
 
-// Fixed 4-item grid — houses lost-comm procedures, light gun signals,
+// Fixed 4-item grid: houses lost-comm procedures, light gun signals,
 // marshalling signals, and air law/regulations. Each opens inline within
 // this page (no routing) so the grid itself never grows past these 4.
 const TOPICS = [

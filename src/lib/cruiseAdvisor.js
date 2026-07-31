@@ -1,16 +1,16 @@
 // Which cruise altitude, and why.
 //
-// The philosophy is the highest practical altitude — better glide range, better
-// true airspeed, better radio and radar coverage — held back by weather,
-// aircraft capability, regulation, and the simple fact that a 45 NM hop cannot
-// pay for a climb to 12,000 ft.
+// The philosophy is the highest practical altitude, for the better glide
+// range, true airspeed, and radio and radar coverage that come with it. What
+// holds it back is weather, aircraft capability, regulation, and the simple
+// fact that a 45 NM hop cannot pay for a climb to 12,000 ft.
 //
 // Two tiers, deliberately kept apart:
 //
 //   GATES     remove an altitude from consideration and say why. Only hard
 //             facts gate: terrain, MEA, ceiling, oxygen regulations, cloud
 //             under VFR, and official severe hazards. A modelled indication
-//             never gates — it is not a forecast and must not act like one.
+//             never gates: it is not a forecast and must not act like one.
 //   PENALTIES subtract from 100. Additive, so the reasons list *is* the score
 //             breakdown and every point has a quotable cause.
 //
@@ -31,8 +31,8 @@ const CLOUD_FRAC_GATE = 0.2     // how much of the route in cloud before VFR is 
 //
 // IFR is the regulation: §91.177 wants 1,000 ft over the highest obstacle
 // within 4 NM, 2,000 ft in designated mountainous terrain. VFR has no en-route
-// minimum beyond §91.119, so the gate stays at 1,000 ft — enough to be clear
-// of the ridge — and the extra margin mountains deserve is applied as a
+// minimum beyond §91.119, so the gate stays at 1,000 ft, enough to be clear
+// of the ridge, and the extra margin mountains deserve is applied as a
 // penalty instead of a prohibition. Pilots do fly valleys VFR; the app should
 // discourage a thin margin, not refuse to plan it.
 function terrainFloor(terrain, flightRules) {
@@ -43,7 +43,8 @@ function terrainFloor(terrain, flightRules) {
 
 // Headwind component along the route at one altitude, weighted evenly across
 // the sample points, using each sample's local track rather than the whole
-// route's average course — on a dog-leg those differ by more than the wind.
+// route's average course, since on a dog-leg those differ by more than the
+// wind itself.
 function windAlong(atmo, altFt) {
   if (atmo?.status !== 'ok') return null
   let sumHw = 0, n = 0, sumKt = 0, u = 0, v = 0
@@ -82,7 +83,7 @@ function cloudAlong(atmo, altFt) {
 }
 
 // VFR cloud clearance, vertical only. §91.155 also requires horizontal
-// distance, which nothing in a 9-25 km model grid can answer — the caller
+// distance, which nothing in a 9-25 km model grid can answer. The caller
 // says so rather than implying the whole rule was checked.
 function vfrCloudConflict(atmo, altFt) {
   if (atmo?.status !== 'ok') return null
@@ -142,7 +143,7 @@ export async function recommendCruise(waypoints, {
   // analyzeHazards already asks for the modelled bands only when it has a
   // profile to model them from. Gating the whole call on the wind fetch threw
   // away real, official forecasts whenever Open-Meteo was down or rate
-  // limited — and those bands are not decoration: severe icing is a hard gate
+  // limited, and those bands are not decoration: severe icing is a hard gate
   // and moderate icing a penalty, so losing them quietly loosened the
   // altitude advice at exactly the moment there was least else to go on.
   const hazards = await analyzeHazards(wps, atmo, { timeoutMs })
@@ -167,7 +168,7 @@ export async function recommendCruise(waypoints, {
     }
     if (floor != null && altFt < floor) {
       gates.push({
-        label: `Terrain — ${terrain.maxFt.toLocaleString()} ft peak needs ${fmtAlt(floor)}`,
+        label: `Terrain. ${terrain.maxFt.toLocaleString()} ft peak needs ${fmtAlt(floor)}`,
       })
     }
     if (perf && altFt > perf.serviceCeilingFt) {
@@ -181,7 +182,7 @@ export async function recommendCruise(waypoints, {
     const hwKt = wind?.hwKt ?? 0
     const econ = perf ? legEconomics(perf, altFt, distNm, hwKt, fieldElevFt) : null
     if (econ && !econ.reachable) {
-      gates.push({ label: `Not worth it on ${Math.round(distNm)} NM — ${econ.reason}` })
+      gates.push({ label: `Not worth it on ${Math.round(distNm)} NM. ${econ.reason}` })
     }
 
     // 91.211 is two rules, not one. Between 12,500 and 14,000 the crew needs
@@ -212,7 +213,7 @@ export async function recommendCruise(waypoints, {
     const vfrFrac = flightRules === 'VFR' ? vfrCloudConflict(atmo, altFt) : null
     if (vfrFrac != null && vfrFrac > CLOUD_FRAC_GATE) {
       gates.push({
-        label: `In cloud for ${Math.round(vfrFrac * 100)}% of the route — VFR cloud clearance`,
+        label: `In cloud for ${Math.round(vfrFrac * 100)}% of the route. VFR cloud clearance`,
       })
     }
 
@@ -222,7 +223,7 @@ export async function recommendCruise(waypoints, {
       gates.push({ label: 'Severe icing forecast (G-AIRMET)' })
     }
     if (ice?.official && ice.severity === 'moderate' && !isFIKI && ice.routeFrac > 0.15) {
-      gates.push({ label: 'Moderate icing forecast (G-AIRMET) — aircraft not certified for known ice' })
+      gates.push({ label: 'Moderate icing forecast (G-AIRMET). Aircraft not certified for known ice' })
     }
     if (turb?.official && turb.severity === 'severe') {
       gates.push({ label: 'Severe turbulence forecast (G-AIRMET)' })
@@ -257,7 +258,7 @@ export async function recommendCruise(waypoints, {
       add(10 * cloud.frac, 'in cloud', `${Math.round(cloud.frac * 100)}% of the route IMC`)
     }
     // The freezing level is where airframe ice lives even when no product says
-    // so — being parked on it in moist air is worth avoiding.
+    // so: being parked on it in moist air is worth avoiding.
     const freezing = atmo.status === 'ok'
       ? atmo.surface.map(s => s.freezingFt).filter(f => f != null)
       : []
@@ -382,7 +383,7 @@ export async function recommendCruise(waypoints, {
 
 // The vertical slice the cross-section draws: departure on the left,
 // destination on the right, altitude up. Everything is already computed by
-// this point — this only reshapes it into per-column arrays the renderer can
+// this point: this only reshapes it into per-column arrays the renderer can
 // walk without knowing where any of it came from.
 export function buildCrossSection(atmo, hazards, terrain, {
   chosenAltFt = null, recommendedAltFt = null, meaFt = null, ceilingFt = null, maxAltFt = 18000,

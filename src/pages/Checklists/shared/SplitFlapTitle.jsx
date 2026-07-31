@@ -5,7 +5,7 @@ const STEP_MS = 45     // time between each intermediate glyph
 const STEPS = 5         // how many intermediate glyphs before settling
 const STAGGER_MS = 40   // delay between adjacent character columns starting
 
-// One "flap" position — cycles through a few random glyphs before landing on
+// One "flap" position: cycles through a few random glyphs before landing on
 // its target character, like an airport split-flap departure board.
 function Flap({ char, delay }) {
   const [shown, setShown] = useState(char)

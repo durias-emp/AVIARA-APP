@@ -1,4 +1,4 @@
-// Route corridor sampling — the geometric foundation for overflight analysis.
+// Route corridor sampling: the geometric foundation for overflight analysis.
 //
 // Everything that asks "what is under this route?" (terrain, water, urban
 // areas, airports) needs the same thing first: points along the actual track,
@@ -11,7 +11,7 @@
 //      (and the app's own distance/course numbers) actually follow. Points are
 //      interpolated on the sphere instead.
 //   2. A fixed number of samples means the spacing grows with the route. 15
-//      points over 1,000 NM is one sample every ~70 NM — a mountain range fits
+//      points over 1,000 NM is one sample every ~70 NM. A mountain range fits
 //      comfortably between two of them. Spacing is fixed in distance instead,
 //      so resolution does not degrade as the route gets longer.
 //
@@ -47,7 +47,7 @@ export function interpGC(a, b, t) {
   const dot = Math.max(-1, Math.min(1, va[0]*vb[0] + va[1]*vb[1] + va[2]*vb[2]))
   const ang = Math.acos(dot)
   // Coincident or antipodal-ish: slerp is undefined/unstable, fall back to a
-  // linear blend — at these separations the difference is meaningless anyway.
+  // linear blend, at these separations the difference is meaningless anyway.
   if (ang < 1e-9) return [a[0], a[1]]
   const s = Math.sin(ang)
   const k1 = Math.sin((1 - t) * ang) / s
@@ -117,7 +117,7 @@ export function sampleRoute(waypoints, { spacingNm = 5, maxSamples = 400 } = {})
     const a = [pts[i].lat, pts[i].lon], b = [pts[i + 1].lat, pts[i + 1].lon]
     const len = legLen[i]
     samples.push({ lat: a[0], lon: a[1], distNm: travelled, legIndex: i })
-    // Intermediate points, excluding the leg's own endpoints — the next leg
+    // Intermediate points, excluding the leg's own endpoints. The next leg
     // contributes its start point, and the final destination is added below.
     const n = Math.max(1, Math.round(len / step))
     for (let k = 1; k < n; k++) {
@@ -137,7 +137,7 @@ export function sampleRoute(waypoints, { spacingNm = 5, maxSamples = 400 } = {})
 // perpendicular to the local track. Used for "highest terrain within N NM",
 // which a centerline cannot answer.
 //
-// offsets are in NM, signed — negative is left of track, positive is right.
+// offsets are in NM, signed. Negative is left of track, positive is right.
 // Returns a flat array of {lat, lon, distNm, legIndex, offsetNm}; the
 // centerline itself is included when 0 is among the offsets.
 export function widenCorridor(samples, { offsetsNm = [-5, 0, 5] } = {}) {
@@ -159,7 +159,7 @@ export function widenCorridor(samples, { offsetsNm = [-5, 0, 5] } = {}) {
   return out
 }
 
-// Bounding box of a sample set, padded in NM — for area queries (airports,
+// Bounding box of a sample set, padded in NM, for area queries (airports,
 // SUA, parks) that take an envelope.
 export function bboxOf(samples, padNm = 0) {
   if (!samples?.length) return null

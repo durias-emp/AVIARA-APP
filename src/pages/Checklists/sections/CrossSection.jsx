@@ -1,6 +1,6 @@
 // Vertical weather cross-section along the route.
 //
-// Departure on the left, destination on the right, altitude up the side — the
+// Departure on the left, destination on the right, altitude up the side. The
 // view a pilot already has in their head when they ask "what am I flying
 // through?". Plain SVG rather than a chart library: the shapes here are cloud
 // shading, hazard bands and wind barbs, none of which a generic chart draws.
@@ -75,7 +75,7 @@ export default function CrossSection({ data, dep, dest, chosenAltFt }) {
             ) : null
           )))}
 
-          {/* Hazard bands — solid when official, dashed when modelled */}
+          {/* Hazard bands: solid when official, dashed when modelled */}
           {data.bands.map((b, i) => (
             <rect key={`b${i}`}
               x={xOf(b.fromDistNm)} y={yOf(Math.min(b.topFt, topFt))}
@@ -87,7 +87,7 @@ export default function CrossSection({ data, dep, dest, chosenAltFt }) {
               strokeDasharray={b.official ? undefined : '4 3'} />
           ))}
 
-          {/* Freezing level — omitted rather than drawn off the top when it
+          {/* Freezing level: omitted rather than drawn off the top when it
               sits above the altitudes this flight is choosing between. */}
           {data.freezingFt?.some(f => f != null && f <= topFt) && (
             <polyline
@@ -154,7 +154,7 @@ export default function CrossSection({ data, dep, dest, chosenAltFt }) {
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 6, fontSize: 9.5, color: 'var(--text-tertiary)' }}>
         {data.freezingFt?.some(f => f != null && f <= topFt) && (
-          <span><span style={{ color: '#5AC8FA' }}>——</span> freezing level</span>
+          <span><span style={{ color: '#5AC8FA' }}>. . </span> freezing level</span>
         )}
         {!data.skyMissing && data.freezingFt?.every(f => f == null || f > topFt) && (
           <span>freezing level above {Math.round(topFt / 1000)},000 ft</span>
@@ -162,18 +162,18 @@ export default function CrossSection({ data, dep, dest, chosenAltFt }) {
         {data.cloudMissing && (
           // Wind and temperature are real here; cloud simply is not part of
           // the FB product. Saying which is missing beats one vague caveat.
-          <span style={{ color: 'var(--warn)' }}>no cloud layer — FAA winds aloft carries wind and temperature only</span>
+          <span style={{ color: 'var(--warn)' }}>no cloud layer. FAA winds aloft carries wind and temperature only</span>
         )}
         {data.skyMissing && (
           // Said plainly, because an empty sky on this chart must not be
           // mistaken for a clear one.
           <span style={{ color: 'var(--warn)' }}>
-            no cloud, wind or freezing level — the forecast service did not answer
+            no cloud, wind or freezing level. The forecast service did not answer
           </span>
         )}
         <span><span style={{ color: 'rgba(90,200,250,0.9)' }}>▢</span> icing</span>
         <span><span style={{ color: 'var(--warn)' }}>▨</span> turbulence</span>
-        <span><span style={{ color: 'var(--accent)' }}>——</span> your altitude</span>
+        <span><span style={{ color: 'var(--accent)' }}>. . </span> your altitude</span>
         {data.recommendedAltFt !== chosen && <span><span style={{ color: 'var(--ok)' }}>- -</span> recommended</span>}
         {anyModelled && <span>dashed outline = modelled, not an official forecast</span>}
       </div>

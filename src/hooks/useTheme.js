@@ -6,7 +6,7 @@ function currentTheme() {
   return mq.matches ? 'dark' : 'light'
 }
 
-// Paint the browser and PWA chrome — the status bar area on iOS — the same
+// Paint the browser and PWA chrome. The status bar area on iOS. The same
 // colour as the app's own background.
 //
 // This is done from here rather than with media-scoped <meta> tags because iOS
@@ -24,7 +24,7 @@ function paintChrome() {
     document.head.appendChild(meta)
   }
   meta.setAttribute('content', bg)
-  // color-scheme stays in the stylesheet, where it is keyed to data-theme —
+  // color-scheme stays in the stylesheet, where it is keyed to data-theme. 
   // setting it here as well would override the red palette's dark scheme with
   // whatever the system happens to be.
 }
@@ -45,7 +45,7 @@ export function useTheme() {
   useEffect(() => {
     const sync = () => setTheme(currentTheme())
     mq.addEventListener('change', sync)
-    // A backstop for the change event being missed — which is what happens when
+    // A backstop for the change event being missed, which is what happens when
     // the appearance flips while the app is in the background, or on a schedule
     // the page was never told about. Re-reading on the way back in means the
     // theme is right by the time anything is on screen, rather than waiting for

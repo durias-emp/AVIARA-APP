@@ -73,7 +73,7 @@ function GenerateIconButton({ aircraftName, onGenerated }) {
     }}>
       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Generate aircraft icon</div>
       <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: -4 }}>
-        Describe your aircraft — model name is enough, add details if you want.
+        Describe your aircraft. Model name is enough, add details if you want.
       </div>
       <input
         autoFocus
@@ -122,7 +122,7 @@ function GenerateIconButton({ aircraftName, onGenerated }) {
   )
 }
 
-/* ── Hobbs time entry — cumulative aircraft hours, odometer-style ──
+/* ── Hobbs time entry. Cumulative aircraft hours, odometer-style ──
    Single digit buffer, right-aligned: typing pushes older digits left,
    same feel as a price/odometer input rather than 6 separately-tabbed boxes. ── */
 function HobbsTimeModal({ onCancel, onConfirm, initialValue }) {
@@ -303,7 +303,7 @@ export const TEMPLATES = [
     fuel: { total: '406.8 USG', usable: '402 USG', type: 'Jet-A' },
     burnRate: { climb: '75 GPH', cruise: '58 GPH' },
     perf: { toRoll: '1,180 ft', to50ft: '2,485 ft', ldgRoll: '1,800 ft', ldg50ft: '2,170 ft', roc: '1,920 fpm', ceiling: '30,000 ft' },
-    notes: 'PT6E-67XP, 1,200 SHP. EPECS (FADEC + autothrottle), single-lever. Pressurized to 30,000 ft. VMO 240 KCAS / M0.49. VFE by flap setting — verify AFM.',
+    notes: 'PT6E-67XP, 1,200 SHP. EPECS (FADEC + autothrottle), single-lever. Pressurized to 30,000 ft. VMO 240 KCAS / M0.49. VFE by flap setting. Verify AFM.',
   },
   {
     id: 'ka350',
@@ -316,7 +316,7 @@ export const TEMPLATES = [
     fuel: { total: '544 USG', usable: '539 USG', type: 'Jet-A' },
     burnRate: { climb: '130 GPH', cruise: '96 GPH' },
     perf: { toRoll: '1,940 ft', to50ft: '3,300 ft', ldgRoll: '2,100 ft', ldg50ft: '2,550 ft', roc: '2,731 fpm', ceiling: '35,000 ft' },
-    notes: '2× PT6A-60A (1,050 SHP). Pressurized, winglets. VMO 260 KIAS / M0.58. V1 ≈ 99, Vr ≈ 104, V2 ≈ 109, Vmca 93 — compute per weight/condition. VFE 202 kt approach, 158 kt full. Burn at LRC FL350.',
+    notes: '2× PT6A-60A (1,050 SHP). Pressurized, winglets. VMO 260 KIAS / M0.58. V1 ≈ 99, Vr ≈ 104, V2 ≈ 109, Vmca 93. Compute per weight/condition. VFE 202 kt approach, 158 kt full. Burn at LRC FL350.',
   },
   // ── Helicopters ─────────────────────────────────────────
   {
@@ -389,7 +389,7 @@ function deepMerge(base, overrides) {
 }
 
 
-/* ── Airworthiness — documents + inspections, moved here from Currency so
+/* ── Airworthiness: documents + inspections, moved here from Currency so
    it lives alongside the aircraft it describes. Still reads/writes the same
    currency/profile.airworthy data other parts of the app depend on
    (getCurrencyStatus, the Checklists "IM AIRWORTHY" item). ── */
@@ -397,21 +397,21 @@ const WARN_DAYS_DEFAULT = 30
 const WARN_HOURS_DEFAULT = 10 // hrs before an hour-based inspection is "expiring"
 
 const ARROW_DOCS = [
-  { key: 'crew',      label: 'C — Crew documents (license · photo ID · medical)', far: FAR.crewDocs },
-  { key: 'airworth',  label: 'A — Certificate of Airworthiness',                  far: FAR.airworthCert },
-  { key: 'reg',       label: 'R — Certificate of Registration',                   far: FAR.registration },
-  { key: 'radio',     label: 'R — Radio License (FCC / international)',            far: null },
-  { key: 'oplim',     label: 'O — Operating Limitations (AFM / POH)',             far: FAR.opLimitations },
-  { key: 'wb',        label: 'W — Weight &amp; Balance data',                     far: FAR.weightBalance },
+  { key: 'crew',      label: 'C: Crew documents (license · photo ID · medical)', far: FAR.crewDocs },
+  { key: 'airworth',  label: 'A: Certificate of Airworthiness',                  far: FAR.airworthCert },
+  { key: 'reg',       label: 'R: Certificate of Registration',                   far: FAR.registration },
+  { key: 'radio',     label: 'R: Radio License (FCC / international)',            far: null },
+  { key: 'oplim',     label: 'O: Operating Limitations (AFM / POH)',             far: FAR.opLimitations },
+  { key: 'wb',        label: 'W: Weight &amp; Balance data',                     far: FAR.weightBalance },
   { key: 'insurance', label: 'Insurance current',                                  far: null },
 ]
 
 // Inspections with calendar-month expiry
 const INSPECTIONS = [
   { key: 'annualDate',      label: 'Annual Inspection',        months: 12, far: FAR.annual,      unit: 'date',  hint: '12 calendar months' },
-  { key: 'transponderDate', label: 'Transponder (24-mo)',       months: 24, far: FAR.transponder, unit: 'date',  hint: '24 calendar months — FAR 91.413' },
-  { key: 'pitotDate',       label: 'Pitot-Static / Altimeter', months: 24, far: FAR.pitotStatic, unit: 'date',  hint: '24 calendar months — IFR required — FAR 91.411' },
-  { key: 'eltDate',         label: 'ELT Battery',              months: null, far: FAR.elt,         unit: 'date',  hint: 'Per manufacturer / FAR 91.207 — enter expiry date' },
+  { key: 'transponderDate', label: 'Transponder (24-mo)',       months: 24, far: FAR.transponder, unit: 'date',  hint: '24 calendar months. FAR 91.413' },
+  { key: 'pitotDate',       label: 'Pitot-Static / Altimeter', months: 24, far: FAR.pitotStatic, unit: 'date',  hint: '24 calendar months. IFR required. FAR 91.411' },
+  { key: 'eltDate',         label: 'ELT Battery',              months: null, far: FAR.elt,         unit: 'date',  hint: 'Per manufacturer / FAR 91.207. Enter expiry date' },
   { key: 'oilDate',         label: 'Oil Change',               months: null, far: null,            unit: 'hours', hint: null },
   { key: 'hundredHrHours',  label: '100-hr Inspection',        months: null, far: FAR.hundredHour, unit: 'hours', hint: null },
 ]
@@ -438,13 +438,13 @@ function sbSearchUrl(make) {
   return `https://www.google.com/search?q=${q}`
 }
 
-// AD lookup — queries the Federal Register's public API (the only official,
+// AD lookup: queries the Federal Register's public API (the only official,
 // free, CORS-open source for AD text; FAA's own DRS/registry have no public
 // API) for Final Rule documents mentioning this make/model. This is a
-// keyword match on document titles, not a serial-number eligibility check —
+// keyword match on document titles, not a serial-number eligibility check. 
 // always shown with a disclaimer to verify via FAA DRS / an A&P.
 // AD titles never include a model's trailing letter suffix as a literal
-// token (e.g. "King Air 350i" is filed under "350", "172S" under "172") —
+// token (e.g. "King Air 350i" is filed under "350", "172S" under "172"). 
 // searching with the suffix attached reliably returns zero results. Strips
 // a letter (or letter+digit, e.g. "G6") tail off the last numeric token.
 function simplifyModel(model) {
@@ -488,7 +488,7 @@ function AdSbLookup({ make, model, year }) {
     // Try, in priority order, stopping at the first query that returns hits so
     // the pilot always sees something useful:
     //   make+model+year -> make+model -> make+numeric-core model -> make alone.
-    // Year goes FIRST only as an optional refinement — AD titles almost never
+    // Year goes FIRST only as an optional refinement. AD titles almost never
     // contain the model year (a 2024 AD can apply to a 1978 airframe), so a
     // year-qualified search usually returns nothing and we fall straight back
     // to the make/model results. It can only add precision, never zero them out.
@@ -511,7 +511,7 @@ function AdSbLookup({ make, model, year }) {
     }
 
     run()
-      .catch(() => { if (!cancelled) setError('Could not reach the Federal Register — check your connection and try again.') })
+      .catch(() => { if (!cancelled) setError('Could not reach the Federal Register. Check your connection and try again.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [make, model, year])
@@ -549,7 +549,7 @@ function AdSbLookup({ make, model, year }) {
           </div>
         )}
         <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 8, lineHeight: 1.5 }}>
-          Title/keyword search only, not an applicability check — verify with the FAA's DRS or your A&amp;P/IA.
+          Title/keyword search only, not an applicability check. Verify with the FAA's DRS or your A&amp;P/IA.
         </div>
       </div>
 
@@ -564,7 +564,7 @@ function AdSbLookup({ make, model, year }) {
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Search {make} Service Bulletins</span>
         </a>
         <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 8, lineHeight: 1.5 }}>
-          No centralized SB database exists — this searches for the right manufacturer portal.
+          No centralized SB database exists. This searches for the right manufacturer portal.
         </div>
       </div>
     </>
@@ -588,7 +588,7 @@ function AirworthinessBadge({ status }) {
   )
 }
 
-// Compliance status for one AD entry — same status vocabulary as the
+// Compliance status for one AD entry, same status vocabulary as the
 // inspection rows (valid/expiring/expired/incomplete) via the shared
 // currency helpers, so the AirworthinessBadge renders consistently.
 function adStatus(ad, currentHobbs) {
@@ -752,13 +752,13 @@ function CheckRowSimple({ checked, onChange, label, far, padding = '10px 14px' }
         )}
       </div>
       <span style={{ flex: 1, display: 'flex', alignItems: 'baseline', gap: 5, minWidth: 0 }}>
-        {label.includes(' — ') ? (
+        {label.includes(': ') ? (
           <>
             <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.2px', flexShrink: 0 }}>
-              {label.split(' — ')[0]}
+              {label.split(': ')[0]}
             </span>
             <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {label.split(' — ')[1]}
+              {label.split(': ')[1]}
             </span>
           </>
         ) : (
@@ -770,7 +770,7 @@ function CheckRowSimple({ checked, onChange, label, far, padding = '10px 14px' }
   )
 }
 
-// Read-only digit boxes showing the current Hobbs reading — placed above
+// Read-only digit boxes showing the current Hobbs reading. Placed above
 // the next-due field so the user has it in view while entering a value.
 function CurrentHobbsBoxes({ value }) {
   if (value == null) return null
@@ -962,7 +962,7 @@ export default function Aircraft() {
     get('currency', 'profile').then(saved => setCurrencyData(saved ?? {}))
   }, [])
 
-  // Airworthiness — patches only the `airworthy` key of the shared currency
+  // Airworthiness: patches only the `airworthy` key of the shared currency
   // record, leaving `safe`/`current`/`medical` (owned by the Currency page)
   // untouched.
   function patchAirworthyDocs(key, val) {
@@ -986,7 +986,7 @@ export default function Aircraft() {
     })
   }
 
-  // AD compliance log — a manual list under airworthy.ads, filled from the
+  // AD compliance log: a manual list under airworthy.ads, filled from the
   // aircraft's logbook AD-compliance record. Each entry tracks its own
   // recurring/one-time status; mirrors patchAirworthyInsp's write path.
   function writeAds(mapper) {
@@ -1064,7 +1064,7 @@ export default function Aircraft() {
     })
   }
 
-  // ── Weight & Balance setup — belongs to this aircraft's profile, never a
+  // ── Weight & Balance setup. Belongs to this aircraft's profile, never a
   // generic per-model default. `path` is ['bew','weight'] / ['maxTOW'] / etc. ──
   function patchWB(path, value) {
     setProfile(prev => {
@@ -1155,7 +1155,7 @@ export default function Aircraft() {
     ? ['Pilot', 'Front Pax', 'Rear Pax', 'Baggage']
     : ['Pilot & Front Pax', 'Rear Pax', 'Baggage']
 
-  // Airworthiness — worst status across docs + inspections
+  // Airworthiness: worst status across docs + inspections
   const airworthy = currencyData?.airworthy ?? {}
   const airworthyDocs = airworthy.docs ?? {}
   const docsComplete = ARROW_DOCS.filter(d => !d.key.includes('insurance')).every(d => airworthyDocs[d.key])
@@ -1194,7 +1194,7 @@ export default function Aircraft() {
         {/* Aircraft hero */}
         <div style={{ position: 'relative' }}>
 
-          {/* Hover/swipe zone — wraps dots + image */}
+          {/* Hover/swipe zone: wraps dots + image */}
           <div
             onMouseEnter={showNavHints}
             onMouseLeave={hideNavHints}
@@ -1278,7 +1278,7 @@ export default function Aircraft() {
           </div>
           </div>{/* end hover/swipe zone */}
 
-          {/* Generate icon button — only when no built-in template image exists */}
+          {/* Generate icon button, only when no built-in template image exists */}
           {!activeTemplate?.image && (
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10, marginBottom: 4 }}>
               <GenerateIconButton
@@ -1290,7 +1290,7 @@ export default function Aircraft() {
             </div>
           )}
 
-          {/* Name + reg — centered */}
+          {/* Name + reg. Centered */}
           <div key={slideKey} style={{ position: 'relative', zIndex: 1, textAlign: 'center', marginBottom: 14, animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.35s cubic-bezier(0.25,0.46,0.45,0.94) both` : 'none' }}>
             <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.5px', lineHeight: 1.1 }}>
               {displayName}
@@ -1360,7 +1360,7 @@ export default function Aircraft() {
         <Section title="Airworthiness Directives & Service Bulletins">
           <AdSbLookup make={profile.make} model={profile.model} year={profile.year} />
 
-          {/* AD compliance log — filled from the aircraft's logbook AD record */}
+          {/* AD compliance log. Filled from the aircraft's logbook AD record */}
           <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
               AD Compliance Log
@@ -1439,7 +1439,7 @@ export default function Aircraft() {
 
           {!wbConfigured && (
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-card-2)', borderRadius: 10, padding: '9px 11px', lineHeight: 1.5 }}>
-              Not configured yet — the Weight & Balance checklist item won't compute results until you fill in
+              Not configured yet. The Weight & Balance checklist item won't compute results until you fill in
               this aircraft's actual numbers below.
             </div>
           )}
@@ -1535,7 +1535,7 @@ export default function Aircraft() {
             <Chip label="+ Add Point" onClick={() => addWBPoint('longEnvelopePoints', { cg: '', weight: '' })} accent />
           </div>
 
-          {/* Lateral envelope — optional */}
+          {/* Lateral envelope: optional */}
           <div>
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 2 }}>
               Lateral CG Limits (optional, mainly helicopters)

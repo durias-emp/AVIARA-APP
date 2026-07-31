@@ -5,19 +5,19 @@
 // flagged "overwater"), and three hardcoded lat/lon boxes for the Caribbean,
 // Gulf and Pacific fired even when the route was over land inside them.
 //
-// What a pilot actually needs before an overwater leg is not a yes/no chip —
+// What a pilot actually needs before an overwater leg is not a yes/no chip. 
 // it is how far from shore they get and for how long, because that is what
 // decides life jackets vs. a raft, and whether the glide range ever reaches
 // land. So this reports distances, not a boolean.
 //
-// Data: src/data/geo/land.json (Natural Earth 10m, public domain, bundled —
+// Data: src/data/geo/land.json (Natural Earth 10m, public domain, bundled. 
 // see scripts/build_geo_pack.py). Bundled rather than queried because this is
 // a preflight equipment decision that must resolve with no signal.
 
 import { sampleRoute, haversineNm } from './corridor'
 
 let _land = null
-// The coastline is no longer precached — it downloads the first time a route
+// The coastline is no longer precached. It downloads the first time a route
 // is analysed and stays cached after that. Before that first fetch it needs a
 // connection, so a failure here is a real state the caller has to report
 // rather than quietly read as "no water on this route".
@@ -62,7 +62,7 @@ function inSet(lat, lon, polys, rings, bbox) {
 
 // Land = inside a land polygon and not inside a lake. Natural Earth's land
 // layer does not cut lakes out, so without the second test the Great Lakes
-// read as solid ground — and a Chicago–Muskegon crossing is precisely the leg
+// read as solid ground, and a Chicago–Muskegon crossing is precisely the leg
 // this is here to flag.
 export function isLand(lat, lon, land) {
   if (!inSet(lat, lon, land.polys, land.rings, land.bbox)) return false
@@ -113,7 +113,7 @@ function nmToShore(lat, lon, land, capNm = 600) {
 // Returns:
 //   { status: 'ok', overwater: bool, overwaterNm, longestLegNm,
 //     maxFromShoreNm, atDistNm, pctOverwater, spacingNm, lengthNm }
-//   { status: 'empty' } — fewer than two waypoints
+//   { status: 'empty' }: fewer than two waypoints
 //
 // Distances are quantised to the sample spacing: a sample is credited with
 // the half-interval either side of it, so a crossing shorter than the spacing

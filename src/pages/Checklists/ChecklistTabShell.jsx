@@ -26,7 +26,7 @@ function PaneActivityProvider({ onActiveChange, children }) {
   return <PaneActivityContext.Provider value={value}>{children}</PaneActivityContext.Provider>
 }
 
-/* ── Full-screen tabbed step navigation — one section per tab,
+/* ── Full-screen tabbed step navigation, one section per tab,
    fixed tab bar at the bottom, sections slide horizontally as a
    single translated track. Index-based positioning makes tap
    navigation direction-correct automatically; a drag gesture on
@@ -66,7 +66,7 @@ export default function ChecklistTabShell({
   }, [])
 
   function onTouchStart(e) {
-    // Gestures that start on a map belong to the map (pan/zoom/long-press) —
+    // Gestures that start on a map belong to the map (pan/zoom/long-press). 
     // never turn them into tab swipes. This was the "glitchy map" bug: any
     // horizontal pan on the route map dragged the whole checklist sideways.
     if (e.target.closest?.('.leaflet-container')) return
@@ -77,7 +77,7 @@ export default function ChecklistTabShell({
       width: containerRef.current?.clientWidth || 1,
       tracking: true,
       // Nothing is a swipe until it proves horizontal. Flipping state on every
-      // touchstart re-rendered the track — including its transition property —
+      // touchstart re-rendered the track, including its transition property. 
       // at the instant a finger landed, which is enough for iOS to abandon the
       // scroll it was about to start.
       committed: false,
@@ -91,7 +91,7 @@ export default function ChecklistTabShell({
     const dx = t.clientX - g.startX
     const dy = Math.abs(t.clientY - g.startY)
 
-    // Vertical-dominant gesture — this is a scroll, not a tab swipe. Bail out
+    // Vertical-dominant gesture: this is a scroll, not a tab swipe. Bail out
     // and let the pane's own overflowY handle it, without touching state:
     // a re-render here lands mid-scroll.
     if (dy > MAX_VERTICAL_DRIFT && dy > Math.abs(dx)) {
@@ -100,7 +100,7 @@ export default function ChecklistTabShell({
       return
     }
 
-    // Horizontal enough to be a swipe — only now does the track start moving.
+    // Horizontal enough to be a swipe, only now does the track start moving.
     if (!g.committed) {
       if (Math.abs(dx) < MAX_VERTICAL_DRIFT) return
       g.committed = true
@@ -158,7 +158,7 @@ export default function ChecklistTabShell({
               <div className="content-column" style={{
                 paddingBottom: footerHeight,
                 // Grow past the pane when the content is taller, fill it when
-                // it is shorter — which is what lets collapsed cards share the
+                // it is shorter, which is what lets collapsed cards share the
                 // screen instead of stacking at the top of it.
                 flex: '1 0 auto', display: 'flex', flexDirection: 'column',
               }}>

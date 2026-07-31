@@ -130,21 +130,21 @@ describe('ageAt', () => {
 // medicalExpiryMonths
 // ---------------------------------------------------------------------------
 describe('medicalExpiryMonths', () => {
-  // Private / recreational — under 40
+  // Private / recreational, under 40
   it('any class + private + under 40 -> 60 months', () => {
     expect(medicalExpiryMonths(1, 'private', 35)).toBe(60)
     expect(medicalExpiryMonths(2, 'private', 35)).toBe(60)
     expect(medicalExpiryMonths(3, 'private', 35)).toBe(60)
   })
 
-  // Private — 40 or older
+  // Private: 40 or older
   it('any class + private + over 40 -> 24 months', () => {
     expect(medicalExpiryMonths(1, 'private', 40)).toBe(24)
     expect(medicalExpiryMonths(2, 'private', 55)).toBe(24)
     expect(medicalExpiryMonths(3, 'private', 40)).toBe(24)
   })
 
-  // Commercial — 1st or 2nd class
+  // Commercial: 1st or 2nd class
   it('1st class + commercial -> 12 months (age-independent)', () => {
     expect(medicalExpiryMonths(1, 'commercial', 35)).toBe(12)
     expect(medicalExpiryMonths(1, 'commercial', 45)).toBe(12)
@@ -159,7 +159,7 @@ describe('medicalExpiryMonths', () => {
     expect(medicalExpiryMonths(3, 'commercial', 35)).toBe(null)
   })
 
-  // ATP — 1st class only
+  // ATP: 1st class only
   it('1st class + ATP + under 40 -> 12 months', () => {
     expect(medicalExpiryMonths(1, 'atp', 35)).toBe(12)
   })

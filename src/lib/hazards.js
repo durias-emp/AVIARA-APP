@@ -2,7 +2,7 @@
 //
 // Two sources, and the difference between them is never blurred:
 //
-//   OFFICIAL  G-AIRMET, the FAA's own graphical AIRMET — real forecast areas
+//   OFFICIAL  G-AIRMET, the FAA's own graphical AIRMET. Real forecast areas
 //             with a severity and published base/top. United States only.
 //   MODELLED  Derived here from the Open-Meteo profile where no official
 //             product exists: icing from the classic temperature/humidity
@@ -12,7 +12,7 @@
 //             an altitude from the list, and count half in the score.
 //
 // Where an official band covers a level, the modelled band for that level is
-// dropped rather than merged — a hazard should have one provenance, not a
+// dropped rather than merged. A hazard should have one provenance, not a
 // blend of a forecast and an inference.
 
 import { sampleRoute } from './corridor'
@@ -51,7 +51,7 @@ async function fetchGairmet(hazard, timeoutMs) {
   const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
   if (!res.ok) throw new Error(String(res.status))
   // AWC answers 204 with an empty body when the product is current and holds
-  // nothing — no icing G-AIRMETs anywhere in the country, which is ordinary on
+  // nothing: no icing G-AIRMETs anywhere in the country, which is ordinary on
   // a summer afternoon. Parsing that as JSON throws, and the rejection used to
   // be read as "the service is down", which downgraded coverage to none and
   // sent the card looking for a modelled substitute. "Asked, and there is
@@ -64,7 +64,7 @@ async function fetchGairmet(hazard, timeoutMs) {
 }
 
 // Bands from the official product, clipped to the part of the route inside
-// each area — a band that touches 10 NM of a 500 NM route should not read the
+// each area: a band that touches 10 NM of a 500 NM route should not read the
 // same as one that covers the whole thing.
 function officialBands(records, samples, kind) {
   const out = []
@@ -209,7 +209,7 @@ export async function analyzeHazards(waypoints, atmo, { timeoutMs = 10000 } = {}
   if (atmo?.status === 'ok') {
     // The modelled icing envelope needs humidity and cloud. The FB fallback
     // carries neither, and every comparison against null quietly returns
-    // false — which would produce an empty band list labelled 'modelled',
+    // false, which would produce an empty band list labelled 'modelled',
     // i.e. "we checked and found nothing" when nothing was checked.
     if (coverage.icing !== 'official' && !atmo.cloudMissing) {
       icing = collapse(atmo.columns.map(icingFromProfile), 'icing', atmo.samples)
@@ -221,8 +221,8 @@ export async function analyzeHazards(waypoints, atmo, { timeoutMs = 10000 } = {}
     }
   }
 
-  // Convection is not an altitude-selection problem — you go around it, not
-  // over it in a light aircraft — so it is reported as a route advisory rather
+  // Convection is not an altitude-selection problem. You go around it, not
+  // over it in a light aircraft, so it is reported as a route advisory rather
   // than pretending some level is smooth.
   const maxCape = atmo?.status === 'ok'
     ? Math.max(0, ...atmo.surface.map(s => s.capeJkg ?? 0))

@@ -107,10 +107,10 @@ export function DensityAltItem({ item, isChecked, onToggle }) {
     : densityAlt > 2000 ? '#FFD60A'
     : 'var(--ok)'
   const daLabel = densityAlt == null ? '—'
-    : densityAlt > 8000 ? 'HIGH — significant perf loss'
-    : densityAlt > 5000 ? 'ELEVATED — check POH tables'
-    : densityAlt > 2000 ? 'MODERATE — verify climb gradient'
-    : 'NORMAL — standard conditions'
+    : densityAlt > 8000 ? 'HIGH. Significant perf loss'
+    : densityAlt > 5000 ? 'ELEVATED. Check POH tables'
+    : densityAlt > 2000 ? 'MODERATE. Verify climb gradient'
+    : 'NORMAL. Standard conditions'
 
   const Field = ({ label, value, onChange, unit, placeholder }) => (
     <div style={{ flex: 1, minWidth: 80 }}>
@@ -273,7 +273,7 @@ function toCardinal(deg) {
   return dirs[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16]
 }
 
-/* ── Field tooltip — fixed position, escapes any overflow:hidden parent ── */
+/* ── Field tooltip: fixed position, escapes any overflow:hidden parent ── */
 function FieldTip({ label, tip, children, style: outerStyle }) {
   const [pos, setPos] = useState(null)
   const labelRef = useRef(null)
@@ -439,7 +439,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
       // Auto-fill the POH chart's baseline weight from the aircraft's max
       // takeoff weight (the weight most POH takeoff/landing charts are
       // built around), and the actual weight from the W&B checklist's
-      // computed all-up weight. Both stay editable — the pilot confirms.
+      // computed all-up weight. Both stay editable. The pilot confirms.
       const cfg = profile ? getWBConfig(profile) : null
       if (!saved?.dep?.pohWeight && cfg?.maxTOW) setDep(prev => ({ ...prev, pohWeight: String(cfg.maxTOW) }))
       if (!saved?.arr?.pohWeight && cfg?.maxTOW) setArr(prev => ({ ...prev, pohWeight: String(cfg.maxTOW) }))
@@ -484,7 +484,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
   const slopeFactorTO = 1 + Math.max(0, slopePct) * 0.07 - Math.max(0, -slopePct) * 0.02
   const slopeFactorLD = 1 + Math.max(0, -slopePct) * 0.05 - Math.max(0, slopePct) * 0.02
 
-  // Weight factor — POH ground-roll/50ft numbers are calibrated at a chart
+  // Weight factor: POH ground-roll/50ft numbers are calibrated at a chart
   // baseline weight (usually max gross); distance scales roughly with the
   // square of the weight ratio (lift/energy relationship), clamped so a
   // missing or clearly-wrong weight entry can't blow up the estimate.
@@ -652,7 +652,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
           </FieldTip>
 
           {/* Wind component */}
-          <FieldTip label="Wind Comp" tip="Headwind (HW) shortens distances. Tailwind (TW) increases them — a 10kt tailwind adds ~50% to your roll.">
+          <FieldTip label="Wind Comp" tip="Headwind (HW) shortens distances. Tailwind (TW) increases them. A 10kt tailwind adds ~50% to your roll.">
             <div style={{ height: 36, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: 'var(--bg-card-2)', borderRadius: 7 }}>
               {cur.windDir === 'VRB' && !isNaN(wSpd)
@@ -704,7 +704,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
           </div>
         </div>
 
-        {/* Baseline alt — full width, compact */}
+        {/* Baseline alt: full width, compact */}
         <div style={{ marginBottom: 8 }}>
           <FieldTip label="Baseline Altitude" tip="The reference altitude your POH table is based on. Almost all light aircraft use sea level (0 ft).">
             <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-card-2)',
@@ -717,9 +717,9 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
           </FieldTip>
         </div>
 
-        {/* Weight — POH chart baseline vs. actual, side by side */}
+        {/* Weight: POH chart baseline vs. actual, side by side */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-          <FieldTip label="POH Chart Weight" tip="The weight your POH takeoff/landing table is built around — usually max gross. Auto-filled from the Aircraft profile.">
+          <FieldTip label="POH Chart Weight" tip="The weight your POH takeoff/landing table is built around, usually max gross. Auto-filled from the Aircraft profile.">
             <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-card-2)',
               borderRadius: 8, padding: '8px 10px', gap: 3 }}>
               <input type="number" value={cur.pohWeight} onChange={e => updCur({ pohWeight: e.target.value })}
@@ -728,7 +728,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)', flexShrink: 0 }}>lb</span>
             </div>
           </FieldTip>
-          <FieldTip label={`Actual ${isDepTab ? 'Takeoff' : 'Landing'} Weight`} tip="Auto-filled from your Weight & Balance checklist — confirm it matches, or edit if this leg's weight is different (e.g. landing weight after fuel burn).">
+          <FieldTip label={`Actual ${isDepTab ? 'Takeoff' : 'Landing'} Weight`} tip="Auto-filled from your Weight & Balance checklist. Confirm it matches, or edit if this leg's weight is different (e.g. landing weight after fuel burn).">
             <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-card-2)',
               borderRadius: 8, padding: '8px 10px', gap: 3 }}>
               <input type="number" value={cur.actualWeight} onChange={e => updCur({ actualWeight: e.target.value })}
@@ -820,7 +820,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
 
             {/* Critical number */}
             <div style={{ position: 'relative', marginBottom: 6 }}>
-              <FieldTip label="Required Runway" tip="The minimum runway length needed today. Your available runway must exceed this number — if it doesn't, do not depart." style={{ flex: 'unset' }}>
+              <FieldTip label="Required Runway" tip="The minimum runway length needed today. Your available runway must exceed this number, if it doesn't, do not depart." style={{ flex: 'unset' }}>
                 {(() => {
                   const warn = (isDepTab ? toOverc : ldgOverc) > 3000
                   return (
@@ -880,7 +880,7 @@ export function PerfDistItem({ item, isChecked, onToggle }) {
             </div>
 
             <div style={{ fontSize: 10, color: 'var(--text-tertiary)', textAlign: 'center', marginBottom: 14, lineHeight: 1.4 }}>
-              Planning aid only — an estimate, not a substitute for your POH performance charts. Always verify against the POH before flight.
+              Planning aid only. An estimate, not a substitute for your POH performance charts. Always verify against the POH before flight.
             </div>
           </>
         )}
@@ -911,13 +911,13 @@ export function CruiseItem({ item, isChecked, onToggle }) {
   const [burnRate,  setBurnRate]  = useState('')   // GPH
   const [fuelOnBoard, setFuelOnBoard] = useState('') // usable gallons
   const [flightRules, setFlightRules] = useState('VFR') // VFR | IFR
-  const [timeOfDay, setTimeOfDay] = useState('day') // day | night — VFR reserve only (91.151)
+  const [timeOfDay, setTimeOfDay] = useState('day') // day | night. VFR reserve only (91.151)
   const [isHelicopter, setIsHelicopter] = useState(false)
 
   // Auto-filled
   const [routeDist, setRouteDist] = useState(null) // nm
   const [windsAloft, setWindsAloft] = useState(null) // { dir, spd, temp } at altitude
-  const [cruiseAlt, setCruiseAlt] = useState('')   // ft — from altitude card or manual
+  const [cruiseAlt, setCruiseAlt] = useState('')   // ft, from altitude card or manual
   const [winding, setWinding]     = useState(false)
   const [routeBearing, setRouteBearing] = useState(null) // magnetic track dep→dest
   const [depIcao, setDepIcao]     = useState('')
@@ -987,7 +987,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
 
   }, [open])
 
-  // Always-on listener — reacts to aircraft preset changes from the takeoff/landing card
+  // Always-on listener: reacts to aircraft preset changes from the takeoff/landing card
   useEffect(() => {
     const onPresetChange = e => {
       const { label, tas, fuelBurn, fuelUsable } = e.detail
@@ -1009,8 +1009,8 @@ export function CruiseItem({ item, isChecked, onToggle }) {
   // column also uses. This card used to carry its own copy, and the two had
   // already drifted: that one read the bulletin by splitting on whitespace,
   // which shifts every level down for a station reporting nothing at 3,000 ft,
-  // dropped the temperature above 24,000 ft where the sign is implicit, and —
-  // worst — fell back to the FIRST station in the bulletin when the departure
+  // dropped the temperature above 24,000 ft where the sign is implicit, and. 
+  // worst: fell back to the FIRST station in the bulletin when the departure
   // was not an FB site, presenting Abilene's wind as though it were yours.
   //
   // The shared version interpolates the three nearest stations to the actual
@@ -1082,8 +1082,8 @@ export function CruiseItem({ item, isChecked, onToggle }) {
   const enduranceH    = (!isNaN(fobN) && !isNaN(burnN) && burnN > 0) ? fobN / burnN : null
   const reserveH      = (enduranceH != null && flightTimeH != null) ? enduranceH - flightTimeH : null
   const reserveMin    = reserveH != null ? Math.round(reserveH * 60) : null
-  // 91.151 (VFR fuel reserve) applies to airplanes only — 30 min day / 45 min
-  // night — and explicitly excludes rotorcraft. Helicopters have no codified
+  // 91.151 (VFR fuel reserve) applies to airplanes only. 30 min day / 45 min
+  // night, and explicitly excludes rotorcraft. Helicopters have no codified
   // Part 91 VFR reserve minimum; 20 min is the common operator/industry
   // standard, not an FAR citation. 91.167 (IFR, 45 min after the alternate)
   // applies to both categories the same, so only the VFR side differs.
@@ -1091,10 +1091,10 @@ export function CruiseItem({ item, isChecked, onToggle }) {
     ? 45
     : isHelicopter ? 20 : (timeOfDay === 'night' ? 45 : 30)
   const reserveRuleNote = flightRules === 'IFR'
-    ? 'FAR 91.167 — 45 min after alternate'
+    ? 'FAR 91.167. 45 min after alternate'
     : isHelicopter
-      ? '20 min — operator standard, no FAR 91.151 minimum for helicopters'
-      : `FAR 91.151 — 30 min day / 45 min night (${timeOfDay})`
+      ? '20 min. Operator standard, no FAR 91.151 minimum for helicopters'
+      : `FAR 91.151. 30 min day / 45 min night (${timeOfDay})`
   const goNoGo        = reserveMin != null ? reserveMin >= reqReserveMin : null
 
   const fmtTime = (h) => {
@@ -1169,7 +1169,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
           </FieldTip>
           <FieldTip label="Flight Rules" tip={
             isHelicopter
-              ? 'Helicopters have no FAR 91.151 VFR reserve — 20 min is the common operator standard. IFR still requires 45 min per 91.167.'
+              ? 'Helicopters have no FAR 91.151 VFR reserve. 20 min is the common operator standard. IFR still requires 45 min per 91.167.'
               : 'VFR requires 30 min day / 45 min night fuel reserve (91.151). IFR requires 45 min (91.167). This sets your minimum reserve check.'
           } style={{ flex: 1 }}>
             <div style={{ display: 'flex', background: 'var(--bg-card-2)', borderRadius: 8, padding: 3 }}>
@@ -1184,7 +1184,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
           </FieldTip>
         </div>
 
-        {/* Day/Night — only affects the airplane VFR reserve (91.151); not
+        {/* Day/Night, only affects the airplane VFR reserve (91.151); not
             shown for IFR (flat 45 min either way) or helicopters (flat 20 min
             operator standard, no day/night split in the FARs to model). */}
         {flightRules === 'VFR' && !isHelicopter && (
@@ -1212,7 +1212,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
               textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
               Winds Aloft{windsAloft ? ` · ${windsAloft.level.toLocaleString()} ft` : ''}
               {/* Which station the forecast actually came from. Only shown
-                  when it is far enough away to matter — near the field it is
+                  when it is far enough away to matter. Near the field it is
                   noise, but a wind interpolated from 90 NM away is a fact the
                   pilot should be able to see. */}
               {windsAloft?.station && windsAloft.stationNm > 40 && (
@@ -1302,7 +1302,7 @@ export function CruiseItem({ item, isChecked, onToggle }) {
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>GPH</span>
             </div>
           </FieldTip>
-          <FieldTip label="Fuel on Board" tip="Usable fuel you're departing with. Do not include unusable fuel — check your POH for usable fuel capacity.">
+          <FieldTip label="Fuel on Board" tip="Usable fuel you're departing with. Do not include unusable fuel. Check your POH for usable fuel capacity.">
             <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-card-2)',
               borderRadius: 8, padding: '8px 10px', gap: 4 }}>
               <input type="number" value={fuelOnBoard} onChange={e => setFuelOnBoard(e.target.value)}
@@ -1572,5 +1572,5 @@ export function CruiseItem({ item, isChecked, onToggle }) {
 }
 
 /* ── Stable wrapper for the Weight & Balance sub-component (lives in
-   its own file already) — module scope, so identity stays stable. ── */
+   its own file already). Module scope, so identity stays stable. ── */
 export function WBExpand(props) { return <WBChecklistItem {...props} ExpandableCard={ExpandableCard} /> }

@@ -157,7 +157,7 @@ function DateField({ label, value, onChange }) {
           // The input is invisible (opacity 0) with the formatted date shown
           // in the styled div above it. Mobile browsers open their picker on
           // any tap of a date input, but desktop browsers only open the
-          // calendar from the (invisible) icon — a plain click just focuses
+          // calendar from the (invisible) icon. A plain click just focuses
           // the hidden field and looks completely dead. showPicker() opens
           // the picker explicitly; guarded because it throws off a user
           // gesture or in cross-origin frames, where the tap-to-focus
@@ -297,7 +297,7 @@ function StepHeader({ step, title, sub }) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 1 — Pilot profile
+// Step 1: Pilot profile
 // ---------------------------------------------------------------------------
 
 function Step1({ draft, update, onNext }) {
@@ -344,7 +344,7 @@ function Step1({ draft, update, onNext }) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 2 — Medical
+// Step 2: Medical
 // ---------------------------------------------------------------------------
 
 function medClassNum(cls) {
@@ -403,7 +403,7 @@ function Step2({ draft, update, onNext, onBack }) {
 }
 
 // ---------------------------------------------------------------------------
-// Flight Review — config-driven (FAR 61.56)
+// Flight Review: config-driven (FAR 61.56)
 // Add new exceptions here without touching the component below.
 // ---------------------------------------------------------------------------
 
@@ -572,7 +572,7 @@ export function FlightReviewSection({ value = {}, onChange }) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 3 — Currency baseline
+// Step 3: Currency baseline
 // ---------------------------------------------------------------------------
 
 function Step3({ draft, update, onNext, onBack, onSkip }) {
@@ -591,7 +591,7 @@ function Step3({ draft, update, onNext, onBack, onSkip }) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 4 — Aircraft
+// Step 4: Aircraft
 // ---------------------------------------------------------------------------
 
 // Sentinel index for the "not finding yours?" custom slide
@@ -639,7 +639,7 @@ function AircraftHeroPicker({ selectedId, onSelect, onCustomName }) {
 
   return (
     <div>
-      {/* Dots — templates + one dot for custom */}
+      {/* Dots: templates + one dot for custom */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 8, opacity: showArrows ? 1 : 0.35, transition: 'opacity 0.3s ease' }}>
         {TEMPLATES.map((t, i) => (
           <div key={t.id} onClick={() => goTo(i)} style={{
@@ -792,7 +792,7 @@ function Step4({ draft, update, onNext, onBack, onSkip }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <AircraftHeroPicker selectedId={selectedId} onSelect={onSelect} onCustomName={onCustomName} />
 
-        {/* Generate custom icon — only show when custom aircraft selected */}
+        {/* Generate custom icon, only show when custom aircraft selected */}
         {isCustom && (!genOpen ? (
           <button
             onClick={() => { setGenOpen(true); setGenName(initialName) }}
@@ -816,7 +816,7 @@ function Step4({ draft, update, onNext, onBack, onSkip }) {
           }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Generate aircraft icon</div>
             <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: -4 }}>
-              Describe your aircraft — model name is enough.
+              Describe your aircraft. Model name is enough.
             </div>
             <input
               autoFocus
@@ -883,7 +883,7 @@ function Step4({ draft, update, onNext, onBack, onSkip }) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 5 — Home base + preferences
+// Step 5: Home base + preferences
 // ---------------------------------------------------------------------------
 
 export const UNIT_ROWS = [
@@ -974,7 +974,7 @@ function Step5({ draft, update, onNext, onBack }) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 6 — Summary
+// Step 6: Summary
 // ---------------------------------------------------------------------------
 
 function SummaryRow({ label, value, color }) {
@@ -1028,7 +1028,7 @@ function Step6({ draft, onBack, onDone }) {
 }
 
 // ---------------------------------------------------------------------------
-// Root — Onboarding
+// Root: Onboarding
 // ---------------------------------------------------------------------------
 
 export default function Onboarding() {
@@ -1073,7 +1073,7 @@ export default function Onboarding() {
       flightReview: draft.flightReview?.completionDate ?? '',
     })
 
-    // Flip onboardingComplete LAST — this triggers the route switch to Home,
+    // Flip onboardingComplete LAST: this triggers the route switch to Home,
     // which mounts WeatherCard and reads 'settings'/homeAirport on mount.
     const savedProfile = { ...draft, onboardingComplete: true }
     await setProfile(savedProfile)

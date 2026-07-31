@@ -6,7 +6,7 @@
 // found on the chart. So a drop offers what is actually there first, and the
 // raw coordinate as the fallback it should be.
 //
-// The data — fixes, navaids, airports — ships with the app but downloads on
+// The data: fixes, navaids, airports. Ships with the app but downloads on
 // first use rather than at install (see vite.config.js), so the picker opens
 // instantly and works with no signal once a route has been planned once.
 
@@ -31,7 +31,7 @@ async function loadNav() {
 const CLASS_LABEL = ['Small', 'Medium', 'Large']
 
 // lat/lon: where the finger landed
-// withinNm: how far to look. 10 NM keeps the list to what is genuinely "here" —
+// withinNm: how far to look. 10 NM keeps the list to what is genuinely "here". 
 //   widen it and a drop in the north-east corridor returns forty airports.
 //
 // Returns [{kind:'AIRPORT'|'VOR'|'FIX', ident, name, lat, lon, distNm, bearing}]
@@ -41,7 +41,7 @@ export async function nearbyPoints(lat, lon, { withinNm = 10, limit = 12 } = {})
   if (!airports) return []
 
   // A degree of latitude is 60 NM; longitude shrinks with the cosine. This box
-  // is only a prefilter — the real test is the haversine below.
+  // is only a prefilter. The real test is the haversine below.
   const dLat = withinNm / 60
   const dLon = withinNm / (60 * Math.max(0.05, Math.cos((lat * Math.PI) / 180)))
   const inBox = (la, lo) => Math.abs(la - lat) <= dLat && Math.abs(lo - lon) <= dLon

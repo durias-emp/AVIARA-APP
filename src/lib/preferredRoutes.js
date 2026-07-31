@@ -39,7 +39,7 @@ export const TYPE_LABEL = {
   NAR: 'North American Route',
 }
 
-// NASR keys airports by their FAA identifier — SAN, not KSAN. A pilot types
+// NASR keys airports by their FAA identifier. SAN, not KSAN. A pilot types
 // the ICAO code, so both spellings have to be tried; outside the US the ICAO
 // code is the only one there is, and simply misses, which is correct.
 function idents(code) {
@@ -50,8 +50,8 @@ function idents(code) {
   return out
 }
 
-// Returns [{d, t, r, a, h, ac, dir, typeLabel}] ordered as published — the
-// routings a light aircraft is actually given first — or [] when there is
+// Returns [{d, t, r, a, h, ac, dir, typeLabel}] ordered as published. The
+// routings a light aircraft is actually given first, or [] when there is
 // nothing published for the pair (which is the common case: 7,661 pairs out
 // of every possible one).
 export async function preferredRoutes(dep, dest) {
@@ -86,7 +86,7 @@ function decorate(r, { basis, from, to, viaField, viaEnd, distNm }) {
 //
 // Only 7,661 pairs are published, and only 3,741 of those have their reverse
 // published too. Two things are usually still worth showing, and both are
-// inferences rather than the FAA's own answer for the route being flown — so
+// inferences rather than the FAA's own answer for the route being flown, so
 // they are kept separate from the exact matches and labelled as what they are.
 
 const NEAR_NM = 30
@@ -103,7 +103,7 @@ function servedIdents(data) {
   return _served
 }
 
-// Fields within 30 NM that the file does have routings for, biggest first —
+// Fields within 30 NM that the file does have routings for, biggest first. 
 // a satellite field's traffic is worked by the same terminal facility, so the
 // routings out of the primary field are the ones being issued in that airspace.
 async function neighbours(code, data, limit = 3) {
@@ -148,7 +148,7 @@ export async function lookupRoutes(dep, dest) {
   warmRouteData()
 
   const exact = await preferredRoutes(dep, dest)
-  // Only worth showing when the real answer is missing — alternatives
+  // Only worth showing when the real answer is missing. Alternatives
   // alongside an exact match are noise, and noise next to a filed route is
   // how the wrong string gets read to clearance delivery.
   if (exact.length) return { exact, reverse: [], nearby: [] }
@@ -196,7 +196,7 @@ function warmRouteData() {
 // Split a published route string into tokens the route card can act on.
 //
 // Three kinds come back, and the difference matters:
-//   AWY   an airway — the app expands it into its fix chain
+//   AWY   an airway: the app expands it into its fix chain
 //   FIX   a fix, navaid or intersection the resolver knows
 //   PROC  everything else, which in practice means a SID or STAR name
 //         (CWARD2, PHLBO4). Those are procedures, not points; expanding them
@@ -219,7 +219,7 @@ export async function classifyRoute(routeString, nearPos, { dep, dest } = {}) {
     if (hit) return { text, kind: 'FIX', resolved: hit }
 
     // A departure is named first in the string and an arrival last, so the
-    // token's position says which airport to ask — and asking the right one
+    // token's position says which airport to ask, and asking the right one
     // stops a STAR at the destination being mistaken for a SID off the
     // departure when both fields happen to publish the same name.
     const first = i === 0

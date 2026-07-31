@@ -1,4 +1,4 @@
-// Controlled airspace along the route — Class B, C and D.
+// Controlled airspace along the route. Class B, C and D.
 //
 // This is a different question from the Special Use Airspace check, which
 // looks for Prohibited/Restricted/Warning/Alert areas and MOAs. Nothing in
@@ -15,7 +15,7 @@
 // clearance before entry.
 //
 // Central America is covered too, from a bundled pack built out of COCESNA's
-// eAIP (see scripts/build_cenamer_airspace.py) — there is no queryable source
+// eAIP (see scripts/build_cenamer_airspace.py): there is no queryable source
 // for that region at all, so the TMAs are parsed from the published prose.
 // Anywhere else, the caller is told the route is not covered rather than shown
 // an empty list.
@@ -44,7 +44,7 @@ async function getCenamer() {
     _cenamer = (await import('../data/geo/cenamer_airspace.json')).default.areas
     return _cenamer
   } catch {
-    return null    // not downloaded yet and offline — reported, not assumed empty
+    return null    // not downloaded yet and offline. Reported, not assumed empty
   }
 }
 
@@ -97,7 +97,7 @@ function decimate(pts, max) {
 const round6 = v => Math.round(v * 1e6) / 1e6
 
 // waypoints: [{lat,lon}, ...]
-// altFt: planned cruise altitude — used to mark which airspaces the cruise
+// altFt: planned cruise altitude. Used to mark which airspaces the cruise
 //   itself sits inside, NOT to filter. A Class B whose ceiling is below the
 //   cruise altitude is still entered on the climb and the descent, and
 //   dropping it would be a false negative on the part of the flight where it
@@ -109,7 +109,7 @@ async function faaAreas(wps, timeoutMs) {
   const { samples } = sampleRoute(wps, { spacingNm: 25 })
   // Query only the part of the route actually inside US coverage. A
   // transatlantic route's full envelope spans an ocean, and the service
-  // rejects an envelope that large — which surfaced as "unavailable" on a
+  // rejects an envelope that large, which surfaced as "unavailable" on a
   // route whose US portion queries perfectly well.
   const inside = samples.filter(s => US_BOXES.some(b => inBox(s, b)))
   const path = inside.length ? inside : samples
@@ -119,7 +119,7 @@ async function faaAreas(wps, timeoutMs) {
   // This used to send the bounding envelope and every polygon inside it, then
   // run the crossing test here. A rectangle around a 340 NM route covers most
   // of a state, so the service answered with 114 airspaces and 6.2 MB of
-  // boundary geometry — over ten seconds on a good connection — of which six
+  // boundary geometry, over ten seconds on a good connection, of which six
   // were actually crossed and the rest were discarded. The download regularly
   // outran the timeout, and the card reported the airspace as unavailable on
   // routes the service answers perfectly well.
@@ -173,7 +173,7 @@ async function faaAreas(wps, timeoutMs) {
   return { status: 'ok', areas: [...byKey.values()] }
 }
 
-// Bundled CENAMER pack — no network, so it cannot fail; the areas carry their
+// Bundled CENAMER pack: no network, so it cannot fail; the areas carry their
 // own approx flag where the eAIP describes a boundary by naming a national
 // border instead of publishing coordinates.
 async function cenamerAreas(wps) {
@@ -188,7 +188,7 @@ async function cenamerAreas(wps) {
 }
 
 // waypoints: [{lat,lon}, ...]
-// altFt: planned cruise altitude — marks which areas the cruise sits inside.
+// altFt: planned cruise altitude. Marks which areas the cruise sits inside.
 //
 // Returns { status:'ok', areas, count, sources } | { status:'unavailable' }
 //        | { status:'not-covered' } | { status:'empty' }

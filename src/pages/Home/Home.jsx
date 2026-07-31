@@ -84,7 +84,7 @@ function ModuleCard({ section, onOpen, icon, label, tint }) {
   )
 }
 
-/* ── Hobbs quick-input — matches the registration text's size/style,
+/* ── Hobbs quick-input: matches the registration text's size/style,
    sits inline on the same row instead of its own boxed chip ────── */
 const REG_TEXT_STYLE = {
   fontSize: 11, fontWeight: 600, fontFamily: 'monospace',

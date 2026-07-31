@@ -3,8 +3,8 @@
 // The free tier answers 429 for two very different things, and the status code
 // alone cannot separate them:
 //
-//   * a burst limit, cleared in a second or two — worth retrying
-//   * the daily allowance, which does not come back until tomorrow — retrying
+//   * a burst limit, cleared in a second or two. Worth retrying
+//   * the daily allowance, which does not come back until tomorrow. Retrying
 //     is pure delay, and on a route card that delay is paid before anything
 //     renders
 //

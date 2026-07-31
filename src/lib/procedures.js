@@ -1,4 +1,4 @@
-// Departure and arrival procedures — the named first and last thirds of a
+// Departure and arrival procedures. The named first and last thirds of a
 // filed route.
 //
 // A clearance reads "CWARD2 SLI": fly the CWARD TWO departure, leave it at
@@ -7,8 +7,8 @@
 // it. The pack is built by scripts/build_procedures.py from the FAA's CIFP.
 //
 // Only fix-terminated legs are stored, so what comes back can be drawn
-// honestly. The legs that cannot — fly a heading until an altitude, until an
-// intercept, until ATC turns you — are counted rather than invented, and every
+// honestly. The legs that cannot. Fly a heading until an altitude, until an
+// intercept, until ATC turns you. Are counted rather than invented, and every
 // expansion reports how many of them it left out.
 
 let _procs = null
@@ -24,7 +24,7 @@ async function load() {
 
 // There is deliberately no looksLikeProcedure() here.
 //
-// The obvious rule — letters then a revision digit — cannot be made to work:
+// The obvious rule: letters then a revision digit. Cannot be made to work:
 // checked against the real tables it claims 165 airways (AR10, AR11 … are ATS
 // routes, not departures) while still missing five genuine procedures named
 // L711, O431, U142 and friends. The shapes overlap, so no pattern separates
@@ -33,7 +33,7 @@ async function load() {
 // test, and it is asked only after the airway and fix tables have declined
 // the token.
 
-// Warmed alongside the other packs — see preloadNavdata() in waypoints.js.
+// Warmed alongside the other packs. See preloadNavdata() in waypoints.js.
 export function preloadProcedures() {
   return load()
 }
@@ -48,7 +48,7 @@ export async function lookupProcedure(airport, ident) {
 
 // Turn a procedure into the fix sequence it actually flies.
 //
-// airport   the field it belongs to — a SID's departure, a STAR's destination
+// airport   the field it belongs to. A SID's departure, a STAR's destination
 // ident     CWARD2, CAMRN5
 // neighbour the route token next to it: for a SID the fix you rejoin the
 //           airway structure at, for a STAR the fix you arrive from. That

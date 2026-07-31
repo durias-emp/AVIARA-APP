@@ -4,7 +4,7 @@
 // almost never what a pilot means: there is usually a fix, a navaid or a field
 // within a couple of miles, and a route built from named points is the one
 // that gets filed, read back and found again on the chart. So the drop opens
-// this instead — what is actually there, nearest first, with the coordinate
+// this instead: what is actually there, nearest first, with the coordinate
 // kept as the fallback it should be.
 //
 // Two ways to add, because "add a waypoint" is ambiguous once a route exists:
@@ -47,9 +47,9 @@ export default function DropPicker({ point, mode = 'insert', canAppend = true, o
 
   const shown = (options || []).filter(p => FILTERS.find(f => f.id === filter).match(p))
   // The coordinate is always available, and is what you get if nothing is
-  // selected — the drop still means something even in the middle of nowhere.
+  // selected: the drop still means something even in the middle of nowhere.
   // A charted point brings its own ident. A bare coordinate can be given one,
-  // and naming it is what makes it findable again — the name is saved as a
+  // and naming it is what makes it findable again. The name is saved as a
   // user waypoint, so typing it into any route field later brings this exact
   // spot back.
   const typed = customName.trim().toUpperCase()
@@ -112,7 +112,7 @@ export default function DropPicker({ point, mode = 'insert', canAppend = true, o
         )}
         {options?.length === 0 && (
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', padding: '10px 2px', lineHeight: 1.5 }}>
-            Nothing charted within 10 NM — the coordinate above is the option here.
+            Nothing charted within 10 NM. The coordinate above is the option here.
           </div>
         )}
         {shown.map(p => (
@@ -125,7 +125,7 @@ export default function DropPicker({ point, mode = 'insert', canAppend = true, o
         ))}
       </div>
 
-      {/* Naming a coordinate. Only for a bare position — a charted point
+      {/* Naming a coordinate. Only for a bare position. A charted point
           already has the name everyone else uses for it, and inventing a
           second one for the same spot is how two pilots end up describing
           different places with the same word. */}
@@ -134,7 +134,7 @@ export default function DropPicker({ point, mode = 'insert', canAppend = true, o
           <input
             value={customName}
             onChange={e => setCustomName(e.target.value.slice(0, 10))}
-            placeholder="Name this place (optional) — e.g. CAMP"
+            placeholder="Name this place (optional). E.g. CAMP"
             maxLength={10}
             autoCapitalize="characters"
             autoCorrect="off"
@@ -146,7 +146,7 @@ export default function DropPicker({ point, mode = 'insert', canAppend = true, o
               fontFamily: 'inherit', outline: 'none', textTransform: 'uppercase',
             }} />
           <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.32)', marginTop: 5, lineHeight: 1.45 }}>
-            Saved on this device — type the name into any route field later and it comes back here.
+            Saved on this device. Type the name into any route field later and it comes back here.
           </div>
         </div>
       )}
@@ -163,7 +163,7 @@ export default function DropPicker({ point, mode = 'insert', canAppend = true, o
       {/* Any point can be the destination, charted or not. Pilots fly to
           ranch strips, lakes and section corners, and a planner that insists
           on an ICAO code cannot plan those flights. What the coordinate
-          cannot do is be filed as an identifier on an ICAO form — so it is
+          cannot do is be filed as an identifier on an ICAO form, so it is
           offered plainly, and named if the pilot wants it named. */}
       {mode !== 'move' && (
         <button onClick={() => onChoose({ ...target, as: 'destination' })} style={{

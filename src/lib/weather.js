@@ -32,7 +32,7 @@ export async function fetchTaf(icao) {
 // The weather at a field that does not report it.
 //
 // Most of the aerodromes along a route are small fields with no observation of
-// their own — 166 of them on a Miami–New York routing, and only a fraction
+// their own: 166 of them on a Miami–New York routing, and only a fraction
 // publish a METAR. The nearest station is genuinely useful for the decision
 // this feature exists to support ("could I put it down there?"), but only
 // while it is close enough to describe the same weather, and only if it is
@@ -42,7 +42,7 @@ export async function fetchTaf(icao) {
 // field itself has no report.
 export async function nearestMetar(lat, lon, { withinNm = 20 } = {}) {
   // A degree of latitude is 60 NM; longitude shrinks with the cosine. The box
-  // is a prefilter — the haversine below is what decides.
+  // is a prefilter: the haversine below is what decides.
   const dLat = withinNm / 60
   const dLon = withinNm / (60 * Math.max(0.05, Math.cos(lat * Math.PI / 180)))
   try {
@@ -112,7 +112,7 @@ export function catFromCeilingVis(ceilFt, visSm) {
 // ── Raw TAF text colorizing ───────────────────────────────────
 // Splits a raw TAF string into its forecast groups (issuance header, then
 // each FM/BECMG/TEMPO/PROB change group) and classifies each group's flight
-// category from its own visibility/ceiling tokens — same color grading as
+// category from its own visibility/ceiling tokens, same color grading as
 // the flight-category chip. A group with no visibility/cloud tokens of its
 // own (e.g. a wind-only BECMG) carries forward the previous group's color,
 // since it doesn't change the flying conditions.
@@ -201,7 +201,7 @@ export function parseCeiling(metar, units = {}) {
 }
 
 // Every reported cloud layer (not just the ceiling-forming one), lowest
-// first — e.g. [{ cover: 'SCT', label: '6,000 ft' }, { cover: 'SCT', label: '14,000 ft' }].
+// first: e.g. [{ cover: 'SCT', label: '6,000 ft' }, { cover: 'SCT', label: '14,000 ft' }].
 // CLR/SKC/CAVOK reports have no layers at all (returns []).
 export function parseCloudLayers(metar, units = {}) {
   const unit = units.unitAltitude ?? 'FT'

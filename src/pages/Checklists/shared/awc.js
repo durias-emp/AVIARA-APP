@@ -1,5 +1,5 @@
-/* ── Airport lookup — AWC proxy + bundled OurAirports details ── */
-const AWC = '/api/awc'  // Vercel serverless proxy — no CORS issues
+/* ── Airport lookup: AWC proxy + bundled OurAirports details ── */
+const AWC = '/api/awc'  // Vercel serverless proxy. No CORS issues
 
 // Build URL for our proxy: /api/awc?path=airport&ids=KJFK&format=json
 export function awcUrl(endpoint, params = {}) {
@@ -33,7 +33,7 @@ export async function proxyText(url) {
 }
 
 export async function proxyJSON(url) {
-  // Same-origin /api/ routes — fetch directly, no proxy needed
+  // Same-origin /api/ routes: fetch directly, no proxy needed
   if (url.startsWith('/')) {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
     const text = await res.text()
@@ -43,13 +43,13 @@ export async function proxyJSON(url) {
   return JSON.parse(text)
 }
 
-/* Airport details — runways and frequencies from the bundled OurAirports
+/* Airport details: runways and frequencies from the bundled OurAirports
    pack (see scripts/build_geo_pack.py). This replaced scraping skyvector.com
    through a public CORS proxy: two third parties in the path for data that is
    published openly, neither of which worked offline, and one of which forbids
    it in their terms. Comparing the two over a sample, the bundled data matched
    on the common frequencies and carried more of them outside the US (MGGT 6 vs
-   3, MSLP 6 vs 3) — but it is community-maintained, so a few fields have none
+   3, MSLP 6 vs 3), but it is community-maintained, so a few fields have none
    at all and the UI says so rather than showing an empty list. */
 let _details = null
 async function getDetails() {
@@ -116,7 +116,7 @@ async function bundledDetails(ids) {
 }
 
 export async function fetchAWC(id) {
-  // Use our Vercel proxy — avoids CORS and third-party rate limits
+  // Use our Vercel proxy. Avoids CORS and third-party rate limits
   try {
     const res = await fetch(awcUrl('airport', { ids: id, format: 'json' }), { signal: AbortSignal.timeout(8000) })
     const data = await res.json()
@@ -148,8 +148,8 @@ export async function lookupAirport(icao) {
   if (!awc && !det.frequencies.length && !det.runways.length) throw new Error('not found')
 
   // AWC runways carry gradient and alignment; the bundled NASR list carries
-  // length and surface. Neither is a superset, and letting AWC win outright —
-  // which it used to — threw away every runway length we had: KLGB came back
+  // length and surface. Neither is a superset, and letting AWC win outright. 
+  // which it used to. Threw away every runway length we had: KLGB came back
   // with six runway ends, no lengths, and "A" for asphalt, because AWC's
   // records have no length field and a single-letter surface code. Length is
   // the number that decides whether a field is an option at all, so the two
@@ -196,7 +196,7 @@ export async function lookupAirport(icao) {
   }
 }
 
-/* ── METAR text parser — decodes raw text into a display object ── */
+/* ── METAR text parser. Decodes raw text into a display object ── */
 export function parseMetar(raw) {
   const s = raw.trim().toUpperCase().replace(/\s+/g, ' ')
   const r = {}
@@ -253,8 +253,8 @@ export function parseMetar(raw) {
       const type = m[3] ? ` (${m[3]})` : ''
       return `${m[1]} at ${alt.toLocaleString()} ft${type}`
     }).join(' · ')
-  } else if (s.includes('NSC')) r.clouds = 'NSC — No significant cloud'
-  else if (s.includes('NCD')) r.clouds = 'NCD — Nil cloud detected'
+  } else if (s.includes('NSC')) r.clouds = 'NSC. No significant cloud'
+  else if (s.includes('NCD')) r.clouds = 'NCD. Nil cloud detected'
   else if (s.includes('CAVOK')) r.clouds = 'CAVOK'
 
   // Temp / Dew
@@ -275,14 +275,14 @@ export function parseMetar(raw) {
   }
 
   // Trend
-  if (s.includes('NOSIG')) r.trend = 'NOSIG — No significant change expected'
-  else if (s.includes('BECMG')) r.trend = 'BECMG — Conditions becoming…'
-  else if (s.includes('TEMPO')) r.trend = 'TEMPO — Temporary conditions expected'
+  if (s.includes('NOSIG')) r.trend = 'NOSIG. No significant change expected'
+  else if (s.includes('BECMG')) r.trend = 'BECMG. Conditions becoming…'
+  else if (s.includes('TEMPO')) r.trend = 'TEMPO. Temporary conditions expected'
 
   return r
 }
 
-/* ── Geo helpers — bearing / distance between two lat/lon points ── */
+/* ── Geo helpers: bearing / distance between two lat/lon points ── */
 export function bearingDeg(lat1, lon1, lat2, lon2) {
   const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180
   const Δλ = (lon2 - lon1) * Math.PI / 180

@@ -24,11 +24,11 @@ function AppRoutes({ theme }) {
 
   // Seed the profile's contact email from the signed-in account (Google/
   // Apple/email all expose user.email) so it's pre-filled without the pilot
-  // typing it — only when empty, so a manually-edited value is never
+  // typing it, only when empty, so a manually-edited value is never
   // overwritten. Phone isn't provided by OAuth, so that stays manual.
   // Must wait for hydration: this effect fires even while the gate renders
   // null, and writing the (still empty) profile mid-restore marked the
-  // settings store non-empty — which made the old store-level hydrate skip
+  // settings store non-empty, which made the old store-level hydrate skip
   // it entirely, bouncing returning users into onboarding.
   useEffect(() => {
     if (!hydrated) return
@@ -41,7 +41,7 @@ function AppRoutes({ theme }) {
 
   if (authLoading) return null
 
-  // Arrived via a password-reset email link — force the "set new password"
+  // Arrived via a password-reset email link. Force the "set new password"
   // screen before anything else, even though Supabase created a recovery
   // session (which would otherwise fall through to the app).
   if (recovery) return (
@@ -57,8 +57,8 @@ function AppRoutes({ theme }) {
   //
   // The one exception is local development, where signing in on every reload
   // to reach a screen three taps deep is pure friction. It is gated on BOTH
-  // import.meta.env.DEV — which Vite hardcodes to false in any production
-  // build, so the branch is dead code Rollup strips from the bundle — and an
+  // import.meta.env.DEV, which Vite hardcodes to false in any production
+  // build, so the branch is dead code Rollup strips from the bundle, and an
   // opt-in flag in .env.local, which is gitignored and never reaches the
   // deployment. There is no way to turn this on against the real app.
   const devBypass = import.meta.env.DEV && import.meta.env.VITE_DEV_BYPASS === '1'
@@ -72,7 +72,7 @@ function AppRoutes({ theme }) {
     )
   }
 
-  // Signed in but the cloud restore is still running — showing the gate now
+  // Signed in but the cloud restore is still running, showing the gate now
   // would read an empty local profile and bounce a returning user into
   // onboarding (and their redone onboarding would overwrite the backup).
   if (!hydrated) return null

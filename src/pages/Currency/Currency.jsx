@@ -15,7 +15,7 @@ import {
 
 const WARN_DAYS_DEFAULT = 30
 
-// Single pill used by ALL four cards — fixed 72×28, never auto-sizes
+// Single pill used by ALL four cards. Fixed 72×28, never auto-sizes
 function CardPill({ status }) {
   const map = {
     valid:      { bg: 'var(--ok)',        fg: '#fff',                   label: 'Current'  },
@@ -38,7 +38,7 @@ function CardPill({ status }) {
 // Keep StatusPill as alias (used inside inspection rows only)
 function StatusPill({ status }) { return <CardPill status={status} /> }
 
-// Progress fill bar — same 72×28 container, fills left-to-right
+// Progress fill bar, same 72×28 container, fills left-to-right
 function FillBar({ frac }) {
   return (
     <div style={{
@@ -72,7 +72,7 @@ function FarLink({ far }) {
 /* Pill that alternates between the FAR reference and days-left every 5s
    (once a days-left value exists). Always tap-through to the FAR text. */
 // Derived from wall-clock time (not a per-instance counter) so every pill on
-// screen — regardless of when it mounted — flips on the same 5s boundary.
+// screen: regardless of when it mounted. Flips on the same 5s boundary.
 function wallClockShowDays() {
   return Math.floor(Date.now() / 5000) % 2 === 1
 }
@@ -157,7 +157,7 @@ function DateInput({ label, value, onChange, hint }) {
   )
 }
 
-// Expandable card — same collapse pattern as Checklists
+// Expandable card, same collapse pattern as Checklists
 function CurrencyCard({ title, subtitle, status, rightEl, farRefs, children }) {
   const [open, setOpen] = useState(false)
   return (
@@ -279,7 +279,7 @@ function CheckRowSimple({ checked, onChange, label, far, padding = '10px 14px' }
 }
 
 // ---------------------------------------------------------------------------
-// Card 1 — IM SAFE
+// Card 1: IM SAFE
 // ---------------------------------------------------------------------------
 const SAFE_ITEMS = [
   { key: 'illness',    label: 'Illness (no symptoms affecting performance)' },
@@ -325,7 +325,7 @@ function ImSafeCard({ data, onChange }) {
 }
 
 // ---------------------------------------------------------------------------
-// Card 2 — IM CURRENT
+// Card 2: IM CURRENT
 // ---------------------------------------------------------------------------
 const PROFICIENCY_TYPES = ['PPC', 'PCC', 'IPC', 'Flight Test']
 
@@ -334,7 +334,7 @@ function ImCurrentCard({ data, onChange, warnDays }) {
 
   const patch = (key, val) => onChange({ ...data, current: { ...current, [key]: val } })
 
-  // Proficiency checks — array of { type, date }
+  // Proficiency checks: array of { type, date }
   const checks = current.proficiencyChecks ?? []
   const [newCheckType, setNewCheckType] = useState(PROFICIENCY_TYPES[0])
   const [customType, setCustomType] = useState('')
@@ -352,22 +352,22 @@ function ImCurrentCard({ data, onChange, warnDays }) {
   }
   const removeCheck = i => patch('proficiencyChecks', checks.filter((_, idx) => idx !== i))
 
-  // Flight review — 24 calendar months
+  // Flight review: 24 calendar months
   const frExp = current.flightReviewDate
     ? calendarMonthExpiry(current.flightReviewDate, 24) : null
   const frStatus = statusFromExpiry(frExp, warnDays)
 
-  // Day / Night passenger currency — 90 days, self-reported acknowledgment (no date)
+  // Day / Night passenger currency. 90 days, self-reported acknowledgment (no date)
   const dayCurrent   = current.dayCurrent === true
   const nightCurrent = current.nightCurrent === true
 
-  // IFR — 6 calendar months via IPC date if present, else self-reported acknowledgment
+  // IFR: 6 calendar months via IPC date if present, else self-reported acknowledgment
   const ifrExp = current.ipcDate ? calendarMonthExpiry(current.ipcDate, 6) : null
   const ifrStatus = current.ipcDate
     ? statusFromExpiry(ifrExp, warnDays)
     : { status: current.ifrCurrent === true ? 'valid' : 'unknown', expiresOn: null, daysLeft: null }
 
-  // Progress pill — count filled/confirmed fields (flight review, day, night, IFR)
+  // Progress pill: count filled/confirmed fields (flight review, day, night, IFR)
   const filledFields = [
     current.flightReviewDate,
     dayCurrent,
@@ -416,7 +416,7 @@ function ImCurrentCard({ data, onChange, warnDays }) {
             hint="Expires end of last day of 24th calendar month after this date"
           />
 
-          {/* Proficiency Checks — inline inside Flight Review */}
+          {/* Proficiency Checks: inline inside Flight Review */}
           <div style={{ marginTop: 10 }}>
             {checks.map((c, i) => {
               const exp = c.date ? calendarMonthExpiry(c.date, 24) : null
@@ -547,7 +547,7 @@ function ImCurrentCard({ data, onChange, warnDays }) {
             label="IPC date (if applicable)"
             value={current.ipcDate}
             onChange={v => patch('ipcDate', v)}
-            hint="Instrument Proficiency Check — resets the 6-month window"
+            hint="Instrument Proficiency Check. Resets the 6-month window"
           />
           <StatusLine s={ifrStatus} />
           {ifrStatus.status === 'expired' && (
@@ -556,7 +556,7 @@ function ImCurrentCard({ data, onChange, warnDays }) {
               background: 'var(--danger-light)',
             }}>
               <span style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 600 }}>
-                IPC required before carrying passengers IFR — <FarLink far={FAR.ipc} />
+                IPC required before carrying passengers IFR. <FarLink far={FAR.ipc} />
               </span>
             </div>
           )}
@@ -568,7 +568,7 @@ function ImCurrentCard({ data, onChange, warnDays }) {
 }
 
 // ---------------------------------------------------------------------------
-// Card 3 — MEDICAL VALIDITY
+// Card 3: MEDICAL VALIDITY
 // ---------------------------------------------------------------------------
 function ImValidCard({ data, onChange, warnDays }) {
   const med = data?.medical ?? {}
@@ -576,7 +576,7 @@ function ImValidCard({ data, onChange, warnDays }) {
 
   const hasAll = med.examDate && med.dob && med.medClass
 
-  // Compute all applicable operation rows — one certificate, multiple expirations
+  // Compute all applicable operation rows, one certificate, multiple expirations
   const resultRows = hasAll
     ? medicalExpiryRows(Number(med.medClass), ageAt(med.dob, med.examDate)).map(row => {
         const exp = calendarMonthExpiry(med.examDate, row.months)
@@ -597,7 +597,7 @@ function ImValidCard({ data, onChange, warnDays }) {
     <CurrencyCard title="MEDICAL VALIDITY" subtitle="Medical certificate status" rightEl={<CardPill status={overallStatus} />} farRefs={[FAR.medicalDur]}>
       <div style={{ padding: '14px' }}>
 
-        {/* Inputs — class, DOB, exam date only */}
+        {/* Inputs: class, DOB, exam date only */}
         <div style={{ background: 'var(--bg-card-2)', borderRadius: 10, padding: '12px', marginBottom: 10 }}>
           <div style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: 6 }}>Medical Class</div>
@@ -671,11 +671,11 @@ function ImValidCard({ data, onChange, warnDays }) {
             label="Medical exam date"
             value={med.examDate}
             onChange={v => patch('examDate', v)}
-            hint="Day of month is irrelevant — expiry is calendar-month based"
+            hint="Day of month is irrelevant. Expiry is calendar-month based"
           />
         </div>
 
-        {/* Results — one row per applicable operation tier */}
+        {/* Results, one row per applicable operation tier */}
         {hasAll && (
           <div style={{ background: 'var(--bg-card-2)', borderRadius: 10, overflow: 'hidden' }}>
             {resultRows.map((row, i) => (
@@ -714,9 +714,9 @@ function ImValidCard({ data, onChange, warnDays }) {
 }
 
 // ---------------------------------------------------------------------------
-// Root — Currency page
+// Root: Currency page
 // Note: the "IM AIRWORTHY" card (aircraft documents + inspections) now lives
-// on the Aircraft page as the "Airworthiness" section — it still reads/writes
+// on the Aircraft page as the "Airworthiness" section. It still reads/writes
 // the same currency/profile.airworthy data, so getCurrencyStatus() and the
 // Checklists "IM AIRWORTHY" references keep working unchanged.
 // ---------------------------------------------------------------------------
@@ -734,7 +734,7 @@ export default function Currency() {
         if (v === 1 || v === 2 || v === 3) return v
         return { '1st': 1, '2nd': 2, '3rd': 3 }[v] ?? null
       }
-      // Merge pilot profile fields as defaults — only if not already set locally
+      // Merge pilot profile fields as defaults, only if not already set locally
       const merged = {
         ...base,
         medical: {
@@ -760,7 +760,7 @@ export default function Currency() {
     setData(newData)
     put('currency', { ...newData, id: 'profile' }).catch(() => {})
     // Sync key fields back to pilot profile
-    // (handled by user editing in Currency — pilot profile is the source of truth on first load)
+    // (handled by user editing in Currency. Pilot profile is the source of truth on first load)
   }, [])
 
   if (!loaded) return null

@@ -21,18 +21,18 @@ async function db() {
         db.createObjectStore('flights', { keyPath: 'id' })
       }
       if (oldVersion < 3) {
-        // Bookkeeping for the cloud-backup push hook below — one row per
+        // Bookkeeping for the cloud-backup push hook below, one row per
         // synced store name, tracking whether its last push succeeded.
         db.createObjectStore('syncMeta', { keyPath: 'store' })
       }
     },
     blocking() {
-      // A newer version is waiting — close this connection so the upgrade can proceed
+      // A newer version is waiting. Close this connection so the upgrade can proceed
       _db?.close()
       _db = null
     },
     blocked() {
-      // An older tab is blocking our upgrade — reload once it closes
+      // An older tab is blocking our upgrade. Reload once it closes
       window.location.reload()
     },
   })
@@ -45,7 +45,7 @@ export async function get(store, key) {
 
 export async function put(store, value) {
   const result = await (await db()).put(store, value)
-  // Best-effort cloud backup — fire-and-forget, never blocks or throws from
+  // Best-effort cloud backup: fire-and-forget, never blocks or throws from
   // here. `pushToCloud` itself no-ops for stores that aren't backed up
   // (including `syncMeta`, so this can't recurse).
   if (SYNCED_STORES.includes(store)) pushToCloud(store)

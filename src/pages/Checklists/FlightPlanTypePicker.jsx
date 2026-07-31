@@ -1,5 +1,5 @@
 // Only three options are meaningful for this operation: VFR and IFR flights
-// are always cross-country, and Local is always flown VFR — so a single
+// are always cross-country, and Local is always flown VFR, so a single
 // choice here fully determines both flightRules and crossCountry, instead of
 // asking two separate questions.
 const OPTIONS = [
@@ -20,12 +20,12 @@ function OptionButton({ label, onClick }) {
   )
 }
 
-// First screen of Flight Planning — a single VFR / IFR / Local choice that
+// First screen of Flight Planning. A single VFR / IFR / Local choice that
 // determines both flightRules and crossCountry so the checklist can filter
 // its content by them later; for now every combination opens the same
 // checklist, so tapping an option starts it immediately (each button is its
 // own "start" action, not a selection that needs separate confirming). Big,
-// screen-filling buttons — flex:1 stretches them to share the available
+// screen-filling buttons: flex:1 stretches them to share the available
 // height, and minHeight is a floor in case an ancestor's flex-grow chain
 // doesn't hand down as much room as expected.
 export default function FlightPlanTypePicker({ onComplete }) {

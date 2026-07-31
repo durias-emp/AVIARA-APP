@@ -9,7 +9,7 @@ export default function Weather() {
         <BackButton />
         <h2 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)', fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif' }}>Weather</h2>
       </div>
-      <Stub title="Live Weather" Icon={IconCloud} desc="METAR · TAF · NOTAM · TFR — requires an internet connection" badge="Available in V1.5" />
+      <Stub title="Live Weather" Icon={IconCloud} desc="METAR · TAF · NOTAM · TFR. Requires an internet connection" badge="Available in V1.5" />
     </div>
   )
 }

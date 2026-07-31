@@ -33,12 +33,12 @@ L.Icon.Default.mergeOptions({
 // The three ways a published routing can relate to the pair being flown, in
 // descending order of how directly it answers the question. The two fallbacks
 // only appear when nothing is published for the pair itself, and each carries
-// the reason it might not apply — a routing that isn't for your route is
+// the reason it might not apply. A routing that isn't for your route is
 // useful as a starting point and dangerous as an answer.
 const PUB_GROUPS = [
   { key: 'exact' },
   { key: 'reverse', heading: 'Published the other way',
-    note: 'Only the opposite direction is published. Often flyable read backwards — but routings are frequently one-way by design, so check it against your clearance.' },
+    note: 'Only the opposite direction is published. Often flyable read backwards, but routings are frequently one-way by design, so check it against your clearance.' },
   { key: 'nearby', heading: 'Published for a nearby field',
     note: 'Same terminal airspace, same facility, different field at one end. The middle of the routing usually holds; the departure or arrival end may not.' },
 ]
@@ -47,7 +47,7 @@ function RouteFitter({ positions, once = true }) {
   const map = useMap()
   const fitted = useRef(false)
   useEffect(() => {
-    // once=true (fullscreen): fit when the map opens, then never again —
+    // once=true (fullscreen): fit when the map opens, then never again. 
     // snapping the view away right after the user adds/drags a waypoint is
     // exactly the "random zoom" ForeFlight never does. The user owns the
     // camera. once=false (inline preview): the map isn't user-pannable, so
@@ -55,7 +55,7 @@ function RouteFitter({ positions, once = true }) {
     if (once && fitted.current) return
     if (positions.length >= 2) {
       fitted.current = true
-      // The fullscreen map mounts before its container has its final size —
+      // The fullscreen map mounts before its container has its final size. 
       // fitting immediately frames the route against the wrong dimensions
       // (the "opens in the middle of nowhere" bug). Invalidate then fit.
       const doFit = () => {
@@ -63,7 +63,7 @@ function RouteFitter({ positions, once = true }) {
         map.fitBounds(L.latLngBounds(positions), { padding: [36, 36], animate: false })
       }
       const t1 = setTimeout(doFit, 80)
-      // On phones the modal can still be mid-layout at 80ms — re-assert once
+      // On phones the modal can still be mid-layout at 80ms. Re-assert once
       // more after layout is guaranteed settled (before any user interaction).
       const t2 = setTimeout(doFit, 450)
       return () => { clearTimeout(t1); clearTimeout(t2) }
@@ -101,7 +101,7 @@ function ChartZoomer({ active, min, positions }) {
   const map = useMap()
   const prev = useRef(active)
   useEffect(() => {
-    // Only when the user TOGGLES the layer on — not when a map mounts with the
+    // Only when the user TOGGLES the layer on, not when a map mounts with the
     // layer already active, which would override the fit-whole-route framing
     // on fullscreen open.
     if (active && !prev.current && map.getZoom() < min) {
@@ -140,7 +140,7 @@ function MapFlyTo({ target, instant = false }) {
       // Leaflet's camera maths divide by the container size. On a map that
       // has not been laid out yet that is a division by zero, and the NaN
       // reaches L.latLng, which throws and takes the whole card down with it.
-      // A move can absolutely arrive that early — tapping the Mountains chip
+      // A move can absolutely arrive that early. Tapping the Mountains chip
       // opens fullscreen and asks for the peak in the same breath.
       const size = map.getSize()
       if (!size.x || !size.y) return false
@@ -157,7 +157,7 @@ function MapFlyTo({ target, instant = false }) {
         center = map.unproject(pt, zoom)
       }
       // setView, not flyTo. Leaflet's flyTo does not interpolate between two
-      // views — it flies a parabolic arc, zooming out far enough to span the
+      // views: it flies a parabolic arc, zooming out far enough to span the
       // distance before zooming back in on the target. Tapping a field then
       // reads as the map retreating to the route overview and only then
       // approaching, which is the opposite of what the tap asked for. An
@@ -166,7 +166,7 @@ function MapFlyTo({ target, instant = false }) {
       //
       // animate: true is load-bearing twice over. It opts out of Leaflet's
       // "is the target still on screen" test, which would otherwise refuse to
-      // animate to anything off the current view — i.e. exactly the taps this
+      // animate to anything off the current view. I.e. exactly the taps this
       // is for. The map's zoomAnimationThreshold is raised alongside it, since
       // the default of 4 refuses a route overview at zoom 7 going to a subject
       // at 13. Duration is not passed: the zoom animation runs on a fixed
@@ -186,13 +186,13 @@ function MapFlyTo({ target, instant = false }) {
   return null
 }
 
-// Ink for the markers this app draws on top of a chart — the control tower
+// Ink for the markers this app draws on top of a chart. The control tower
 // for a field, the peak for the highest terrain.
 //
 // Colour follows whichever chart is underneath, because each one has its
 // own palette and a marker that reads as part of the chart is easier to
 // separate from it than one fighting it. What guarantees the contrast is not
-// the colour choice though — it is the white halo the whole glyph is drawn
+// the colour choice though. It is the white halo the whole glyph is drawn
 // on. Sectionals go from pale green to tan to dark magenta airspace within an
 // inch, so any single ink colour will land on something close to itself
 // somewhere; the halo means that never matters.
@@ -207,7 +207,7 @@ function chartInk(layers) {
 //
 // One fixed size cannot serve both ends: at route zoom a dozen 26px towers
 // crowd the line they are meant to annotate, and zoomed in on a field the same
-// glyph is a speck against a chart. So it grows with the view — small enough
+// glyph is a speck against a chart. So it grows with the view. Small enough
 // to read as an annotation when the whole route is on screen, large enough to
 // be the subject when you are looking at one field.
 function aerodromeGlyphPx(zoom) {
@@ -253,7 +253,7 @@ function aerodromeIcon(ink, px) {
 // The highest ground within the corridor, drawn where it actually is.
 //
 // The Mountains card gives a height and a coordinate, which is the right
-// answer to "how high" and no answer at all to "where" — 235 NM along a route
+// answer to "how high" and no answer at all to "where". 235 NM along a route
 // is not a place you can picture. One marker turns it into one.
 const PEAK_ICON_CACHE = new Map()
 function peakIcon(ink, px) {
@@ -309,7 +309,7 @@ function AerodromeMarkers({ fields, layers, onAerodrome, highlightIdent }) {
   const px = aerodromeGlyphPx(zoom)
   const icon = aerodromeIcon(chartInk(layers), px)
   // The field whose popup is open is the subject of the view, so it is drawn
-  // larger and in the accent colour — otherwise it is indistinguishable from
+  // larger and in the accent colour. Otherwise it is indistinguishable from
   // its neighbours at exactly the moment it matters which one you tapped.
   const openIcon = aerodromeIcon('#FF9500', Math.round(px * 1.35))
   return (fields ?? []).map(f => (
@@ -392,7 +392,7 @@ function fmtAvCoord(lat, lon) {
   return `${ns}${fmt(lat, 2)} ${ew}${fmt(lon, 3)}`
 }
 
-// The inverse of fmtAvCoord — N24°43'44" W104°38'04" back to numbers.
+// The inverse of fmtAvCoord. N24°43'44" W104°38'04" back to numbers.
 //
 // It has to exist because a coordinate is a first-class endpoint now: once a
 // destination can be a place with no ICAO code, its own printed form is the
@@ -423,11 +423,11 @@ function crossTrackNM(la, lo, a, b) {
   return Math.abs(Math.asin(Math.sin(d13)*Math.sin(θ13-θ12))) * R
 }
 
-// DraggableWaypoint — draggable intermediate marker (touch-safe)
+// DraggableWaypoint: draggable intermediate marker (touch-safe)
 // Which waypoint labels there is actually room for.
 //
-// An airway expands into every fix along it — V23 and V8 between KSAN and KLAX
-// bring eight — and on a 240 px inline map their labels land on top of each
+// An airway expands into every fix along it. V23 and V8 between KSAN and KLAX
+// bring eight, and on a 240 px inline map their labels land on top of each
 // other in an unreadable stack. The dots all stay, because they are the shape
 // of the route; the text is what gets thinned.
 //
@@ -435,7 +435,7 @@ function crossTrackNM(la, lo, a, b) {
 // endpoints always, then the points they entered themselves (the turning
 // points that define the routing), then the fixes an airway expanded into. A
 // label is kept only if its box clears every label already placed, measured in
-// screen space so the answer changes as you zoom — zoom in and the fixes
+// screen space so the answer changes as you zoom. Zoom in and the fixes
 // reappear one by one as the room opens up.
 function useLabelRoom(waypoints) {
   const map = useMap()
@@ -465,7 +465,7 @@ function useLabelRoom(waypoints) {
       try { pt = map.latLngToContainerPoint([w.lat, w.lon]) } catch { continue }
       const half = halfWidth(w)
       const clear = placed.every(p => Math.abs(p.x - pt.x) > (p.half + half + 4) || Math.abs(p.y - pt.y) > 20)
-      // The endpoints are never dropped — a route with no idea where it starts
+      // The endpoints are never dropped. A route with no idea where it starts
       // or ends is worse than a crowded one.
       if (i !== 0 && i !== last && !clear) continue
       placed.push({ x: pt.x, y: pt.y, half })
@@ -481,7 +481,7 @@ function useLabelRoom(waypoints) {
 
 function DraggableWaypoint({ position, index, onMove, onRemove, name, showLabel = true, removable = true }) {
   const markerRef = useRef(null)
-  // touch-action:none is critical — prevents browser scroll from hijacking the drag
+  // touch-action:none is critical: prevents browser scroll from hijacking the drag
   // Waypoints look identical to the dep/dest airport dots (white, dark ring);
   // named ones show their identifier on a label underneath. The 28px box is an
   // invisible touch target around the 12px visual dot.
@@ -493,7 +493,7 @@ function DraggableWaypoint({ position, index, onMove, onRemove, name, showLabel 
     const label = name && showLabel
       ? `<div style="position:absolute;top:34px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.72);color:#fff;font:700 10px monospace;letter-spacing:0.5px;border-radius:5px;padding:1px 6px;white-space:nowrap;">${name}</div>`
       : ''
-    // 44×44 touch target (Apple HIG minimum) around a 14px visual dot —
+    // 44×44 touch target (Apple HIG minimum) around a 14px visual dot. 
     // smaller boxes are genuinely hard to grab with a finger on iOS.
     return L.divIcon({
       className: '', iconSize: [44, 44], iconAnchor: [22, 22],
@@ -516,7 +516,7 @@ function DraggableWaypoint({ position, index, onMove, onRemove, name, showLabel 
       icon={icon}
       draggable={true}
       eventHandlers={{
-        // Commit position only on release — updating state on every `drag`
+        // Commit position only on release. Updating state on every `drag`
         // frame re-renders the marker mid-gesture and interrupts the drag.
         // Leaflet moves the marker itself while the finger is down.
         dragend: (e) => onMove(index, e.target.getLatLng()),
@@ -527,12 +527,12 @@ function DraggableWaypoint({ position, index, onMove, onRemove, name, showLabel 
   )
 }
 
-// PolylineEditor — the route line, and the rubber-band drag that bends it.
+// PolylineEditor: the route line, and the rubber-band drag that bends it.
 //
 // Grab the magenta line anywhere and pull: the two legs either side follow the
 // finger live, and letting go puts a waypoint there. This is the gesture from
 // ForeFlight, and the thing that makes it feel right is that nothing waits for
-// React — the temporary line and dot are Leaflet layers moved directly on each
+// React: the temporary line and dot are Leaflet layers moved directly on each
 // pointer frame. Routing every move through state re-renders the map mid-drag,
 // which is what made earlier attempts stutter and drop the gesture.
 //
@@ -549,7 +549,7 @@ function PolylineEditor({ waypoints, onDragInsert }) {
   // up anything an interrupted gesture left behind.
   const tempLayers = useRef([])
 
-  // Which leg is nearest — the one the bend belongs to.
+  // Which leg is nearest. The one the bend belongs to.
   const segmentAt = (lat, lon) => {
     let bestSeg = 1, bestDist = Infinity
     for (let i = 0; i < waypoints.length - 1; i++) {
@@ -580,7 +580,7 @@ function PolylineEditor({ waypoints, onDragInsert }) {
       const ll = pointFrom(ev)
       if (!ll) return
       // Past this distance it is a drag, not a tap that wobbled. 6px was
-      // inside the noise of a finger resting on a line — routes picked up
+      // inside the noise of a finger resting on a line. Routes picked up
       // bends nobody asked for. A deliberate pull moves much further than
       // this before the user expects anything to happen.
       if (!d.moved && map.latLngToContainerPoint(ll).distanceTo(d.startPx) > 18) d.moved = true
@@ -602,7 +602,7 @@ function PolylineEditor({ waypoints, onDragInsert }) {
       const { lat, lng } = d.latlng
       // Only a pull does anything. Tapping the line used to open the "add to
       // route" picker, which made the single easiest thing to hit by accident
-      // — a magenta line across the whole map — into a waypoint prompt. The
+      //. A magenta line across the whole map, into a waypoint prompt. The
       // deliberate ways to add a point are still both there: pull the line, or
       // press and hold anywhere.
       if (d.moved) onDragInsert({ lat, lon: lng, seg: d.seg })
@@ -616,12 +616,12 @@ function PolylineEditor({ waypoints, onDragInsert }) {
     window.addEventListener('touchmove', onMove, { passive: false })
     window.addEventListener('touchend', onUp)
     // The gesture has to start on a real pointer event. Leaflet's own
-    // `mousedown` on a path is a compatibility event on touch — it arrives
+    // `mousedown` on a path is a compatibility event on touch. It arrives
     // after the finger lifts, far too late to drag anything.
     const path = hitRef.current?._path
     const onDown = (ev) => {
       // One finger fires BOTH pointerdown and touchstart. Without this guard
-      // startDrag ran twice and the second call overwrote drag.current — so
+      // startDrag ran twice and the second call overwrote drag.current, so
       // the first temporary line and dot lost their only reference and stayed
       // on the map forever, a stray purple course line and vertex that no
       // amount of deleting waypoints would clear, because nothing knew they
@@ -645,7 +645,7 @@ function PolylineEditor({ waypoints, onDragInsert }) {
       map.dragging.disable()
       const prev = positions[seg - 1], next = positions[seg]
       // The temporary line is the whole route with the bend spliced in, drawn
-      // exactly like the real one — so what you drag is the route itself, not a
+      // exactly like the real one, so what you drag is the route itself, not a
       // dashed preview floating next to the old course.
       visRef.current?.setStyle({ opacity: 0 })
       drag.current = {
@@ -687,13 +687,13 @@ function PolylineEditor({ waypoints, onDragInsert }) {
   }, [map, JSON.stringify(positions)])
 
   return (<>
-    {/* Thick invisible hit-area so a finger finds the line — 36px ≈ a fingertip */}
+    {/* Thick invisible hit-area so a finger finds the line. 36px ≈ a fingertip */}
     <Polyline
       ref={hitRef}
       positions={positions}
       pathOptions={{ color: 'transparent', weight: 36, opacity: 0 }}
     />
-    {/* Visible line — ForeFlight-style magenta/purple course line, slightly
+    {/* Visible line: ForeFlight-style magenta/purple course line, slightly
         translucent. Hidden while a drag is in progress: the dragged line takes
         its place, so the route bends rather than gaining a second line. */}
     <Polyline ref={visRef} positions={positions} pathOptions={{ color: '#a855f7', weight: 4, opacity: 0.65 }} />
@@ -701,7 +701,7 @@ function PolylineEditor({ waypoints, onDragInsert }) {
 }
 
 // Regions with an authoritative, current navdata pack (FAA NASR, SENEAM,
-// COCESNA). Outside these, the map falls back to the Tier-2 reference layer —
+// COCESNA). Outside these, the map falls back to the Tier-2 reference layer. 
 // which the pilot must be told about.
 const TIER1_BOXES = [
   [24.0, 50.0, -125.0, -66.0],   // CONUS
@@ -712,7 +712,7 @@ const TIER1_BOXES = [
 ]
 // NPS park boundaries and FAA Special Use Airspace are United States
 // services. Outside these boxes their silence means "not covered", which is
-// not the same as "nothing there" — the difference is disclosed rather than
+// not the same as "nothing there". The difference is disclosed rather than
 // left to look like clearance.
 const US_BOXES = [
   [24.0, 50.0, -125.0, -66.0],   // CONUS
@@ -728,7 +728,7 @@ function inTier1(lat, lon) {
   return TIER1_BOXES.some(([s, n, w, e]) => lat >= s && lat <= n && lon >= w && lon <= e)
 }
 
-// WorldRefLayer — TIER 2. Global airway structure for regions we have no
+// WorldRefLayer: TIER 2. Global airway structure for regions we have no
 // authoritative pack for, drawn thin/dashed/grey so it never reads as the
 // navy Tier-1 network. The data is a 2012 GPL snapshot: good for orientation,
 // not for navigation, and the route planner cannot expand it.
@@ -762,7 +762,7 @@ function WorldRefLayer({ cls }) {
   ))
 }
 
-// AirwayNetwork — draws the airway web (SkyVector World Lo/Hi style) from our
+// AirwayNetwork: draws the airway web (SkyVector World Lo/Hi style) from our
 // own navdata. This is what puts route lines on the map where no raster chart
 // exists (Central America); over the US it overlays the FAA chart at wide
 // zooms where the raster doesn't render.
@@ -783,7 +783,7 @@ function AirwayNetwork({ cls }) {
   </>)
 }
 
-// Chart symbology over the airway web — what pilots expect from an enroute
+// Chart symbology over the airway web. What pilots expect from an enroute
 // chart: ▲ triangles with names for fixes, the VOR symbol with name/frequency
 // box, and the airway designator in a navy box at each segment's midpoint.
 // Rendered only at readable zooms and only inside the current viewport so the
@@ -810,7 +810,7 @@ function NavSymbols({ geo, cls }) {
     }
   }
 
-  // Per-segment mag track° + distance NM, rotated along the leg — the chart's
+  // Per-segment mag track° + distance NM, rotated along the leg. The chart's
   // "099 / 23" annotations. Only at closer zooms, capped for performance.
   // Staged density: distance only when zoomed out, course added closer in,
   // MEA only when you're actually reading a segment. Everything at once over
@@ -846,12 +846,12 @@ function NavSymbols({ geo, cls }) {
         ang = 90 - ang
         if (ang > 90) ang -= 180
         if (ang < -90) ang += 180
-        // Airways overlap (a leg can belong to several routes) — one label
+        // Airways overlap (a leg can belong to several routes), one label
         // per physical segment, or they stack into an unreadable pile.
         const key = `${a[0].toFixed(2)},${a[1].toFixed(2)}-${c[0].toFixed(2)},${c[1].toFixed(2)}`
         if (segSeen.has(key)) continue
         segSeen.add(key)
-        // Keep labels physically apart on screen — near a hub, many distinct
+        // Keep labels physically apart on screen. Near a hub, many distinct
         // legs converge and their labels would still collide.
         const pt = map.latLngToLayerPoint(mid)
         if (placed.some(p => Math.abs(p.x - pt.x) < 44 && Math.abs(p.y - pt.y) < 26)) continue
@@ -889,7 +889,7 @@ function NavSymbols({ geo, cls }) {
       <Marker key={`seg-${i}-${s.pos[0]}`} position={s.pos} interactive={false}
         icon={L.divIcon({
           className: '', iconSize: [0, 0],
-          // track° over distance, with the MEA below in bold — the MEA is the
+          // track° over distance, with the MEA below in bold. The MEA is the
           // safety-critical number, so it reads first at a glance
           html: `<div style="transform:translate(-50%,-130%) rotate(${s.ang.toFixed(0)}deg);pointer-events:none;text-align:center;font:600 8px ui-monospace,monospace;color:#1c3f7a;text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap;line-height:1.15;">
             ${s.trk != null ? String(s.trk).padStart(3, '0') + '°<br>' : ''}${s.distNm}
@@ -900,7 +900,7 @@ function NavSymbols({ geo, cls }) {
   </>)
 }
 
-// LongPressAdd — ForeFlight-style: press-and-hold (or right-click) anywhere on
+// LongPressAdd: ForeFlight-style: press-and-hold (or right-click) anywhere on
 // the map to drop a point showing its aviation coordinates, with a button to
 // insert it into the route at the nearest leg.
 function LongPressAdd({ waypoints, onDrop, tapToAdd = false }) {
@@ -908,9 +908,9 @@ function LongPressAdd({ waypoints, onDrop, tapToAdd = false }) {
   const ignoreNextClick = useRef(false)
   useMapEvents({
     // Leaflet fires `contextmenu` for long-press on touch and right-click on
-    // desktop — exactly the ForeFlight hold gesture.
+    // desktop, exactly the ForeFlight hold gesture.
     contextmenu(e) {
-      // Lifting the finger that performed the long-press fires ONE click —
+      // Lifting the finger that performed the long-press fires ONE click. 
       // however long the user keeps holding. A time window can't cover that
       // (hold 3s → release-click arrives after any window), so swallow
       // exactly the first click following a long-press instead.
@@ -923,8 +923,8 @@ function LongPressAdd({ waypoints, onDrop, tapToAdd = false }) {
       // Holding is the gesture for an unprompted add; here the pilot has
       // already said what they want, so a plain tap places the point.
       //
-      // Guarded because everything downstream — the marker, the popup, the
-      // waypoint — goes straight into L.latLng, which throws on a NaN and
+      // Guarded because everything downstream. The marker, the popup, the
+      // waypoint: goes straight into L.latLng, which throws on a NaN and
       // takes the card down with it.
       if (tapToAdd) {
         if (Number.isFinite(e.latlng?.lat) && Number.isFinite(e.latlng?.lng)) {
@@ -959,7 +959,7 @@ function LongPressAdd({ waypoints, onDrop, tapToAdd = false }) {
         textAlign: 'center', minWidth: 168,
         // Inline (beats every stylesheet): the popup opens under the user's
         // still-held finger, and without these iOS turns that ongoing press
-        // into text selection of the coordinates — handles, loupe, Copy bar.
+        // into text selection of the coordinates. Handles, loupe, Copy bar.
         userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
       }}>
         <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, letterSpacing: '0.3px' }}>
@@ -987,7 +987,7 @@ function LongPressAdd({ waypoints, onDrop, tapToAdd = false }) {
 //
 // Leaflet's control is dropped rather than restyled. Overriding
 // .leaflet-control-zoom means fighting a stylesheet that also owns the
-// disabled state, the seam between the buttons and the corner radii — and the
+// disabled state, the seam between the buttons and the corner radii, and the
 // result still would not match, because Leaflet's control cannot hold a third
 // button that isn't a zoom.
 //
@@ -1000,8 +1000,8 @@ function MapControlStack({ onClose }) {
   const ref = useRef(null)
 
   // zoomend alone is not enough. Switching chart layers changes the map's
-  // limits without changing the zoom — the sectional does not exist below
-  // zoom 8 — so the buttons have to re-evaluate on zoomlevelschange too, or
+  // limits without changing the zoom. The sectional does not exist below
+  // zoom 8, so the buttons have to re-evaluate on zoomlevelschange too, or
   // "−" stays live at a floor it can no longer go below.
   const sync = () => setZoom(map.getZoom())
   useMapEvents({ zoomend: sync, zoomlevelschange: sync })
@@ -1027,7 +1027,7 @@ function MapControlStack({ onClose }) {
         width: 38, height: 38, padding: 0, margin: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: 'transparent', border: 'none',
-        // Hairlines between the buttons, not around them — the group carries
+        // Hairlines between the buttons, not around them. The group carries
         // its own outer border, so an edge here would double up.
         borderBottom: last ? 'none' : '0.5px solid rgba(255,255,255,0.14)',
         color: disabled ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.9)',
@@ -1063,13 +1063,13 @@ function MapControlStack({ onClose }) {
 
 // Choosing where you are flying to, on the map.
 //
-// The route map only exists once a route does, and a route needs two ends —
+// The route map only exists once a route does, and a route needs two ends. 
 // which is exactly the assumption this breaks. Plenty of flying is to places
 // that have no ICAO code to type into the TO field: a ranch strip, a lake, a
 // section corner, a friend's grass runway. Those pilots need to point at it.
 //
 // Deliberately spare: a basemap, the departure, and whatever the pilot taps.
-// No charts, no airspace, no terrain — this map answers one question, and the
+// No charts, no airspace, no terrain. This map answers one question, and the
 // full map with all its layers is one Calculate away.
 function PickDestinationMap({ depPos, depIdent, onClose, onPick }) {
   const [pt, setPt] = useState(null)
@@ -1152,7 +1152,7 @@ function TapToPlace({ onPlace }) {
 
 // The crosshair from public/crosshair.svg, drawn as a mask rather than an
 // <img>. The file is a black glyph and would be invisible on a dark card;
-// masking paints it in currentColor, so it follows the button's own text —
+// masking paints it in currentColor, so it follows the button's own text. 
 // including going tertiary when the button is disabled.
 function CrosshairIcon({ size = 13 }) {
   return (
@@ -1167,12 +1167,12 @@ function CrosshairIcon({ size = 13 }) {
   )
 }
 
-// How much of the card stays on screen once it is swiped away — enough to be
+// How much of the card stays on screen once it is swiped away, enough to be
 // an obvious grab bar and to be hit reliably with a thumb, not so much that it
 // eats the chart it just got out of the way of.
 const CARD_PEEK_PX = 26
 
-// How close the map goes when a subject on it is tapped — a field, or the
+// How close the map goes when a subject on it is tapped. A field, or the
 // highest ground. One number for both: they are the same gesture and the same
 // kind of answer to "where is it", and two zooms made the map feel like it had
 // two minds about being tapped. 13 is airport scale, close enough to see the
@@ -1188,7 +1188,7 @@ const SUBJECT_ZOOM = 13
 //   * it must be more vertical than horizontal, or scrubbing the route strip
 //     sideways would dismiss the card
 //   * having fired, it suppresses the click that would otherwise land on
-//     whatever button the finger happened to start on — a swipe that also
+//     whatever button the finger happened to start on. A swipe that also
 //     presses something is the one outcome nobody wants
 //
 // Only pointer events are bound. Both pointerdown and touchstart fire for one
@@ -1247,12 +1247,12 @@ function RouteHint() {
   )
 }
 
-// Map tile/overlay stack — MUST be a stable, top-level component. Defining
+// Map tile/overlay stack: MUST be a stable, top-level component. Defining
 // this inline inside AltitudeItem's render (as it was before) gives it a new
 // function identity every render, so React treats it as a brand-new component
 // type and tears down + remounts the entire Leaflet layer tree (base tiles,
 // sectional/airspace overlays, TFR markers, waypoint markers) on every single
-// re-render of AltitudeItem — which happens constantly (hovering a chip,
+// re-render of AltitudeItem, which happens constantly (hovering a chip,
 // toggling a layer, TFR data arriving). That's what read as "the map glitches
 // constantly" and, on iOS, remounting mid-tap can also swallow the tap event
 // on nearby chips/buttons.
@@ -1261,12 +1261,12 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
   return (<>
     <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' />
-    {/* Sectional — the FAA's own VFR raster service, same publisher and tile
+    {/* Sectional: the FAA's own VFR raster service, same publisher and tile
         org as the IFR layers below. It replaces vfrmap.com, whose terms allow
         their API but prohibit hotlinking tiles, which is what this was doing.
         Cached z8-12; below 8 the chart is unreadable anyway and the mosaic's
         ragged edges look broken, so the basemap shows and the chart appears as
-        you zoom in — the ForeFlight behaviour.
+        you zoom in. The ForeFlight behaviour.
 
         tileSize 128 + zoomOffset 1 is the fix for a soft-looking chart: the
         service only publishes 256 px tiles at 96 dpi, so on a phone at 3x
@@ -1287,8 +1287,8 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
         errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
         attribution='&copy; FAA AIS' />
     )}
-    {/* IFR enroute charts — FAA's official free tile services (Web Mercator,
-        56-day cycle — the FAA's own enroute product).
+    {/* IFR enroute charts. FAA's official free tile services (Web Mercator,
+        56-day cycle. The FAA's own enroute product).
         Low is readable z8–11, High z5–9; beyond native range Leaflet
         over-zooms the tiles, below minZoom the basemap shows. */}
     {layers.ifrlo && (
@@ -1346,7 +1346,7 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
         </CircleMarker>
       )
     })}
-    {/* SUA polygons — always shown when detected, no layer toggle needed */}
+    {/* SUA polygons, always shown when detected, no layer toggle needed */}
     {detectedSUAPolys.map((s, i) => {
       const tc = s.typeCode.toUpperCase()
       const suaColor = tc.startsWith('P') ? '#FF3B30'
@@ -1366,15 +1366,15 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
     {fit && <RouteFitter positions={routePositions} once={fitOnce} />}
     <RouteRefit nonce={refitNonce} positions={routePositions} />
     <AirspaceZoomer active={layers.airspace} />
-    {/* Each min mirrors its TileLayer's own minZoom below — 8, 8, 5. */}
+    {/* Each min mirrors its TileLayer's own minZoom below. 8, 8, 5. */}
     <ChartZoomer active={layers.sectional} min={8} positions={routePositions} />
     <ChartZoomer active={layers.ifrlo} min={8} positions={routePositions} />
     <ChartZoomer active={layers.ifrhi} min={5} positions={routePositions} />
-    {/* Dep/dest endpoints — draggable like any waypoint (fine-tune the start/
+    {/* Dep/dest endpoints: draggable like any waypoint (fine-tune the start/
         end point around the airport), but never removable. Moving one well
         outside the airport area raises a warning upstream without blocking. */}
     {/* En-route fields, as small hollow markers distinct from the route's own
-        points — the nearest handful only, because the corridor can hold 160
+        points. The nearest handful only, because the corridor can hold 160
         of them and a route line under a field of dots is not a route line.
         The rest stay in the list, which is the same set seen another way. */}
     <AerodromeMarkers fields={aerodromes} layers={layers} onAerodrome={onAerodrome} highlightIdent={openFieldIdent} />
@@ -1413,7 +1413,7 @@ function RouteWaypoints({ waypoints, onDrop, onDragInsert, onWaypointDrop, moveW
 
 // The altitude recommendation, and the reasons behind it.
 //
-// Every figure here is the engine's own — the score breakdown IS the reasons
+// Every figure here is the engine's own. The score breakdown IS the reasons
 // list, so nothing shown can drift from what was actually computed. What was
 // unavailable or assumed is stated rather than quietly folded in.
 function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick, brief, briefBusy, onBrief }) {
@@ -1438,7 +1438,7 @@ function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick, brief, brie
           No cruising altitude works for this route
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.5 }}>
-          Every hemispheric altitude is ruled out — usually terrain below and the aircraft
+          Every hemispheric altitude is ruled out, usually terrain below and the aircraft
           ceiling above. A routing that avoids the high ground, or a different aircraft,
           is the way through. Reasons are on each altitude below.
         </div>
@@ -1456,10 +1456,10 @@ function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick, brief, brie
     (advice.hazards.coverage.icing === 'modelled' || advice.hazards.coverage.turbulence === 'modelled')
 
   const DEGRADED = {
-    'winds-aloft-unavailable': 'winds aloft unavailable — picked on terrain, airspace and rules alone',
-    'no-aircraft-performance': 'no aircraft performance set — climb cost not considered',
-    'assumed-climb-performance': `climb rate and ceiling assumed (${acPerf?.rocFpm} fpm, ${acPerf?.serviceCeilingFt?.toLocaleString()} ft) — set them on the Aircraft page`,
-    'terrain-unavailable': 'terrain data unavailable — clearance not checked',
+    'winds-aloft-unavailable': 'winds aloft unavailable. Picked on terrain, airspace and rules alone',
+    'no-aircraft-performance': 'no aircraft performance set. Climb cost not considered',
+    'assumed-climb-performance': `climb rate and ceiling assumed (${acPerf?.rocFpm} fpm, ${acPerf?.serviceCeilingFt?.toLocaleString()} ft). Set them on the Aircraft page`,
+    'terrain-unavailable': 'terrain data unavailable. Clearance not checked',
   }
 
   return (
@@ -1516,14 +1516,14 @@ function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick, brief, brie
 
       {advice.hazards?.convective && (
         <div style={{ marginTop: 7, fontSize: 10.5, color: 'var(--warn)', lineHeight: 1.45 }}>
-          Convection likely along the route (CAPE {advice.hazards.convective.capeJkg} J/kg) — no
+          Convection likely along the route (CAPE {advice.hazards.convective.capeJkg} J/kg). No
           cruising altitude is smooth through a build-up; plan to go around.
         </div>
       )}
 
       <div style={{ marginTop: 7, fontSize: 9.5, color: 'var(--text-tertiary)', lineHeight: 1.45 }}>
         {wx && `${advice.atmosphere.model}, ${wx}. `}
-        {advice.atmosphere?.stale && `Winds are the last set that reached us, ${advice.atmosphere.ageMin} min old — the forecast service did not answer. `}
+        {advice.atmosphere?.stale && `Winds are the last set that reached us, ${advice.atmosphere.ageMin} min old. The forecast service did not answer. `}
         {modelled && 'Icing and turbulence outside US coverage are modelled from the forecast profile, not an official product. '}
         VFR cloud clearance is checked vertically only. Pilot retains final authority.
       </div>
@@ -1534,7 +1534,7 @@ function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick, brief, brie
         </div>
       )}
 
-      {/* The written briefing. The analysis above stands on its own — this
+      {/* The written briefing. The analysis above stands on its own. This
           reads it back as advice, and can only choose from the same legal
           altitudes and quote the same figures. */}
       <div style={{ marginTop: 9, borderTop: '0.5px solid var(--border)', paddingTop: 8 }}>
@@ -1557,7 +1557,7 @@ function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick, brief, brie
                 background: 'var(--warn-light)', borderRadius: 7, padding: '6px 8px',
               }}>
                 The briefing prefers {fmtAlt(brief.altFt)}; the analysis scored {fmtAlt(brief.enginePick)} highest.
-                Both are legal here — the figures above are the measured ones.
+                Both are legal here. The figures above are the measured ones.
               </div>
             )}
             <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
@@ -1583,10 +1583,10 @@ function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick, brief, brie
         {brief && brief.status !== 'ok' && (
           <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
             {brief.status === 'not-configured'
-              ? 'Briefing is not set up on this deployment — the analysis above is unaffected.'
+              ? 'Briefing is not set up on this deployment. The analysis above is unaffected.'
               : brief.status === 'rejected'
               ? `Briefing discarded: ${brief.reason}. The analysis above stands.`
-              : 'Briefing unavailable — the analysis above stands.'}
+              : 'Briefing unavailable. The analysis above stands.'}
           </div>
         )}
       </div>
@@ -1695,18 +1695,18 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
   // ── Named intermediate waypoints (Garmin/ForeFlight style) ──
   // Each row: { id, text, resolved: {kind,name,lat,lon,...}|null, error,
-  //             creating: {lat,lon}|null } — `creating` holds the inline
+  //             creating: {lat,lon}|null }: `creating` holds the inline
   //             lat/lon form for defining a new USER waypoint.
   const [wptRows, setWptRows] = useState([])
 
-  // Coordinate hint for disambiguating duplicate idents — nearest wins.
+  // Coordinate hint for disambiguating duplicate idents. Nearest wins.
   const depPosHint = useRef(null)
 
   // Changing an endpoint throws away the routing between the old pair.
   //
   // Waypoints only mean anything between the two airports they were entered
   // for. This used to leave them behind: file KMIA-KJFK, switch to KSFO-KSEA,
-  // and the card still listed ALTNN2, DUCEN, JFK and ROBUC3 — a Miami
+  // and the card still listed ALTNN2, DUCEN, JFK and ROBUC3. A Miami
   // departure and a New York arrival on a San Francisco flight, all of which
   // would have gone straight into the calculated route.
   //
@@ -1735,7 +1735,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         setRoute(r)
         if (r.atsTokens?.length > 2) {
           // Restore the rows AS TYPED (airway tokens intact, not their
-          // expansion) — any token without a matching expanded waypoint is
+          // expansion), any token without a matching expanded waypoint is
           // an airway.
           const mid = r.atsTokens.slice(1, -1)
           setWptRows(mid.map((name, i) => {
@@ -1783,7 +1783,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     else setDestErr('Airport not found')
   }
 
-  // ICAO codes are always exactly 4 characters (maxLength on both inputs) —
+  // ICAO codes are always exactly 4 characters (maxLength on both inputs). 
   // once a field reaches that length, validate immediately so the field
   // flips to the "found" pill without waiting for Enter/blur.
   useEffect(() => {
@@ -1796,8 +1796,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
   // ── Published routes (FAA preferred / TEC) ──
   // What ATC actually issues between this pair, offered as soon as both ends
-  // are known. Empty for most pairs — the FAA publishes routings for about
-  // 7,700 of them — and the button simply doesn't appear then.
+  // are known. Empty for most pairs. The FAA publishes routings for about
+  // 7,700 of them, and the button simply doesn't appear then.
   const [pubRoutes, setPubRoutes] = useState({ exact: [], reverse: [], nearby: [] })
   const pubCount = pubRoutes.exact.length + pubRoutes.reverse.length + pubRoutes.nearby.length
   const [pubOpen, setPubOpen]     = useState(false)
@@ -1807,7 +1807,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   useEffect(() => {
     let cancelled = false
     const ready = depValidated && destValidated
-    // Resolved asynchronously either way — an unvalidated pair settles to an
+    // Resolved asynchronously either way. An unvalidated pair settles to an
     // empty list rather than being cleared synchronously, which would cascade
     // a render on every keystroke in the ICAO fields.
     const empty = { exact: [], reverse: [], nearby: [] }
@@ -1820,7 +1820,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // Fill the waypoint rows from a published string. Every kind of token keeps
   // the name it is filed under and expands underneath: airways into their fix
   // chains, SIDs and STARs into theirs, plain fixes resolved outright. A
-  // procedure name that is not published at this airport stays as text — the
+  // procedure name that is not published at this airport stays as text. The
   // route string can reference one we have no record of, and inventing a path
   // for it would be worse than showing the name.
   async function applyPublished(r) {
@@ -1828,7 +1828,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     let tokens = await classifyRoute(r.r, depPosHint.current, { dep, dest })
     // A route published for the opposite direction is read back to front: its
     // string runs from the field you are flying to. The airway tokens stay
-    // where they are — an airway expands the same either way, it is the fixes
+    // where they are: an airway expands the same either way, it is the fixes
     // either side of it that swap.
     if (r.basis === 'reverse') tokens = [...tokens].reverse()
     const rows = tokens
@@ -1842,7 +1842,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setWptRows(rows)
     // Clear the chart overlays. A published routing is about the points it
     // goes through, and an enroute chart under it buries them in every other
-    // airway and navaid in the region — the route stops being the thing you
+    // airway and navaid in the region. The route stops being the thing you
     // can see. The plain basemap leaves the line and its own waypoints as the
     // only marked features; the chart chips are one tap away when wanted.
     setLayers({ sectional: false, ifrlo: false, ifrhi: false, airspace: false, tfr: false })
@@ -1882,7 +1882,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     } catch { /* map not ready; the refit fallback still applies */ }
   }
 
-  // Back to wherever the map was, exactly — same centre, same zoom, and no
+  // Back to wherever the map was, exactly, same centre, same zoom, and no
   // offsetFrac, since nothing is being lifted clear of a sheet any more.
   // Closing the Mountains panel is the same gesture as closing an aerodrome
   // popup: the excursion is over, so the camera goes back where it was.
@@ -1911,7 +1911,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setChipPinned(null)
     setActiveChip(null)                       // the chip panel would cover the field
     rememberView()
-    // The offset lifts it into the band above the popup — the point of
+    // The offset lifts it into the band above the popup. The point of
     // tapping it is to look at it.
     setMapFlyTarget({ lat: f.lat, lon: f.lon, zoom: SUBJECT_ZOOM, offsetFrac: 0.26 })
     setOpenField(f)
@@ -1919,7 +1919,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   }
 
   // Tapping the height in the Mountains card puts the map on that ridge, in
-  // the same band above the sheet the aerodrome popup uses — the number is
+  // the same band above the sheet the aerodrome popup uses. The number is
   // the answer to "how high", and this is the answer to "where".
   function focusPeak() {
     if (terrainInfo?.status !== 'ok' || terrainInfo.atLat == null) return
@@ -1933,7 +1933,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
   // Tapping the peak on the map is the same act as tapping the Mountains
   // chip, and it behaves like tapping a control tower: fly in, focus it, open
-  // the card that explains it — and on closing, fly back out to exactly the
+  // the card that explains it, and on closing, fly back out to exactly the
   // view that was there before. Same zoom as a tower, so the two subjects on
   // this map are approached identically.
   function openMountains() {
@@ -1947,7 +1947,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setPeakFocused(false)
     setAwayFromRoute(false)
     // Where the pilot was beats where the route is. Only when there is no
-    // saved view — the subject was opened from the card, not from the map —
+    // saved view: the subject was opened from the card, not from the map. 
     // does this fall back to framing the route. RouteFitter fits once in
     // fullscreen, deliberately, so that needs asking for explicitly.
     if (restoreView()) return
@@ -1972,8 +1972,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // its ident typed again. The section stores takeoff and landing alternates
   // separately; a field found along the route is a landing alternate.
   //
-  // The entry is built the same way that section builds its own — the full
-  // airport record plus distance and bearing from the destination — so it
+  // The entry is built the same way that section builds its own. The full
+  // airport record plus distance and bearing from the destination, so it
   // renders identically whichever way it got there.
   async function setAsAlternate(f) {
     const [saved, airport, rawMetar] = await Promise.all([
@@ -2008,8 +2008,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // The first waypoint is asked for differently from the rest.
   //
   // An empty text field assumes the pilot already knows the name of the fix
-  // they want, which is true for the second one — by then they are refining a
-  // routing they can see. It is often not true for the first: what they have
+  // they want. That is true for the second one, since by then they are
+  // refining a routing they can see. It is often not true for the first: what they have
   // is a place on the chart, a way around weather or terrain, not a
   // five-letter ident. So the first press opens the map and waits for a tap.
   //
@@ -2022,7 +2022,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     // cannot exist until a route does.
     if (!dest.trim()) {
       // It has to open somewhere the pilot recognises, and the only anchor
-      // available before a route is the departure — so resolve it first if
+      // available before a route is the departure, so resolve it first if
       // typing it never triggered a lookup.
       if (!depPosHint.current) await validateDep()
       if (!depPosHint.current) { setRE('Could not place that departure airport on the map'); return }
@@ -2042,7 +2042,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   }
 
   // A place chosen on the destination map. A typed name is saved first, so
-  // the same spot can be found by name from any route field afterwards —
+  // the same spot can be found by name from any route field afterwards. 
   // which is the whole point of naming it.
   async function commitDestination(choice) {
     const { lat, lon, name, saveAs } = choice
@@ -2052,7 +2052,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         await saveUserWaypoint(saveAs, lat, lon)
         ident = saveAs
       } catch (e) {
-        // Almost always "that name is already a real waypoint" — worth saying,
+        // Almost always "that name is already a real waypoint". Worth saying,
         // and the flight can still be planned to the coordinate.
         setRE(e.message)
         ident = null
@@ -2078,7 +2078,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   async function resolveWptRow(id, text) {
     const ident = text.trim().toUpperCase()
     if (!ident) return
-    // Airway ID (V25, J501, Q822…) — expanded into its fix chain at
+    // Airway ID (V25, J501, Q822…). Expanded into its fix chain at
     // Calculate time, between the fixes in the neighboring rows.
     if (looksLikeAirway(ident) && await lookupAirway(ident)) {
       patchWptRow(id, { text: ident, resolved: { kind: 'AWY', name: ident }, error: null, creating: null })
@@ -2111,7 +2111,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     }
   }
 
-  // Editable waypoints — dep + optional intermediates + dest
+  // Editable waypoints: dep + optional intermediates + dest
   const [waypoints, setWaypoints] = useState([])
 
   // Amber, non-blocking notice when a dep/dest point is dragged off-airport
@@ -2147,7 +2147,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // A drop opens the picker rather than committing a coordinate: the finger
   // lands somewhere approximate, and what the pilot almost always wants is the
   // charted point a mile or two away.
-  // True while the map is open specifically to be asked "where?" — a tap
+  // True while the map is open specifically to be asked "where?". A tap
   // places a point instead of dismissing one.
   // Oxygen on board. The altitude engine has always known about 91.211 and
   // has never had a way to be told the answer, so it assumed the worst and
@@ -2256,12 +2256,12 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [detectedTerrain, setDetectedTerrain] = useState([])
   // Terrain measurement behind the Mountains chip: highest point in the
   // corridor, where it is, and what it leaves under the planned altitude.
-  // status 'unavailable' is shown rather than hidden — see below.
+  // status 'unavailable' is shown rather than hidden. See below.
   const [terrainInfo, setTerrainInfo] = useState(null)
-  // Overwater measurement behind the Water chip — distance, longest crossing,
+  // Overwater measurement behind the Water chip. Distance, longest crossing,
   // and how far from shore the route gets.
   const [waterInfo, setWaterInfo] = useState(null)
-  // Aerodromes near the route — which fields, how far off track.
+  // Aerodromes near the route, which fields, how far off track.
   const [aeroInfo, setAeroInfo] = useState(null)
   // The field whose popup is open, and whether the map has been flown off the
   // route to reach it. Flying 800 NM up the route to look at an airport is a
@@ -2286,14 +2286,14 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     let cancelled = false
 
     async function detect() {
-      // Great-circle samples every 5 NM — see lib/corridor.js for why fixed
+      // Great-circle samples every 5 NM. See lib/corridor.js for why fixed
       // spacing (rather than a fixed count) and spherical interpolation matter.
       const { samples } = sampleRoute(waypoints, { spacingNm: 5 })
       const pts = samples.map(s => [s.lat, s.lon])
 
       // Terrain across the ±5 NM corridor, with the highest point and the
       // clearance it leaves under the planned altitude (see lib/terrain.js).
-      // Water against bundled coastline polygons (see lib/water.js) — no
+      // Water against bundled coastline polygons (see lib/water.js). No
       // network, so this half of the analysis survives a dead connection.
       const [terrain, water] = await Promise.all([
         analyzeTerrain(waypoints, { altFt: selectedAlt || null }),
@@ -2318,7 +2318,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       if (hasMountains) det.push('mountains')
 
       // Aerodromes from the bundled worldwide set (see lib/aerodromes.js).
-      // This was an FAA ArcGIS query, which covers the US only — outside it
+      // This was an FAA ArcGIS query, which covers the US only. Outside it
       // the chip simply never appeared, which reads as "no fields near your
       // route" rather than "not checked".
       const aero = await analyzeAerodromes(waypoints)
@@ -2336,7 +2336,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       // Esri ring → [lat, lon][] polygon
       const ringToPoly = ring => ring.map(([x, y]) => [y, x])
 
-      // NPS parks and FAA SUA — both US-only services, so a route outside
+      // NPS parks and FAA SUA, both US-only services, so a route outside
       // their coverage is reported as such instead of coming back empty.
       const inUS = touchesUS(waypoints)
       // Controlled airspace: FAA class airspace in the US, the bundled COCESNA
@@ -2419,7 +2419,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [tfrLoading, setTfrLoad] = useState(false)
   const [mapFlyTarget, setMapFlyTarget] = useState(null)
 
-  // TFR conflict detection — uses shared routeIntersectsPoly
+  // TFR conflict detection: uses shared routeIntersectsPoly
   const tfrConflicts = useMemo(() => {
     if (!tfrData?.length || waypoints.length < 2) return []
     const hits = []
@@ -2447,13 +2447,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   function toggleLayer(name) {
     setLayers(prev => {
       const next = { ...prev, [name]: !prev[name] }
-      // Chart layers are mutually exclusive — stacking two raster charts
+      // Chart layers are mutually exclusive. Stacking two raster charts
       // (both multiply-blended) is unreadable.
       const CHARTS = ['sectional', 'ifrlo', 'ifrhi']
       if (CHARTS.includes(name) && next[name]) {
         for (const k of CHARTS) if (k !== name) next[k] = false
       }
-      // Retry when the previous attempt failed or returned nothing —
+      // Retry when the previous attempt failed or returned nothing. 
       // `!tfrData` alone never retried after a failed fetch stored [].
       if (name === 'tfr' && next.tfr && !tfrData?.length && !tfrLoading) loadTFRs()
       return next
@@ -2465,7 +2465,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setTfrData(null)
 
     // FAA GeoServer WFS (the endpoint tfr3 uses internally) via OUR /api/tfr
-    // proxy — the FAA serves no CORS headers, and the public CORS proxies the
+    // proxy: the FAA serves no CORS headers, and the public CORS proxies the
     // app previously fell back on (corsproxy.io, allorigins) have gone
     // dead/blocking, which silently broke TFRs. Same-origin proxy is the
     // reliable path; the old public proxies remain only as a last resort.
@@ -2483,7 +2483,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       if (geo?.features?.length) {
         const tfrs = (geo.features || []).map(f => {
           const p = f.properties
-          // GeoJSON coords are [lon, lat] — Leaflet needs [lat, lon]
+          // GeoJSON coords are [lon, lat]. Leaflet needs [lat, lon]
           let polygon = null, lat = null, lon = null
           if (f.geometry?.type === 'Polygon') {
             polygon = f.geometry.coordinates[0].map(([lo, la]) => [la, lo])
@@ -2508,7 +2508,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       }
     } catch { /* ignore */ }
 
-    // Parse GeoRSS XML — returns TFRs with polygon/point geometry for map rendering
+    // Parse GeoRSS XML: returns TFRs with polygon/point geometry for map rendering
     const parseGeoRss = xml => {
       const doc = new DOMParser().parseFromString(xml, 'text/xml')
       const items = [...doc.querySelectorAll('item')]
@@ -2554,7 +2554,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       }).filter(t => t.lat !== null)
     }
 
-    // Parse tfr2 JSON (no coords — list only fallback)
+    // Parse tfr2 JSON (no coords. List only fallback)
     const parseTfr2Json = raw => {
       const data = JSON.parse(raw)
       const list = Array.isArray(data) ? data : (data.TFRAreaList || data.tfr || data.items || [])
@@ -2569,7 +2569,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
     let tfrs = null
 
-    // 1. FAA GeoRSS feeds — have actual coordinates for map rendering
+    // 1. FAA GeoRSS feeds. Have actual coordinates for map rendering
     const GEORSS_URLS = [
       'https://tfr.faa.gov/tfr2/georss.xml',
       'https://tfr.faa.gov/save_pages/tfrRssALL.xml',
@@ -2585,7 +2585,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       } catch { /* ignore */ }
     }
 
-    // 2. AWC NOTAM API — CORS-friendly, no proxy needed
+    // 2. AWC NOTAM API. CORS-friendly, no proxy needed
     if (!tfrs) {
       try {
         const res = await fetch(
@@ -2624,7 +2624,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
 
   // `over` lets a caller recalculate with a field it has only just chosen,
-  // without waiting a render for the state to land — and lets it supply
+  // without waiting a render for the state to land, and lets it supply
   // coordinates it already holds, so a small field the weather service has
   // never heard of still routes.
   async function calcRoute(over = {}) {
@@ -2634,7 +2634,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setRL(true); setRE(null); setRoute(null)
     try {
       // An endpoint is not necessarily an airport any more. It can be a
-      // coordinate the pilot pointed at, or a name they gave that spot — and
+      // coordinate the pilot pointed at, or a name they gave that spot, and
       // both have to survive being recalculated, which is what broke: the
       // first calculation worked because the position was handed in, and
       // every one after it went looking for an ICAO code that never existed.
@@ -2668,7 +2668,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       const procedureNotes = []
       for (let i = 0; i < rowTokens.length; i++) {
         const t = rowTokens[i]
-        // A SID or STAR expands the same way an airway does — the row keeps
+        // A SID or STAR expands the same way an airway does. The row keeps
         // the published name, because that is what gets filed and read back,
         // and the fixes underneath it are what gets drawn. Which transition
         // applies is decided by the fix on the other side of it in the route,
@@ -2716,7 +2716,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         if (res.maxMEA != null) airwayNotes.push({ awy: t.name, mea: res.maxMEA })
       }
       // A procedure or airway normally ends on the very fix the next token
-      // names — "CWARD2 SLI" leaves the departure at SLI, and SLI is then
+      // names: "CWARD2 SLI" leaves the departure at SLI, and SLI is then
       // filed again as the next point. Flown, that is one fix; left in, it is
       // a zero-length leg that shows up as a doubled label on the map and an
       // extra row in the navigation log.
@@ -2759,30 +2759,30 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         wpts,
         airwayNotes,
         procedureNotes,
-        // Compact filed-route tokens (airways kept as V25 etc.) — drives the
+        // Compact filed-route tokens (airways kept as V25 etc.). Drives the
         // row restore and the one-pager's ATS route string.
         atsTokens: [depId, ...rowTokens.map(t => t.name), destId],
       }
       setRoute(routeObj)
       // No chart is switched on here. Calculating a route used to open the
       // enroute Low for IFR and the sectional for VFR, which put a dense chart
-      // under the one thing the pilot had just asked to see — the line between
-      // two airports — in the small preview where it is least legible. The
+      // under the one thing the pilot had just asked to see. The line between
+      // two airports, in the small preview where it is least legible. The
       // preview starts bare; the chart buttons are right above it, and once a
       // layer is chosen it stays chosen, including when the fullscreen map is
       // closed and the preview comes back.
-      // No fly-to here — RouteFitter frames the whole route on map mount,
+      // No fly-to here: RouteFitter frames the whole route on map mount,
       // and a lingering target would snap fullscreen away from that framing.
       setMapFlyTarget(null)
       put('settings', { key: 'route', ...routeObj }).catch(() => {})
       setCourse(String(mcRounded))
       setSelectedAlt(null)
-      // Returned so a caller that needs the route to exist before it can act —
-      // opening the map to pick a waypoint on it — can wait for the real thing
+      // Returned so a caller that needs the route to exist before it can act. 
+      // opening the map to pick a waypoint on it. Can wait for the real thing
       // instead of for a state update it cannot see yet.
       return routeObj
     } catch (e) {
-      setRE(e.userMessage || 'Could not calculate — check both ICAO codes')
+      setRE(e.userMessage || 'Could not calculate. Check both ICAO codes')
       return null
     } finally {
       setRL(false)
@@ -2795,12 +2795,12 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const isEast   = valid && c <= 179
   const direction = valid ? (isEast ? 'Eastbound' : 'Westbound') : null
   // VFR cruising altitudes are hemispheric thousands + 500 (§91.159); IFR
-  // are plain thousands (§91.179) — odd eastbound, even westbound.
+  // are plain thousands (§91.179). Odd eastbound, even westbound.
   const isIFR = flightRules === 'IFR'
   // Below 18,000 ft the hemispheric rule gives thousands (IFR) or thousands
   // +500 (VFR). At and above FL180 everything is IFR in Class A, so the list
   // continues as flight levels on the same odd/even split. Capped at the
-  // aircraft's service ceiling — offering FL450 to a C172 is noise.
+  // aircraft's service ceiling: offering FL450 to a C172 is noise.
   const altitudes = valid ? (() => {
     const out = []
     const oddEast = isEast
@@ -2817,7 +2817,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     const ceiling = acPerf?.serviceCeilingFt
     return ceiling ? out.filter(a => a <= ceiling + 1000) : out
   })() : null
-  // Highest MEA among the airways in the calculated route — altitudes below
+  // Highest MEA among the airways in the calculated route. Altitudes below
   // it are flagged (never blocked; ATC may still assign segment-specific).
   const routeMaxMEA = route?.airwayNotes?.length
     ? Math.max(...route.airwayNotes.map(n => n.mea)) : null
@@ -2850,7 +2850,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   ])
 
   // True when any point of the planned route sits outside the regions we hold
-  // current navdata for — drives the Tier-2 reference disclosure on the map.
+  // current navdata for: drives the Tier-2 reference disclosure on the map.
   const routeLeavesTier1 = waypoints.length >= 2 &&
     waypoints.some(w => !inTier1(w.lat, w.lon))
 
@@ -3029,7 +3029,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                             borderRadius: 7, background: 'rgba(10,132,255,0.18)', color: '#64a8ff',
                           }}>{r.typeLabel}</span>
                           {/* The pair it was actually published for, on the row
-                              itself — a heading scrolls out of sight, and this
+                              itself. A heading scrolls out of sight, and this
                               is the one thing that must not be missed. */}
                           {g.key !== 'exact' && (
                             <span style={{
@@ -3056,7 +3056,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 ) : null)}
                 <div style={{ fontSize: 9.5, color: 'var(--text-tertiary)', lineHeight: 1.45, padding: '2px 2px 0' }}>
                   FAA preferred and tower en-route routes, {' '}NASR current cycle. Tapping one
-                  replaces the waypoints below. Verify against your clearance — these are what
+                  replaces the waypoints below. Verify against your clearance. These are what
                   ATC normally issues, not a guarantee of what you will get.
                 </div>
               </div>
@@ -3073,7 +3073,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 )}.
                 {pubApplied.skipped.length > 0 && (
                   <> {pubApplied.skipped.join(', ')} {pubApplied.skipped.length > 1 ? 'are' : 'is'} a
-                  departure or arrival procedure — file {pubApplied.skipped.length > 1 ? 'them' : 'it'} as
+                  departure or arrival procedure. File {pubApplied.skipped.length > 1 ? 'them' : 'it'} as
                   published, but the app cannot draw {pubApplied.skipped.length > 1 ? 'them' : 'it'} without
                   the FAA procedure data.</>
                 )}
@@ -3104,7 +3104,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         background: row.resolved.kind === 'VOR' ? 'rgba(139,92,246,0.18)' : row.resolved.kind === 'GPS' ? 'rgba(52,199,89,0.15)' : row.resolved.kind === 'AWY' ? 'rgba(10,132,255,0.18)' : row.resolved.kind === 'PROC' ? 'rgba(255,214,10,0.18)' : 'rgba(255,159,10,0.15)',
                         color:      row.resolved.kind === 'VOR' ? '#a78bfa' : row.resolved.kind === 'GPS' ? 'var(--ok)' : row.resolved.kind === 'AWY' ? '#64a8ff' : row.resolved.kind === 'PROC' ? '#FFD60A' : 'var(--warn)',
                       }}>
-                        {/* A procedure row reads SID or STAR, not "PROC" —
+                        {/* A procedure row reads SID or STAR, not "PROC". 
                             that is the word on the chart and in the clearance. */}
                         {row.resolved.kind === 'PROC' ? row.resolved.role : row.resolved.kind}
                       </span>
@@ -3219,9 +3219,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         )}
 
         {/* Three jobs, one button, decided by what the route is missing.
-            No destination — the map is asking where the flight goes. A
-            destination but no waypoints — the map is asking where it detours.
-            Waypoints already — a text row, because by then the pilot is
+            No destination. The map is asking where the flight goes. A
+            destination but no waypoints. The map is asking where it detours.
+            Waypoints already. A text row, because by then the pilot is
             naming fixes they can see, and the map is a long press away.
 
             "Has a waypoint yet" counts both places one can live: a typed row,
@@ -3285,7 +3285,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             )}
             {/* What the procedure expansion could not draw. The initial legs of
                 a departure are often flown on a heading until an altitude or
-                until ATC turns you — where those go depends on the day, so
+                until ATC turns you, where those go depends on the day, so
                 there is no line for them and the count says so rather than the
                 map implying a path that was never published. */}
             {route.procedureNotes?.length > 0 && (
@@ -3296,12 +3296,12 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                     {n.transition ? ` via ${n.transition}` : ''}
                     {/* The runway-specific segment is where a departure's
                         heading and vector legs live, and which one applies
-                        isn't known until the runway is — so it is never drawn,
+                        isn't known until the runway is, so it is never drawn,
                         and that is said plainly rather than left to be
                         inferred from a line that starts in mid-air. */}
-                    {n.runway && ` — ${n.t === 'SID' ? 'begins' : 'ends'} with a runway-specific segment that is not drawn; fly the chart for it`}
-                    {n.undrawable > 0 && ` — ${n.undrawable} further ${n.undrawable > 1 ? 'legs are' : 'leg is'} flown on a heading or vector`}
-                    {n.partial && ` — rejoins beyond the portion published for this routing; fly the chart`}
+                    {n.runway && `. ${n.t === 'SID' ? 'begins' : 'ends'} with a runway-specific segment that is not drawn; fly the chart for it`}
+                    {n.undrawable > 0 && `. ${n.undrawable} further ${n.undrawable > 1 ? 'legs are' : 'leg is'} flown on a heading or vector`}
+                    {n.partial && `. Rejoins beyond the portion published for this routing; fly the chart`}
                   </div>
                 ))}
               </div>
@@ -3332,7 +3332,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         {route?.depPos && route?.destPos && (
           <div style={{ marginTop: 10 }}>
 
-            {/* Layer toggles — every chart is offered whatever the flight
+            {/* Layer toggles: every chart is offered whatever the flight
                 rules. A VFR pilot still wants the enroute chart to see airways,
                 MEAs and the airspace structure, and hiding it made the map
                 depend on a setting that has nothing to do with what you can
@@ -3361,13 +3361,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             )}
             {layers.tfr && !tfrLoading && tfrData !== null && (
               <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
-                <span>{tfrData.length === 0 ? 'FAA server unreachable' : `${tfrData.length} TFRs loaded — open map to view`}</span>
+                <span>{tfrData.length === 0 ? 'FAA server unreachable' : `${tfrData.length} TFRs loaded. Open map to view`}</span>
                 <a href="https://tfr.faa.gov/tfr2/list.html" target="_blank" rel="noreferrer"
                   style={{ color: 'var(--accent)', textDecoration: 'none' }}>FAA Map ↗</a>
               </div>
             )}
 
-            {/* Map — inline + fullscreen modal */}
+            {/* Map: inline + fullscreen modal */}
             {(() => {
               const mapCenter = [
                 (route.depPos[0] + route.destPos[0]) / 2,
@@ -3378,7 +3378,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
               // already, so this is the closest twelve.
               const nearest = (aeroInfo?.status === 'ok' ? aeroInfo.fields : []).slice(0, 12)
               // Whichever field is open is always marked, even when it came
-              // from further down the list than the twelve drawn by default —
+              // from further down the list than the twelve drawn by default. 
               // an open popup describing an airport with nothing on the map is
               // the one case that must not happen.
               const markedFields = openField && !nearest.some(f => f.ident === openField.ident)
@@ -3413,22 +3413,22 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 {/* Fullscreen modal */}
                 {/* Portal to <body>: the tab track above has a CSS transform,
                     which turns position:fixed into "fill the transformed
-                    ancestor" — a 5-pane-wide track — so the map rendered on a
+                    ancestor". A 5-pane-wide track, so the map rendered on a
                     huge offscreen canvas and opened misframed. */}
                 {mapFullscreen && createPortal((() => {
                   const TERRAIN_DATA = {
                     water:     { label: 'Water',         items: ['Life jacket / flotation device aboard','Glide range reaches shore or vessel','Survival equipment for water temp','Filed flight plan with overwater leg'] },
-                    mountains: { label: 'Mountains',     items: ['Terrain clearance — 1,000 ft above highest within 5 NM','Escape route identified for each leg','Turbulence / downdraft margins planned','Density altitude checked at cruise level'] },
-                    airspace:  { label: 'Controlled Airspace', items: ['Class B — explicit clearance required: "cleared into the Class B"','Class C — two-way radio established (ATC uses your callsign)','Class D — two-way radio before entering the surface area','Mode C transponder within 30 NM of a Class B primary airport','Check the airspace floor against your planned altitude'] },
+                    mountains: { label: 'Mountains',     items: ['Terrain clearance. 1,000 ft above highest within 5 NM','Escape route identified for each leg','Turbulence / downdraft margins planned','Density altitude checked at cruise level'] },
+                    airspace:  { label: 'Controlled Airspace', items: ['Class B. Explicit clearance required: "cleared into the Class B"','Class C. Two-way radio established (ATC uses your callsign)','Class D. Two-way radio before entering the surface area','Mode C transponder within 30 NM of a Class B primary airport','Check the airspace floor against your planned altitude'] },
                     aero:      { label: 'Aerodromes',    items: ['Cross at min 500 ft above circuit altitude','Monitor CTAF / MF frequency','Note traffic pattern direction'] },
                     oxygen:    { label: 'Oxygen',        items: ['Above 10,000 ft MSL >30 min: O₂ required (crew)','Above 12,500 ft MSL: O₂ required','Passengers: O₂ available above 10,000 ft'] },
-                    parks:     { label: 'Nat. Park',     items: ['Check NPS overflight rules — many parks have voluntary/mandatory altitude corridors','Noise-sensitive wildlife areas may have seasonal restrictions','Review park-specific SFAR or LOA if applicable'] },
-                    sua:       { label: 'Spec. Use Airspace', items: ['Verify SUA active status via NOTAM / 1800wxbrief','MOA — contact controlling agency for advisories','Restricted / Prohibited — do not enter without clearance','Alert area — extra vigilance required'] },
+                    parks:     { label: 'Nat. Park',     items: ['Check NPS overflight rules. Many parks have voluntary/mandatory altitude corridors','Noise-sensitive wildlife areas may have seasonal restrictions','Review park-specific SFAR or LOA if applicable'] },
+                    sua:       { label: 'Spec. Use Airspace', items: ['Verify SUA active status via NOTAM / 1800wxbrief','MOA. Contact controlling agency for advisories','Restricted / Prohibited. Do not enter without clearance','Alert area. Extra vigilance required'] },
                   }
                   const REFS = [
                     { label: 'FAA NOTAM Search', sub: 'Official FAA NOTAM system',          url: 'https://notams.aim.faa.gov/notamSearch/' },
                     { label: 'FAA TFR Map',       sub: 'Active TFRs plotted on a map',       url: 'https://tfr.faa.gov/tfr2/list.html' },
-                    { label: '1800wxbrief.com',   sub: 'Leidos — full preflight briefing',   url: 'https://www.1800wxbrief.com' },
+                    { label: '1800wxbrief.com',   sub: 'Leidos. Full preflight briefing',   url: 'https://www.1800wxbrief.com' },
                   ]
                   const TFR_LEGEND = [
                     { label: 'Security / VIP', color: '#FF3B30' },
@@ -3452,7 +3452,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
                   return (
                     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#e8e0d8' }}>
-                      {/* Map — full height */}
+                      {/* Map: full height */}
                       <div style={{ position: 'absolute', inset: 0, background: '#e8e0d8' }}>
                         <MapContainer center={mapCenter} zoom={7}
                           ref={setFsMap}
@@ -3461,7 +3461,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                           zoomControl={false} attributionControl={false}>
                           {/* Leaflet's own zoom control is replaced by
                               MapControlStack, which puts close and zoom in one
-                              group — see the note on that component. */}
+                              group. See the note on that component. */}
                           <MapControlStack onClose={() => setMapFS(false)} />
                           <MapInvalidator />
                           <MapLayers fit={true} {...mapLayerProps} />
@@ -3489,8 +3489,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
                       {/* The way back. Flying to a field 800 NM along the route
                           leaves the route off-screen, and the fullscreen map
-                          deliberately never re-fits on its own — the camera
-                          belongs to the pilot — so returning is offered rather
+                          deliberately never re-fits on its own. The camera
+                          belongs to the pilot, so returning is offered rather
                           than done for them. */}
                       {awayFromRoute && !openField && !mapClear && (
                         <button onClick={backToRoute} style={{
@@ -3503,10 +3503,10 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         }}>← Back to route</button>
                       )}
 
-                      {/* Route edit hint — fades after 4s */}
+                      {/* Route edit hint. Fades after 4s */}
                       {/* Pick mode says what the map is waiting for. It
                           replaces the ordinary hint rather than stacking on
-                          it — two banners competing for the same strip is
+                          it, two banners competing for the same strip is
                           worse than either. */}
                       {pickMode && !dropPoint && !mapClear && (
                         <div style={{
@@ -3521,7 +3521,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       )}
                       {!pickMode && !dropPoint && !openField && !mapClear && <RouteHint />}
 
-                      {/* Tier-2 disclosure — only when THIS route leaves the
+                      {/* Tier-2 disclosure, only when THIS route leaves the
                           regions we hold current data for, since that's when
                           the pilot is actually looking at the 2012 reference
                           airways. */}
@@ -3533,12 +3533,12 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                           borderRadius: 7, padding: '5px 9px', maxWidth: 235,
                           fontSize: 9.5, lineHeight: 1.35, color: '#3d4a5c', fontWeight: 600,
                         }}>
-                          Airways outside US · Mexico · Central America are a 2012 reference —
+                          Airways outside US · Mexico · Central America are a 2012 reference. 
                           orientation only, verify against current charts
                         </div>
                       )}
 
-                      {/* Off-airport endpoint warning — informative, never blocking */}
+                      {/* Off-airport endpoint warning. Informative, never blocking */}
                       {endpointWarning && !mapClear && (
                         <div style={{
                           position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
@@ -3554,7 +3554,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         </div>
                       )}
 
-                      {/* Top bar — the map behind it extends under the status bar for a true
+                      {/* Top bar: the map behind it extends under the status bar for a true
                           full-screen feel, but the controls themselves need the safe-area
                           inset or they'd sit right under (and look cut off by) the status bar */}
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10001,
@@ -3568,7 +3568,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         pointerEvents: 'none',
                       }}>
                         {/* Layer toggles. They shrink and wrap rather than
-                            running off the right edge of a narrow phone —
+                            running off the right edge of a narrow phone. 
                             five chips plus CLOSE is more than 375 px of
                             comfortable width. */}
                         <div style={{
@@ -3614,8 +3614,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         overflow: 'visible',
                         // Cleared: slide the card down until only the grab bar
                         // clears the bottom edge. Translating rather than
-                        // unmounting keeps the card's state — the open picker,
-                        // the scrolled route strip — exactly as it was left.
+                        // unmounting keeps the card's state. The open picker,
+                        // the scrolled route strip, exactly as it was left.
                         transform: mapClear ? `translateY(calc(100% + 16px - ${CARD_PEEK_PX}px))` : 'translateY(0)',
                         transition: 'transform 260ms cubic-bezier(0.32, 0.72, 0, 1)',
                         touchAction: 'pan-x',
@@ -3645,7 +3645,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                           flexShrink: 0,
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            {/* Route pills — dep, intermediates, dest, in order.
+                            {/* Route pills: dep, intermediates, dest, in order.
                                 One line, scrolls sideways so the stats stay put. */}
                             <div style={{
                               display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1,
@@ -3656,7 +3656,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                               WebkitMaskImage: 'linear-gradient(to right, #000 calc(100% - 24px), transparent)',
                             }}>
                               {(() => {
-                                // Map-dropped points have no ident — number them in
+                                // Map-dropped points have no ident. Number them in
                                 // route order (WPT 1, WPT 2…) so they can be referred to.
                                 let n = 0
                                 return waypoints.map(w => ({ w, label: w.name || `WPT ${++n}` }))
@@ -3708,7 +3708,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                           </div>
                         </div>
 
-                        {/* Content — vertical stack, everything fits */}
+                        {/* Content: vertical stack, everything fits */}
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'visible', padding: '8px 18px 10px', gap: 0, position: 'relative' }}>
 
                           {/* ── TFR section ── */}
@@ -3723,7 +3723,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                               if (lat && lon) setMapFlyTarget({ lat, lon, zoom: 10, _t: Date.now() })
                             }
                             return (<>
-                              {/* Conflict warning — full width, compact single line */}
+                              {/* Conflict warning: full width, compact single line */}
                               {tfrConflicts.length > 0 && (
                                 <div
                                   onClick={flyToConflict}
@@ -3746,7 +3746,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                   </svg>
                                 </div>
                               )}
-                              {/* TFR count row — label + dots inline, all on one line */}
+                              {/* TFR count row. Label + dots inline, all on one line */}
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 4 }}>
                                 <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.7px', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                                   TFR · {tfrData.length}
@@ -3796,7 +3796,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                           onClick={() => {
                                             // Pinned, not merely active. On a mouse the chip is
                                             // already active by the time the click lands, because
-                                            // the pointer entered it first — testing isActive here
+                                            // the pointer entered it first. Testing isActive here
                                             // would read every desktop click as "close".
                                             const wasPinned = chipPinned === id
                                             if (wasPinned) { closeChipPanel(id); return }
@@ -3805,7 +3805,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                             // Mountains is the one chip with a place attached to
                                             // it. Opening the panel and then hunting for the
                                             // coordinate line inside it was two steps for one
-                                            // question — "where is it?" — so the tap that opens
+                                            // question, "where is it?", so the tap that opens
                                             // it also flies there, the way tapping a tower goes
                                             // to the field. The fly-to lifts the peak into the
                                             // band above the sheet, so the panel stays readable
@@ -3837,7 +3837,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                     )
                                   })}
                                   {/* What was NOT checked. A failed query and a clear
-                                      route used to render identically — nothing — so a
+                                      route used to render identically. Nothing, so a
                                       dead service read as "no hazards found". */}
                                   {(() => {
                                     const failed = ['terrain', 'airspace', 'parks', 'sua'].filter(k => sourceStatus[k] === 'unavailable')
@@ -3850,7 +3850,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                           background: 'var(--warn-light)', color: 'var(--warn)',
                                           letterSpacing: '0.2px', display: 'inline-flex', alignItems: 'center', gap: 6,
                                         }}>
-                                          {failed.map(k => LABEL[k]).join(' · ')} unavailable — verify manually
+                                          {failed.map(k => LABEL[k]).join(' · ')} unavailable. Verify manually
                                           <span
                                             onClick={() => setRecheck(n => n + 1)}
                                             style={{ textDecoration: 'underline', cursor: 'pointer', opacity: 0.8 }}>
@@ -3864,7 +3864,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                           background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)',
                                           letterSpacing: '0.2px', whiteSpace: 'nowrap',
                                         }}>
-                                          {uncovered.map(k => LABEL[k]).join(' · ')}: US only — not checked
+                                          {uncovered.map(k => LABEL[k]).join(' · ')}: US only, not checked
                                         </span>
                                       )}
                                     </>)
@@ -3874,7 +3874,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                             )
                           })()}
 
-                          {/* Chip popup — rendered inside bottom panel, above it */}
+                          {/* Chip popup: rendered inside bottom panel, above it */}
                           {activeChip && TERRAIN_DATA[activeChip] && (() => {
                             const c = activeChip === 'parks' ? { accent: 'rgba(52,199,89,0.9)', border: 'rgba(52,199,89,0.25)' }
                               : activeChip === 'sua' ? { accent: 'rgba(255,149,0,0.9)', border: 'rgba(255,149,0,0.25)' }
@@ -3908,7 +3908,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                   </div>
                                 )}
 
-                                {/* Controlled airspace — which classes the track crosses
+                                {/* Controlled airspace, which classes the track crosses
                                     and their floors/ceilings, marking the ones the planned
                                     cruise sits inside */}
                                 {activeChip === 'airspace' && airspaceInfo?.status === 'ok' && airspaceInfo.areas.length > 0 && (
@@ -3938,7 +3938,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                     </div>
                                     {airspaceInfo.areas.some(a => a.atCruise) && (
                                       <div style={{ fontSize: 10.5, color: 'var(--warn)', marginTop: 7, lineHeight: 1.45 }}>
-                                        Amber limits contain your planned altitude — entry needs a clearance (B) or
+                                        Amber limits contain your planned altitude. Entry needs a clearance (B) or
                                         established two-way radio (C/D).
                                       </div>
                                     )}
@@ -3946,13 +3946,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                       {(airspaceInfo.sources ?? []).includes('CENAMER')
                                         ? 'FAA class airspace + COCESNA eAIP ENR 2.1 · "approx" means the eAIP describes that boundary by naming a national border rather than publishing coordinates. '
                                         : 'FAA class airspace · '}
-                                      Every area the ground track crosses is listed, including ones below cruise — you
+                                      Every area the ground track crosses is listed, including ones below cruise. You
                                       still transit them on climb and descent. Class E excluded.
                                     </div>
                                   </div>
                                 )}
 
-                                {/* Aerodromes — which fields and how far off track, so
+                                {/* Aerodromes, which fields and how far off track, so
                                     "monitor CTAF" has a frequency to look up */}
                                 {activeChip === 'aero' && aeroInfo?.status === 'ok' && aeroInfo.fields.length > 0 && (
                                   <div style={{ borderRadius: 8, background: 'rgba(255,255,255,0.04)', padding: '9px 11px', marginBottom: 10 }}>
@@ -3992,7 +3992,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                   </div>
                                 )}
 
-                                {/* Water — distance over water and how far from shore
+                                {/* Water: distance over water and how far from shore
                                     it gets, which is what picks life jackets vs. a raft */}
                                 {activeChip === 'water' && waterInfo?.status === 'ok' && (
                                   <div style={{ borderRadius: 8, background: 'rgba(255,255,255,0.04)', padding: '9px 11px', marginBottom: 10 }}>
@@ -4020,7 +4020,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                   </div>
                                 )}
 
-                                {/* Mountains — the measurement behind the chip, so the
+                                {/* Mountains: the measurement behind the chip, so the
                                     clearance item below is checkable against a number */}
                                 {activeChip === 'mountains' && terrainInfo?.status === 'ok' && (
                                   <div
@@ -4057,20 +4057,20 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                                       Copernicus DEM · {terrainInfo.pointCount} points, {terrainInfo.spacingNm} NM
                                       across the corridor{terrainInfo.finestNm && terrainInfo.finestNm < terrainInfo.spacingNm
                                         ? ` and ${terrainInfo.finestNm} NM around the peak` : ''}.
-                                      Terrain only — obstacles are not included, and a summit between samples can still
+                                      Terrain only. Obstacles are not included, and a summit between samples can still
                                       read low. Cross-check the chart's MEF.
                                     </div>
                                   </div>
                                 )}
 
-                                {/* SUA — smart breakdown by airspace type */}
+                                {/* SUA: smart breakdown by airspace type */}
                                 {activeChip === 'sua' && names.length > 0 ? (() => {
                                   const SUA_TYPES = [
-                                    { key: 'P',   match: n => /^P[-\s]/i.test(n),   label: 'Prohibited Area',         color: '#FF3B30', desc: 'Flight strictly prohibited. Do not enter under any circumstances.', action: 'Do not enter — no exceptions' },
-                                    { key: 'R',   match: n => /^R[-\s]/i.test(n),   label: 'Restricted Area',         color: '#FF9500', desc: 'Hazardous activities (live fire, missiles). Entry requires ATC clearance — check NOTAM for active times.', action: 'Obtain clearance or reroute' },
+                                    { key: 'P',   match: n => /^P[-\s]/i.test(n),   label: 'Prohibited Area',         color: '#FF3B30', desc: 'Flight strictly prohibited. Do not enter under any circumstances.', action: 'Do not enter. No exceptions' },
+                                    { key: 'R',   match: n => /^R[-\s]/i.test(n),   label: 'Restricted Area',         color: '#FF9500', desc: 'Hazardous activities (live fire, missiles). Entry requires ATC clearance. Check NOTAM for active times.', action: 'Obtain clearance or reroute' },
                                     { key: 'MOA', match: n => /MOA/i.test(n),        label: 'Military Ops Area (MOA)', color: '#FFD60A', desc: 'High-speed military training. VFR flight is legal but contact controlling agency (usually Center) for advisories.', action: 'Call ATC Center for advisory' },
-                                    { key: 'W',   match: n => /^W[-\s]/i.test(n),   label: 'Warning Area',            color: '#5AC8FA', desc: 'Offshore international airspace with hazardous activity. Similar to Restricted but no clearance authority — avoid or proceed with extreme caution.', action: 'Avoid or monitor advisory' },
-                                    { key: 'A',   match: n => /^A[-\s]/i.test(n),   label: 'Alert Area',              color: '#AF52DE', desc: 'Unusually high volume of flight training or unusual aerial activity. Pilots must be especially vigilant.', action: 'Extra vigilance — see and avoid' },
+                                    { key: 'W',   match: n => /^W[-\s]/i.test(n),   label: 'Warning Area',            color: '#5AC8FA', desc: 'Offshore international airspace with hazardous activity. Similar to Restricted but no clearance authority. Avoid or proceed with extreme caution.', action: 'Avoid or monitor advisory' },
+                                    { key: 'A',   match: n => /^A[-\s]/i.test(n),   label: 'Alert Area',              color: '#AF52DE', desc: 'Unusually high volume of flight training or unusual aerial activity. Pilots must be especially vigilant.', action: 'Extra vigilance. See and avoid' },
                                   ]
                                   const grouped = SUA_TYPES.map(t => ({
                                     ...t,
@@ -4118,7 +4118,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                             )
                           })()}
 
-                          {/* References button — pushed to right */}
+                          {/* References button: pushed to right */}
                           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'flex-end', flexShrink: 0 }}>
                             <button onClick={() => setShowRefs(r => !r)} style={{
                               background: showRefs ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.07)',
@@ -4162,7 +4162,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                             </a>
                           ))}
                           <div style={{ padding: '8px 15px 10px', borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-                            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.22)', fontStyle: 'italic' }}>NOTAMs change daily — always check day of flight.</span>
+                            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.22)', fontStyle: 'italic' }}>NOTAMs change daily, always check day of flight.</span>
                           </div>
                         </div>
                       )}
@@ -4194,7 +4194,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 // Tapping the field should open the OS picker, not drop a
                 // caret into a text mask. showPicker throws when it is not
                 // driven by a real gesture, which is exactly when we do not
-                // need it — let the browser do its default thing instead.
+                // need it: let the browser do its default thing instead.
                 onClick={e => { try { e.currentTarget.showPicker?.() } catch { /* focus is enough */ } }}
                 onFocus={e => { try { e.currentTarget.showPicker?.() } catch { /* focus is enough */ } }}
                 onChange={e => {
@@ -4237,7 +4237,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
               }} />
             {/* minmax(0, 1fr) rather than 1fr: a grid column's automatic
                 minimum is its content's min-content width, so one long gate
-                reason ("Not worth it on 95 NM — climb and descent use up the
+                reason ("Not worth it on 95 NM. Climb and descent use up the
                 leg") widened its column until the second column ran off the
                 side of the screen and took half the altitudes with it. */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
@@ -4264,8 +4264,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                     fontSize: 13, fontWeight: 600,
                     color: selected ? 'var(--bg)' : gate ? 'var(--text-tertiary)'
                       : belowMEA ? 'var(--warn)' : 'var(--text)',
-                    // A gated altitude stays tappable — the pilot is the final
-                    // authority — but reads as discouraged and says why on hold.
+                    // A gated altitude stays tappable. The pilot is the final
+                    // authority, but reads as discouraged and says why on hold.
                     opacity: gate ? 0.45 : 1,
                     cursor: 'pointer', transition: 'all 0.18s', textAlign: 'center',
                     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
@@ -4296,7 +4296,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             {isIFR && routeMaxMEA != null && (
               <div style={{ marginTop: 8, fontSize: 11, color: 'var(--warn)', lineHeight: 1.5 }}>
                 ⚠ Altitudes below {routeMaxMEA.toLocaleString()} ft are under the highest MEA on
-                your airway routing — usable only where segment MEAs allow.
+                your airway routing. Usable only where segment MEAs allow.
               </div>
             )}
             {selectedAlt && (
@@ -4504,7 +4504,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
             </div>
           )}
 
-          {/* Manual search — only shown if no route airports */}
+          {/* Manual search, only shown if no route airports */}
           {!routeLoaded && (
           <div style={{ padding: '12px 12px 10px', position: 'relative' }}>
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 8 }}>
@@ -4602,7 +4602,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                 )}
               </div>
 
-              {/* Key facts — compact row */}
+              {/* Key facts: compact row */}
               {(airport.elev || lat) && (
                 <div style={{ padding: '0 12px 10px', display: 'flex', gap: 6 }}>
                   {airport.elev && (
@@ -4642,7 +4642,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                   <svg width={size} height={size} viewBox="0 0 32 28" fill="none" strokeLinecap="round" strokeLinejoin="round" stroke="currentColor" strokeWidth="1.9" style={{ color: 'var(--text)' }}>
                     {/* solid sun circle */}
                     <circle cx="16" cy="10" r="3.2" fill="currentColor" stroke="none"/>
-                    {/* rays — top, upper-L, upper-R, left, right */}
+                    {/* rays: top, upper-L, upper-R, left, right */}
                     <line x1="16"  y1="2.5" x2="16"  y2="5.2"/>
                     <line x1="9.2" y1="4.8" x2="11.1" y2="6.7"/>
                     <line x1="22.8" y1="4.8" x2="20.9" y2="6.7"/>
@@ -4710,7 +4710,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                 )
               })()}
 
-              {/* Frequencies — collapsible, styled like chart groups */}
+              {/* Frequencies: collapsible, styled like chart groups */}
               {airport.frequencies?.length > 0 && (() => {
                 const FreqToggle = () => {
                   const [open, setOpen] = useState(false)
@@ -4782,7 +4782,7 @@ export function ChartsItem({ item, isChecked, onToggle }) {
                     )}
 
                     {apd && (
-                      /* Airport Diagram — prominent hero card */
+                      /* Airport Diagram: prominent hero card */
                       <a href={pdfBase + apd.pdf_name} target="_blank" rel="noreferrer" style={{
                         display: 'flex', alignItems: 'center', gap: 12,
                         background: 'var(--accent-light)', border: '0.5px solid var(--accent)',

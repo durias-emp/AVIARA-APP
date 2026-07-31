@@ -3,7 +3,7 @@ import { get } from '../../lib/db'
 import { loadWeather, parseWind, parseVisib, parseCloudLayers, parseFltCat } from '../../lib/weather'
 import { lookupAirport } from './shared/awc'
 
-// Same reserve-minutes logic as the Cruise & Fuel checklist item (91.151 —
+// Same reserve-minutes logic as the Cruise & Fuel checklist item (91.151. 
 // airplanes only, 30 min day / 45 min night; helicopters have no codified
 // Part 91 VFR reserve, 20 min is the common operator standard; 91.167 IFR
 // 45 min applies to both). Kept as a small local copy rather than a shared
@@ -49,7 +49,7 @@ function Rule() {
   return <div style={{ borderTop: `1px dashed ${PAPER_RULE}`, margin: '6px 0' }} />
 }
 
-// Tappable stage heading — tapping highlights only that stage (dims the
+// Tappable stage heading: tapping highlights only that stage (dims the
 // other two) without hiding any data, so the full page still prints intact.
 function StageHead({ label, active, dimmed, onClick }) {
   return (
@@ -222,7 +222,7 @@ export default function FlightPlanOnePager({ onClose }) {
 
         <Rule />
 
-        {/* WPT table — the two endpoints, ACARS-style columns */}
+        {/* WPT table: the two endpoints, ACARS-style columns */}
         <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr 0.8fr 1.3fr', fontWeight: 700, color: PAPER_MUTE, marginBottom: 2 }}>
           <span>WPT</span><span>FREQ</span><span>RWY</span><span>WIND</span>
         </div>
@@ -286,7 +286,7 @@ export default function FlightPlanOnePager({ onClose }) {
 
         <Rule />
         <div style={{ textAlign: 'center', fontSize: 9, color: PAPER_MUTE, marginTop: 6, lineHeight: 1.5 }}>
-          COCKPIT REFERENCE ONLY — NOT A FILED ATC FLIGHT PLAN.<br />
+          COCKPIT REFERENCE ONLY, NOT A FILED ATC FLIGHT PLAN.<br />
           TO FILE, CALL 1-800-WX-BRIEF OR USE 1800WXBRIEF.COM.
         </div>
       </div>

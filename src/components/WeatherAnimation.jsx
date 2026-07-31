@@ -18,7 +18,7 @@ export function getCondition(metar) {
   return { type: 'clear', isNight }
 }
 
-// Sky gradients — rich, layered like Apple Weather
+// Sky gradients: rich, layered like Apple Weather
 const THEMES = {
   clear:     { day:  ['#1a91f0','#2fb0fa','#6dd0ff'], night: ['#060e28','#0c1840','#102050'] },
   few:       { day:  ['#1e98f5','#3db4ff','#7dcfff'], night: ['#081028','#0e1d45','#182e60'] },
@@ -147,7 +147,7 @@ function CloudBlob({ w = 200, tinted = false }) {
   const edgeStop = tinted ? 'rgba(175,198,228,0)'    : 'rgba(225,238,255,0)'
   const shadowC  = tinted ? 'rgba(120,150,185,0.52)' : 'rgba(148,178,215,0.48)'
 
-  // [cx_frac, cy_frac, r_frac] — shape the cauliflower top
+  // [cx_frac, cy_frac, r_frac]: shape the cauliflower top
   const puffs = [
     [0.09, 0.68, 0.14],
     [0.20, 0.54, 0.21],
@@ -165,7 +165,7 @@ function CloudBlob({ w = 200, tinted = false }) {
     <div>
       <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ overflow: 'visible', display: 'block' }}>
         <defs>
-          {/* Puff gradient — light source top-left, fades to transparent */}
+          {/* Puff gradient: light source top-left, fades to transparent */}
           <radialGradient id={`${uid}-p`} cx="30%" cy="25%" r="76%" fx="30%" fy="25%">
             <stop offset="0%"   stopColor={hiColor} />
             <stop offset="42%"  stopColor={midColor} />
@@ -187,7 +187,7 @@ function CloudBlob({ w = 200, tinted = false }) {
           opacity={0.85}
         />
 
-        {/* Cloud puffs — each scales in from its own centre, staggered */}
+        {/* Cloud puffs: each scales in from its own centre, staggered */}
         {puffs.map(([cxf, cyf, rf], i) => (
           <circle key={i}
             cx={w * cxf} cy={h * cyf} r={w * rf}
@@ -238,7 +238,7 @@ function Clouds({ count = 2, tinted = false }) {
 }
 
 // ── Rain ─────────────────────────────────────────────────────
-// Single-element CSS background-position animation — compositor-only, zero DOM overhead
+// Single-element CSS background-position animation. Compositor-only, zero DOM overhead
 function Rain({ heavy = false }) {
   const color = heavy ? 'rgba(150,195,255,0.55)' : 'rgba(180,215,255,0.42)'
   const spacing = heavy ? '18px 28px' : '22px 36px'

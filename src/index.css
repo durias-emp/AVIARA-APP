@@ -4,7 +4,7 @@
 /* ── Apple-style design tokens ─────────────────────────────── */
 :root {
   /* Tells the engine which scheme native UI (form controls, scrollbars,
-     date pickers, input carets) should be drawn in — without it they stay
+     date pickers, input carets) should be drawn in, without it they stay
      light-mode even when the app is dark. */
   color-scheme: light;
 
@@ -23,7 +23,7 @@
   --text-secondary: rgba(60,60,67,0.6);
   --text-tertiary:  rgba(60,60,67,0.3);
 
-  /* Accent — Monochromatic */
+  /* Accent: Monochromatic */
   --accent:       #1c1c1e;
   --accent-fg:    #ffffff;
   --accent-light: rgba(0,0,0,0.07);
@@ -36,14 +36,14 @@
   --warn-light:   rgba(255,149,0,0.12);
   --danger-light: rgba(255,59,48,0.12);
 
-  /* Icon filter — makes black-stroke PNGs theme-aware */
+  /* Icon filter: makes black-stroke PNGs theme-aware */
   --icon-filter: brightness(0) opacity(0.75);
 
   /* Shadow */
   --shadow-sm:  0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
   --shadow-md:  0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
 
-  /* Radius — a scale, not arbitrary values, so nested surfaces read as
+  /* Radius: a scale, not arbitrary values, so nested surfaces read as
      carved from one shape rather than stacked stickers. Each step down
      is roughly 3/4 of its parent, mirroring iOS's own card/sheet/control
      nesting (bigger container -> bigger radius -> more inset). */
@@ -123,18 +123,18 @@
 /* ── Base ──────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* Hide scrollbars everywhere — native touch/wheel scrolling still works,
+/* Hide scrollbars everywhere: native touch/wheel scrolling still works,
    it just doesn't draw a visible track/thumb like a desktop browser does. */
 * {
   scrollbar-width: none;     /* Firefox */
   -ms-overflow-style: none;  /* old Edge */
 }
 
-/* Containment belongs on the elements that actually scroll — #root and the
+/* Containment belongs on the elements that actually scroll. #root and the
    checklist panes set it themselves. It used to be on `*`, which broke
    scrolling outright: overscroll-behavior applies to every scroll container,
    and `overflow: hidden` makes a box one. So a wheel landing inside any
-   clipped wrapper — the expandable card's body, for one — was captured by
+   clipped wrapper. The expandable card's body, for one. Was captured by
    that wrapper, which had nothing to scroll, and `contain` then stopped the
    scroll from reaching the pane. It read as the card being frozen, and only
    over part of it: move the pointer to a subtree with no clipped ancestor and
@@ -146,7 +146,7 @@
 /* ── The document does not scroll ──────────────────────────────
    iOS honours overscroll-behavior on scroll containers but not on the
    document, so as long as the page itself was the scroller the whole app
-   rubber-banded at the top and bottom — the single clearest tell that
+   rubber-banded at the top and bottom. The single clearest tell that
    something is a web page rather than an app.
 
    The document is pinned to the viewport and #root becomes the scroller
@@ -164,7 +164,7 @@ body {
   position: fixed;
   inset: 0;
   /* Taps act immediately instead of waiting to see if a double-tap zoom is
-     coming — the zoom is already disabled in the viewport meta. */
+     coming. The zoom is already disabled in the viewport meta. */
   touch-action: manipulation;
 }
 
@@ -172,7 +172,7 @@ body {
    default focus ring (a persistent white/blue outline on tap, not just the
    brief tap-highlight flash) was showing on almost every button in the app.
    Every interactive state here is already communicated through background/
-   color changes, so the native ring is redundant — remove it everywhere. */
+   color changes, so the native ring is redundant. Remove it everywhere. */
 button {
   outline: none;
   -webkit-tap-highlight-color: transparent;
@@ -197,7 +197,7 @@ body {
 
 #root {
   /* The app's scroller. box-sizing is border-box everywhere, so 100% here is
-     the body's content box — inside the safe-area padding. Direct children
+     the body's content box. Inside the safe-area padding. Direct children
      must not shrink (see .app-shell) or content taller than the screen would
      be compressed instead of scrolled. */
   height: 100%;
@@ -207,7 +207,7 @@ body {
   overscroll-behavior-y: contain;
   /* A flex column, because the checklist screen is built on nested flex:1
      panes that need a definite height to scroll inside instead of growing.
-     Every direct child must be grow-only (flex: 1 0 auto) — a shrinkable
+     Every direct child must be grow-only (flex: 1 0 auto). A shrinkable
      child gets squeezed to the viewport and its content clipped. */
   display: flex;
   flex-direction: column;
@@ -229,7 +229,7 @@ body {
   width: 100%;
 }
 
-/* Screens that manage their own scrolling — the checklist steps and Home —
+/* Screens that manage their own scrolling. The checklist steps and Home. 
    need the shell to be exactly the scroller's height. Their inner panes are
    built on nested flex:1 / min-height:0 chains, and those only resolve into
    something scrollable when the height above them is definite. Left to grow
@@ -259,14 +259,14 @@ body {
    The checklist scrolls in a pane inside the shell rather than in #root.
    Centring the shell at a reading width made that pane 780 px wide in the
    middle of the window, and the 250 px of empty space either side of it
-   belonged to #root — which has nothing to scroll. A wheel out there moved
+   belonged to #root, which has nothing to scroll. A wheel out there moved
    nothing, and a scroll never chains down into a child, so on a desktop
    window the checklist simply would not scroll unless the pointer happened
    to be over the content column. (At phone widths there are no margins, which
    is why this only ever showed up on a big screen.)
 
    So the shell goes full width on those screens and the reading width moves
-   inside, onto the content itself — the scroller now reaches both edges of
+   inside, onto the content itself. The scroller now reaches both edges of
    the window and a wheel anywhere over it works. */
 .app-shell--bleed {
   max-width: none;
@@ -291,11 +291,11 @@ body {
 
 /* ── Fixed footer bar (checklist tab bar + action buttons) ───
    position:fixed pins to the true device viewport regardless of
-   any dvh/ancestor-height mismatch — mirrors .app-shell's centered
+   any dvh/ancestor-height mismatch. Mirrors .app-shell's centered
    width so it lines up with the content column above it. Flush to
    the screen's own left/right/bottom edges (like a native iOS sheet
    or tab bar) so its corners read as part of the device rather than
-   a card floating above it — only the top corners are rounded, and
+   a card floating above it, only the top corners are rounded, and
    the safe-area inset is padding (keeps content off the home
    indicator) rather than a bottom margin. Slides down out of view
    while a card in the active step is open, and slides back once
@@ -469,12 +469,12 @@ input[type="number"]::-webkit-outer-spin-button {
   to   { opacity: 1; transform: translateY(0)    scale(1); }
 }
 
-/* Sectional chart tiles — multiply blend removes grey no-coverage areas on light base */
+/* Sectional chart tiles: multiply blend removes grey no-coverage areas on light base */
 .sectional-layer { mix-blend-mode: multiply; }
 
-/* ── Weather detail overlay — CSS sky layers ─────────────────── */
+/* ── Weather detail overlay. CSS sky layers ─────────────────── */
 
-/* Cloud banks — pure CSS radial gradients, no canvas */
+/* Cloud banks: pure CSS radial gradients, no canvas */
 .wd-cloud-bank {
   position: absolute;
   left: -24%;
@@ -516,7 +516,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .wd-wisp-one { top: 78px;  opacity: 0.22; animation: wdWispSlide 54s ease-in-out infinite alternate; }
 .wd-wisp-two { top: 430px; opacity: 0.18; animation: wdWispSlide 42s ease-in-out infinite alternate-reverse; }
 
-/* Rain — seamless CSS background-position animation, three depth layers */
+/* Rain: seamless CSS background-position animation, three depth layers */
 .wd-rain-curtain {
   position: absolute;
   inset: -12% -28%;
@@ -583,7 +583,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .wd-haze-high { top: 220px;  height: 170px; opacity: 0.32; }
 .wd-haze-low  { bottom: 42px; height: 180px; opacity: 0.24; animation-delay: -9s; }
 
-/* Home card rain — compact card background rain effect */
+/* Home card rain: compact card background rain effect */
 .home-card-rain {
   position: absolute;
   inset: -20px;
@@ -630,8 +630,8 @@ input[type="number"]::-webkit-outer-spin-button {
 
 /* ── Leaflet maps on iOS ──────────────────────────────────────
    Press-and-hold is our "drop waypoint" gesture (Leaflet contextmenu).
-   Without these, iOS interprets the hold as text selection — magnifier
-   loupe, blue selection handles, callout — fighting the map. */
+   Without these, iOS interprets the hold as text selection. Magnifier
+   loupe, blue selection handles, callout. Fighting the map. */
 .leaflet-container,
 .leaflet-container * {
   -webkit-user-select: none !important;

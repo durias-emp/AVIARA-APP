@@ -75,7 +75,7 @@ export default function SignIn({ legacy = false }) {
           {mode === 'reset'
             ? "Enter your email and we'll send you a link to set a new password."
             : legacy
-              ? 'Everything already on this device — your profile, aircraft, and checklists — stays exactly as it is. Signing in just backs it up so you never lose it if you get a new phone.'
+              ? 'Everything already on this device. Your profile, aircraft, and checklists. Stays exactly as it is. Signing in just backs it up so you never lose it if you get a new phone.'
               : 'Sign in to keep your pilot profile, aircraft, and checklists backed up and ready on any device.'}
         </div>
       </div>

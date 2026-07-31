@@ -4,17 +4,17 @@ import { TopicHeader, Card } from '../shared/ui'
 // General operating rules not already modeled in lib/currency.js's FAR
 // object (that one is scoped to currency-tracking citations only).
 const OPERATING_RULES = {
-  rightOfWay:     { ref: '91.113', label: 'FAR 91.113', desc: 'Right-of-way rules — see and avoid; the least maneuverable aircraft generally has the right of way.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.113' },
-  vfrMinimums:    { ref: '91.155', label: 'FAR 91.155', desc: 'VFR weather minimums — visibility and cloud clearance by airspace class.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.155' },
+  rightOfWay:     { ref: '91.113', label: 'FAR 91.113', desc: 'Right-of-way rules. See and avoid; the least maneuverable aircraft generally has the right of way.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.113' },
+  vfrMinimums:    { ref: '91.155', label: 'FAR 91.155', desc: 'VFR weather minimums. Visibility and cloud clearance by airspace class.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.155' },
   trafficPattern: { ref: '91.126 / 91.127', label: 'FAR 91.126 / 91.127', desc: 'Standard traffic pattern operations at airports without/with an operating control tower.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.126' },
-  lostComm:       { ref: '91.185', label: 'FAR 91.185', desc: 'IFR lost-communications procedures — see the Lost-Comm Procedures card.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.185' },
-  minSafeAlt:     { ref: '91.119', label: 'FAR 91.119', desc: 'Minimum safe altitudes — 500 ft over open water/sparse areas, 1,000 ft over congested areas.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.119' },
+  lostComm:       { ref: '91.185', label: 'FAR 91.185', desc: 'IFR lost-communications procedures. See the Lost-Comm Procedures card.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.185' },
+  minSafeAlt:     { ref: '91.119', label: 'FAR 91.119', desc: 'Minimum safe altitudes. 500 ft over open water/sparse areas, 1,000 ft over congested areas.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.119' },
   speedLimit:     { ref: '91.117', label: 'FAR 91.117', desc: '250 kt IAS below 10,000 ft MSL (with further limits near/within Class B and C airspace).', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.117' },
   oxygen:         { ref: '91.211', label: 'FAR 91.211', desc: 'Supplemental oxygen required for flight crew above 12,500 ft MSL (>30 min) and above 14,000 ft MSL continuously; required for all occupants above 15,000 ft MSL.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-C/section-91.211' },
   transponderAlt: { ref: '91.215', label: 'FAR 91.215', desc: 'Transponder and altitude-reporting equipment requirements by airspace.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-C/section-91.215' },
 }
 
-// Curated groupings for a general-purpose air-law reference — reuses the
+// Curated groupings for a general-purpose air-law reference. Reuses the
 // FAR citation data already maintained for currency tracking so the two
 // stay consistent, plus the operating-rule citations above.
 const GROUPS = [

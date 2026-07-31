@@ -1,4 +1,4 @@
-// Small, self-contained duplicate of Checklists.jsx's flattenIds — kept local
+// Small, self-contained duplicate of Checklists.jsx's flattenIds. Kept local
 // so this file stays presentation-only and doesn't couple to the page module.
 function flattenIds(items) {
   const ids = []
@@ -57,7 +57,7 @@ function TabIndicator({ section, progress, active }) {
   )
 }
 
-/* ── Fixed bottom tab bar — one tab per checklist section ────── */
+/* ── Fixed bottom tab bar, one tab per checklist section ────── */
 export default function StepTabBar({ sections, activeIndex, onSelect, checked, customItems }) {
   return (
     <div style={{

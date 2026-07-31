@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { usePaneActivity } from './PaneActivity'
 import { useCardLayout } from './CardLayout'
 
-/* ── Expandable card shell — used by every checklist item ────── */
+/* ── Expandable card shell. Used by every checklist item ────── */
 export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, children, forceOpen, hideCheckmark }) {
   const { stretch, solo } = useCardLayout()
   // A step with one card has nothing to choose between, so it arrives open.
@@ -19,7 +19,7 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
   const [measuredHeight, setMeasuredHeight] = useState(0)
   // Once the opening animation has finished the cap comes off entirely. A card
   // whose height is pinned to a number measured at open time clips anything
-  // that arrives later — a calculated route, a map, a forecast — and because
+  // that arrives later: a calculated route, a map, a forecast, and because
   // the clipped content cannot make the pane any taller, there is nothing to
   // scroll either. The measurement exists to animate the opening, not to
   // decide how tall the card is allowed to be.
@@ -31,7 +31,7 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
 
   // Collapsing (e.g. via the Done button inside `children`) shrinks the page's
   // total height. Left alone, the browser clamps scroll position toward the new,
-  // shorter bottom — which reads as "jumping to the end of the list" rather than
+  // shorter bottom, which reads as "jumping to the end of the list" rather than
   // staying on the step the user was just working on. Recenter on this card instead.
   useLayoutEffect(() => {
     if (wasOpenRef.current && !open && rootRef.current) {
@@ -50,12 +50,12 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
   // card opens, React mounts the content and sets its max-height in the same
   // commit, so the browser has nothing to animate from and never fires the
   // event. The cap then stayed at whatever the content measured at that instant
-  // — 158 px for a card whose content is 930 — and the card opened to a sliver
+  //. 158 px for a card whose content is 930, and the card opened to a sliver
   // that could not be scrolled or interacted with.
   useEffect(() => {
     if (!isOpen) return
 
-    // A page that is not being looked at is not animating anything — and it is
+    // A page that is not being looked at is not animating anything, and it is
     // exactly where a clock-based release goes wrong, because a hidden page has
     // its timers clamped to about once a second and stops producing frames
     // altogether. That is long enough for a card to sit clipped at the height
@@ -107,7 +107,7 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
   // Re-measure while the cap is on, so the opening animation has a real height
   // to travel to even when the content arrives late.
   //
-  // Once the cap is off, the observer is disconnected — and that is the point
+  // Once the cap is off, the observer is disconnected, and that is the point
   // of this, not an optimisation. Observing content whose height is no longer
   // constrained means every measurement can change the layout that produced
   // it: the map settling, a chart drawing, a card re-rendering. Each pass fed
@@ -183,11 +183,11 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
         </Header>
       </div>
 
-      {/* Expanded content — connects flush to the card header. Stays mounted
+      {/* Expanded content: connects flush to the card header. Stays mounted
           once opened so max-height has real content to measure/animate. */}
       {everOpened && (
         <div ref={wrapRef}
-          // Whichever comes first — the animation finishing, or the timer above.
+          // Whichever comes first: the animation finishing, or the timer above.
           onTransitionEnd={e => {
             if (e.target === e.currentTarget && e.propertyName === 'max-height' && isOpen) setUncapped(true)
           }}
@@ -207,7 +207,7 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
   )
 }
 
-/* ── Shared Done button — manual tap + optional auto-complete ── */
+/* ── Shared Done button. Manual tap + optional auto-complete ── */
 export function DoneButton({ isChecked, onDone, checkedIds, subIds, autoCheck, onAutoComplete }) {
   const hasChecklist = subIds && subIds.length > 0
   const pct = hasChecklist
@@ -215,7 +215,7 @@ export function DoneButton({ isChecked, onDone, checkedIds, subIds, autoCheck, o
     : 1
   const complete = isChecked || pct >= 1
 
-  // Auto-mark complete once the card's own content is fully filled —
+  // Auto-mark complete once the card's own content is fully filled. 
   // does not close the card, so the header checkmark can still be tapped to override.
   useEffect(() => {
     if (autoCheck && !isChecked && pct >= 1) onAutoComplete?.()
@@ -247,7 +247,7 @@ export function DoneButton({ isChecked, onDone, checkedIds, subIds, autoCheck, o
   )
 }
 
-/* ── Shared checklist row — square checkbox + label + optional
+/* ── Shared checklist row. Square checkbox + label + optional
    tooltip / disabled-with-badge state (used by section-specific
    checklist groups, e.g. Aircraft's currency-completed rows). ── */
 export function CheckRow({ id, label, checked, onToggle, disabled = false, completedLabel, tooltip }) {
@@ -279,13 +279,13 @@ export function CheckRow({ id, label, checked, onToggle, disabled = false, compl
           </div>
         )}
         <span style={{ flex: 1, transition: 'color 0.18s' }}>
-          {label.includes(' — ') ? (
+          {label.includes(': ') ? (
             <>
               <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.2px' }}>
-                {label.split(' — ')[0]}
+                {label.split(': ')[0]}
               </span>
               <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-secondary)' }}>
-                {' '}{label.split(' — ')[1]}
+                {' '}{label.split(': ')[1]}
               </span>
             </>
           ) : (

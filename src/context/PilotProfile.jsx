@@ -35,7 +35,7 @@ export function PilotProfileProvider({ children }) {
     })
     load()
     // After sign-in, the cloud restore may fill the settings store AFTER the
-    // initial read above returned empty — re-read once hydration finishes so
+    // initial read above returned empty. Re-read once hydration finishes so
     // a returning user's profile (onboardingComplete etc.) is picked up.
     window.addEventListener('aviara-hydrated', load)
     return () => window.removeEventListener('aviara-hydrated', load)

@@ -1,7 +1,7 @@
 // The air along the route, as a vertical profile.
 //
 // One request to Open-Meteo returns pressure-level wind, temperature, humidity
-// and cloud for every sample point on the route — the API takes comma-separated
+// and cloud for every sample point on the route. The API takes comma-separated
 // coordinates and answers with one object per location, so a 300 NM route costs
 // exactly one call, not one per point. Free, keyless, worldwide, CORS-enabled.
 //
@@ -51,14 +51,14 @@ const _cache = new Map()
 const keyOf = (pts, hour, maxAltFt) =>
   pts.map(p => `${p.lat.toFixed(2)},${p.lon.toFixed(2)}`).join(';') + `@${hour}/${maxAltFt}`
 
-// The same corridor, without the hour — what a stored column is filed under,
+// The same corridor, without the hour. What a stored column is filed under,
 // so a forecast fetched for 14:00Z is still findable at 15:00Z.
 const routeKeyOf = (pts, maxAltFt) =>
   pts.map(p => `${p.lat.toFixed(2)},${p.lon.toFixed(2)}`).join(';') + `/${maxAltFt}`
 
 // How old a stored wind column may be before it stops being worth showing.
 // Winds aloft are a forecast product with hours of validity, so three is
-// generous without being dishonest — and the age travels with the data so the
+// generous without being dishonest, and the age travels with the data so the
 // card can say it.
 const STALE_LIMIT_MIN = 180
 
@@ -99,7 +99,7 @@ export async function loadAtmosphere(waypoints, {
   // times over and only inflate the payload.
   //
   // Short routes get three. Open-Meteo bills by variables times locations, not
-  // by request, so the sample count is most of the cost of a route — and on a
+  // by request, so the sample count is most of the cost of a route, and on a
   // 60 NM hop five points sit well inside a single grid cell, returning the
   // same air five times for five times the quota.
   const { samples: all, lengthNm } = sampleRoute(wps, { spacingNm: 5, maxSamples: 400 })
@@ -128,8 +128,8 @@ export async function loadAtmosphere(waypoints, {
     forecast_days: '3',
   })
 
-  // One attempt used to be the whole story, and any hiccup — most often a
-  // rate-limit 429 from the free tier — took the winds aloft with it. The
+  // One attempt used to be the whole story, and any hiccup. Most often a
+  // rate-limit 429 from the free tier. Took the winds aloft with it. The
   // altitude advice then fell back to terrain, airspace and rules, and the
   // weather cross-section disappeared entirely, because it cannot be drawn
   // without a wind column. That is a lot to lose to a transient failure that
@@ -138,7 +138,7 @@ export async function loadAtmosphere(waypoints, {
   //
   // The exception is the daily allowance. That 429 will not clear before
   // tomorrow, so the three attempts and their backoff are 5.8 s of measured
-  // delay buying a certainty — and the pilot pays it staring at a card that
+  // delay buying a certainty, and the pilot pays it staring at a card that
   // has not drawn yet. Recognised, it goes straight to the stored column.
   let payload
   for (let attempt = 0; ; attempt++) {
@@ -209,8 +209,8 @@ export async function loadAtmosphere(waypoints, {
 //
 // The FAA's FB bulletin goes first even though it carries less: it is a
 // current official forecast with no quota, and a fresh wind beats a stale one
-// for every decision this card makes. The stored column is richer — it has
-// cloud and humidity — but it is by definition the past, and a wind two hours
+// for every decision this card makes. The stored column is richer. It has
+// cloud and humidity, but it is by definition the past, and a wind two hours
 // old is a worse basis for a climb than a wind issued this cycle.
 //
 // Both are labelled. Neither is presented as the live model.
@@ -222,7 +222,7 @@ async function fallback(samples, routeKey, { departAtISO, maxAltFt, lengthNm, ti
 
 // The last wind column fetched for this corridor, if it is recent enough to
 // still describe the air. Returned marked stale and with its age, so the card
-// can show the profile and say how old it is rather than showing nothing —
+// can show the profile and say how old it is rather than showing nothing. 
 // the same bargain the METAR cache already makes.
 async function lastGood(routeKey) {
   try {
@@ -238,7 +238,7 @@ async function lastGood(routeKey) {
 
 // Linear interpolation of one column to an arbitrary altitude. Below the
 // lowest level or above the highest, the nearest level is returned rather than
-// extrapolated — an invented value up there would be indistinguishable from a
+// extrapolated: an invented value up there would be indistinguishable from a
 // real one.
 export function atAltitude(column, altFt) {
   if (!column?.length) return null
@@ -276,7 +276,7 @@ export function atAltitude(column, altFt) {
 }
 
 // Mean conditions at one altitude across the whole route, plus the fraction of
-// the route where cloud cover reaches `cloudThreshold` — the along-track
+// the route where cloud cover reaches `cloudThreshold`. The along-track
 // exposure is what decides whether a layer matters or is just a patch.
 export function alongRoute(atmo, altFt, { cloudThreshold = 60 } = {}) {
   if (atmo?.status !== 'ok') return null

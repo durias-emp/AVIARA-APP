@@ -50,7 +50,7 @@ export default function Shell({ children }) {
   const backOverride = useContext(BackOverrideContext)
   const isHome = location.pathname === '/'
   // The checklist page owns its own internal scroll (a single active step
-  // pane, with a fixed tab bar below it) — letting the outer shell scroll
+  // pane, with a fixed tab bar below it). Letting the outer shell scroll
   // too would create a double-scrollbar fight between the two containers.
   const ownsInternalScroll = location.pathname === '/checklists'
 
@@ -60,7 +60,7 @@ export default function Shell({ children }) {
     navigate('/')
   }, [backOverride, navigate])
 
-  // On /checklists, a full-width horizontal drag means "swipe between tabs" —
+  // On /checklists, a full-width horizontal drag means "swipe between tabs". 
   // letting the edge-swipe-back gesture also listen there would make a touch
   // starting near the left edge ambiguous between the two. Back navigation
   // stays available via the header's BackButton, so just disable the swipe.

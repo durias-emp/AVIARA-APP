@@ -1,6 +1,6 @@
 // Winds aloft from the FAA's FB bulletin, as a fallback wind column.
 //
-// Open-Meteo is the primary source and gives far more — cloud, humidity,
+// Open-Meteo is the primary source and gives far more. Cloud, humidity,
 // geopotential heights, worldwide. But it is a free tier with a daily
 // allowance, and when that runs out the altitude advice loses the wind, the
 // cross-section stops drawing, and the pilot is left with terrain and rules.
@@ -31,7 +31,7 @@ const LEVELS_FT = [3000, 6000, 9000, 12000, 18000, 24000, 30000, 34000, 39000]
 //       ^4   ^9      ^17     ^25     ^33     ^41     ^49    ^56    ^63
 //
 // Parsing by offset rather than by splitting on whitespace, because an omitted
-// level is blank space, not a placeholder — ABI reports nothing at 3,000 ft,
+// level is blank space, not a placeholder. ABI reports nothing at 3,000 ft,
 // and split() would shift every later level down one, handing the pilot the
 // 6,000 ft wind labelled 3,000.
 //
@@ -145,7 +145,7 @@ function interpolate(pt, stations, altFt) {
 
 // The bulletin reports fixed levels; a cruise altitude between them is
 // interpolated linearly, and one outside them is clamped rather than
-// extrapolated — a wind invented above 39,000 ft helps nobody.
+// extrapolated: a wind invented above 39,000 ft helps nobody.
 function levelAt(levels, altFt) {
   if (!levels.length) return null
   if (altFt <= levels[0].altFt) return levels[0]
@@ -200,7 +200,7 @@ export function stationPos(id) {
   return p ? { lat: p[0], lon: p[1], ident: key } : null
 }
 
-// The wind at one point and one altitude — what the performance card needs.
+// The wind at one point and one altitude. What the performance card needs.
 //
 // Interpolated from the three nearest stations, at the actual altitude rather
 // than snapped to the nearest published level, and it reports which stations
@@ -246,7 +246,7 @@ export async function fbWindAt(lat, lon, altFt, { departAtISO = null, timeoutMs 
   }
 }
 
-// samples: [{lat, lon, distNm}] — the same points loadAtmosphere would use.
+// samples: [{lat, lon, distNm}]. The same points loadAtmosphere would use.
 //
 // Returns the loadAtmosphere shape with the sky layers empty, or
 // { status:'unavailable' }.
@@ -264,7 +264,7 @@ export async function loadFbWinds(samples, { departAtISO = null, maxAltFt = 1800
   }
   if (stations.length < 2) return { status: 'unavailable' }
 
-  // Off the edge of the product — the FB bulletin is US only, and the nearest
+  // Off the edge of the product. The FB bulletin is US only, and the nearest
   // station being 400 NM away means the answer would be fiction.
   const nearest = Math.min(...samples.map(p =>
     Math.min(...stations.map(s => haversineNm(p.lat, p.lon, s.lat, s.lon)))))

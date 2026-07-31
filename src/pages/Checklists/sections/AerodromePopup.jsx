@@ -1,6 +1,6 @@
 // A field along the route, opened from the map or the aerodromes list.
 //
-// The question this answers is not "what is that airport called" — it is
+// The question this answers is not "what is that airport called". It is
 // "could I put the aircraft down there, and what would I find when I did".
 // So the order is deliberate: how far off track, then the runways, then the
 // weather, then the frequencies. A 2,000 ft grass strip and 10,000 ft of
@@ -45,7 +45,7 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
       .finally(() => { if (!cancelled) setLoading(false) })
 
     // Its own report first. Only when the field does not publish one does the
-    // nearest station get asked for — one extra request, and only sometimes.
+    // nearest station get asked for, one extra request, and only sometimes.
     fetchMetar(field.ident)
       .then(m => { if (!cancelled) setWx({ metar: m, station: field.ident, distNm: 0 }) })
       .catch(async () => {
@@ -61,11 +61,11 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
   const runways = details?.runways ?? []
   // Longest first: on an unplanned landing that is the number that decides.
   // parseInt copes with the "10,000 ft" formatting by reading up to the comma,
-  // so lengths are compared in thousands — enough to order them, and the
+  // so lengths are compared in thousands, enough to order them, and the
   // displayed string is the real figure either way.
   const lengthOf = r => Number(String(r.len ?? '').replace(/[^\d]/g, '')) || 0
   const byLength = [...runways].sort((a, b) => lengthOf(b) - lengthOf(a))
-  // Only meaningful when there are lengths to compare — badging one runway
+  // Only meaningful when there are lengths to compare. Badging one runway
   // "longest" out of six that all read "—" says nothing and looks like data.
   const longest = lengthOf(byLength[0] ?? {}) > 0 ? byLength[0] : null
 
@@ -75,7 +75,7 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
   //
   // The badge only appears for the field's OWN report. A borrowed observation
   // is captioned "conditions there, not here" a few lines down, and a green
-  // VFR badge beside the ident would quietly contradict that — CA84 showing
+  // VFR badge beside the ident would quietly contradict that. CA84 showing
   // VFR on the strength of a METAR from 6 NM away is the app asserting
   // something nobody measured.
   const cat = raw && wx.distNm === 0 ? parseFltCat(metar) : null
@@ -122,7 +122,7 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
         <span onClick={onClose} style={{ fontSize: 17, color: 'rgba(255,255,255,0.4)', cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}>✕</span>
       </div>
 
-      {/* Where it is relative to the flight — the reason it is in the list */}
+      {/* Where it is relative to the flight. The reason it is in the list */}
       <div style={{ display: 'flex', gap: 14, marginTop: 9, paddingBottom: 9,
         borderBottom: '0.5px solid rgba(255,255,255,0.1)' }}>
         <Stat label="OFF TRACK" value={`${field.distNm} NM`} />
@@ -131,11 +131,11 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
       </div>
 
       <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, marginTop: 9 }}>
-        {/* Runways — the first thing that decides whether this is an option */}
+        {/* Runways: the first thing that decides whether this is an option */}
         <Section title="Runways">
           {loading && <Muted>Loading…</Muted>}
           {!loading && !runways.length && (
-            <Muted>No runway data published for {field.ident} — check the Chart Supplement.</Muted>
+            <Muted>No runway data published for {field.ident}. Check the Chart Supplement.</Muted>
           )}
           {byLength.map(r => (
             <div key={r.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '3px 0' }}>
@@ -159,7 +159,7 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
             <>
               {wx.distNm > 0 && (
                 <div style={{ fontSize: 10.5, color: 'var(--warn)', marginBottom: 4, lineHeight: 1.4 }}>
-                  {field.ident} does not report. Nearest is {wx.station}, {Math.round(wx.distNm)} NM away —
+                  {field.ident} does not report. Nearest is {wx.station}, {Math.round(wx.distNm)} NM away. 
                   conditions there, not here.
                 </div>
               )}
@@ -183,7 +183,7 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
         <Section title="Frequencies">
           {loading && <Muted>Loading…</Muted>}
           {!loading && !details?.frequencies?.length && (
-            <Muted>None published for {field.ident} in our data — check the Chart Supplement or the AIP.</Muted>
+            <Muted>None published for {field.ident} in our data. Check the Chart Supplement or the AIP.</Muted>
           )}
           {grouped.map(g => (
             <div key={g.key} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '3px 0' }}>
@@ -211,7 +211,7 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
         {details?.freqSource
           ? `${details.freqSource.label}${details.freqSource.cycle ? ` · ${details.freqSource.cycle}` : ''}. `
           : ''}
-        Published data, not a suitability assessment — check the Chart Supplement, NOTAMs and hours before using this field.
+        Published data, not a suitability assessment. Check the Chart Supplement, NOTAMs and hours before using this field.
       </div>
     </div>
   )

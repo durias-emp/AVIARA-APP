@@ -2,8 +2,8 @@
 //
 // The engine's output is rich and partly circular (candidates carry references
 // to hazard objects that carry references back). This flattens it into the
-// smallest complete description of the decision — every fact the advice could
-// legitimately rest on, and nothing else — so the model has no reason to
+// smallest complete description of the decision. Every fact the advice could
+// legitimately rest on, and nothing else, so the model has no reason to
 // invent and no room to wander.
 
 import { fmtAlt } from './cruiseAdvisor'
@@ -31,7 +31,7 @@ export function buildBriefPayload(advice, context = {}) {
       to: context.dest || null,
       distanceNm: round(advice.distNm),
       flightRules: context.flightRules || 'VFR',
-      departureUTC: context.etd || 'not set — forecast is for the current hour',
+      departureUTC: context.etd || 'not set, forecast is for the current hour',
       aircraft: context.aircraftName || null,
     },
     aircraft: advice.perf && {
@@ -51,7 +51,7 @@ export function buildBriefPayload(advice, context = {}) {
       icing: (advice.hazards?.icing || []).map(band),
       turbulence: (advice.hazards?.turbulence || []).map(band),
       convection: advice.hazards?.convective
-        ? `CAPE ${advice.hazards.convective.capeJkg} J/kg — ${advice.hazards.convective.level}`
+        ? `CAPE ${advice.hazards.convective.capeJkg} J/kg. ${advice.hazards.convective.level}`
         : null,
       coverage: advice.hazards?.coverage || null,
     },
@@ -83,7 +83,7 @@ export function buildBriefPayload(advice, context = {}) {
 }
 
 // Ask for the briefing. Returns { status, altFt, briefing, watchFor, agrees }
-// — never throws, because the deterministic recommendation has to stand on its
+//, never throws, because the deterministic recommendation has to stand on its
 // own whether or not this succeeds.
 export async function fetchBriefing(advice, context = {}, { timeoutMs = 30000 } = {}) {
   const payload = buildBriefPayload(advice, context)
@@ -122,7 +122,7 @@ export async function fetchBriefing(advice, context = {}, { timeoutMs = 30000 } 
     watchFor: data.watchFor,
     model: data.model,
     // When the two disagree the pilot sees both, with the engine's figures
-    // attached — the disagreement is information, not an error.
+    // attached: the disagreement is information, not an error.
     agrees: data.altFt === advice.recommended.altFt,
     enginePick: advice.recommended.altFt,
   }

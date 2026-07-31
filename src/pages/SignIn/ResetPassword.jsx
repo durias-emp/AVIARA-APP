@@ -28,7 +28,7 @@ export default function ResetPassword() {
     const { error: err } = await updatePassword(password)
     setBusy(false)
     if (err) { setError(err.message); return }
-    // On success recovery clears and the app proceeds — no further UI needed.
+    // On success recovery clears and the app proceeds. No further UI needed.
   }
 
   return (

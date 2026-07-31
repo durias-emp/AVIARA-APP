@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import { get, put, getAll, clearStore } from './db'
 
-// The five stores backed up to the cloud. `weather` is excluded — it's a
+// The five stores backed up to the cloud. `weather` is excluded. It's a
 // disposable fetch cache, not pilot data worth restoring.
 export const SYNCED_STORES = ['aircraft', 'currency', 'checklists', 'settings', 'flights']
 
@@ -10,7 +10,7 @@ async function currentUserId() {
   return data.session?.user?.id ?? null
 }
 
-// Best-effort, fire-and-forget — called after every local put() to one of
+// Best-effort, fire-and-forget: called after every local put() to one of
 // the synced stores (see db.js) so the cloud backup stays current. Never
 // throws: a failure (offline, not signed in yet) just leaves
 // syncMeta.pendingPush true for a later retry via retryPendingPushes().
@@ -32,7 +32,7 @@ export async function pushToCloud(store) {
 
 // Pulls each store's cloud backup into IndexedDB, per row: a cloud row is
 // restored when this device has no row with the same key, and existing local
-// rows always win. (The old store-level "skip if not empty" was fragile —
+// rows always win. (The old store-level "skip if not empty" was fragile. 
 // any incidental early write, like the profile email seed, marked a store
 // non-empty and blocked the whole restore.) One domain tiebreak: a local
 // pilot row that never completed onboarding is a stub and must not shadow a
@@ -68,7 +68,7 @@ export async function hydrateFromCloud() {
         }
       }
     } catch {
-      // Offline or no backup yet — leave local state as-is.
+      // Offline or no backup yet. Leave local state as-is.
     }
   }
 }
@@ -93,7 +93,7 @@ export async function retryPendingPushes() {
 }
 
 // Wipe all locally-stored pilot data. Called on sign-out so the device is
-// left clean for the next account — otherwise hydrateFromCloud (which only
+// left clean for the next account. Otherwise hydrateFromCloud (which only
 // fills empty stores) would leave the previous pilot's data visible to
 // whoever signs in next. Also clears syncMeta so the next sign-in triggers
 // a fresh pull. Callers should push a final backup BEFORE this, while the
