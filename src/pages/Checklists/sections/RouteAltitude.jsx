@@ -392,6 +392,25 @@ function fmtAvCoord(lat, lon) {
   return `${ns}${fmt(lat, 2)} ${ew}${fmt(lon, 3)}`
 }
 
+// The inverse of fmtAvCoord — N24°43'44" W104°38'04" back to numbers.
+//
+// It has to exist because a coordinate is a first-class endpoint now: once a
+// destination can be a place with no ICAO code, its own printed form is the
+// only identifier it has, and the route has to be recalculable from it.
+// Tolerant of the degree/minute/second marks going missing, since the string
+// can arrive from a saved route, a typed field, or a paste.
+function parseAvCoord(str) {
+  const m = /^\s*([NS])\s*(\d{1,3})[°\s]\s*(\d{1,2})['\s]\s*(\d{1,2}(?:\.\d+)?)?["\s]*\s+([EW])\s*(\d{1,3})[°\s]\s*(\d{1,2})['\s]\s*(\d{1,2}(?:\.\d+)?)?["\s]*\s*$/i
+    .exec(String(str || ''))
+  if (!m) return null
+  const [, ns, latD, latM, latS, ew, lonD, lonM, lonS] = m
+  const lat = (+latD + +latM / 60 + (+latS || 0) / 3600) * (ns.toUpperCase() === 'S' ? -1 : 1)
+  const lon = (+lonD + +lonM / 60 + (+lonS || 0) / 3600) * (ew.toUpperCase() === 'W' ? -1 : 1)
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null
+  return { lat, lon }
+}
+
 // Cross-track distance from point (la,lo) to great-circle segment (a→b), in NM
 function crossTrackNM(la, lo, a, b) {
   const R = 3440.065 // NM
@@ -2601,9 +2620,22 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     if (!depId || !destId) return
     setRL(true); setRE(null); setRoute(null)
     try {
+      // An endpoint is not necessarily an airport any more. It can be a
+      // coordinate the pilot pointed at, or a name they gave that spot — and
+      // both have to survive being recalculated, which is what broke: the
+      // first calculation worked because the position was handed in, and
+      // every one after it went looking for an ICAO code that never existed.
+      const resolveEnd = async (id, pos) => {
+        if (pos) return { lat: pos[0], lon: pos[1] }
+        const coord = parseAvCoord(id)
+        if (coord) return coord
+        const saved = await resolveWaypoint(id)
+        if (saved) return { lat: saved.lat, lon: saved.lon }
+        return fetchAWC(id)
+      }
       const [da, dsta] = await Promise.all([
-        over.depPos ? { lat: over.depPos[0], lon: over.depPos[1] } : fetchAWC(depId),
-        over.destPos ? { lat: over.destPos[0], lon: over.destPos[1] } : fetchAWC(destId),
+        resolveEnd(depId, over.depPos),
+        resolveEnd(destId, over.destPos),
       ])
       if (!da?.lat || !dsta?.lat) throw new Error('Coordinates not found')
 
