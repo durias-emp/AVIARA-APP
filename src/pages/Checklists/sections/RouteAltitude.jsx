@@ -884,7 +884,7 @@ function NavSymbols({ geo, cls }) {
 // LongPressAdd — ForeFlight-style: press-and-hold (or right-click) anywhere on
 // the map to drop a point showing its aviation coordinates, with a button to
 // insert it into the route at the nearest leg.
-function LongPressAdd({ waypoints, onDrop }) {
+function LongPressAdd({ waypoints, onDrop, tapToAdd = false }) {
   const [pt, setPt] = useState(null)
   const ignoreNextClick = useRef(false)
   useMapEvents({
@@ -898,8 +898,21 @@ function LongPressAdd({ waypoints, onDrop }) {
       ignoreNextClick.current = true
       setPt({ lat: e.latlng.lat, lon: e.latlng.lng })
     },
-    click() {
+    click(e) {
       if (ignoreNextClick.current) { ignoreNextClick.current = false; return }
+      // The map was opened by "Add waypoint" and is waiting to be told where.
+      // Holding is the gesture for an unprompted add; here the pilot has
+      // already said what they want, so a plain tap places the point.
+      //
+      // Guarded because everything downstream — the marker, the popup, the
+      // waypoint — goes straight into L.latLng, which throws on a NaN and
+      // takes the card down with it.
+      if (tapToAdd) {
+        if (Number.isFinite(e.latlng?.lat) && Number.isFinite(e.latlng?.lng)) {
+          setPt({ lat: e.latlng.lat, lon: e.latlng.lng })
+        }
+        return
+      }
       setPt(null)
     },
     // No dismissal on drag: the tiniest finger movement while still holding
@@ -1118,7 +1131,7 @@ function RouteHint() {
 // toggling a layer, TFR data arriving). That's what read as "the map glitches
 // constantly" and, on iOS, remounting mid-tap can also swallow the tap event
 // on nearby chips/buttons.
-function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes, onAerodrome, openFieldIdent, peak, onPeak, peakFocused, refitNonce, onDrop, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint }) {
+function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes, onAerodrome, openFieldIdent, peak, onPeak, peakFocused, refitNonce, onDrop, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint, pickMode = false }) {
   const routePositions = waypoints.map(w => [w.lat, w.lon])
   return (<>
     <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
@@ -1242,13 +1255,14 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
     <AerodromeMarkers fields={aerodromes} layers={layers} onAerodrome={onAerodrome} highlightIdent={openFieldIdent} />
     <PeakMarker peak={peak} layers={layers} onOpen={onPeak} focused={peakFocused} />
     <RouteWaypoints waypoints={waypoints} onDrop={onDrop} onDragInsert={onDragInsert}
-      onWaypointDrop={onWaypointDrop} moveWaypoint={moveWaypoint} removeWaypoint={removeWaypoint} />
+      onWaypointDrop={onWaypointDrop} moveWaypoint={moveWaypoint} removeWaypoint={removeWaypoint}
+      pickMode={pickMode} />
   </>)
 }
 
 // The route's own markers, split out so the label-room calculation can use the
 // map instance without every layer above re-running when the view changes.
-function RouteWaypoints({ waypoints, onDrop, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint }) {
+function RouteWaypoints({ waypoints, onDrop, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint, pickMode = false }) {
   const room = useLabelRoom(waypoints)
   return (<>
     {waypoints[0] && (
@@ -1262,7 +1276,7 @@ function RouteWaypoints({ waypoints, onDrop, onDragInsert, onWaypointDrop, moveW
         name={waypoints[waypoints.length-1].name} removable={false} />
     )}
     {waypoints.length >= 2 && <PolylineEditor waypoints={waypoints} onDragInsert={onDragInsert} />}
-    {waypoints.length >= 2 && <LongPressAdd waypoints={waypoints} onDrop={onDrop} />}
+    {waypoints.length >= 2 && <LongPressAdd waypoints={waypoints} onDrop={onDrop} tapToAdd={pickMode} />}
     {waypoints.slice(1, -1).map((w, i) => (
       <DraggableWaypoint key={w.id} position={[w.lat, w.lon]} index={i + 1} onMove={onWaypointDrop} onRemove={removeWaypoint}
         // unnamed map-dropped points carry the same WPT n label as the card
@@ -1865,6 +1879,30 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   function addWptRow() {
     setWptRows(prev => [...prev, { id: `wr-${Date.now()}`, text: '', resolved: null, error: null, creating: null }])
   }
+
+  // The first waypoint is asked for differently from the rest.
+  //
+  // An empty text field assumes the pilot already knows the name of the fix
+  // they want, which is true for the second one — by then they are refining a
+  // routing they can see. It is often not true for the first: what they have
+  // is a place on the chart, a way around weather or terrain, not a
+  // five-letter ident. So the first press opens the map and waits for a tap.
+  //
+  // Later presses go back to the text row: once there is a waypoint in the
+  // list, adding another is usually typing one, and the map is still one long
+  // press away.
+  async function pickWaypointOnMap() {
+    let r = route
+    if (!r) {
+      // Nothing to open — there is no map until the route has two ends.
+      if (!dep.trim() || !dest.trim()) { addWptRow(); return }
+      r = await calcRoute()
+      if (!r) return                 // calcRoute has already shown why
+    }
+    setPickMode(true)
+    setMapClear(false)
+    setMapFS(true)
+  }
   function patchWptRow(id, patch) {
     setWptRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r))
   }
@@ -1945,6 +1983,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // A drop opens the picker rather than committing a coordinate: the finger
   // lands somewhere approximate, and what the pilot almost always wants is the
   // charted point a mile or two away.
+  // True while the map is open specifically to be asked "where?" — a tap
+  // places a point instead of dismissing one.
+  const [pickMode, setPickMode] = useState(false)
   const [dropPoint, setDropPoint] = useState(null)
   function openDropPicker(pt) { setDropPoint(pt) }
 
@@ -1973,6 +2014,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
   // Closing the picker undoes whatever the gesture did on the way in.
   function cancelDrop() {
+    setPickMode(false)
     const d = dropPoint
     if (d?.revertTo && d.moveIndex != null) {
       setWaypoints(prev => prev.map((w, i) => (i === d.moveIndex ? { ...w, ...d.revertTo } : w)))
@@ -1981,6 +2023,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   }
 
   function commitDrop(choice) {
+    setPickMode(false)
     const { lat, lon, name, as } = choice
     if (as === 'destination' && name) {
       // Re-file the route to end here. The coordinates come from the bundled
@@ -2540,13 +2583,19 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       put('settings', { key: 'route', ...routeObj }).catch(() => {})
       setCourse(String(mcRounded))
       setSelectedAlt(null)
+      // Returned so a caller that needs the route to exist before it can act —
+      // opening the map to pick a waypoint on it — can wait for the real thing
+      // instead of for a state update it cannot see yet.
+      return routeObj
     } catch (e) {
       setRE(e.userMessage || 'Could not calculate — check both ICAO codes')
+      return null
     } finally {
       setRL(false)
     }
   }
 
+  const hasWaypoint = wptRows.length > 0 || waypoints.length > 2
   const c        = parseInt(course)
   const valid    = !isNaN(c) && c >= 0 && c <= 360
   const isEast   = valid && c <= 179
@@ -2974,14 +3023,19 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
           </div>
         )}
 
+        {/* "Has a waypoint yet" has to count both places one can live. A row
+            is a typed fix; a point picked on the map goes straight into the
+            route's waypoint list and never becomes a row, so counting rows
+            alone left the button still offering the map after the pilot had
+            just used it. */}
         <button
-          onClick={addWptRow}
+          onClick={hasWaypoint ? addWptRow : pickWaypointOnMap}
           style={{
             width: '100%', padding: '7px 0', borderRadius: 9, marginBottom: 8,
             background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
             fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
           }}>
-          + Add waypoint
+          {hasWaypoint ? '+ Add waypoint' : '+ Add waypoint from the map'}
         </button>
 
         <button
@@ -3119,7 +3173,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
               const mapLayerProps = { layers, openaipKey, tfrData, detectedSUAPolys, waypoints, aerodromes: markedFields, onAerodrome: openAerodrome, openFieldIdent: openField?.ident ?? null,
                 peak: terrainInfo?.status === 'ok' && terrainInfo.atLat != null
                   ? { lat: terrainInfo.atLat, lon: terrainInfo.atLon } : null,
-                onPeak: openMountains, peakFocused, refitNonce, onDrop: openDropPicker, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
+                onPeak: openMountains, peakFocused, pickMode, refitNonce, onDrop: openDropPicker, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
 
               return (<>
                 {/* Inline map */}
@@ -3236,7 +3290,22 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       )}
 
                       {/* Route edit hint — fades after 4s */}
-                      {!dropPoint && !openField && !mapClear && <RouteHint />}
+                      {/* Pick mode says what the map is waiting for. It
+                          replaces the ordinary hint rather than stacking on
+                          it — two banners competing for the same strip is
+                          worse than either. */}
+                      {pickMode && !dropPoint && !mapClear && (
+                        <div style={{
+                          position: 'absolute', bottom: 280, left: '50%', transform: 'translateX(-50%)',
+                          zIndex: 10002, pointerEvents: 'none',
+                          background: 'rgba(10,132,255,0.92)', backdropFilter: 'blur(10px)',
+                          borderRadius: 20, padding: '7px 14px', maxWidth: '86%',
+                          fontSize: 11.5, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap',
+                        }}>
+                          Tap the map to place your waypoint
+                        </div>
+                      )}
+                      {!pickMode && !dropPoint && !openField && !mapClear && <RouteHint />}
 
                       {/* Tier-2 disclosure — only when THIS route leaves the
                           regions we hold current data for, since that's when
