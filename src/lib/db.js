@@ -32,7 +32,17 @@ async function db() {
       _db = null
     },
     blocked() {
-      // An older tab is blocking our upgrade. Reload once it closes
+      // An older tab is blocking our upgrade. Reloading can clear it, but only
+      // if the other connection is gone by the time we come back: if it is
+      // still there we block again and reload again, and the app spins in a
+      // loop showing nothing. Once per page lifetime, then give up and let the
+      // open fail so the caller can start without it.
+      const KEY = 'aviara-db-blocked-reload'
+      if (sessionStorage.getItem(KEY)) {
+        console.error('[aviara] IndexedDB upgrade still blocked after a reload; continuing without it')
+        return
+      }
+      try { sessionStorage.setItem(KEY, '1') } catch { /* private mode */ }
       window.location.reload()
     },
   })

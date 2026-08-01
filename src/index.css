@@ -158,19 +158,49 @@
   /* The device insets, named once. Components that need to clear the notch or
      the home indicator read these rather than repeating env() and drifting
      apart from each other. */
-  --safe-top: var(--safe-top);
-  --safe-bottom: var(--safe-bottom);
+  /* env() is read here and nowhere else. A custom property that referenced
+     itself would be a cycle, which the spec makes invalid at computed-value
+     time, and every padding built on it silently collapses to zero. That is
+     one broken line taking the insets out of all 22 call sites at once, so it
+     is worth being explicit: the right-hand side must be env(), never var().
+     The 0px fallbacks keep desktop and Android, where the insets are absent
+     rather than zero, from inheriting the same invalid value. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 html, body {
-  height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
 }
 
+html {
+  height: 100%;
+}
+
 body {
+  /* inset alone decides the size. It used to also carry height:100%, and the
+     two together over-constrain the box: with top, bottom and height all set,
+     CSS drops bottom and keeps height. That was survivable while 100% and the
+     viewport agreed, but the translucent status bar shortens the initial
+     containing block by the height of the bar, so body ended up that much
+     shorter than the screen and anchored to the top. Every screen stopped 59px
+     above the bottom edge at once, which is why it looked like a gap in one
+     component rather than the whole app being the wrong height. The backdrop
+     below sizes itself from inset with no height, which is why it kept
+     painting the full screen and the strip came out --bg instead of black. */
   position: fixed;
   inset: 0;
+  /* A column, so #root takes the remaining space as a flex item instead of as
+     a percentage of this box. Sizing from inset leaves the height correct but
+     auto, and a percentage child measured against an auto height collapses to
+     nothing, which renders as a blank screen rather than as a layout that is
+     merely wrong. Flex needs no definite parent height, so the app fills the
+     screen either way. */
+  display: flex;
+  flex-direction: column;
   /* Taps act immediately instead of waiting to see if a double-tap zoom is
      coming. The zoom is already disabled in the viewport meta. */
   touch-action: manipulation;
@@ -240,6 +270,13 @@ body::before {
      They live here now. The box is the whole viewport, the background reaches
      every corner, and the padding keeps content clear of the notch and the
      home indicator exactly as before. */
+  /* Fills the body column. flex-basis 0 with grow makes the height come from
+     the parent rather than from the content, which is what a scroller needs,
+     and min-height 0 lets it actually shrink to that instead of being propped
+     open by its own children. height:100% stays as the fallback for any
+     context where this is not a flex child. */
+  flex: 1 1 0;
+  min-height: 0;
   height: 100%;
   padding-top: var(--safe-top);
   padding-bottom: var(--safe-bottom);

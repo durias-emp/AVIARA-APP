@@ -39,6 +39,26 @@ function AppRoutes({ theme }) {
     if (email && profile?.onboardingComplete && !profile.email) setProfile({ email })
   }, [session, profile, setProfile, hydrated])
 
+  // Dev only, and stripped from production builds along with the branch below.
+  // A white screen is whichever of these guards returned null, plus whatever
+  // the box measured, and none of that is visible on a phone. Vite forwards
+  // console output from the device to the terminal, so this is the fastest
+  // way to see which one it actually was.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    console.log('[aviara-gate] ' + JSON.stringify({
+      standalone: window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true,
+      authLoading, hydrated, recovery,
+      profile: profile === null ? 'NULL (gate returns nothing)' : (profile.onboardingComplete ? 'complete' : 'onboarding'),
+      innerH: window.innerHeight,
+      clientH: document.documentElement.clientHeight,
+      bodyH: Math.round(document.body.getBoundingClientRect().height),
+      rootH: Math.round(document.getElementById('root')?.getBoundingClientRect().height ?? -1),
+      safeTop: getComputedStyle(document.documentElement).getPropertyValue('--safe-top').trim(),
+      safeBottom: getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom').trim(),
+    }))
+  }, [authLoading, hydrated, recovery, profile])
+
   if (authLoading) return null
 
   // Arrived via a password-reset email link. Force the "set new password"

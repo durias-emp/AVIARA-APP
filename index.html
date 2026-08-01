@@ -9,6 +9,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Without this iOS draws its own opaque near-white (#fdfdfd) strip above
+         the web view in standalone mode, which never matches --bg. translucent
+         hands the status bar region to the page instead, so the body's
+         safe-area padding paints it the same colour as everything below. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <!-- Browser/PWA chrome colour. Deliberately a single tag with no media
          query: iOS reads media-scoped theme-color tags when the app launches
          and does not re-evaluate them afterwards, so switching the system

@@ -74,6 +74,13 @@ function awcDevProxy() {
 }
 
 export default defineConfig({
+  server: {
+    // Vite rejects requests whose Host header it doesn't recognise, which
+    // blocks the phone preview served through a Cloudflare quick tunnel.
+    // The leading dot allows any *.trycloudflare.com subdomain — the quick
+    // tunnel picks a fresh random one on every run.
+    allowedHosts: ['.trycloudflare.com'],
+  },
   plugins: [
     awcDevProxy(),
     tfrDevProxy(),
