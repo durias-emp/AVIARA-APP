@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { get, put } from '../lib/db'
+import { seedDemoData } from '../lib/devSeed'
 
 const STORE = 'settings'
 const KEY   = 'pilot'
@@ -30,9 +31,16 @@ export function PilotProfileProvider({ children }) {
   const [profile, setProfileState] = useState(null)
 
   useEffect(() => {
-    const load = () => get(STORE, KEY).then(saved => {
-      setProfileState(saved ?? EMPTY_PROFILE)
-    })
+    // The seed runs before the read so a fresh device sees the demo profile on
+    // the first pass and renders Home, rather than flashing onboarding and
+    // correcting itself. It resolves immediately and writes nothing unless the
+    // dev demo flag is on.
+    const load = () => seedDemoData()
+      .catch(() => {})
+      .then(() => get(STORE, KEY))
+      .then(saved => {
+        setProfileState(saved ?? EMPTY_PROFILE)
+      })
     load()
     // After sign-in, the cloud restore may fill the settings store AFTER the
     // initial read above returned empty. Re-read once hydration finishes so

@@ -254,7 +254,7 @@ function ChecklistDetail({ checklist, onBack }) {
     // inset is re-applied here; the fixed footer already handles the bottom.
     <div style={{
       position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
-      paddingTop: 'env(safe-area-inset-top)', background: 'var(--bg)',
+      paddingTop: 'var(--safe-top)', background: 'var(--bg)',
     }}>
       {/* Header */}
       <div style={{ padding: '20px 16px 12px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>

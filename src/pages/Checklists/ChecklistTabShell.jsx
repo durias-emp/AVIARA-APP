@@ -184,7 +184,7 @@ export default function ChecklistTabShell({
       <div
         ref={footerRef}
         className="fixed-footer-bar"
-        style={{ transform: footerHidden ? 'translateY(calc(100% + 24px + env(safe-area-inset-bottom, 0px)))' : 'translateY(0)' }}
+        style={{ transform: footerHidden ? 'translateY(calc(100% + 24px + var(--safe-bottom)))' : 'translateY(0)' }}
       >
         <StepTabBar
           sections={sections}

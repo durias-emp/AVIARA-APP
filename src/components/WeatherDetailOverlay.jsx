@@ -287,7 +287,7 @@ export default function WeatherDetailOverlay({
 
         {/* Scrollable content column */}
         <div style={{
-          position: 'relative', zIndex: 2, padding: 'calc(52px + env(safe-area-inset-top)) 20px calc(48px + env(safe-area-inset-bottom))',
+          position: 'relative', zIndex: 2, padding: 'calc(52px + var(--safe-top)) 20px calc(48px + var(--safe-bottom))',
         }}>
 
           {/* ── Top bar ── */}

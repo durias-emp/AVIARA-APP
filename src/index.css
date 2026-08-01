@@ -154,6 +154,14 @@
    working the same way: position:fixed children (the tab bar, the fullscreen
    map, modals) still anchor to the viewport, and scrollIntoView still finds
    the right scroller on its own. */
+:root {
+  /* The device insets, named once. Components that need to clear the notch or
+     the home indicator read these rather than repeating env() and drifting
+     apart from each other. */
+  --safe-top: var(--safe-top);
+  --safe-bottom: var(--safe-bottom);
+}
+
 html, body {
   height: 100%;
   overflow: hidden;
@@ -181,6 +189,23 @@ button:focus, button:focus-visible {
   outline: none;
 }
 
+/* A long press anywhere used to raise iOS text selection, blue drag handles
+   and all, and a drag from there swept a highlight across the whole screen.
+   That reads as a web page rather than an app. Selection is off by default and
+   switched back on only where typing or copying is the point: the callout is
+   suppressed with it, so long-pressing a link no longer opens the share sheet
+   either. Both properties inherit, so setting them on html covers everything. */
+html {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input, textarea, select, [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 body {
   background-color: var(--bg);
   color: var(--text);
@@ -190,17 +215,34 @@ body {
   font-size: 17px;
   line-height: 1.47;
   transition: background-color 0.2s, color 0.2s;
-  /* Extend body color behind status bar on iOS PWA */
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Nothing can ever show through as bare canvas.
+   viewport-fit=cover claims the whole screen including the inset zones, and
+   claiming them is a promise to paint them. A fixed backdrop behind
+   everything means a future layout mistake shows as the wrong colour rather
+   than as the black the system paints over unclaimed pixels. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--bg);
+  pointer-events: none;
 }
 
 #root {
-  /* The app's scroller. box-sizing is border-box everywhere, so 100% here is
-     the body's content box. Inside the safe-area padding. Direct children
-     must not shrink (see .app-shell) or content taller than the screen would
-     be compressed instead of scrolled. */
+  /* The app's scroller, and the full screen.
+     The insets used to be padding on the body, which shrank this box by both
+     of them: on a notched phone the app was 93 px shorter than the screen and
+     could not reach an edge. Screens built as fixed overlays escaped that and
+     filled the screen, so half the app met the edges and half did not.
+     They live here now. The box is the whole viewport, the background reaches
+     every corner, and the padding keeps content clear of the notch and the
+     home indicator exactly as before. */
   height: 100%;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
@@ -307,7 +349,14 @@ body {
   bottom: 0;
   width: auto;
   margin: 0 auto;
-  padding-bottom: env(safe-area-inset-bottom);
+  /* Keeps the controls above the home indicator. The bar used to leave this
+     strip transparent, because the white came from the children rather than
+     from here, so the page showed through underneath as a band of --bg. It
+     only became visible once the status bar meta let the web view run
+     full-screen and the inset stopped being zero. The background belongs on
+     the bar so the colour reaches the bottom edge whatever the inset is. */
+  padding-bottom: var(--safe-bottom);
+  background: var(--bg-card);
   z-index: 40;
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
   overflow: hidden;

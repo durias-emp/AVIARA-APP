@@ -1045,7 +1045,7 @@ function MapControlStack({ onClose }) {
       ref={ref}
       style={{
         position: 'absolute', zIndex: 10005,
-        top: 'calc(env(safe-area-inset-top, 0px) + 14px)', right: 12,
+        top: 'calc(var(--safe-top) + 14px)', right: 12,
         display: 'flex', flexDirection: 'column',
         background: 'rgba(10,10,10,0.75)',
         backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
@@ -1096,7 +1096,7 @@ function PickDestinationMap({ depPos, depIdent, onClose, onPick }) {
 
       {/* Departure label, so the one fixed point on this map is named */}
       <div style={{
-        position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 14px)', left: 12,
+        position: 'absolute', top: 'calc(var(--safe-top) + 14px)', left: 12,
         zIndex: 10002, pointerEvents: 'none',
         background: 'rgba(10,10,10,0.75)', backdropFilter: 'blur(12px)',
         border: '0.5px solid rgba(255,255,255,0.18)', borderRadius: 9,
@@ -1106,7 +1106,7 @@ function PickDestinationMap({ depPos, depIdent, onClose, onPick }) {
       </div>
 
       <button onClick={onClose} style={{
-        position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 14px)', right: 12,
+        position: 'absolute', top: 'calc(var(--safe-top) + 14px)', right: 12,
         zIndex: 10005, width: 38, height: 38, padding: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: 'rgba(10,10,10,0.75)', backdropFilter: 'blur(12px)',
@@ -1116,7 +1116,7 @@ function PickDestinationMap({ depPos, depIdent, onClose, onPick }) {
 
       {!pt && (
         <div style={{
-          position: 'absolute', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 26px)',
+          position: 'absolute', bottom: 'calc(var(--safe-bottom) + 26px)',
           left: '50%', transform: 'translateX(-50%)', zIndex: 10002, pointerEvents: 'none',
           background: 'rgba(10,132,255,0.92)', backdropFilter: 'blur(10px)',
           borderRadius: 20, padding: '9px 16px', maxWidth: '86%',
@@ -3542,7 +3542,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       {awayFromRoute && !openField && !mapClear && (
                         <button onClick={backToRoute} style={{
                           position: 'absolute', left: '50%', transform: 'translateX(-50%)',
-                          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 22px)', zIndex: 10025,
+                          bottom: 'calc(var(--safe-bottom) + 22px)', zIndex: 10025,
                           background: 'rgba(10,10,10,0.82)', backdropFilter: 'blur(12px)',
                           border: '0.5px solid rgba(255,255,255,0.2)', borderRadius: 20,
                           color: '#fff', fontSize: 12, fontWeight: 700, letterSpacing: '0.3px',
@@ -3574,7 +3574,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                           airways. */}
                       {(layers.ifrlo || layers.ifrhi) && routeLeavesTier1 && !mapClear && (
                         <div style={{
-                          position: 'absolute', left: 12, top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
+                          position: 'absolute', left: 12, top: 'calc(var(--safe-top) + 64px)',
                           zIndex: 10002, pointerEvents: 'none',
                           background: 'rgba(255,255,255,0.92)', border: '0.5px solid rgba(0,0,0,0.15)',
                           borderRadius: 7, padding: '5px 9px', maxWidth: 235,
@@ -3588,7 +3588,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       {/* Off-airport endpoint warning. Informative, never blocking */}
                       {endpointWarning && !mapClear && (
                         <div style={{
-                          position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 64px)',
+                          position: 'absolute', top: 'calc(var(--safe-top) + 64px)',
                           left: '50%', transform: 'translateX(-50%)', zIndex: 10003,
                           background: 'rgba(255,159,10,0.95)', color: '#1a1200',
                           borderRadius: 20, padding: '8px 16px', maxWidth: '86%',
@@ -3607,7 +3607,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10001,
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         gap: 6, padding: '14px 12px',
-                        paddingTop: 'calc(14px + env(safe-area-inset-top))',
+                        paddingTop: 'calc(14px + var(--safe-top))',
                         // The scrim exists to keep the chips legible over a
                         // busy chart. With the chips gone it is just a stain
                         // across the top of the map, so it goes too.
