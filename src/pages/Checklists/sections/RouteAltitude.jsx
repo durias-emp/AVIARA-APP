@@ -2162,6 +2162,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     return next
   })
 
+  // Fuel on board and burn, as entered on the Cruise and Fuel card. Read here
+  // because the first question about a route is whether the aeroplane can
+  // reach the other end, and that question belongs next to the route, not two
+  // steps further on where the fuel figures happen to live.
+  const [fuelPlan, setFuelPlan] = useState(null)
+  useEffect(() => { get('settings', 'cruise').then(r => r && setFuelPlan(r)) }, [])
+
   const [pickMode, setPickMode] = useState(false)
   // The standalone "where am I going" map, shown before a route exists.
   // Holds the departure it opened over rather than a bare flag, so render
@@ -2789,6 +2796,26 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     }
   }
 
+  // Can this aeroplane reach the other end?
+  //
+  // Endurance is fuel divided by burn. Take the legal reserve off it, multiply
+  // what is left by the speed actually being planned, and that is how far it
+  // goes. Everything here is already on file; nothing was doing the division.
+  const rangeCheck = (() => {
+    const fob = parseFloat(fuelPlan?.fuelOnBoard)
+    const burn = parseFloat(fuelPlan?.burnRate)
+    const gs = advice?.recommended?.econ?.gsKt ?? parseFloat(fuelPlan?.tas)
+    if (!route?.distNm || !(fob > 0) || !(burn > 0) || !(gs > 0)) return null
+    // 91.167 for IFR, 91.151 for VFR: 45 minutes either way at night, 30 in
+    // the day under VFR.
+    const reserveMin = flightRules === 'IFR' ? 45 : (fuelPlan?.timeOfDay === 'night' ? 45 : 30)
+    const usableH = fob / burn - reserveMin / 60
+    if (usableH <= 0) return { rangeNm: 0, legs: null, reserveMin }
+    const rangeNm = Math.round(usableH * gs)
+    if (route.distNm <= rangeNm) return null            // nothing to say
+    return { rangeNm, legs: Math.ceil(route.distNm / rangeNm), reserveMin }
+  })()
+
   const hasWaypoint = wptRows.length > 0 || waypoints.length > 2
   const c        = parseInt(course)
   const valid    = !isNaN(c) && c >= 0 && c <= 360
@@ -3318,6 +3345,26 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 </div>
               ))}
             </div>
+
+            {/* Said here, before any of the altitude work, because no cruise
+                altitude is the answer to a leg the aeroplane cannot fly. */}
+            {rangeCheck && (
+              <div style={{
+                marginTop: 8, padding: '9px 11px', borderRadius: 9,
+                background: 'rgba(255,159,10,0.10)', border: '0.5px solid var(--warn)',
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--warn)' }}>
+                  {rangeCheck.rangeNm > 0
+                    ? `Beyond range. About ${rangeCheck.rangeNm} NM on this fuel.`
+                    : 'Fuel on board does not cover the reserve.'}
+                </div>
+                <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 3, lineHeight: 1.45 }}>
+                  {rangeCheck.legs
+                    ? `${route.distNm} NM needs about ${rangeCheck.legs} legs with a ${rangeCheck.reserveMin} min reserve. Add a stop as a waypoint and the plan follows it.`
+                    : `A ${rangeCheck.reserveMin} min reserve is required on this flight.`}
+                </div>
+              </div>
+            )}
             <div style={{
               marginTop: 10, padding: '7px 10px', borderRadius: 8,
               background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
