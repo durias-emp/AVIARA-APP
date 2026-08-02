@@ -8,6 +8,30 @@ import { VitePWA } from 'vite-plugin-pwa'
 // though it works fine once deployed. Without this, every airport lookup
 // looks "broken" locally regardless of the actual proxy's health.
 // Dev-only middleware mirroring api/tfr.js (same reasoning as awcDevProxy).
+// Dev-only sink for on-device measurements. The numbers that decide whether
+// the app fills the screen exist only on the phone: the desktop preview
+// reports zero insets, and the phone's console does not reach this terminal.
+// main.jsx (dev builds only) posts its viewport readings here, so opening the
+// app on the phone prints the truth where the developer is actually looking.
+function deviceLogSink() {
+  return {
+    name: 'device-log-sink',
+    configureServer(server) {
+      server.middlewares.use('/__device-log', (req, res) => {
+        let body = ''
+        req.on('data', (c) => { body += c })
+        req.on('end', () => {
+          try {
+            console.log('\n[device] ' + JSON.stringify(JSON.parse(body)))
+          } catch { console.log('\n[device] ' + body.slice(0, 500)) }
+          res.statusCode = 204
+          res.end()
+        })
+      })
+    },
+  }
+}
+
 function tfrDevProxy() {
   const WFS_URL =
     'https://tfr.faa.gov/geoserver/TFR/ows?service=WFS&version=1.1.0&request=GetFeature' +
@@ -84,6 +108,7 @@ export default defineConfig({
   plugins: [
     awcDevProxy(),
     tfrDevProxy(),
+    deviceLogSink(),
     react(),
     tailwindcss(),
     VitePWA({

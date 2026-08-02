@@ -59,6 +59,33 @@ window.addEventListener('orientationchange', correctViewportDeficit)
 window.addEventListener('pageshow', correctViewportDeficit)
 window.visualViewport?.addEventListener('resize', correctViewportDeficit)
 
+// Dev builds report the readings to the dev server's terminal (see
+// deviceLogSink in vite.config.js). Only when they change: resize events fire
+// in bursts and the numbers, not the events, are the story.
+if (import.meta.env.DEV) {
+  let last = ''
+  const report = () => {
+    const doc = document.documentElement
+    const line = JSON.stringify({
+      standalone: window.matchMedia('(display-mode: standalone)').matches
+        || window.navigator.standalone === true,
+      screenH: window.screen?.height, innerH: window.innerHeight,
+      visualH: Math.round(window.visualViewport?.height ?? -1),
+      safeTop: getComputedStyle(doc).getPropertyValue('--safe-top').trim(),
+      safeBottom: getComputedStyle(doc).getPropertyValue('--safe-bottom').trim(),
+      deficit: getComputedStyle(doc).getPropertyValue('--vp-deficit').trim(),
+      bodyH: Math.round(document.body.getBoundingClientRect().height),
+    })
+    if (line === last) return
+    last = line
+    try { navigator.sendBeacon('/__device-log', line) } catch { /* dev only */ }
+  }
+  window.addEventListener('pageshow', report)
+  window.addEventListener('resize', report)
+  document.addEventListener('visibilitychange', report)
+  setTimeout(report, 800)
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <App />
