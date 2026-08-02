@@ -18,6 +18,7 @@ import { recommendCruise, fmtAlt } from '../../../lib/cruiseAdvisor'
 import { parseAircraftPerf } from '../../../lib/climbPerf'
 import CrossSection from './CrossSection'
 import DropPicker from './DropPicker'
+import TerrainLayer from './TerrainLayer'
 import AerodromePopup from './AerodromePopup'
 import { fetchBriefing } from '../../../lib/altitudeBrief'
 import { lookupRoutes, classifyRoute } from '../../../lib/preferredRoutes'
@@ -1312,6 +1313,8 @@ function MapLayers({ fit, fitOnce = true, layers, openaipKey, tfrData, detectedS
     {layers.ifrhi && <WorldRefLayer cls="hi" />}
     {layers.ifrlo && <AirwayNetwork cls="lo" />}
     {layers.ifrhi && <AirwayNetwork cls="hi" />}
+    {layers.terrain && <TerrainLayer />}
+
     {layers.airspace && openaipKey && (
       <TileLayer key={openaipKey}
         url={`https://api.tiles.openaip.net/api/data/openaip/{z}/{x}/{y}.png?apiKey=${openaipKey}`}
@@ -1664,7 +1667,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [routeError, setRE]       = useState(null)
 
   // Map layers
-  const [layers, setLayers]         = useState({ sectional: false, ifrlo: false, ifrhi: false, airspace: false, tfr: false })
+  const [layers, setLayers]         = useState({ sectional: false, ifrlo: false, ifrhi: false, terrain: false, airspace: false, tfr: false })
 
   // IFR flights get the FAA enroute Low/High chart chips; VFR/Local get the
   // sectional. Read from the picked flight-plan type (settings) on mount.
@@ -2456,7 +2459,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       const next = { ...prev, [name]: !prev[name] }
       // Chart layers are mutually exclusive. Stacking two raster charts
       // (both multiply-blended) is unreadable.
-      const CHARTS = ['sectional', 'ifrlo', 'ifrhi']
+      // Terrain belongs in this group: it is a base chart, not an overlay,
+      // and stacking it under a sectional buries both.
+      const CHARTS = ['sectional', 'ifrlo', 'ifrhi', 'terrain']
       if (CHARTS.includes(name) && next[name]) {
         for (const k of CHARTS) if (k !== name) next[k] = false
       }
@@ -2815,6 +2820,19 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     if (route.distNm <= rangeNm) return null            // nothing to say
     return { rangeNm, legs: Math.ceil(route.distNm / rangeNm), reserveMin }
   })()
+
+  // The FAA rasters stop at the US border. Outside it SECT, LO and HI fetch
+  // tiles that do not exist and render nothing at all, with no error, which
+  // reads as a broken button rather than as an absent chart. Knowing this lets
+  // the chips say so, and lets terrain be offered as the thing that does work
+  // down there.
+  const FAA_CHART_BOXES = [
+    [24.0, 50.0, -125.0, -66.0],   // CONUS
+    [51.0, 72.0, -170.0, -129.0],  // Alaska
+    [18.0, 23.0, -161.0, -154.0],  // Hawaii
+  ]
+  const hasFaaCharts = waypoints.length >= 2 && waypoints.every(w =>
+    FAA_CHART_BOXES.some(([s0, n0, w0, e0]) => w.lat >= s0 && w.lat <= n0 && w.lon >= w0 && w.lon <= e0))
 
   const hasWaypoint = wptRows.length > 0 || waypoints.length > 2
   const c        = parseInt(course)
@@ -3390,6 +3408,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 { id: 'sectional', label: 'Sectional' },
                 { id: 'ifrlo',     label: 'IFR Low' },
                 { id: 'ifrhi',     label: 'IFR High' },
+                { id: 'terrain',   label: 'Terrain' },
                 { id: 'airspace',  label: 'Airspace' },
                 { id: 'tfr',       label: tfrLoading ? 'TFR…' : 'TFR' },
               ].map(l => (
@@ -3626,20 +3645,31 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                         }}>
                           {[
                             ['sectional','SECT'],
+                            ['terrain','TERR'],
                             ['ifrlo','LO'],
                             ['ifrhi','HI'],
                             ['airspace','ARSP'],
                             ['tfr', tfrLoading ? 'TFR…' : (layers.tfr && tfrData?.length === 0 ? 'TFR ·0' : 'TFR')],
-                          ].map(([k,label]) => (
-                            <button key={k} onClick={() => toggleLayer(k)} style={{
+                          ].map(([k,label]) => {
+                            // A chip that cannot draw anything says so rather
+                            // than looking broken when tapped.
+                            const unavailable = !hasFaaCharts && ['sectional','ifrlo','ifrhi'].includes(k)
+                            return (
+                            <button key={k} onClick={() => !unavailable && toggleLayer(k)}
+                              title={unavailable ? 'No FAA chart published for this area' : undefined}
+                              style={{
                               background: layers[k] ? 'rgba(255,255,255,0.95)' : 'rgba(10,10,10,0.75)',
                               backdropFilter: 'blur(12px)',
                               border: layers[k] ? 'none' : '0.5px solid rgba(255,255,255,0.18)',
-                              borderRadius: 7, color: layers[k] ? '#000' : 'rgba(255,255,255,0.85)',
+                              borderRadius: 7,
+                              color: unavailable ? 'rgba(255,255,255,0.3)'
+                                : layers[k] ? '#000' : 'rgba(255,255,255,0.85)',
+                              opacity: unavailable ? 0.55 : 1,
                               fontSize: 10.5, fontWeight: 700, letterSpacing: '0.4px',
-                              padding: '7px 9px', cursor: 'pointer', flexShrink: 0,
+                              padding: '7px 9px', cursor: unavailable ? 'default' : 'pointer', flexShrink: 0,
                             }}>{label}</button>
-                          ))}
+                            )
+                          })}
                         </div>
                         {/* Close now lives in MapControlStack, grouped with
                             the zoom buttons on the right. */}
