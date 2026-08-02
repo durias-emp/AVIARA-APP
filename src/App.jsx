@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useTheme } from './hooks/useTheme'
 import { PilotProfileProvider, usePilotProfile } from './context/PilotProfile'
@@ -17,6 +17,51 @@ const Onboarding    = lazy(() => import('./pages/Onboarding/Onboarding'))
 const Profile       = lazy(() => import('./pages/Profile/Profile'))
 const SignIn        = lazy(() => import('./pages/SignIn/SignIn'))
 const ResetPassword = lazy(() => import('./pages/SignIn/ResetPassword'))
+
+// Dev only, and stripped from production along with every use of it.
+// The numbers that decide whether the app fills the screen live on the device
+// and nowhere else: the phone's console does not reach this terminal, and the
+// desktop preview reports zero insets, so the only way to see them is to put
+// them on the screen being measured.
+function ViewportBadge() {
+  const [v, setV] = useState(null)
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const read = () => {
+      const cs = getComputedStyle(document.documentElement)
+      const root = document.getElementById('root')
+      const shell = document.querySelector('.app-shell, .app-shell--fill')
+      setV({
+        inner: window.innerHeight,
+        client: document.documentElement.clientHeight,
+        visual: Math.round(window.visualViewport?.height ?? -1),
+        root: root ? Math.round(root.getBoundingClientRect().height) : -1,
+        rootScroll: root ? root.scrollHeight : -1,
+        shell: shell ? Math.round(shell.getBoundingClientRect().height) : -1,
+        shellBottom: shell ? Math.round(window.innerHeight - shell.getBoundingClientRect().bottom) : -1,
+        top: cs.getPropertyValue('--safe-top').trim(),
+        bot: cs.getPropertyValue('--safe-bottom').trim(),
+        standalone: (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true) ? 'PWA' : 'browser',
+      })
+    }
+    read()
+    const t = setInterval(read, 1000)
+    window.visualViewport?.addEventListener('resize', read)
+    return () => { clearInterval(t); window.visualViewport?.removeEventListener('resize', read) }
+  }, [])
+  if (!import.meta.env.DEV || !v) return null
+  return (
+    <div style={{
+      position: 'fixed', left: 6, bottom: 6, zIndex: 2147483647,
+      background: 'rgba(255,59,48,0.94)', color: '#fff', font: '600 10px/1.35 monospace',
+      padding: '6px 8px', borderRadius: 6, pointerEvents: 'none', maxWidth: '94vw',
+    }}>
+      {v.standalone} inner{v.inner} client{v.client} vis{v.visual}<br />
+      root{v.root} (scroll{v.rootScroll}) shell{v.shell} gap{v.shellBottom}<br />
+      safe {v.top} / {v.bot}
+    </div>
+  )
+}
 
 function AppRoutes({ theme }) {
   const { session, loading: authLoading, hydrated, recovery } = useAuth()
@@ -122,6 +167,7 @@ function AppRoutes({ theme }) {
           </Routes>
         </Suspense>
       </Shell>
+      <ViewportBadge />
     </BackOverrideProvider>
   )
 }

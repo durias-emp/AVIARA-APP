@@ -70,9 +70,17 @@ export default function Shell({ children }) {
   // viewport; one that scrolls as a page needs it to grow with its content.
   // Without the distinction the checklist's nested panes stretch to their
   // content and nothing scrolls at all.
+  //
+  // Home used to be pinned alongside them, on the assumption that it scrolled
+  // internally. It does not: its root is a plain div with no scroll container
+  // anywhere inside it. Pinned to the viewport with the shell's overflow
+  // hidden, everything past the fold was cut off with no way to reach it, and
+  // on a notched phone the cut landed 34px above the bottom of the screen
+  // where it read as a safe-area problem rather than a missing scroller.
+  // It scrolls as a page, like every other screen that does not say otherwise.
   return (
-    <div className={`app-shell${isHome || ownsInternalScroll ? ' app-shell--fill' : ''}${ownsInternalScroll ? ' app-shell--bleed' : ''}`}>
-      <main ref={swipeRef} style={{ flex: 1, overflowY: isHome || ownsInternalScroll ? 'hidden' : 'auto', display: ownsInternalScroll ? 'flex' : 'block', flexDirection: 'column', minHeight: 0 }}>
+    <div className={`app-shell${ownsInternalScroll ? ' app-shell--fill app-shell--bleed' : ''}`}>
+      <main ref={swipeRef} style={{ flex: 1, overflowY: ownsInternalScroll ? 'hidden' : 'auto', display: ownsInternalScroll ? 'flex' : 'block', flexDirection: 'column', minHeight: 0 }}>
         {children}
       </main>
     </div>
