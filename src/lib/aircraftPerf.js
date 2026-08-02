@@ -34,10 +34,10 @@ export const CHART_TYPES = {
   // charts — matches how the existing Distances checklist item (PerfDistItem
   // in Performance.jsx) already treats them: a single POH page's takeoff/
   // landing table always gives both figures together at the same PA/OAT cell.
-  takeoff: { label: 'Takeoff Distance', axis1: { label: 'Pressure Altitude', unit: 'ft' }, axis2: { label: 'OAT', unit: '°C' }, outputs: [{ key: 'groundRoll', label: 'Ground Roll', unit: 'ft' }, { key: 'over50', label: 'Over 50ft', unit: 'ft' }] },
-  landing: { label: 'Landing Distance', axis1: { label: 'Pressure Altitude', unit: 'ft' }, axis2: { label: 'OAT', unit: '°C' }, outputs: [{ key: 'groundRoll', label: 'Ground Roll', unit: 'ft' }, { key: 'over50', label: 'Over 50ft', unit: 'ft' }] },
-  climb:   { label: 'Climb Performance', axis1: { label: 'Pressure Altitude', unit: 'ft' }, axis2: { label: 'OAT', unit: '°C' }, outputs: [{ key: 'value', label: 'Rate of Climb', unit: 'fpm' }] },
-  cruise:  { label: 'Cruise Performance', axis1: { label: 'Pressure Altitude', unit: 'ft' }, axis2: { label: 'RPM / % Power', unit: '' }, outputs: [{ key: 'tas', label: 'TAS', unit: 'kt' }, { key: 'ff', label: 'Fuel Flow', unit: 'GPH' }] },
+  takeoff: { label: 'Takeoff Distance', axis1: { label: 'Pressure Altitude', unit: 'ft' }, axis2: { label: 'OAT', unit: '°C' }, outputs: [{ key: 'groundRoll', label: 'Ground Roll', short: 'GR', unit: 'ft' }, { key: 'over50', label: 'Over 50ft', short: '50ft', unit: 'ft' }] },
+  landing: { label: 'Landing Distance', axis1: { label: 'Pressure Altitude', unit: 'ft' }, axis2: { label: 'OAT', unit: '°C' }, outputs: [{ key: 'groundRoll', label: 'Ground Roll', short: 'GR', unit: 'ft' }, { key: 'over50', label: 'Over 50ft', short: '50ft', unit: 'ft' }] },
+  climb:   { label: 'Climb Performance', axis1: { label: 'Pressure Altitude', unit: 'ft' }, axis2: { label: 'OAT', unit: '°C' }, outputs: [{ key: 'value', label: 'Rate of Climb', short: 'ROC', unit: 'fpm' }] },
+  cruise:  { label: 'Cruise Performance', axis1: { label: 'Pressure Altitude', unit: 'ft' }, axis2: { label: 'RPM / % Power', unit: '' }, outputs: [{ key: 'tas', label: 'TAS', short: 'TAS', unit: 'kt' }, { key: 'ff', label: 'Fuel Flow', short: 'FF', unit: 'GPH' }] },
 }
 
 export function createEmptyChart(chartType) {

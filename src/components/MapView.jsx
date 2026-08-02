@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Polyline, Polygon, Popup, ZoomControl, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Marker, Polyline, Polygon, Popup, ZoomControl, useMap } from 'react-leaflet'
+import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { HomeButton } from './Shell'
 import { useCurrentLocation } from '../hooks/useCurrentLocation'
+import { useLiveLocation } from '../hooks/useLiveLocation'
 import { useMapLayer } from '../hooks/useMapLayer'
 import { useMapOverlays } from '../hooks/useMapOverlays'
 import { FLTCAT } from '../lib/weather'
+import { getAirports, getAirportDetails, getAuxAerodromes } from '../lib/aerodromes'
 import MapLayersMenu from './MapLayersMenu'
 import FlightPlanBar from './FlightPlanBar'
 import GpsInfoBar from './GpsInfoBar'
@@ -30,15 +33,15 @@ const SATELLITE_BASE = {
 const CHART_LAYERS = {
   sectional: {
     url: 'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Sectional/MapServer/tile/{z}/{y}/{x}',
-    minZoom: 8, maxNativeZoom: 11, maxZoom: 13,
+    minNativeZoom: 8, maxNativeZoom: 11, maxZoom: 13,
   },
   ifrlo: {
     url: 'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_AreaLow/MapServer/tile/{z}/{y}/{x}',
-    minZoom: 8, maxNativeZoom: 11, maxZoom: 13,
+    minNativeZoom: 8, maxNativeZoom: 11, maxZoom: 13,
   },
   ifrhi: {
     url: 'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_High/MapServer/tile/{z}/{y}/{x}',
-    minZoom: 5, maxNativeZoom: 8, maxZoom: 12,
+    minNativeZoom: 5, maxNativeZoom: 8, maxZoom: 12,
   },
 }
 
@@ -67,7 +70,17 @@ export function MapLayers({ layer }) {
           key={layer}
           url={chart.url}
           tileSize={128} zoomOffset={1}
-          minZoom={chart.minZoom} maxNativeZoom={chart.maxNativeZoom} maxZoom={chart.maxZoom}
+          // No minZoom floor — real tiles only exist down to minNativeZoom
+          // (a genuine limit of the FAA/Esri tile service), but leaving the
+          // layer free to render below that means Leaflet keeps showing the
+          // lowest native tiles scaled down rather than dropping the chart
+          // entirely, so zooming out to see the whole country/globe never
+          // swaps the chart out for the plain road map underneath — it just
+          // covers less precisely outside the chart's own native range, and
+          // not at all outside its geographic coverage (e.g. a US sectional
+          // over Canada), same as maxNativeZoom already does on the zoomed-in
+          // side.
+          minNativeZoom={chart.minNativeZoom} maxNativeZoom={chart.maxNativeZoom} maxZoom={chart.maxZoom}
           opacity={0.9}
           attribution='&copy; FAA AIS'
         />
@@ -169,6 +182,177 @@ function FlightCategoryLayer() {
   })
 }
 
+// Airports — bundled OurAirports/FAA data (src/lib/aerodromes.js), same
+// blue-for-towered/magenta-for-non-towered convention as a real sectional.
+// Both files load once per session and are filtered/joined in memory, so
+// (unlike FlightCategoryLayer/TfrLayer) there's no network fetch here — just
+// a bbox scan on pan/zoom, debounced the same way to avoid redoing it on
+// every intermediate frame while dragging.
+//
+// Small fields only outnumber medium/large by ~6:1, but there's no data for
+// "towered" as a stored field anywhere in the source data (OurAirports/FAA
+// NASR) — same heuristic AirportInfo.jsx already uses: does this airport
+// have a frequency labeled tower/twr. An airport with no entry in
+// airport_details.json at all (not every ident is covered) shows gray
+// rather than guessing either way.
+//
+// No zoom floor that hides the layer outright — large fields (the ~1,170
+// worldwide) stay visible even zoomed out to see a whole country, same as a
+// real EFB; medium and then small fields join in as the pilot zooms closer,
+// which is what keeps the in-view count (and the cap below) sane rather than
+// a hard cutoff that makes the whole layer vanish at once.
+function AirportLayer() {
+  const map = useMap()
+  const [airports, setAirports] = useState(null)
+  const [details, setDetails] = useState(null)
+  const [visible, setVisible] = useState([])
+  const timer = useRef(null)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([getAirports(), getAirportDetails()]).then(([list, det]) => {
+      if (!cancelled) { setAirports(list); setDetails(det) }
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    if (!airports) return
+    function load() {
+      const z = map.getZoom()
+      const minCls = z >= 9 ? 0 : z >= 6 ? 1 : 2
+      const cap = minCls === 2 ? 2000 : minCls === 1 ? 800 : 500
+      const b = map.getBounds()
+      const south = b.getSouth(), north = b.getNorth(), west = b.getWest(), east = b.getEast()
+      const hits = []
+      for (const a of airports) {
+        const [ident, lat, lon, cls, name] = a
+        if (cls < minCls) continue
+        if (lat < south || lat > north || lon < west || lon > east) continue
+        hits.push({ ident, lat, lon, cls, name })
+        if (hits.length >= cap) break
+      }
+      setVisible(hits)
+    }
+    load()
+    function onMove() {
+      clearTimeout(timer.current)
+      timer.current = setTimeout(load, 300)
+    }
+    map.on('moveend', onMove)
+    return () => { map.off('moveend', onMove); clearTimeout(timer.current) }
+  }, [map, airports])
+
+  if (!details) return null
+
+  return visible.map(a => {
+    const detail = details[a.ident]
+    const hasTower = detail ? (detail.f ?? []).some(([label]) => /tower|twr/i.test(label)) : null
+    const color = hasTower == null ? '#8e8e93' : hasTower ? '#0a84ff' : '#d946a8'
+    const radius = a.cls === 2 ? 10 : a.cls === 1 ? 8 : 5.5
+    const longestRwy = (detail?.r ?? []).reduce((best, r) => (r[2] > (best?.[2] ?? 0) ? r : best), null)
+    return (
+      // ident alone isn't a safe React key — OurAirports' local/GPS-code
+      // fallback idents aren't guaranteed unique (109 collisions in the
+      // current pack, e.g. two unrelated fields both landing on the same
+      // fallback code), which silently drops one marker under a shared key.
+      <CircleMarker key={`${a.ident}-${a.lat}-${a.lon}`} center={[a.lat, a.lon]} radius={radius}
+        pathOptions={{ color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }}>
+        <Popup>
+          <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+            <strong>{a.ident}</strong>{a.name ? ` — ${a.name}` : ''}
+            <br />
+            {hasTower == null ? 'Tower status unknown' : hasTower ? 'Towered' : 'Non-towered'}
+            {longestRwy && <><br />{longestRwy[2].toLocaleString()} ft {longestRwy[3]}</>}
+          </div>
+        </Popup>
+      </CircleMarker>
+    )
+  })
+}
+
+// Heliport ("H") and seaplane base (anchor) icons — module-level so every
+// marker of a kind shares one L.divIcon instance rather than each recreating
+// an identical one on every render. Same L.divIcon/Marker convention as the
+// route planner's waypoint labels (RouteAltitude.jsx).
+const HELIPORT_ICON = L.divIcon({
+  className: '', iconSize: [20, 20], iconAnchor: [10, 10],
+  html: `<div style="width:20px;height:20px;border-radius:5px;background:#ff9500;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;font:800 11px ui-sans-serif,system-ui;color:#fff;">H</div>`,
+})
+const SEAPLANE_ICON = L.divIcon({
+  className: '', iconSize: [20, 20], iconAnchor: [10, 10],
+  html: `<div style="width:20px;height:20px;border-radius:50%;background:#00b8d9;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;font-size:12px;">⚓</div>`,
+})
+
+// Heliports & seaplane bases — src/data/geo/aux_aerodromes.json, loaded
+// lazily (like airport_details.json) so a pilot who never turns these on
+// never pays for the chunk. One component handles both: same [ident, lat,
+// lon, name] shape and the same bbox/debounce wiring as AirportLayer, only
+// the icon, which array to read, and the zoom floor differ. Seaplane bases
+// (~1,085 worldwide) stay visible at any zoom like large airports do —
+// there's no size tier to thin them out by, but there are few enough that
+// it doesn't matter. Heliports (~10,700) get a zoom floor instead, for the
+// same reason small airports do: no way to rank "important" ones without
+// inventing a criterion the source data doesn't have.
+const AUX_CAP = 400
+
+function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 0 }) {
+  const map = useMap()
+  const [list, setList] = useState(null)
+  const [visible, setVisible] = useState([])
+  const timer = useRef(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getAuxAerodromes().then(d => { if (!cancelled) setList(d[dataKey]) })
+    return () => { cancelled = true }
+  }, [dataKey])
+
+  useEffect(() => {
+    if (!list) return
+    function load() {
+      if (map.getZoom() < minZoom) { setVisible([]); return }
+      const b = map.getBounds()
+      const south = b.getSouth(), north = b.getNorth(), west = b.getWest(), east = b.getEast()
+      const hits = []
+      for (const a of list) {
+        const [ident, lat, lon, name] = a
+        if (lat < south || lat > north || lon < west || lon > east) continue
+        hits.push({ ident, lat, lon, name })
+        if (hits.length >= AUX_CAP) break
+      }
+      setVisible(hits)
+    }
+    load()
+    function onMove() {
+      clearTimeout(timer.current)
+      timer.current = setTimeout(load, 300)
+    }
+    map.on('moveend', onMove)
+    return () => { map.off('moveend', onMove); clearTimeout(timer.current) }
+  }, [map, list, minZoom])
+
+  return visible.map(a => (
+    // Same non-unique-ident caveat as AirportLayer above — 33 heliport
+    // idents and 1 seaplane base ident collide in the current pack.
+    <Marker key={`${a.ident}-${a.lat}-${a.lon}`} position={[a.lat, a.lon]} icon={icon}>
+      <Popup>
+        <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+          <strong>{a.ident}</strong> — {a.name}
+          <br />{kindLabel}
+        </div>
+      </Popup>
+    </Marker>
+  ))
+}
+
+function HeliportLayer() {
+  return <AuxAerodromeLayer dataKey="heliports" icon={HELIPORT_ICON} kindLabel="Heliport" minZoom={8} />
+}
+function SeaplaneBaseLayer() {
+  return <AuxAerodromeLayer dataKey="seaplaneBases" icon={SEAPLANE_ICON} kindLabel="Seaplane base" />
+}
+
 // TFRs — FAA GeoServer WFS via our /api/tfr proxy (same source and parsing
 // as the Route & Altitude planner's TFR layer). Fetched once per session.
 function TfrLayer() {
@@ -210,6 +394,35 @@ function TfrLayer() {
   ))
 }
 
+// Recenters the map only when explicitly asked to (the Locate-me button
+// below). `request` is a fresh {lat,lon} object built new on every ask —
+// never reused or mutated — so this effect can key entirely off "did a new
+// request object show up," with no separate pending flag to accidentally
+// consume against a stale value. That matters because there are two very
+// different-latency sources feeding requests in (see MapView): the live
+// GPS watch, which can supply one instantly, and the one-shot fallback
+// fetch, which lands seconds later — a flag-based "first truthy value
+// wins" design would fire on whatever position already happened to be
+// sitting there before the tap, then ignore the real answer once it
+// actually arrived.
+function LocateRecenter({ request }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!request) return
+    // Pans only (setView at the map's own current zoom) — whatever zoom the
+    // pilot already had (in close on an airport diagram, way out planning a
+    // route) is deliberate, and a recenter tap shouldn't undo that.
+    //
+    // animate:false, deliberately — an animated pan depends on
+    // requestAnimationFrame actually running, which a backgrounded or
+    // power-saving tab can stall indefinitely, silently leaving the map
+    // wherever it was. This button exists because "recenter" needs to be
+    // certain, not smooth.
+    map.setView([request.lat, request.lon], map.getZoom(), { animate: false })
+  }, [request, map])
+  return null
+}
+
 // The typed-route preview from FlightPlanBar — a simple line + waypoint
 // dots, fit into view once per new route (not on every render, so the user
 // can freely pan/zoom afterward without the map yanking back).
@@ -234,10 +447,41 @@ function RoutePreview({ route }) {
 }
 
 export default function MapView() {
-  const { position, error, status } = useCurrentLocation()
+  const { position, error, status, refreshing, locate } = useCurrentLocation()
+  // Lifted up from GpsInfoBar (which used to call this itself) so there's
+  // only ever one continuous GPS watch running on this screen, not two
+  // competing for the same hardware. Also gives the Locate button a second,
+  // much faster source of a fix: this watch has been running since the
+  // screen opened, so it likely already has a recent reading, where a fresh
+  // one-shot request has to pay a "cold start" cost all over again — the
+  // real cause of the button taking 15-30+ seconds (and sometimes timing
+  // out entirely with weak/obstructed sky view) when it always started
+  // from scratch.
+  const { coords: liveCoords, derived: liveDerived, status: liveStatus } = useLiveLocation()
   const { layer, setLayer } = useMapLayer()
   const { overlays, toggleOverlay } = useMapOverlays()
   const [route, setRoute] = useState(null)
+  const [recenterRequest, setRecenterRequest] = useState(null)
+  const waitingForFallback = useRef(false)
+
+  // Only relevant on the fallback path (no live fix yet) — feeds the
+  // one-shot fetch's result into the same recenter mechanism the fast path
+  // uses, once it actually lands.
+  useEffect(() => {
+    if (waitingForFallback.current && position) {
+      waitingForFallback.current = false
+      setRecenterRequest({ lat: position[0], lon: position[1] })
+    }
+  }, [position])
+
+  function handleLocate() {
+    if (liveCoords) {
+      setRecenterRequest({ lat: liveCoords.lat, lon: liveCoords.lon })
+    } else {
+      waitingForFallback.current = true
+      locate()
+    }
+  }
 
   return (
     <div style={{ height: '100%', position: 'relative', isolation: 'isolate' }}>
@@ -253,6 +497,10 @@ export default function MapView() {
           {overlays.radar && <RadarLayer />}
           {overlays.flightCategory && <FlightCategoryLayer />}
           {overlays.tfr && <TfrLayer />}
+          {overlays.airports && <AirportLayer />}
+          {overlays.heliports && <HeliportLayer />}
+          {overlays.seaplaneBases && <SeaplaneBaseLayer />}
+          <LocateRecenter request={recenterRequest} />
           <RoutePreview route={route} />
         </LiveMap>
       )}
@@ -260,6 +508,29 @@ export default function MapView() {
       <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 600 }}>
         <HomeButton />
       </div>
+
+      {status !== 'pending' && (
+        <button
+          onClick={handleLocate}
+          disabled={refreshing}
+          aria-label="Locate me"
+          style={{
+            position: 'absolute', right: 12, bottom: 136, zIndex: 500,
+            width: 40, height: 40, borderRadius: '50%', border: 'none',
+            background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: refreshing ? 'default' : 'pointer', WebkitTapHighlightColor: 'transparent',
+            opacity: refreshing ? 0.55 : 1,
+          }}>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round">
+            <circle cx="12" cy="12" r="3.5" />
+            <line x1="12" y1="1" x2="12" y2="4.5" />
+            <line x1="12" y1="19.5" x2="12" y2="23" />
+            <line x1="1" y1="12" x2="4.5" y2="12" />
+            <line x1="19.5" y1="12" x2="23" y2="12" />
+          </svg>
+        </button>
+      )}
 
       {(status === 'error' || status === 'unsupported') && (
         <div style={{
@@ -273,7 +544,7 @@ export default function MapView() {
 
       {status !== 'pending' && <FlightPlanBar onRouteChange={setRoute} />}
       <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={toggleOverlay} />
-      {status !== 'pending' && <GpsInfoBar route={route} />}
+      {status !== 'pending' && <GpsInfoBar route={route} coords={liveCoords} derived={liveDerived} status={liveStatus} />}
     </div>
   )
 }

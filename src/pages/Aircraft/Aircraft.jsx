@@ -981,7 +981,14 @@ function PerformanceChartsSection({ profile, onAddAxisValue, onUpdateAxisValue, 
   }, [activeType])
 
   const committedChart = profile.perfConfig?.[activeType] ?? createEmptyChart(activeType)
-  const chart = draftChart ?? committedChart
+  // `outputs` (label/short/unit per figure) is fixed schema metadata owned
+  // by CHART_TYPES, not a per-chart user value — but a chart's own outputs
+  // array gets snapshotted into IndexedDB the moment it's first created, so
+  // a chart saved before this metadata changes (e.g. a new short label
+  // added) would otherwise be stuck showing the old shape forever. Always
+  // display the current canonical definition instead of whatever happened
+  // to be stored; the actual axis/cell data underneath is untouched.
+  const chart = { ...(draftChart ?? committedChart), outputs: CHART_TYPES[activeType].outputs }
 
   async function handleFile(file) {
     setExtracting(true)
@@ -1431,7 +1438,14 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
   // can mutate the chart in place without repeating the get-or-create logic. ──
   function ensurePerfChart(prev, chartType) {
     const perfConfig = { ...(prev.perfConfig ?? {}) }
-    const chart = perfConfig[chartType] ? { ...perfConfig[chartType] } : createEmptyChart(chartType)
+    // Re-stamp `outputs` with the current canonical CHART_TYPES metadata on
+    // every save, not just on display (see the matching comment in
+    // PerformanceChartsSection) — a chart edited after this metadata last
+    // changed self-heals instead of staying stuck on whatever was stored
+    // when it was first created.
+    const chart = perfConfig[chartType]
+      ? { ...perfConfig[chartType], outputs: CHART_TYPES[chartType].outputs }
+      : createEmptyChart(chartType)
     return { perfConfig, chart }
   }
 

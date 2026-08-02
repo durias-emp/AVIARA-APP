@@ -116,6 +116,15 @@ export function IconGear({ size = 24 }) {
   )
 }
 
+export function IconCompass({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M15.5 8.5L13 13L8.5 15.5L11 11L15.5 8.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
 export function IconChevronRight({ size = 16 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none">

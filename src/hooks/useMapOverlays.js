@@ -9,6 +9,9 @@ const DEFAULTS = {
   radar: false,
   flightCategory: false,
   tfr: false,
+  airports: false,
+  heliports: false,
+  seaplaneBases: false,
 }
 
 // Persisted, multi-select overlay toggles — separate from useMapLayer's

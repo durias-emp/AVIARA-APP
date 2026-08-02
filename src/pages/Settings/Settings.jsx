@@ -13,6 +13,7 @@ const ROW_LABELS = {
   hangar: 'Hangar',
   pilot: 'Pilot',
   flight: 'Flight Planning',
+  discover: 'Discover',
 }
 
 function SectionLabel({ children }) {

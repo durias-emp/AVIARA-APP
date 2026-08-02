@@ -22,6 +22,28 @@ export async function getAirports() {
   return _airports
 }
 
+// Frequencies/runways, keyed by ident — no lat/lon of its own, always used
+// alongside getAirports(). Dynamic import so the map's airport layer (and
+// anything else that doesn't need this) never pays for the ~2MB chunk.
+let _details = null
+export async function getAirportDetails() {
+  if (_details) return _details
+  const d = (await import('../data/geo/airport_details.json')).default
+  _details = d
+  return _details
+}
+
+// Heliports and seaplane bases — kept out of getAirports() entirely (they
+// aren't a size tier of airport, see scripts/build_geo_pack.py), so this is
+// its own dynamic-import cache with the same lazy-load-once shape.
+let _aux = null
+export async function getAuxAerodromes() {
+  if (_aux) return _aux
+  const d = (await import('../data/geo/aux_aerodromes.json')).default
+  _aux = d
+  return _aux
+}
+
 const CLASS_LABEL = ['Small', 'Medium', 'Large']
 
 // waypoints: [{lat, lon}, ...]

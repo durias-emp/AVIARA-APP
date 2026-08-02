@@ -30,12 +30,24 @@ over ~5 NM across are kept: anything smaller cannot change a glide-range or
 life-jacket decision.
 
 Aerodromes come from OurAirports (public domain, same source as the navaid
-pack), in two files: the position list used for route proximity, and a details
-file (runways and frequencies) that replaces scraping a third-party site for
-the same information — worldwide, offline, and with no CORS proxy in the path. Large and medium fields carry their name; small fields are ident-only,
-which halves the file — a strip you would look up by ident anyway. Heliports,
-seaplane bases, balloonports and closed fields are excluded: none of them
-change how you cross an airport's traffic.
+pack), in three files: the airport position list used for route proximity,
+a heliport/seaplane-base position list (kept separate — see below), and a
+details file (runways and frequencies) that replaces scraping a third-party
+site for the same information — worldwide, offline, and with no CORS proxy
+in the path. Large and medium fields carry their name; small fields are
+ident-only, which halves the file — a strip you would look up by ident
+anyway. Balloonports and closed fields are excluded: neither changes how you
+cross an airport's traffic, and a closed field's coordinates are actively
+misleading to plot.
+
+Heliports and seaplane bases are real landing options a pilot plans around
+(the map's Heliports/Seaplane Bases layers), so they are not excluded — but
+they are kept out of airports.json entirely rather than folded into its
+`cls` field, since that field mixed into "biggest field first" sorting
+elsewhere (analyzeAerodromes) is a size tier, and a heliport isn't a bigger
+or smaller airport, it's not an airport. Every entry keeps its name (unlike
+small airports) since there's no runway-number shorthand a pilot would use
+to look one up by ident instead.
 
 Output: src/data/geo/land.json
   {"polys": [[lat,lon], ...],         # flat vertex store
@@ -204,9 +216,42 @@ for row in csv.DictReader(open(ap_path, encoding='utf-8')):
 ap_out = f'{OUT}/airports.json'
 json.dump({'airports': airports,
            'note': 'OurAirports, public domain. Large/medium/small airports; '
-                   'heliports, seaplane bases and closed fields excluded.'},
+                   'heliports, seaplane bases, balloonports and closed fields '
+                   'excluded (heliports and seaplane bases are in '
+                   'aux_aerodromes.json instead).'},
           open(ap_out, 'w'), separators=(',', ':'))
 print(f'aerodromes: {len(airports)} fields -> {os.path.getsize(ap_out)/1e6:.2f} MB')
+
+# ── Heliports & seaplane bases ─────────────────────────────────────
+# Own file, own [ident, lat, lon, name] shape — no `cls`, since these
+# aren't a size tier of airport (see the module docstring). Re-reads the
+# already-downloaded/cached CSV rather than merging into the loop above;
+# this script runs rarely (by hand, not on the 28-day refresh), so a
+# second cheap pass over 86k rows is worth it for keeping the two outputs'
+# filters independently readable.
+AUX_TYPES = {'heliport': 'heliports', 'seaplane_base': 'seaplaneBases'}
+aux = {'heliports': [], 'seaplaneBases': []}
+for row in csv.DictReader(open(ap_path, encoding='utf-8')):
+    key = AUX_TYPES.get(row['type'])
+    if key is None:
+        continue
+    try:
+        la, lo = round(float(row['latitude_deg']), 4), round(float(row['longitude_deg']), 4)
+    except ValueError:
+        continue
+    ident = row['icao_code'] or row['gps_code'] or row['ident']
+    if not ident or re.fullmatch(r'[A-Z]{2}-\d+', ident):
+        continue
+    aux[key].append([ident, la, lo, row['name'][:40]])
+
+aux_out = f'{OUT}/aux_aerodromes.json'
+json.dump({**aux,
+           'note': 'OurAirports, public domain. Heliports and seaplane bases '
+                   'with a usable ICAO/GPS/local ident — placeholder-only '
+                   'idents excluded, same convention as airports.json.'},
+          open(aux_out, 'w'), separators=(',', ':'))
+print(f'aux aerodromes: {len(aux["heliports"])} heliports, '
+      f'{len(aux["seaplaneBases"])} seaplane bases -> {os.path.getsize(aux_out)/1e6:.2f} MB')
 
 # Runway and frequency details are built separately, from the FAA's NASR
 # subscription and the COCESNA eAIP where those cover the field — see

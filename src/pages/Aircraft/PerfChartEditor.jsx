@@ -58,59 +58,97 @@ export default function PerfChartEditor({
 
     {/* Grid */}
     {chart.axis1.values.length > 0 && chart.axis2.values.length > 0 && (
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ borderCollapse: 'separate', borderSpacing: 6, minWidth: '100%' }}>
-          <thead>
-            <tr>
-              <th style={{ minWidth: 60 }} />
-              {chart.axis2.values.map((v, j) => (
-                <th key={j} style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', minWidth: 78 }}>{v}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {chart.axis1.values.map((rowVal, i) => (
-              <tr key={i}>
-                <th style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: 'right', paddingRight: 4 }}>{rowVal}</th>
-                {chart.axis2.values.map((_, j) => {
-                  const cell = chart.cells[i]?.[j]
-                  const highlighted = isHighlighted(i, j)
-                  return (
-                    <td key={j} style={{
-                      borderRadius: 8, padding: 3,
-                      background: highlighted ? 'var(--accent-light, rgba(10,132,255,0.12))' : 'transparent',
-                      border: highlighted ? '1px solid var(--accent)' : 'none',
-                    }}>
-                      {chart.outputs.map(out => (
-                        <div key={out.key} style={{ marginBottom: chart.outputs.length > 1 ? 3 : 0 }}>
-                          <MiniInput
-                            value={(chart.outputs.length > 1 ? cell?.[out.key] : cell) ?? ''}
-                            onChange={v => onSetCell(i, j, chart.outputs.length > 1 ? out.key : null, v)}
-                            placeholder={out.label}
-                          />
-                        </div>
-                      ))}
-                      {highlighted && (
-                        <button onClick={() => onConfirmCell?.(i, j)} style={{
-                          width: '100%', marginTop: 3, padding: '4px 0', borderRadius: 6, border: 'none',
-                          background: 'var(--accent)', color: 'var(--accent-fg)', fontSize: 9, fontWeight: 700,
-                          cursor: 'pointer', fontFamily: 'inherit',
-                        }}>
-                          Matches POH ✓
-                        </button>
-                      )}
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div>
+        {/* Legend sits ABOVE the grid, where it's actually seen before scanning
+            numbers — a caption below the table (the old placement) is easy to
+            miss, and once a cell has a value the input's placeholder (which
+            used to be the only in-cell hint) disappears entirely. */}
         {chart.outputs.length > 1 && (
-          <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 6 }}>
-            Each cell: {chart.outputs.map(o => o.label).join(' / ')}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+            {chart.outputs.map((out, k) => (
+              <div key={out.key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{
+                  fontSize: 9, fontWeight: 800, color: 'var(--text)', background: 'var(--bg-card-2)',
+                  borderRadius: 5, padding: '2px 5px', minWidth: 14, textAlign: 'center',
+                  opacity: k === 0 ? 1 : 0.6,
+                }}>
+                  {out.short ?? out.label}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                  {out.label}{out.unit ? ` (${out.unit})` : ''}
+                </span>
+              </div>
+            ))}
           </div>
         )}
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 6, minWidth: '100%' }}>
+            <thead>
+              <tr>
+                <th style={{ minWidth: 66, textAlign: 'left', verticalAlign: 'bottom', padding: '0 6px 4px 0' }}>
+                  <div style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-tertiary)', lineHeight: 1.4 }}>
+                    {chart.axis1.label} ↓<br />{chart.axis2.label} →
+                  </div>
+                </th>
+                {chart.axis2.values.map((v, j) => (
+                  <th key={j} style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', minWidth: chart.outputs.length > 1 ? 92 : 78 }}>
+                    {v}{chart.axis2.unit ? <span style={{ fontWeight: 500, opacity: 0.7 }}> {chart.axis2.unit}</span> : null}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {chart.axis1.values.map((rowVal, i) => (
+                <tr key={i}>
+                  <th style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: 'right', paddingRight: 4 }}>
+                    {rowVal}<span style={{ fontWeight: 500, opacity: 0.7 }}> {chart.axis1.unit}</span>
+                  </th>
+                  {chart.axis2.values.map((_, j) => {
+                    const cell = chart.cells[i]?.[j]
+                    const highlighted = isHighlighted(i, j)
+                    return (
+                      <td key={j} style={{
+                        borderRadius: 8, padding: 3,
+                        background: highlighted ? 'var(--accent-light, rgba(10,132,255,0.12))' : 'transparent',
+                        border: highlighted ? '1px solid var(--accent)' : 'none',
+                      }}>
+                        {chart.outputs.map((out, k) => (
+                          <div key={out.key} style={{
+                            display: 'flex', alignItems: 'center', gap: 4,
+                            marginBottom: chart.outputs.length > 1 && k === 0 ? 3 : 0,
+                          }}>
+                            {chart.outputs.length > 1 && (
+                              <span style={{
+                                fontSize: 8, fontWeight: 800, color: 'var(--text-tertiary)', flexShrink: 0,
+                                width: 20, textAlign: 'center', opacity: k === 0 ? 0.9 : 0.55,
+                              }}>
+                                {out.short ?? out.label}
+                              </span>
+                            )}
+                            <MiniInput
+                              value={(chart.outputs.length > 1 ? cell?.[out.key] : cell) ?? ''}
+                              onChange={v => onSetCell(i, j, chart.outputs.length > 1 ? out.key : null, v)}
+                              placeholder={out.label}
+                            />
+                          </div>
+                        ))}
+                        {highlighted && (
+                          <button onClick={() => onConfirmCell?.(i, j)} style={{
+                            width: '100%', marginTop: 3, padding: '4px 0', borderRadius: 6, border: 'none',
+                            background: 'var(--accent)', color: 'var(--accent-fg)', fontSize: 9, fontWeight: 700,
+                            cursor: 'pointer', fontFamily: 'inherit',
+                          }}>
+                            Matches POH ✓
+                          </button>
+                        )}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     )}
 

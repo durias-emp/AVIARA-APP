@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLiveLocation } from '../hooks/useLiveLocation'
 import { useInfoBarFields, MAX_FIELDS } from '../hooks/useInfoBarFields'
 import { getAirports } from '../lib/aerodromes'
 import { findNearestNavaid } from '../lib/waypoints'
@@ -69,8 +68,12 @@ function relBearing(fromLat, fromLon, toLat, toLon) {
   return `${Math.round(dist)}NM ${dir}`
 }
 
-export default function GpsInfoBar({ route }) {
-  const { coords, derived, status } = useLiveLocation()
+// `coords`/`derived`/`status` come from useLiveLocation, called once by the
+// parent MapView (and shared with the Locate-me button) rather than here —
+// running that watch twice on the same screen means two concurrent GPS
+// requests competing for the same hardware, which was a real contributor to
+// the button being slow/unreliable.
+export default function GpsInfoBar({ route, coords, derived, status }) {
   const { fields, toggleField } = useInfoBarFields()
   const [picking, setPicking] = useState(false)
   const [groundElevFt, setGroundElevFt] = useState(null)

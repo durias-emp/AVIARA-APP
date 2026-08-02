@@ -6,6 +6,9 @@ import { useState } from 'react'
 // where this is headed, but show "Coming soon" until a data source is wired
 // up behind them — they never silently pretend to have data they don't.
 export const OVERLAY_OPTIONS = [
+  { key: 'airports',       label: 'Airports',           live: true },
+  { key: 'heliports',      label: 'Heliports',          live: true },
+  { key: 'seaplaneBases',  label: 'Seaplane Bases',     live: true },
   { key: 'radar',          label: 'Radar',              live: true },
   { key: 'flightCategory', label: 'Flight Category',    live: true },
   { key: 'tfr',            label: 'TFRs',                live: true },

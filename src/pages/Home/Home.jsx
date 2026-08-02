@@ -15,10 +15,11 @@ import { AirportScene, PilotArt, HangarArt, FlightPlanArt } from '../../componen
 import HeroLabel, { HERO_LABEL_WIDTH } from '../../components/HeroLabel'
 import { useCurrentLocation } from '../../hooks/useCurrentLocation'
 import { useMapLayer } from '../../hooks/useMapLayer'
-import { IconWrench, IconGear } from '../../components/Icons'
+import { IconWrench, IconGear, IconCompass } from '../../components/Icons'
 import Checklists from '../Checklists/Checklists'
 import Hangar     from '../Aircraft/Hangar'
 import Settings   from '../Settings/Settings'
+import Discover   from '../Discover/Discover'
 
 // Uniform size for every hero button (Weather, Map, Airports, Hangar,
 // Pilot, Flight Planning) and the Tools/Settings row — small enough that
@@ -130,6 +131,13 @@ function HangarCard({ aircraftImage, aircraftCount = 0, onOpen }) {
    fully interactive map instead of panning this little thumbnail. ── */
 const PREVIEW_ZOOM = 12
 
+// The Map card is the one hero button that grows: `flex: 1` lets it claim
+// whatever vertical space is left over after every other (fixed-height)
+// row, the tools/settings row, and the disclaimer text are laid out —
+// rather than hardcoding a pixel value that would only be correct on one
+// screen size, this is automatically "however much is missing" on any
+// device. `minHeight` keeps it from disappearing if the rest of the stack
+// ever grows taller than the viewport.
 function MapCard({ onOpen }) {
   const ref = useRef(null)
   const { position, status } = useCurrentLocation()
@@ -143,7 +151,7 @@ function MapCard({ onOpen }) {
   }
 
   return (
-    <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
+    <div style={{ padding: `${ROW_GAP}px 18px 0`, flex: '1 1 auto', minHeight: HERO_HEIGHT, display: 'flex' }}>
       <div
         ref={ref}
         onClick={handleClick}
@@ -153,7 +161,7 @@ function MapCard({ onOpen }) {
           background: 'var(--bg-card)', borderRadius: 20,
           boxShadow: 'var(--shadow-sm)',
           overflow: 'hidden', position: 'relative', isolation: 'isolate',
-          height: HERO_HEIGHT,
+          flex: '1 1 auto', width: '100%',
           cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
         }}>
         {status !== 'pending' && (
@@ -314,6 +322,41 @@ function FlightPlanCard({ onOpen }) {
   )
 }
 
+/* ── Discover card — social/marketplace, working name (see roadmap
+   conversation). Plain gradient rather than an illustrated scene like the
+   other cards: the feature itself is still a placeholder (Discover.jsx),
+   so a quick painted background beats investing in custom art for a name
+   and a shape that are both still expected to change. ── */
+function DiscoverCard({ onOpen }) {
+  const ref = useRef(null)
+
+  function handleClick() {
+    if (ref.current) {
+      const r = ref.current.getBoundingClientRect()
+      onOpen('discover', { top: r.top, left: r.left, width: r.width, height: r.height })
+    }
+  }
+
+  return (
+    <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
+      <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label="Open discover"
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
+        style={{
+        position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
+        boxShadow: 'var(--shadow-sm)',
+        height: HERO_HEIGHT, boxSizing: 'border-box',
+        background: 'linear-gradient(108deg, #b8862f 0%, #d9a441 55%, #e8bd63 100%)',
+        cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+      }}>
+        <span style={{ position: 'absolute', top: 12, right: 14, zIndex: 1, color: 'rgba(255,255,255,0.85)' }}>
+          <IconCompass size={22} />
+        </span>
+        <HeroLabel>Discover</HeroLabel>
+      </div>
+    </div>
+  )
+}
+
 /* ── Pilot row — small dot reflects currency status, since currency
    lives inside the Pilot Profile page now rather than its own Home
    button. ── */
@@ -360,10 +403,19 @@ function SectionContent({ section, order, onMoveRow }) {
   if (section === 'airports')   return <AirportInfo />
   if (section === 'tools')      return <ToolsMenu />
   if (section === 'settings')   return <Settings order={order} onMoveRow={onMoveRow} />
+  if (section === 'discover')   return <Discover />
   return null
 }
 
-const DEFAULT_ORDER = ['airports', 'map', 'hangar', 'pilot', 'flight']
+const DEFAULT_ORDER = ['map', 'airports', 'hangar', 'pilot', 'flight', 'discover']
+
+// The order shipped before Map moved to the top — a saved homeOrder that
+// still matches this exactly means the pilot never actually touched the
+// reorder feature, they just have the old built-in default persisted.
+// Treating that case as "still on defaults" (and re-saving the new default
+// in its place) lets the new default actually take effect for them, while
+// never touching anyone who genuinely customized their own order on purpose.
+const PRE_MAP_TOP_DEFAULT_ORDER = ['airports', 'map', 'hangar', 'pilot', 'flight']
 
 /* ── Home ────────────────────────────────────────────────── */
 export default function Home() {
@@ -382,6 +434,16 @@ export default function Home() {
     loadCurrencyStatus()
     get('settings', 'homeOrder').then(row => {
       if (!Array.isArray(row?.value)) return
+      // A saved order identical to the old shipped default means this pilot
+      // never actually used the reorder feature — migrate them onto the new
+      // default (and persist that) rather than leaving them stuck on a
+      // "customization" they never made. See PRE_MAP_TOP_DEFAULT_ORDER above.
+      if (row.value.length === PRE_MAP_TOP_DEFAULT_ORDER.length &&
+          row.value.every((k, i) => k === PRE_MAP_TOP_DEFAULT_ORDER[i])) {
+        setOrder(DEFAULT_ORDER)
+        put('settings', { key: 'homeOrder', value: DEFAULT_ORDER }).catch(() => {})
+        return
+      }
       // Forward-compatible: keep any saved positions, append new row types
       // (added in a later app update) that aren't in the saved order yet.
       const saved = row.value.filter(k => DEFAULT_ORDER.includes(k))
@@ -434,6 +496,7 @@ export default function Home() {
     if (key === 'hangar')   return <HangarCard key={key} aircraftImage={aircraftImage} aircraftCount={aircraftList?.length ?? 0} onOpen={openCard} />
     if (key === 'pilot')    return <PilotRow key={key} currencyDotColor={currencyDotColor} />
     if (key === 'flight')   return <FlightPlanCard key={key} onOpen={openCard} />
+    if (key === 'discover') return <DiscoverCard key={key} onOpen={openCard} />
     return null
   }
 
