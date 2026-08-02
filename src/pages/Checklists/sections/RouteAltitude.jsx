@@ -122,11 +122,21 @@ function ChartZoomer({ active, min, positions }) {
   return null
 }
 
+// Leaflet measures its container once and caches the result. It re-measures on
+// a window resize and on nothing else, so a container that changes size on its
+// own (a safe-area inset resolving late, a parent settling after mount) leaves
+// the map painting tiles for a box it no longer occupies: the container's own
+// background shows through wherever the stale size falls short. A one-shot
+// timeout after mount only covers the case where the change happens to land
+// before the timer. Watch the element instead.
 function MapInvalidator() {
   const map = useMap()
   useEffect(() => {
-    setTimeout(() => map.invalidateSize(), 50)
-  }, [])
+    const el = map.getContainer()
+    const ro = new ResizeObserver(() => map.invalidateSize())
+    ro.observe(el)
+    return () => { ro.disconnect() }
+  }, [map])
   return null
 }
 

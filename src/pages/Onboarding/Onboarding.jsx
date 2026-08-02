@@ -235,7 +235,7 @@ function NavButtons({ onBack, onNext, onSkip, nextLabel = 'Continue', step }) {
   return (
     <div style={{
       position: 'sticky', bottom: 0,
-      paddingTop: 16, paddingBottom: 'max(20px, var(--safe-bottom))',
+      paddingTop: 'calc(16px + var(--safe-top))', paddingBottom: 'max(20px, var(--safe-bottom))',
       marginTop: 24,
       background: 'linear-gradient(to bottom, transparent 0%, var(--bg) 28%)',
     }}>

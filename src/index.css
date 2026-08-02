@@ -263,13 +263,13 @@ body::before {
 
 #root {
   /* The app's scroller, and the full screen.
-     The insets used to be padding on the body, which shrank this box by both
-     of them: on a notched phone the app was 93 px shorter than the screen and
-     could not reach an edge. Screens built as fixed overlays escaped that and
-     filled the screen, so half the app met the edges and half did not.
-     They live here now. The box is the whole viewport, the background reaches
-     every corner, and the padding keeps content clear of the notch and the
-     home indicator exactly as before. */
+     No safe-area padding here, and none may ever come back: padding on a
+     scroller clips its content at the padding boundary, so scrolled content
+     vanished 59px below the top edge and a bare strip of --bg sat above the
+     home indicator on every page. The insets live on .app-shell, which is
+     CONTENT: at rest it holds pages clear of the notch and the indicator,
+     and mid-scroll the content slides under the screen edges the way a
+     native app's does. */
   /* Fills the body column. flex-basis 0 with grow makes the height come from
      the parent rather than from the content, which is what a scroller needs,
      and min-height 0 lets it actually shrink to that instead of being propped
@@ -278,8 +278,6 @@ body::before {
   flex: 1 1 0;
   min-height: 0;
   height: 100%;
-  padding-top: var(--safe-top);
-  padding-bottom: var(--safe-bottom);
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
@@ -301,6 +299,14 @@ body::before {
   flex: 1 0 auto;
   display: flex;
   flex-direction: column;
+  /* The device insets, applied to content rather than to the scroller. At
+     rest a page starts below the notch and stops above the home indicator;
+     scrolled, it runs to the physical edges because the scroller (#root)
+     clips at the viewport, not at a padding boundary. Fixed and portaled
+     screens (checklists, the fullscreen map, overlays) never inherit these
+     and carry their own. */
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
   /* 100% of the scroller, not 100dvh: inside the safe-area padding a dvh-tall
      shell is taller than the space it sits in, and every page would scroll by
      the height of the notch with nothing to show for it. */
@@ -317,6 +323,10 @@ body::before {
   flex: 1 1 auto;
   min-height: 0;
   height: 100%;
+  /* These screens are built as fixed, self-insetting panes. Shell padding
+     here would shrink a box nothing sits in. */
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 /* Tablet: fill most of the screen, no border treatment */
