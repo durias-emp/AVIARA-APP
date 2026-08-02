@@ -75,6 +75,17 @@ if (import.meta.env.DEV) {
       safeBottom: getComputedStyle(doc).getPropertyValue('--safe-bottom').trim(),
       deficit: getComputedStyle(doc).getPropertyValue('--vp-deficit').trim(),
       bodyH: Math.round(document.body.getBoundingClientRect().height),
+      // What a fixed inset:0 overlay actually measures on this device. body
+      // being right proves nothing about its children if the browser ignored
+      // the transform capture; this is the direct answer.
+      fixedH: (() => {
+        const el = document.createElement('div')
+        el.style.cssText = 'position:fixed;inset:0;visibility:hidden;pointer-events:none'
+        document.body.appendChild(el)
+        const h = Math.round(el.getBoundingClientRect().height)
+        el.remove()
+        return h
+      })(),
     })
     if (line === last) return
     last = line
