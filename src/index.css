@@ -169,6 +169,16 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
+  /* How much shorter the CSS viewport is than the physical screen. Zero
+     everywhere honest. iOS standalone with a translucent status bar paints
+     the view over the whole screen but sizes the viewport one status bar
+     short, leaving the bottom 59px of the screen outside the coordinate
+     system entirely: not inset:0, not 100%, not any vh unit can reach it,
+     which is why the bottom strip survived every layout fix aimed at it.
+     main.jsx measures the lie (screen.height minus innerHeight, only when
+     it exactly matches the top inset in standalone mode) and sets this;
+     the body rule below adds it back. */
+  --vp-deficit: 0px;
 }
 
 html, body {
@@ -193,6 +203,20 @@ body {
      painting the full screen and the strip came out --bg instead of black. */
   position: fixed;
   inset: 0;
+  /* Over-constrained on purpose: with top, bottom and height all set, CSS
+     drops bottom and keeps height, so the box spans from the top of the
+     screen to viewport-height plus the deficit, which is the real bottom of
+     the screen. When the deficit is 0px this is identical to inset alone. */
+  height: calc(100% + var(--vp-deficit));
+  /* The load-bearing line. A transformed ancestor becomes the containing
+     block for every position:fixed descendant, the same capture that made
+     the checklist pane swallow the fullscreen map. Used deliberately here:
+     all ~25 fixed surfaces in the app (overlays, drawers, the fullscreen
+     map, the tab bar) now measure against THIS corrected box instead of the
+     short viewport, so one rule heals every one of them, portaled or not.
+     Remove this and each of them goes back to stopping 59px above the
+     bottom of the screen on iOS. */
+  transform: translate(0, 0);
   /* A column, so #root takes the remaining space as a flex item instead of as
      a percentage of this box. Sizing from inset leaves the height correct but
      auto, and a percentage child measured against an auto height collapses to
