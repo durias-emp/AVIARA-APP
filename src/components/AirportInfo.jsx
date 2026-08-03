@@ -19,7 +19,13 @@ import {
 
 const TABS = ['Weather', 'Frequencies', 'Runways', 'Procedures']
 
+// 'airport' (the official FAA airport diagram) is listed first and hidden
+// when empty, unlike the others: only 886 of 2,976 charted fields publish
+// one, and a "No airport procedures published" row at the other 2,090 would
+// be noise. It's also reachable in one tap from the diagram card itself,
+// which is where a pilot actually wants it while taxiing.
 const PROCEDURE_SECTIONS = [
+  { key: 'airport', label: 'Airport Diagram', hideWhenEmpty: true },
   { key: 'approach', label: 'Approach' },
   { key: 'departure', label: 'Departure' },
   { key: 'visual', label: 'Visual' },
@@ -234,6 +240,11 @@ export default function AirportInfo() {
                 windDir={wx?.metar ? parseWindParts(wx.metar, units).dir : null}
                 windSpeed={wx?.metar ? parseWindParts(wx.metar, units).speed : '—'}
                 vis={wx?.metar ? parseVisib(wx.metar, units) : '—'}
+                officialChart={procedures?.airport?.[0] ?? null}
+                onOpenOfficial={() => {
+                  const [chartName, pdfName] = procedures.airport[0]
+                  setOpenChart({ chartName, pdfName })
+                }}
               />
             </div>
 
@@ -296,8 +307,9 @@ export default function AirportInfo() {
                     <EmptyRow>Loading procedures…</EmptyRow>
                   </div>
                 ) : (
-                  PROCEDURE_SECTIONS.map(({ key, label }) => {
+                  PROCEDURE_SECTIONS.map(({ key, label, hideWhenEmpty }) => {
                     const charts = procedures?.[key] ?? []
+                    if (hideWhenEmpty && !charts.length) return null
                     return (
                       <div key={key} style={{ marginBottom: 16 }}>
                         <div style={{

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Procedure chart index — approach, departure, and visual charts per US airport.
+"""Procedure chart index — airport, approach, departure and visual charts per US airport.
 
 The FAA republishes its Terminal Procedures Publication (d-TPP) every 28-day
 NASR cycle, same cadence as the rest of this pack. Unlike the NASR subscription
@@ -10,8 +10,10 @@ Source: https://nfdc.faa.gov/webContent/dtpp/current.xml (confirmed live,
 public-domain U.S. government data — 17 U.S.C. §105). Each <record> under an
 <airport_name> carries a chart_code (IAP = instrument approach — visual
 approaches are IAP records too, distinguished only by "VISUAL" in the chart
-name, the FAA has no separate category for them; DP/ODP = departures) and a
-pdf_name, fetchable at https://aeronav.faa.gov/d-tpp/{cycle}/{pdf_name}.
+name, the FAA has no separate category for them; DP/ODP = departures; APD =
+the surveyed airport diagram) and a pdf_name, fetchable at
+https://aeronav.faa.gov/d-tpp/{cycle}/{pdf_name}. STARs (arrivals) are in the
+feed and still discarded here — worth adding, not yet done.
 
 Airports are matched by BOTH icao_ident (present inconsistently for smaller
 fields) and a derived apt_ident (the FAA's own identifier with the K/PA/PH
@@ -20,7 +22,8 @@ the small-GA-field population this pack already goes out of its way to serve
 (see build_airport_details.py's own header for why that matters here).
 
 Output: src/data/geo/procedures_index.json
-  {"KJFK": {"approach": [["ILS Y OR LOC Y RWY 23", "00123IL23.PDF"], ...],
+  {"KJFK": {"airport": [["AIRPORT DIAGRAM", "00610AD.PDF"]],
+            "approach": [["ILS Y OR LOC Y RWY 23", "00123IL23.PDF"], ...],
             "departure": [...], "visual": [...]},
    ...,
    "_meta": {"cycle": "2607"}}
@@ -77,7 +80,7 @@ for airport in root.iter('airport_name'):
         continue
     matched += 1
 
-    entry = index.setdefault(key, {'approach': [], 'departure': [], 'visual': []})
+    entry = index.setdefault(key, {'airport': [], 'approach': [], 'departure': [], 'visual': []})
     for record in airport.findall('record'):
         chart_code = (record.findtext('chart_code') or '').strip().upper()
         chart_name = (record.findtext('chart_name') or '').strip()
@@ -92,12 +95,20 @@ for airport in root.iter('airport_name'):
             bucket = 'visual' if 'VISUAL' in chart_name.upper() else 'approach'
         elif chart_code in ('DP', 'ODP'):
             bucket = 'departure'
+        elif chart_code == 'APD':
+            # The official airport diagram — the surveyed taxi chart. The app
+            # draws its own from OpenStreetMap for everywhere the FAA doesn't
+            # cover, but where this exists it is the authoritative one.
+            bucket = 'airport'
         else:
             continue
         entry[bucket].append([chart_name, pdf_name])
 
-# Airports with nothing usable at all just clutter the index.
-index = {k: v for k, v in index.items() if v['approach'] or v['departure'] or v['visual']}
+# Airports with nothing usable at all just clutter the index. 'airport' has to
+# be in this test as well: a towered field can publish a diagram and no
+# instrument procedures, and omitting it here would drop that field entirely.
+index = {k: v for k, v in index.items()
+         if v['airport'] or v['approach'] or v['departure'] or v['visual']}
 index['_meta'] = {'cycle': cycle}
 
 dest = f'{OUT}/procedures_index.json'
@@ -109,7 +120,13 @@ print(f'matched {matched} airports ({unmatched} in the feed not in our airport l
 # parser silently stopped working — fail the build rather than ship an empty
 # (or near-empty) index that looks fine but has nothing in it.
 for spot_check in ('KJFK', 'KATL', 'KORD'):
-    n = len(index.get(spot_check, {}).get('approach', []))
+    rec = index.get(spot_check, {})
+    n = len(rec.get('approach', []))
     if n == 0:
         raise SystemExit(f'sanity check failed: {spot_check} has 0 approach charts — parser likely broken')
-    print(f'  {spot_check}: {n} approach charts')
+    # Checked by name for the same reason the approach count is: if the FAA
+    # renames the APD code, the diagrams vanish silently and the app quietly
+    # stops offering official charts at every field at once.
+    if not rec.get('airport'):
+        raise SystemExit(f'sanity check failed: {spot_check} has no airport diagram — APD code may have changed')
+    print(f'  {spot_check}: {n} approach charts, {len(rec["airport"])} airport diagram(s)')
