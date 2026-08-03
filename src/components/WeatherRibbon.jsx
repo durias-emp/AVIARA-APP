@@ -13,7 +13,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  loadWeather, parseFltCat, parseWind, parseVisib, parseCeiling, parseTemp,
+  loadWeather, parseFltCat, parseWind, parseVisib, parseCeiling, parseTemp, parseDewp,
+  parseAirportName,
 } from '../lib/weather'
 import WeatherDetailOverlay from './WeatherDetailOverlay'
 
@@ -26,7 +27,8 @@ export default function WeatherRibbon({ icao, units = {}, style }) {
   const [wx, setWx] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(false)      // the inline expansion
+  const [detail, setDetail] = useState(false)  // the full overlay
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -77,64 +79,124 @@ export default function WeatherRibbon({ icao, units = {}, style }) {
   // waiting for a refetch that may never come.
   const stale = wx?.fetchedAt != null && now - wx.fetchedAt > STALE_MS
 
-  const wind = parseWind(metar, units)
-  const vis = parseVisib(metar, units)
-  const ceil = parseCeiling(metar, units)
-  const temp = parseTemp(metar, units)
-
-  // Ceiling is the number that decides the category, so when there is one it
-  // earns the slot ahead of visibility.
-  const second = ceil ?? vis
+  // The four the weather card shows, with the icons it uses, so the two are
+  // recognisably the same readout rather than two dialects of it.
+  const metrics = metar ? [
+    { icon: '/wind.png',       value: parseWind(metar, units) },
+    { icon: '/cloud.png',      value: parseCeiling(metar, units) },
+    { icon: '/visibility.png', value: parseVisib(metar, units) },
+    { icon: '/droplet.png',    value: parseDewp(metar, units) },
+  ].filter(m => m.value) : []
 
   return (<>
-    <button onClick={() => setOpen(true)} style={{
-      display: 'flex', alignItems: 'center', gap: 9,
-      padding: '8px 13px 8px 9px', borderRadius: 14, border: 'none',
+    <div style={{
       background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(14px)',
-      boxShadow: '0 2px 10px rgba(0,0,0,0.18)', cursor: 'pointer',
-      maxWidth: 'calc(100vw - 130px)', ...style,
+      borderRadius: 14, boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
+      overflow: 'hidden', maxWidth: 'calc(100vw - 130px)',
+      ...style,
     }}>
-      <span style={{
-        fontSize: 11, fontWeight: 800, letterSpacing: '0.3px',
-        color: cat.color, background: cat.bg, padding: '4px 7px', borderRadius: 7,
-        flexShrink: 0,
-      }}>{metar ? cat.label : loading ? '···' : '--'}</span>
-
-      <span style={{
-        fontSize: 12.5, fontWeight: 700, color: '#1c1c1e',
-        letterSpacing: '0.4px', flexShrink: 0,
-      }}>{icao}</span>
-
-      {metar && (
+      {/* Collapsed, this is the whole thing: what the field is doing, and
+          which field. That is the glance a pilot takes, and a strip of
+          numbers across the top of a chart is furniture the rest of the time. */}
+      <button onClick={() => setOpen(o => !o)} style={{
+        display: 'flex', alignItems: 'center', gap: 9, width: '100%',
+        padding: '8px 12px 8px 9px', border: 'none', background: 'none',
+        cursor: 'pointer',
+      }}>
         <span style={{
-          fontSize: 12, color: 'rgba(60,60,67,0.62)', whiteSpace: 'nowrap',
-          overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
-        }}>
-          {[temp, wind, second].filter(Boolean).join(' · ')}
-        </span>
-      )}
+          fontSize: 11, fontWeight: 800, letterSpacing: '0.3px',
+          color: cat.color, background: cat.bg, padding: '4px 7px', borderRadius: 7,
+          flexShrink: 0,
+        }}>{metar ? cat.label : loading ? '···' : '--'}</span>
 
-      {!metar && !loading && (
-        <span style={{ fontSize: 12, color: 'rgba(60,60,67,0.5)' }}>
-          {error ? 'No weather' : 'Tap for weather'}
-        </span>
-      )}
+        <span style={{
+          fontSize: 13, fontWeight: 700, color: '#1c1c1e',
+          letterSpacing: '0.4px', flexShrink: 0,
+        }}>{icao}</span>
 
-      {stale && (
-        <span title="Observation is over an hour old" style={{
-          fontSize: 9.5, fontWeight: 800, color: '#FF9500',
-          background: 'rgba(255,149,0,0.16)', padding: '3px 5px',
-          borderRadius: 5, flexShrink: 0,
-        }}>OLD</span>
-      )}
-    </button>
+        {stale && (
+          <span title="Observation is over an hour old" style={{
+            fontSize: 9.5, fontWeight: 800, color: '#FF9500',
+            background: 'rgba(255,149,0,0.16)', padding: '3px 5px',
+            borderRadius: 5, flexShrink: 0,
+          }}>OLD</span>
+        )}
+
+        {!metar && !loading && (
+          <span style={{ fontSize: 12, color: 'rgba(60,60,67,0.5)' }}>
+            {error ? 'No weather' : 'Tap for weather'}
+          </span>
+        )}
+
+        {/* The affordance. Without it a strip showing two things looks like a
+            label rather than something that opens. */}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(60,60,67,0.45)"
+          strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+          style={{
+            marginLeft: 'auto', flexShrink: 0,
+            transform: open ? 'rotate(180deg)' : 'none',
+            transition: 'transform 240ms cubic-bezier(0.4,0,0.2,1)',
+          }}>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+
+      {/* Expands downward. Grid rows rather than max-height so it animates to
+          its real height: a guessed max-height either clips the content or
+          leaves the easing running against empty space. */}
+      <div style={{
+        display: 'grid',
+        gridTemplateRows: open ? '1fr' : '0fr',
+        transition: 'grid-template-rows 260ms cubic-bezier(0.4,0,0.2,1)',
+      }}>
+        <div style={{ overflow: 'hidden', minHeight: 0 }}>
+          <div style={{ padding: '2px 12px 11px' }}>
+            <div style={{ height: 1, background: 'rgba(60,60,67,0.1)', margin: '0 0 9px' }} />
+
+            {metar ? (<>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 8 }}>
+                <span style={{ fontSize: 24, fontWeight: 800, color: '#1c1c1e', letterSpacing: '-0.8px' }}>
+                  {parseTemp(metar, units) ?? '--'}
+                </span>
+                <span style={{ fontSize: 11.5, color: 'rgba(60,60,67,0.55)', minWidth: 0,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {parseAirportName(metar) || ''}
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px 14px' }}>
+                {metrics.map(m => (
+                  <div key={m.icon} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <img src={m.icon} alt="" width={13} height={13}
+                      style={{ filter: 'brightness(0)', opacity: 0.55, flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#1c1c1e' }}>{m.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              <button onClick={() => setDetail(true)} style={{
+                marginTop: 10, width: '100%', border: 'none', cursor: 'pointer',
+                background: 'rgba(60,60,67,0.07)', borderRadius: 9, padding: '7px 0',
+                fontSize: 11.5, fontWeight: 700, color: '#1c1c1e',
+              }}>
+                Full report, METAR and TAF
+              </button>
+            </>) : (
+              <div style={{ fontSize: 11.5, color: 'rgba(60,60,67,0.55)', padding: '2px 0 4px' }}>
+                {loading ? 'Loading conditions…' : error ? 'Weather unavailable right now' : 'No observation'}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
 
     {/* The same overlay the weather card opens, portaled so the map's stacking
         context cannot trap it. */}
-    {open && createPortal(
+    {detail && createPortal(
       <WeatherDetailOverlay
         wx={wx} icao={icao} loading={loading} error={error} isStale={stale}
-        onClose={() => setOpen(false)}
+        onClose={() => setDetail(false)}
         onRefresh={() => load(icao)} />,
       document.body,
     )}
