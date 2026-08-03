@@ -103,6 +103,34 @@
               window.location.replace(dark ? '/dark.html' : '/')
             }
           }
+          // TEMPORARY, and the only way to tell two hypotheses apart: either
+          // the swap never runs, or it runs and iOS ignores the bar because
+          // it captured the style when the web clip was created. They need
+          // opposite fixes, and neither is observable from a desktop browser,
+          // where these APIs do not mean what they mean on the device.
+          // Removed as soon as one screenshot answers it.
+          window.__shellDiag = {
+            shell: onDarkShell ? 'dark' : 'light',
+            wantsDark: dark ? 1 : 0,
+            standalone: standalone ? 1 : 0,
+            nav: String(window.navigator.standalone),
+            dm: window.matchMedia('(display-mode: standalone)').matches ? 1 : 0,
+            ios: isIOS ? 1 : 0,
+            swaps: Number(sessionStorage.getItem(KEY) || 0),
+            path: window.location.pathname,
+          }
+          window.addEventListener('DOMContentLoaded', function () {
+            var d = window.__shellDiag
+            var el = document.createElement('div')
+            el.textContent = 'DIAG shell=' + d.shell + ' want=' + (d.wantsDark ? 'dark' : 'light')
+              + ' sa=' + d.standalone + '(nav:' + d.nav + ' dm:' + d.dm + ')'
+              + ' ios=' + d.ios + ' swaps=' + d.swaps + ' path=' + d.path
+            el.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483647;'
+              + 'background:#0a84ff;color:#fff;font:600 11px/1.4 monospace;padding:8px 10px;'
+              + 'text-align:center;word-break:break-all'
+            el.addEventListener('click', function () { el.remove() })
+            document.body.appendChild(el)
+          })
         } catch (e) { /* the static tags above stand */ }
       })()
     </script>
