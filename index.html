@@ -24,7 +24,11 @@
          appearance left the status bar on the colour it started with until the
          app was killed and reopened. useTheme rewrites this one on every
          change instead. -->
-    <meta name="theme-color" content="#f2f2f7" />
+    <meta name="theme-color" content="#ffffff" />
+    <!-- Both schemes, declared before any script runs: iOS reads this when
+         painting the standalone status bar. See the :root color-scheme note
+         in index.css. -->
+    <meta name="color-scheme" content="light dark" />
     <title>AVIARA</title>
   </head>
   <body>

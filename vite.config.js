@@ -120,8 +120,8 @@ export default defineConfig({
         description: 'Offline pilot quick reference: calculators, checklists, air law, currency tracker.',
         // matches --bg in the dark theme, so the install splash and app
         // surface are the same colour instead of slate vs near-black
-        theme_color: '#1c1c22',
-        background_color: '#1c1c22',
+        theme_color: '#000000',
+        background_color: '#000000',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
