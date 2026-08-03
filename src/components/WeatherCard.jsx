@@ -50,7 +50,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState(null)
   // Tracks the exact string last copied (not just a boolean) so the METAR and
-  // TAF copy buttons — which can both be on screen at once — each show their
+  // TAF copy buttons, which can both be on screen at once. Each show their
   // own "copied" state instead of lighting up together.
   const [copiedText, setCopiedText] = useState(null)
 
@@ -100,7 +100,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
   }, [])
 
   // Always shows the spin immediately, even if `id` isn't ready yet (e.g. a
-  // tap right after mount, before the homeAirport lookup resolves) — falls
+  // tap right after mount, before the homeAirport lookup resolves). Falls
   // back to re-reading the saved airport rather than silently no-op'ing.
   const refresh = useCallback(async (id) => {
     setLoading(true)
@@ -117,7 +117,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
       }
       const result = await loadWeather(targetId)
       setWx(result)
-      if (result.error) setError('Offline — showing cached data')
+      if (result.error) setError('Offline, showing cached data')
     } catch {
       setError('Could not load weather. Tap ↺ to retry.')
     } finally {
@@ -144,7 +144,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
   // older than the interval (covers the phone being locked/backgrounded).
   useEffect(() => {
     if (!icao) return
-    const REFRESH_MS = 30 * 60 * 1000 // 30 min — METARs update hourly, this stays ahead of it
+    const REFRESH_MS = 30 * 60 * 1000 // 30 min. METARs update hourly, this stays ahead of it
 
     const id = setInterval(() => refresh(icao), REFRESH_MS)
 
@@ -231,7 +231,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
           }} />
 
           <div style={{ position: 'relative', zIndex: 1 }}>
-            {/* VFR pill — top-right of the card */}
+            {/* VFR pill: top-right of the card */}
             {cat && (
               <span style={{
                 position: 'absolute', top: 16, right: 18, zIndex: 2,
@@ -245,7 +245,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
               display: 'flex', justifyContent: 'space-between',
               alignItems: 'flex-end', padding: '20px 18px 20px',
             }}>
-              {/* Left — temp + airport */}
+              {/* Left: temp + airport */}
               <div>
                 <div style={{ fontSize: 52, fontWeight: 800, color: fg, letterSpacing: '-2px', lineHeight: 0.9 }}>
                   {wx?.metar ? parseTemp(wx.metar, units) : loading ? '…' : '—'}
@@ -268,7 +268,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
                 )}
               </div>
 
-              {/* Right — wind/ceiling/vis */}
+              {/* Right: wind/ceiling/vis */}
               <div style={{
                 textAlign: 'right', display: 'flex',
                 flexDirection: 'column', alignItems: 'flex-end', gap: 4,
@@ -395,7 +395,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
               </div>
             </div>
 
-            {/* Bottom panel — data row + footer + METAR unified */}
+            {/* Bottom panel: data row + footer + METAR unified */}
             <div style={{
               background: 'rgba(0,0,0,0.38)',
               marginTop: 'auto',

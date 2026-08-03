@@ -2,18 +2,18 @@
 //
 // The only source of a config is a user-entered config saved on the aircraft
 // profile (`profile.wbConfig`). Since every real tail number has different
-// BEW/arms/equipment, we never guess these — the user enters them once on
+// BEW/arms/equipment, we never guess these. The user enters them once on
 // the Aircraft page (source of truth: POH/AFM/latest W&B report), and enters
 // a longitudinal CG envelope as a list of (CG, weight) points (and,
 // optionally, a lateral envelope as a list of (lateral CG, longitudinal CG)
 // points for helicopters). There is deliberately no generic/template
-// fallback config — an aircraft with incomplete W&B setup has no config at
+// fallback config: an aircraft with incomplete W&B setup has no config at
 // all (getWBConfig returns null) rather than silently computing real numbers
 // from a different aircraft's data.
 
-// ── Generic geometry helper — point-in-polygon (ray casting) ──────────────────
-// Used to test whether a computed (x, y) point — e.g. (CG, weight) or
-// (lateral CG, longitudinal CG) — falls inside a user-entered envelope
+// ── Generic geometry helper. Point-in-polygon (ray casting) ──────────────────
+// Used to test whether a computed (x, y) point. E.g. (CG, weight) or
+// (lateral CG, longitudinal CG). Falls inside a user-entered envelope
 // polygon. Bell's own envelope uses weight-tapered fwd/aft functions instead
 // (see calculateWB below) and never goes through this path.
 function pointInPolygon([x, y], poly) {
@@ -26,7 +26,7 @@ function pointInPolygon([x, y], poly) {
 }
 
 // ── Normalize a user-entered profile.wbConfig into calculation-ready shape ────
-// Returns null if wbConfig is absent. Does NOT validate completeness — call
+// Returns null if wbConfig is absent. Does NOT validate completeness. Call
 // validateWBConfig() on the result before trusting it for a "configured"
 // state. Never invents/guesses a value that wasn't entered by the user.
 export function normalizeUserWBConfig(wbConfig, profile) {
@@ -68,7 +68,7 @@ export function normalizeUserWBConfig(wbConfig, profile) {
     .filter(([lat, lc]) => lat != null && lc != null)
   const hasLateral = latEnvelopePoints.length >= 3
 
-  // Chart axis ranges — derived with a little padding, not user-entered
+  // Chart axis ranges: derived with a little padding, not user-entered
   const cgVals = longEnvelopePoints.map(p => p[0])
   const wtVals = [bewWeight, maxTOW, ...longEnvelopePoints.map(p => p[1])].filter(v => v != null)
   const cgMin = cgVals.length ? Math.min(...cgVals) - 1 : 0
@@ -135,7 +135,7 @@ export function getWBConfig(profile) {
   return null
 }
 
-// Pure W&B calculation — works with any config from getWBConfig()
+// Pure W&B calculation: works with any config from getWBConfig()
 export function calculateWB(cfg, weights, doors) {
   const { bew, fuel: fuelCfg, stations, doors: doorDefs, cgLimits, maxTOW } = cfg
 
@@ -172,7 +172,7 @@ export function calculateWB(cfg, weights, doors) {
   const auLongCG = auW > 0 ? auLM / auW : NaN
   const auLatCG  = auW > 0 ? auLaM / auW : NaN
 
-  // ── Longitudinal limits — Bell-style weight-tapered functions, or a
+  // ── Longitudinal limits: Bell-style weight-tapered functions, or a
   // user-entered envelope polygon tested via point-in-polygon ──
   const anyFrontDoorOff = cfg.hasFrontDoorEffect && (!doors.frontLeft || !doors.frontRight)
   let fwdLim, zfAft, auAft, zfLongOK, auLongOK
@@ -189,7 +189,7 @@ export function calculateWB(cfg, weights, doors) {
     auLongOK = !!poly?.length && isFinite(auLongCG) && auW > 0 && pointInPolygon([auLongCG, auW], poly)
   }
 
-  // ── Lateral limits — scalar left/right (Bell), a user-entered envelope
+  // ── Lateral limits: scalar left/right (Bell), a user-entered envelope
   // polygon, or not applicable (aircraft with no lateral data at all) ──
   let zfLatOK = true, auLatOK = true
   if (cfg.hasLateral) {

@@ -54,6 +54,11 @@ jobs:
           # Airspace and airport details.
           python3 scripts/build_cenamer_airspace.py
           python3 scripts/build_airport_details.py
+          # Published routes: what ATC actually issues between two fields.
+          python3 scripts/build_preferred_routes.py
+          # SIDs and STARs, from the CIFP — the named first and last thirds
+          # of those routes.
+          python3 scripts/build_procedures.py
           # FAA procedure charts (approach/departure/visual) — a separate FAA
           # feed (d-TPP, not NASR) but the same 28-day cadence, so it's rebuilt
           # alongside everything else here rather than on its own schedule.
@@ -91,6 +96,20 @@ jobs:
           # so they are checked by name rather than by total.
           if ca < 100 or mx < 150:
               fail.append('Central American or Mexican airways went missing')
+
+          pfr = json.load(open('src/data/geo/preferred_routes.json'))
+          pairs = pfr['_meta']['pairs']
+          print(f'preferred routes: {pfr["_meta"]["routes"]} routes over {pairs} pairs, '
+                f'cycle {pfr["_meta"]["cycle"]}')
+          if pairs < 6000:
+              fail.append('published route coverage collapsed')
+
+          proc = json.load(open('src/data/navdata/procedures.json'))
+          pm = proc['_meta']
+          print(f'procedures: {pm["sids"]} SIDs and {pm["stars"]} STARs at '
+                f'{pm["airports"]} airports, cycle {pm["cycle"]}')
+          if pm['airports'] < 600 or pm['sids'] < 1800 or pm['stars'] < 1500:
+              fail.append('procedure coverage collapsed')
 
           if fail:
               sys.exit('; '.join(fail) + ' — refusing to publish')

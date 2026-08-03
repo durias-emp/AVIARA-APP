@@ -21,12 +21,10 @@ const CHECKLISTS = [
     color: 'var(--text-secondary)',
     sections: [
       {
-        title: 'EN ROUTE',
+        title: 'ROUTE',
         num: 1,
         items: [
-          { id: 'route', label: 'Route and Altitude', sub: 'Charts · Airspace · TFR · Overflight', expand: 'altitude', items: [
-            { id: 'route-a', label: 'Charts', sub: 'Sectional · TAC · Chart Supplement', expand: 'charts' },
-          ]},
+          { id: 'route', label: 'Route and Altitude', sub: 'Charts · Airspace · TFR · Overflight', expand: 'altitude' },
           { id: 'wx', label: 'Weather', sub: 'PROG · METAR · TAF · AIRMET · SIGMET · Winds', expand: 'metar' },
           { id: 'alternates', label: 'Alternate(s)', sub: 'Distance · Weather · Fuel · IFR 1-2-3', expand: 'alternates' },
         ],
@@ -45,7 +43,11 @@ const CHECKLISTS = [
         title: 'AIRPORT',
         num: 3,
         items: [
-          { id: 'apt', label: 'Destination Airport', sub: 'Diagram · Charts · Services · NOTAM · FBO', expand: 'airport' },
+          { id: 'apt', label: 'Airports', sub: 'Destination · En route · Diagram · Services · NOTAM', expand: 'airport' },
+          // Moved here from the route section: these are the published charts
+          // and the Chart Supplement for the fields, which is airport work.
+          // The id is unchanged, so anyone who had already ticked it keeps it.
+          { id: 'route-a', label: 'Charts', sub: 'Sectional · TAC · Chart Supplement', expand: 'charts' },
         ],
       },
       {
@@ -90,7 +92,7 @@ export default function Checklists() {
 }
 
 
-/* ── Checklist detail — full-screen tabbed steps ─────────────── */
+/* ── Checklist detail: full-screen tabbed steps ─────────────── */
 function ChecklistDetail({ checklist, onBack }) {
   const { aircraftId } = useActiveAircraft()
   const [checked, setChecked]         = useState(new Set())
@@ -100,7 +102,7 @@ function ChecklistDetail({ checklist, onBack }) {
   const [addDrawerOpen, setAddDrawerOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
 
-  // Flight-plan-type picker (VFR/IFR + Local/Cross Country) — gates entry to
+  // Flight-plan-type picker (VFR/IFR + Local/Cross Country). Gates entry to
   // the checklist. `undefined` = not yet loaded from storage (render nothing
   // to avoid a flash of the picker before we know), `null` = loaded and not
   // yet picked, an object = picked and persisted until Reset.
@@ -121,7 +123,7 @@ function ChecklistDetail({ checklist, onBack }) {
   const total = allIds(checklist).length + customTotal
 
   // Header title: shows "Flight Plan" for the first few seconds, then the
-  // active step's name — and periodically flashes back to "Flight Plan" for
+  // active step's name, and periodically flashes back to "Flight Plan" for
   // a few seconds as an ambient reminder of what's currently in progress.
   const [headerTitle, setHeaderTitle] = useState(checklist.title)
   const introDoneRef = useRef(false)
@@ -132,7 +134,7 @@ function ChecklistDetail({ checklist, onBack }) {
   // Where the title settles after the intro flip: the VFR/IFR/Local picker
   // shows "Flight Type" (nothing to pick a step from yet), the checklist
   // shows the active step's name, and "loading from storage" (undefined)
-  // has no settled state — the intro effect below skips it entirely.
+  // has no settled state. The intro effect below skips it entirely.
   useEffect(() => {
     if (flightPlanType === undefined) { introDoneRef.current = false; setHeaderTitle(checklist.title); return }
     const introTimer = setTimeout(() => {
@@ -180,12 +182,12 @@ function ChecklistDetail({ checklist, onBack }) {
   }
 
   // Wipes every per-flight input so the checklist is a blank slate for the next
-  // flight. The only thing kept is the Route section's FROM field — that's the
+  // flight. The only thing kept is the Route section's FROM field. That's the
   // home base, sourced separately from settings.homeAirport, and AltitudeItem
   // already falls back to it whenever settings.route has no saved departure.
   async function reset() {
     setChecked(new Set())
-    save(new Set(), customItems)   // custom items persist across resets — they're a template
+    save(new Set(), customItems)   // custom items persist across resets. They're a template
     setResetKey(k => k + 1)        // remount every item so cleared data shows immediately
     setFlightPlanType(null)        // back to the VFR/IFR + Local/XC picker for the next flight
 
@@ -242,7 +244,21 @@ function ChecklistDetail({ checklist, onBack }) {
   const complete = done === total
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+    // Pinned to the viewport rather than sized by its ancestors. The pane
+    // below can only scroll if its height is definite, and previously that
+    // height arrived through a six-link chain of flex rules. #root, the app
+    // shell, <main>, this div, the tab shell, the pane, any one of which
+    // failing quietly let the pane stretch to its content, at which point
+    // there is no overflow and nothing scrolls. That failure was observed in
+    // the field (pane 1,762 px tall in a 696 px viewport) without being
+    // reproducible locally, which is exactly the behaviour of a layout that
+    // depends on everything above it. position:fixed depends on nothing.
+    // The body's safe-area padding doesn't reach a fixed child, so the top
+    // inset is re-applied here; the fixed footer already handles the bottom.
+    <div style={{
+      position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
+      paddingTop: 'var(--safe-top)', background: 'var(--bg)',
+    }}>
       {/* Header */}
       <div style={{ padding: '20px 16px 12px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <HomeButton onBack={onBack} />
@@ -285,7 +301,7 @@ function ChecklistDetail({ checklist, onBack }) {
       />
       )}
 
-      {/* ── Flight Plan one-pager — shown before the checklist resets, so
+      {/* ── Flight Plan one-pager. Shown before the checklist resets, so
           all the per-flight data it reads is still in IndexedDB. Closing it
           is what actually resets the checklist for the next flight. ── */}
       {onePagerOpen && (
@@ -328,7 +344,7 @@ function CompleteButton({ pct, complete, checklist, onComplete, onAddStep }) {
       const dep  = route?.dep  || ''
       const dest = route?.dest || ''
       const distNm      = route?.distNm ?? null
-      const cruiseAlt   = cruise?.cruiseAlt ?? route?.cruiseAlt ?? null
+      const cruiseAlt   = route?.cruiseAlt ?? null
       const flightRules = cruise?.flightRules || 'VFR'
       const tas         = parseFloat(cruise?.tas)   || null
       const burnRate    = parseFloat(cruise?.burnRate) || null
@@ -367,7 +383,7 @@ function CompleteButton({ pct, complete, checklist, onComplete, onAddStep }) {
       await put('flights', record)
       trackEvent('checklist_completed', { checklistId: checklist.id, dep, dest })
     } catch (e) {
-      // Save failed silently — don't block the pilot
+      // Save failed silently: don't block the pilot
     }
 
     setSaved(true)
@@ -385,7 +401,7 @@ function CompleteButton({ pct, complete, checklist, onComplete, onAddStep }) {
       padding: '12px 16px', display: 'flex', gap: 10, flexShrink: 0,
       background: 'var(--bg-card)',
     }}>
-      {/* Add Step — opens the add-custom-item drawer */}
+      {/* Add Step: opens the add-custom-item drawer */}
       <button
         onClick={onAddStep}
         style={{
@@ -409,7 +425,7 @@ function CompleteButton({ pct, complete, checklist, onComplete, onAddStep }) {
         </span>
       </button>
 
-      {/* Button shell — always present, bar fills inside it */}
+      {/* Button shell, always present, bar fills inside it */}
       <button
         onClick={handleComplete}
         disabled={!complete || saving || saved}
@@ -427,7 +443,7 @@ function CompleteButton({ pct, complete, checklist, onComplete, onAddStep }) {
           WebkitTapHighlightColor: 'transparent',
         }}
       >
-        {/* Progress fill — grows left to right while not complete */}
+        {/* Progress fill: grows left to right while not complete */}
         {!complete && (
           <div style={{
             position: 'absolute', inset: 0,

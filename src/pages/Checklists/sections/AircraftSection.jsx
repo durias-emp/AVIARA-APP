@@ -124,7 +124,7 @@ export function AircraftItem({ item, isChecked, onToggle }) {
 
   const TOOLTIPS = {
     'ac-crew':    'Pilot certificate, photo ID, and valid medical (or BasicMed) must be on your person. FAR 61.3.',
-    'ac-airworth':'Certificate of Airworthiness must be in the aircraft and valid — check for any limitations. FAR 91.203.',
+    'ac-airworth':'Certificate of Airworthiness must be in the aircraft and valid. Check for any limitations. FAR 91.203.',
     'ac-reg':     'Aircraft Registration must be aboard. FAR 91.203.',
     'ac-radio':   'FCC Radio Station License must be aboard for international flights. Domestic VFR: not required but common practice.',
     'ac-oplim':   'Operating Limitations (AFM/POH + placards) must be in the aircraft and complied with. FAR 91.9.',
@@ -133,7 +133,7 @@ export function AircraftItem({ item, isChecked, onToggle }) {
     'ac-100hr':   '100-hour inspection required if aircraft is used for hire or flight instruction for hire. FAR 91.409.',
     'ac-oil':     'Oil change within manufacturer limits. Check oil level and quality before flight.',
     'ac-ads':     'All applicable Airworthiness Directives must be complied with and recorded. FAR 91.409.',
-    'ac-equip':   'Required equipment current — ELT battery, transponder, altimeter, pitot-static checks within calendar limits. FAR 91.171.',
+    'ac-equip':   'Required equipment current. ELT battery, transponder, altimeter, pitot-static checks within calendar limits. FAR 91.171.',
     'ac-fuel-req':'Fuel load meets VFR or IFR reserve requirements for planned route and conditions. FAR 91.151 / 91.167.',
     'ac-extra-oil':'Extra quart(s) of correct oil grade aboard for the flight.',
     'ac-charts-cur':'Charts and plates are current and cover the planned route, alternates, and destination.',
@@ -167,13 +167,13 @@ export function AircraftItem({ item, isChecked, onToggle }) {
               )}
             </div>
             <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {label.includes(' — ') ? (
+              {label.includes(': ') ? (
                 <>
                   <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.2px' }}>
-                    {label.split(' — ')[0]}
+                    {label.split(': ')[0]}
                   </span>
                   <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-secondary)' }}>
-                    {' '}{label.split(' — ')[1]}
+                    {' '}{label.split(': ')[1]}
                   </span>
                 </>
               ) : (
@@ -314,12 +314,12 @@ export function AircraftItem({ item, isChecked, onToggle }) {
         ids={['ac-crew','ac-airworth','ac-reg','ac-radio','ac-oplim','ac-wb']}
         isCurrencyCompleted={isCurrencyCompleted} checkedIds={checkedIds}>
 
-        <CheckRow id="ac-crew"     label="C — Crew documents (license · photo ID · medical)" far />
-        <CheckRow id="ac-airworth" label="A — Certificate of Airworthiness" far />
-        <CheckRow id="ac-reg"      label="R — Certificate of Registration" far />
-        <CheckRow id="ac-radio"    label="R — Radio License (FCC / international)" far />
-        <CheckRow id="ac-oplim"    label="O — Operating Limitations (AFM / POH)" far />
-        <CheckRow id="ac-wb"       label="W — Weight &amp; Balance data" far />
+        <CheckRow id="ac-crew"     label="C: Crew documents (license · photo ID · medical)" far />
+        <CheckRow id="ac-airworth" label="A: Certificate of Airworthiness" far />
+        <CheckRow id="ac-reg"      label="R: Certificate of Registration" far />
+        <CheckRow id="ac-radio"    label="R: Radio License (FCC / international)" far />
+        <CheckRow id="ac-oplim"    label="O: Operating Limitations (AFM / POH)" far />
+        <CheckRow id="ac-wb"       label="W: Weight &amp; Balance data" far />
       </GroupRowComp>
 
       {/* Airworthiness */}

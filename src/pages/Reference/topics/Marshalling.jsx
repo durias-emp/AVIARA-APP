@@ -1,7 +1,7 @@
 import { TopicHeader, Card, Disclaimer } from '../shared/ui'
 
 // Simple line-glyph icons standing in for each marshalling signal's arm/hand
-// position — abstractions for a study aid, not the literal ICAO figures.
+// position: abstractions for a study aid, not the literal ICAO figures.
 function MIcon({ d, size = 22 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -41,7 +41,7 @@ export default function Marshalling({ onBack }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <TopicHeader title="Marshalling Signals" onBack={onBack} />
 
-      <Card sub="Standard ramp/marshalling hand signals. Always follow the actual marshaller in person — airport-specific procedures can vary.">
+      <Card sub="Standard ramp/marshalling hand signals. Always follow the actual marshaller in person. Airport-specific procedures can vary.">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           {SIGNALS.map(s => (
             <div key={s.label} style={{
@@ -69,7 +69,7 @@ export default function Marshalling({ onBack }) {
       </Card>
 
       <Disclaimer>
-        Simplified icons for a study aid — not official ICAO artwork. Consult AC 00-6 / your airport's ramp procedures for exact signals.
+        Simplified icons for a study aid, not official ICAO artwork. Consult AC 00-6 / your airport's ramp procedures for exact signals.
       </Disclaimer>
     </div>
   )

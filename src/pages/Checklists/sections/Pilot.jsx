@@ -241,7 +241,7 @@ export function IMChecklistItem({ item, isChecked, onToggle, statusKey }) {
               subIds={IMSAFE_ITEMS.map(it => it.key)}
             />
           ) : (
-            /* Source of truth lives in the Currency section — header
+            /* Source of truth lives in the Currency section. Header
                checkmark auto-fills the moment that data reads as valid. */
             <DoneButton
               isChecked={isChecked}
@@ -270,7 +270,7 @@ export function OverflightItem({ item, isChecked, onToggle }) {
     },
     {
       id: 'mountains', label: 'Mountains',
-      items: ['Terrain clearance — 1,000 ft above highest within 5 NM', 'Escape route identified for each leg', 'Turbulence / downdraft margins planned', 'Density altitude checked at cruise level', 'No-return point identified'],
+      items: ['Terrain clearance. 1,000 ft above highest within 5 NM', 'Escape route identified for each leg', 'Turbulence / downdraft margins planned', 'Density altitude checked at cruise level', 'No-return point identified'],
     },
     {
       id: 'builtup', label: 'Built-up areas',
@@ -371,7 +371,7 @@ export function OxygenItem({ item, isChecked, onToggle }) {
     <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
           <div style={{ padding: '12px 12px 10px' }}>
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
-              14 CFR §91.211 — Supplemental Oxygen
+              14 CFR §91.211. Supplemental Oxygen
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {O2_RULES.map((r, i) => (
@@ -419,7 +419,7 @@ function RecapSection({ title }) {
   )
 }
 
-/* ── Flight Plan Filed — one-page recap of everything filled in ─ */
+/* ── Flight Plan Filed. One-page recap of everything filled in ─ */
 const PRIOR_PILOT_IDS = ['pilot-imsafe', 'pilot-imcurrent', 'pilot-imvalid', 'pilot-airworthy']
 
 export function RecapItem({ item, isChecked, onToggle, checked, total }) {
@@ -450,7 +450,7 @@ export function RecapItem({ item, isChecked, onToggle, checked, total }) {
     })
   }, [open, aircraftId])
 
-  // Auto-complete once every other checklist item is done — still
+  // Auto-complete once every other checklist item is done, still
   // overridable any time via the header checkmark.
   const othersDone = typeof total === 'number' && checked
     ? checked.size >= (isChecked ? total : total - 1)
@@ -459,7 +459,7 @@ export function RecapItem({ item, isChecked, onToggle, checked, total }) {
     if (othersDone && !isChecked) onToggle(item.id)
   }, [othersDone])
 
-  // Reveal the recap once the pilot has worked through the rest of step 5 —
+  // Reveal the recap once the pilot has worked through the rest of step 5. 
   // still tappable open/closed manually at any time via the header.
   const reachedPilotStep = Boolean(checked) && PRIOR_PILOT_IDS.every(id => checked.has(id))
   useEffect(() => {
@@ -508,7 +508,7 @@ export function RecapItem({ item, isChecked, onToggle, checked, total }) {
 }
 
 /* ── Stable wrapper components for expand types that need extra
-   fixed props — defined once at module scope so React preserves
+   fixed props. Defined once at module scope so React preserves
    component identity (and local state like `open`) across renders.
    Redefining these inline on every render would remount the card
    on every unrelated re-render, wiping its open/closed state. ── */

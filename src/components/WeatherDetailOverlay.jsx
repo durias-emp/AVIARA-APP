@@ -75,8 +75,8 @@ function pilotSummary(metar, cat) {
   switch (cat.label) {
     case 'VFR':  return `Clear conditions for VFR flight. ${limiter}`.trim()
     case 'MVFR': return `Marginal VFR${wxNote}. ${limiter}`.trim()
-    case 'IFR':  return `IFR conditions — instrument rating required. ${limiter}`.trim()
-    case 'LIFR': return `Low IFR — exercise extreme caution. ${limiter}`.trim()
+    case 'IFR':  return `IFR conditions. Instrument rating required. ${limiter}`.trim()
+    case 'LIFR': return `Low IFR. Exercise extreme caution. ${limiter}`.trim()
     default:     return null
   }
 }
@@ -113,7 +113,7 @@ function parseTafPeriods(taf) {
   })
 }
 
-// ── Trend — is the TAF outlook improving, deteriorating, or steady
+// ── Trend: is the TAF outlook improving, deteriorating, or steady
 // compared to current conditions? Ranked by flight-category severity
 // (higher rank = more restrictive), same FLTCAT grading used everywhere else.
 const CAT_RANK = { VFR: 0, MVFR: 1, IFR: 2, LIFR: 3 }
@@ -146,7 +146,7 @@ function GlassPill({ children, style }) {
   )
 }
 
-// ── "Copied" chip — smoothly fades/slides in next to a copy button,
+// ── "Copied" chip: smoothly fades/slides in next to a copy button,
 // then fades back out when `show` flips false (the element stays mounted
 // so the exit gets the same transition as the entrance). ────────────
 function CopiedChip({ show }) {
@@ -168,7 +168,7 @@ function CopiedChip({ show }) {
   )
 }
 
-// ── Raw text row — one METAR or TAF block within the shared card ──
+// ── Raw text row, one METAR or TAF block within the shared card ──
 // `colorize` splits the text into its forecast groups and colors each line
 // by flight category (same grading as the VFR/MVFR/IFR/LIFR chip), matching
 // how apps like ForeFlight color-code raw TAF text.
@@ -258,7 +258,7 @@ export default function WeatherDetailOverlay({
         backgroundColor: skyBottomColor(type, isNight),
       }}
     >
-      {/* Content wrapper — matches app shell width */}
+      {/* Content wrapper: matches app shell width */}
       <div style={{ width: '100%', minHeight: '100%', position: 'relative' }}>
 
         {/* Sky backdrop inside the content wrapper so it expands with content height */}
@@ -290,7 +290,7 @@ export default function WeatherDetailOverlay({
 
         {/* Scrollable content column */}
         <div style={{
-          position: 'relative', zIndex: 2, padding: 'calc(52px + env(safe-area-inset-top)) 20px calc(48px + env(safe-area-inset-bottom))',
+          position: 'relative', zIndex: 2, padding: 'calc(52px + var(--safe-top)) 20px calc(48px + var(--safe-bottom))',
         }}>
 
           {/* ── Top bar ── */}
@@ -355,7 +355,7 @@ export default function WeatherDetailOverlay({
             alignItems: 'center', textAlign: 'center',
             justifyContent: 'flex-end', paddingBottom: 26, paddingTop: 18,
           }}>
-            {/* Weather icon animation — sits behind the temperature as a soft
+            {/* Weather icon animation. Sits behind the temperature as a soft
                 background flourish, same idea as the compact card's preview,
                 not a foreground graphic competing with the numbers */}
             {metar && (
@@ -377,7 +377,7 @@ export default function WeatherDetailOverlay({
             <div style={{ position: 'relative', zIndex: 1 }}>
               {metar ? (
                 <>
-                  {/* Flight category pill sits above the temperature — color-coded
+                  {/* Flight category pill sits above the temperature. Color-coded
                       per the standard VFR/MVFR/IFR/LIFR scheme so it reads at a glance */}
                   {cat && (
                     <div style={{ marginBottom: 16 }}>
@@ -391,7 +391,7 @@ export default function WeatherDetailOverlay({
                     </div>
                   )}
 
-                  {/* Temp — the headline number, bold and tight */}
+                  {/* Temp: the headline number, bold and tight */}
                   <div style={{ marginBottom: 8 }}>
                     <span style={{
                       fontSize: 108, fontWeight: 800, lineHeight: 0.85,
@@ -436,6 +436,7 @@ export default function WeatherDetailOverlay({
                 metarAge={parseObsAge(metar)} tafAge={parseTafAge(wx?.taf)}
                 onCopy={onCopyMetar} copiedText={copiedText}
               />
+
 
               {/* ── Pilot readout ── */}
               {summary && (
@@ -549,7 +550,7 @@ export default function WeatherDetailOverlay({
                        ? `${(metar.temp - metar.dewp).toFixed(0)}°`
                        : '—',
                     sub: (metar.temp != null && metar.dewp != null)
-                       ? (metar.temp - metar.dewp <= 3 ? 'narrow — fog risk' : 'wide — low fog risk')
+                       ? (metar.temp - metar.dewp <= 3 ? 'narrow, fog risk' : 'wide, low fog risk')
                        : '—',
                   },
                   {
@@ -590,7 +591,7 @@ export default function WeatherDetailOverlay({
                 ))}
               </div>
 
-              {/* ── Cloud layers — every reported layer, not just the ceiling ── */}
+              {/* ── Cloud layers. Every reported layer, not just the ceiling ── */}
               <div style={{ ...GLASS, padding: '16px 18px', marginBottom: 12 }}>
                 <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', marginBottom: 12 }}>
                   Cloud Layers
@@ -630,7 +631,7 @@ export default function WeatherDetailOverlay({
                   </div>
                 ) : (
                   <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)' }}>
-                    {metar?.cover === 'CAVOK' ? 'CAVOK — no significant cloud' : 'Clear — no layers reported'}
+                    {metar?.cover === 'CAVOK' ? 'CAVOK, no significant cloud' : 'Clear, no layers reported'}
                   </div>
                 )}
               </div>

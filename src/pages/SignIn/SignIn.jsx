@@ -21,6 +21,24 @@ function GoogleIcon() {
   )
 }
 
+// Which providers the project actually has enabled. Unauthenticated and
+// cheap; the answer is stable for a session, so it is asked at most once.
+let providerCheck = null
+async function googleEnabled() {
+  const url = import.meta.env.VITE_SUPABASE_URL
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY
+  if (!url || !key) return false
+  if (!providerCheck) {
+    providerCheck = fetch(`${url}/auth/v1/settings`, { headers: { apikey: key } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => j?.external?.google === true)
+      // A network failure is not an answer. Let the redirect proceed rather
+      // than blocking a sign-in path that may well work.
+      .catch(() => true)
+  }
+  return providerCheck
+}
+
 export default function SignIn({ legacy = false }) {
   const { signInWithGoogle, signInWithPassword, signUp, resetPasswordForEmail } = useAuth()
   const [mode, setMode] = useState('signin') // 'signin' | 'signup' | 'reset'
@@ -38,6 +56,19 @@ export default function SignIn({ legacy = false }) {
   async function handleGoogle() {
     setError(null)
     setBusy(true)
+    // Ask first, because signInWithOAuth cannot report this failure. It
+    // redirects the whole page to the authorize endpoint, and a provider the
+    // project has not enabled is rejected THERE, by the auth server, with a
+    // raw JSON body. The app is gone by then: no catch runs, no error state
+    // renders, and the pilot is left looking at {"code":400,...} with no way
+    // back but the back button. One cheap preflight keeps the failure inside
+    // the app, and it self-heals the moment the provider is switched on.
+    const ok = await googleEnabled()
+    if (!ok) {
+      setError('Google sign-in is not enabled for this app yet. Use your email and password below.')
+      setBusy(false)
+      return
+    }
     const { error: err } = await signInWithGoogle()
     if (err) { setError(err.message); setBusy(false) }
     // On success the browser navigates away to Google, so no need to reset busy.
@@ -73,9 +104,9 @@ export default function SignIn({ legacy = false }) {
 
   return (
     <div style={{
-      position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center',
-      padding: '24px 24px calc(24px + env(safe-area-inset-bottom))', gap: 28,
-      minHeight: '100dvh', boxSizing: 'border-box',
+      flex: '1 0 auto', display: 'flex', flexDirection: 'column', justifyContent: 'center',
+      padding: 'calc(24px + var(--safe-top)) 24px calc(24px + var(--safe-bottom))', gap: 28,
+      minHeight: '100%', boxSizing: 'border-box',
     }}>
       {/* Reached voluntarily now (Profile > Account), never as an
           inescapable gate — always dismissable. */}
@@ -91,7 +122,7 @@ export default function SignIn({ legacy = false }) {
           {mode === 'reset'
             ? "Enter your email and we'll send you a link to set a new password."
             : legacy
-              ? 'Everything already on this device — your profile, aircraft, and checklists — stays exactly as it is. Signing in just backs it up so you never lose it if you get a new phone.'
+              ? 'Everything already on this device. Your profile, aircraft, and checklists. Stays exactly as it is. Signing in just backs it up so you never lose it if you get a new phone.'
               : 'Sign in to keep your pilot profile, aircraft, and checklists backed up and ready on any device.'}
         </div>
       </div>

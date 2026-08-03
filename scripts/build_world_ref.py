@@ -19,6 +19,7 @@ Coordinates rounded to 3 dp (~100 m) — plenty for a reference backdrop and
 keeps the file small.
 """
 import json, os, re, sys
+import urllib.request
 
 # Downloads are cached here between runs. Override with AVIARA_CACHE; the
 # default keeps the builders working identically on a laptop and on CI, where
@@ -42,12 +43,54 @@ COVERED = [
     (5.0, 19.5, -93.0, -77.0),     # CENAMER (COCESNA)
 ]
 
-def covered(la, lo):
-    return any(a <= la <= b and c <= lo <= d for a, b, c, d in COVERED)
+# The covered boxes are rectangles drawn around countries, so they swallow a
+# lot of ocean: the CONUS box takes the northern Gulf of Mexico, the Mexico box
+# the rest of it. Suppressing the reference layer there left holes where no
+# authoritative pack has anything either — every airway across the Gulf and the
+# eastern Pacific simply stopped at the coast.
+#
+# The packs cover the land and its approaches. Over open water inside those
+# boxes they hold little, so a segment with either end offshore is kept — still
+# drawn dashed and labelled as the 2012 reference it is.
+_LAND = json.load(open('src/data/geo/land.json'))
 
+
+def _in_rings(la, lo, polys, rings, bbox):
+    for p, idx in enumerate(rings):
+        b = bbox[p]
+        if la < b[0] or la > b[1] or lo < b[2] or lo > b[3]:
+            continue
+        start, count = idx[0]
+        inside = False
+        j = count - 1
+        for i in range(count):
+            a, c = polys[start + i], polys[start + j]
+            if (a[0] > la) != (c[0] > la) and lo < (c[1] - a[1]) * (la - a[0]) / (c[0] - a[0]) + a[1]:
+                inside = not inside
+            j = i
+        if inside:
+            return True
+    return False
+
+
+def over_land(la, lo):
+    if not _in_rings(la, lo, _LAND['polys'], _LAND['rings'], _LAND['bbox']):
+        return False
+    return not _in_rings(la, lo, _LAND['lakePolys'], _LAND['lakeRings'], _LAND['lakeBbox'])
+
+
+def covered(la, lo):
+    if not any(a <= la <= b and c <= lo <= d for a, b, c, d in COVERED):
+        return False
+    return over_land(la, lo)
+
+# Fetched rather than assumed present, so the pack can be rebuilt anywhere.
+SRC_URL = 'https://raw.githubusercontent.com/mcantsin/x-plane-navdata/master/earth_awy.dat'
 src = os.path.join(SCRATCH, 'xp_awy.dat')
 if not os.path.exists(src):
-    sys.exit(f'missing {src} — download earth_awy.dat first')
+    print('downloading earth_awy.dat…')
+    os.makedirs(SCRATCH, exist_ok=True)
+    urllib.request.urlretrieve(SRC_URL, src)
 
 # Group segments per airway so we can stitch them into continuous polylines
 segs = defaultdict(list)   # (airway, hi) -> [((lat1,lon1),(lat2,lon2))]

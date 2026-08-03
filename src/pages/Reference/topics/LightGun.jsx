@@ -4,12 +4,12 @@ const SIGNALS = [
   { pattern: 'steady',      color: '#34C759', label: 'Steady Green',     ground: 'Cleared for takeoff',                                   flight: 'Cleared to land' },
   { pattern: 'flashing',    color: '#34C759', label: 'Flashing Green',   ground: 'Cleared to taxi',                                        flight: 'Return for landing (steady green to follow at the proper time)' },
   { pattern: 'steady',      color: '#FF3B30', label: 'Steady Red',       ground: 'Stop',                                                   flight: 'Give way to other aircraft and continue circling' },
-  { pattern: 'flashing',    color: '#FF3B30', label: 'Flashing Red',     ground: 'Taxi clear of the runway/landing area in use',            flight: 'Airport unsafe — do not land' },
-  { pattern: 'flashing',    color: '#fff',    label: 'Flashing White',   ground: 'Return to starting point on airport',                     flight: '— (not used in flight)' },
+  { pattern: 'flashing',    color: '#FF3B30', label: 'Flashing Red',     ground: 'Taxi clear of the runway/landing area in use',            flight: 'Airport unsafe. Do not land' },
+  { pattern: 'flashing',    color: '#fff',    label: 'Flashing White',   ground: 'Return to starting point on airport',                     flight: ', (not used in flight)' },
   { pattern: 'alternating', color: null,      label: 'Alternating Red/Green', ground: 'Exercise extreme caution',                          flight: 'Exercise extreme caution' },
 ]
 
-// Small visual for each signal — a colored dot that pulses for "flashing"
+// Small visual for each signal. A colored dot that pulses for "flashing"
 // and splits red/green for "alternating", so the pattern reads at a glance
 // without needing a photo/animation of an actual light gun.
 function SignalDot({ pattern, color }) {
@@ -62,7 +62,7 @@ export default function LightGun({ onBack }) {
       </Card>
 
       <Disclaimer>
-        Reference: AIM 4-3-13, Table 4-3-1. Study aid only — always follow the actual signal received from the tower.
+        Reference: AIM 4-3-13, Table 4-3-1. Study aid only, always follow the actual signal received from the tower.
       </Disclaimer>
     </div>
   )

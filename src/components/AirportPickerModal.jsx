@@ -82,7 +82,7 @@ export default function AirportPickerModal({ onConfirm, onClose, label = 'Home A
 
   async function validate(icao) {
     try {
-      // Use our Vercel proxy — no CORS issues, no third-party rate limits
+      // Use our Vercel proxy. No CORS issues, no third-party rate limits
       const res  = await fetch(`/api/awc?path=airport&ids=${icao}&format=json`, { signal: AbortSignal.timeout(8000) })
       const data = await res.json()
       if (Array.isArray(data) && data.length > 0) {

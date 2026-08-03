@@ -28,14 +28,14 @@ export default function ResetPassword() {
     const { error: err } = await updatePassword(password)
     setBusy(false)
     if (err) { setError(err.message); return }
-    // On success recovery clears and the app proceeds — no further UI needed.
+    // On success recovery clears and the app proceeds. No further UI needed.
   }
 
   return (
     <div style={{
-      flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center',
-      padding: '24px 24px calc(24px + env(safe-area-inset-bottom))', gap: 24,
-      minHeight: '100dvh', boxSizing: 'border-box',
+      flex: '1 0 auto', display: 'flex', flexDirection: 'column', justifyContent: 'center',
+      padding: 'calc(24px + var(--safe-top)) 24px calc(24px + var(--safe-bottom))', gap: 24,
+      minHeight: '100%', boxSizing: 'border-box',
     }}>
       <div>
         <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.5px' }}>

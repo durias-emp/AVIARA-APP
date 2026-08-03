@@ -227,7 +227,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
     && result.status.zfLongOK && result.status.zfLatOK
     && result.status.auLongOK && result.status.auLatOK
 
-  // Souls on board — pilot-entered headcount, not derivable from station
+  // Souls on board: pilot-entered headcount, not derivable from station
   // weights alone (a station can be loaded with baggage, not a person).
   const [souls, setSouls] = useState('')
   useEffect(() => {
@@ -322,7 +322,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                 </div>
                 {result?.limits.anyFrontDoorOff && (
                   <div style={{ fontSize: 9, color: 'var(--warn)', marginTop: 6 }}>
-                    Forward door(s) off — fwd CG limit changes to 111.6 in
+                    Forward door(s) off. Fwd CG limit changes to 111.6 in
                   </div>
                 )}
                 <div style={{ height: '0.5px', background: 'var(--border)', marginTop: 10 }} />
@@ -440,7 +440,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                   </div>
                 </div>
 
-                {/* Lateral chart — only for aircraft with lateral CG data */}
+                {/* Lateral chart, only for aircraft with lateral CG data */}
                 {cfg.hasLateral && (
                   <div style={{ padding: '0 14px 10px' }}>
                     <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>
@@ -457,7 +457,7 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                   </div>
                 )}
 
-                {/* Status banner — bottom, charcoal card, only checkmark is colored */}
+                {/* Status banner: bottom, charcoal card, only checkmark is colored */}
                 <div style={{ margin: '0 14px 10px' }}>
                   <div style={{
                     background: 'var(--bg-card-2)',
@@ -482,13 +482,13 @@ export default function WBChecklistItem({ item, isChecked, onToggle, ExpandableC
                       <div style={{ fontSize: 10, marginTop: 1, color: 'var(--text-secondary)' }}>
                         {result.status.overweight
                           ? `Overweight by ${toDisplay(result.allUp.weight - cfg.maxTOW, 'weight', metric)} ${wU}`
-                          : overallOK ? 'CG within all limits' : 'Review CG — check charts above'}
+                          : overallOK ? 'CG within all limits' : 'Review CG. Check charts above'}
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Souls on board — used by the Flight Plan one-pager and, if filing,
+                {/* Souls on board. Used by the Flight Plan one-pager and, if filing,
                     matches the ICAO flight-plan "persons on board" item. */}
                 <div style={{ margin: '0 14px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   background: 'var(--bg-card-2)', borderRadius: 12, padding: '10px 12px' }}>

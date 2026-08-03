@@ -4,15 +4,27 @@
 /* ── Apple-style design tokens ─────────────────────────────── */
 :root {
   /* Tells the engine which scheme native UI (form controls, scrollbars,
-     date pickers, input carets) should be drawn in — without it they stay
-     light-mode even when the app is dark. */
-  color-scheme: light;
+     date pickers, input carets) should be drawn in, without it they stay
+     light-mode even when the app is dark.
+     BOTH schemes, not light: iOS samples this to paint the standalone
+     status bar, and it reads it at launch, before any JavaScript has set
+     data-theme. Pinned to light, an app launched in light mode kept a
+     white bar after the system switched to dark. Declaring both hands the
+     choice to the system, which is the only painter of that bar. The
+     data-theme rules below still pin the resolved scheme once JS lands. */
+  color-scheme: light dark;
 
   /* Surfaces */
-  --bg:           #f2f2f7;
+  /* Pure white, not iOS grouped grey: the standalone status bar with the
+     default style is painted by the system, white in light and black in
+     dark, and honours neither theme-color nor the manifest (verified on
+     device against both). The bar cannot come to the app, so the app goes
+     to the bar; cards keep their layering through shadows and the grey
+     inner fields. */
+  --bg:           #ffffff;
   --bg-card:      #ffffff;
   --bg-card-2:    #f2f2f7;
-  --bg-grouped:   #f2f2f7;
+  --bg-grouped:   #ffffff;
 
   /* Separators */
   --border:       rgba(60,60,67,0.13);
@@ -23,7 +35,7 @@
   --text-secondary: rgba(60,60,67,0.6);
   --text-tertiary:  rgba(60,60,67,0.3);
 
-  /* Accent — Monochromatic */
+  /* Accent: Monochromatic */
   --accent:       #1c1c1e;
   --accent-fg:    #ffffff;
   --accent-light: rgba(0,0,0,0.07);
@@ -36,14 +48,14 @@
   --warn-light:   rgba(255,149,0,0.12);
   --danger-light: rgba(255,59,48,0.12);
 
-  /* Icon filter — makes black-stroke PNGs theme-aware */
+  /* Icon filter: makes black-stroke PNGs theme-aware */
   --icon-filter: brightness(0) opacity(0.75);
 
   /* Shadow */
   --shadow-sm:  0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
   --shadow-md:  0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
 
-  /* Radius — a scale, not arbitrary values, so nested surfaces read as
+  /* Radius: a scale, not arbitrary values, so nested surfaces read as
      carved from one shape rather than stacked stickers. Each step down
      is roughly 3/4 of its parent, mirroring iOS's own card/sheet/control
      nesting (bigger container -> bigger radius -> more inset). */
@@ -57,10 +69,18 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --bg:           #1c1c22;
-  --bg-card:      #272730;
-  --bg-card-2:    #32323c;
-  --bg-grouped:   #1c1c22;
+  /* Pure black for the same reason the light theme is pure white: it is
+     the one colour the system status bar will actually be. */
+  --bg:           #000000;
+  /* Apple's dark surfaces, sampled from Settings rather than estimated:
+     #1c1c1e is secondarySystemGroupedBackground (a card on black) and
+     #2c2c2e is the tertiary level (a field nested inside a card). The old
+     values were both lighter and slightly blue, which read as a different
+     material next to anything the system draws. Labels and separators below
+     already matched Apple exactly. */
+  --bg-card:      #1c1c1e;
+  --bg-card-2:    #2c2c2e;
+  --bg-grouped:   #000000;
 
   --border:       rgba(84,84,88,0.65);
   --border-strong: rgba(84,84,88,0.8);
@@ -84,6 +104,10 @@
 
   --shadow-sm:  0 1px 3px rgba(0,0,0,0.3);
   --shadow-md:  0 4px 16px rgba(0,0,0,0.4);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
 }
 
 [data-theme="red"] {
@@ -123,31 +147,141 @@
 /* ── Base ──────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* Hide scrollbars everywhere — native touch/wheel scrolling still works,
+/* Hide scrollbars everywhere: native touch/wheel scrolling still works,
    it just doesn't draw a visible track/thumb like a desktop browser does. */
 * {
   scrollbar-width: none;     /* Firefox */
   -ms-overflow-style: none;  /* old Edge */
 }
+
+/* Containment belongs on the elements that actually scroll. #root and the
+   checklist panes set it themselves. It used to be on `*`, which broke
+   scrolling outright: overscroll-behavior applies to every scroll container,
+   and `overflow: hidden` makes a box one. So a wheel landing inside any
+   clipped wrapper. The expandable card's body, for one. Was captured by
+   that wrapper, which had nothing to scroll, and `contain` then stopped the
+   scroll from reaching the pane. It read as the card being frozen, and only
+   over part of it: move the pointer to a subtree with no clipped ancestor and
+   the same gesture worked, which is what made it look intermittent. */
 *::-webkit-scrollbar {
   display: none;             /* Chrome / Safari / Chromium Edge */
 }
 
-html {
+/* ── The document does not scroll ──────────────────────────────
+   iOS honours overscroll-behavior on scroll containers but not on the
+   document, so as long as the page itself was the scroller the whole app
+   rubber-banded at the top and bottom. The single clearest tell that
+   something is a web page rather than an app.
+
+   The document is pinned to the viewport and #root becomes the scroller
+   instead, where overscroll-behavior is respected. Everything inside keeps
+   working the same way: position:fixed children (the tab bar, the fullscreen
+   map, modals) still anchor to the viewport, and scrollIntoView still finds
+   the right scroller on its own. */
+:root {
+  /* The device insets, named once. Components that need to clear the notch or
+     the home indicator read these rather than repeating env() and drifting
+     apart from each other. */
+  /* env() is read here and nowhere else. A custom property that referenced
+     itself would be a cycle, which the spec makes invalid at computed-value
+     time, and every padding built on it silently collapses to zero. That is
+     one broken line taking the insets out of all 22 call sites at once, so it
+     is worth being explicit: the right-hand side must be env(), never var().
+     The 0px fallbacks keep desktop and Android, where the insets are absent
+     rather than zero, from inheriting the same invalid value. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  /* How much shorter the CSS viewport is than the physical screen. Zero
+     everywhere honest. iOS standalone with a translucent status bar paints
+     the view over the whole screen but sizes the viewport one status bar
+     short, leaving the bottom 59px of the screen outside the coordinate
+     system entirely: not inset:0, not 100%, not any vh unit can reach it,
+     which is why the bottom strip survived every layout fix aimed at it.
+     main.jsx measures the lie (screen.height minus innerHeight, only when
+     it exactly matches the top inset in standalone mode) and sets this;
+     the body rule below adds it back. */
+  --vp-deficit: 0px;
+}
+
+html, body {
+  overflow: hidden;
   overscroll-behavior: none;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  /* inset alone decides the size. It used to also carry height:100%, and the
+     two together over-constrain the box: with top, bottom and height all set,
+     CSS drops bottom and keeps height. That was survivable while 100% and the
+     viewport agreed, but the translucent status bar shortens the initial
+     containing block by the height of the bar, so body ended up that much
+     shorter than the screen and anchored to the top. Every screen stopped 59px
+     above the bottom edge at once, which is why it looked like a gap in one
+     component rather than the whole app being the wrong height. The backdrop
+     below sizes itself from inset with no height, which is why it kept
+     painting the full screen and the strip came out --bg instead of black. */
+  position: fixed;
+  inset: 0;
+  /* Over-constrained on purpose: with top, bottom and height all set, CSS
+     drops bottom and keeps height, so the box spans from the top of the
+     screen to viewport-height plus the deficit, which is the real bottom of
+     the screen. When the deficit is 0px this is identical to inset alone. */
+  height: calc(100% + var(--vp-deficit));
+  /* The load-bearing line. A transformed ancestor becomes the containing
+     block for every position:fixed descendant, the same capture that made
+     the checklist pane swallow the fullscreen map. Used deliberately here:
+     all ~25 fixed surfaces in the app (overlays, drawers, the fullscreen
+     map, the tab bar) now measure against THIS corrected box instead of the
+     short viewport, so one rule heals every one of them, portaled or not.
+     Remove this and each of them goes back to stopping 59px above the
+     bottom of the screen on iOS. */
+  transform: translate(0, 0);
+  /* A column, so #root takes the remaining space as a flex item instead of as
+     a percentage of this box. Sizing from inset leaves the height correct but
+     auto, and a percentage child measured against an auto height collapses to
+     nothing, which renders as a blank screen rather than as a layout that is
+     merely wrong. Flex needs no definite parent height, so the app fills the
+     screen either way. */
+  display: flex;
+  flex-direction: column;
+  /* Taps act immediately instead of waiting to see if a double-tap zoom is
+     coming. The zoom is already disabled in the viewport meta. */
+  touch-action: manipulation;
 }
 
 /* Buttons never opt into a custom focus style of their own, so the browser's
    default focus ring (a persistent white/blue outline on tap, not just the
    brief tap-highlight flash) was showing on almost every button in the app.
    Every interactive state here is already communicated through background/
-   color changes, so the native ring is redundant — remove it everywhere. */
+   color changes, so the native ring is redundant. Remove it everywhere. */
 button {
   outline: none;
   -webkit-tap-highlight-color: transparent;
 }
 button:focus, button:focus-visible {
   outline: none;
+}
+
+/* A long press anywhere used to raise iOS text selection, blue drag handles
+   and all, and a drag from there swept a highlight across the whole screen.
+   That reads as a web page rather than an app. Selection is off by default and
+   switched back on only where typing or copying is the point: the callout is
+   suppressed with it, so long-pressing a link no longer opens the share sheet
+   either. Both properties inherit, so setting them on html covers everything. */
+html {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input, textarea, select, [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 body {
@@ -158,27 +292,91 @@ body {
   -moz-osx-font-smoothing: grayscale;
   font-size: 17px;
   line-height: 1.47;
-  min-height: 100dvh;
   transition: background-color 0.2s, color 0.2s;
-  overscroll-behavior: none;
-  /* Extend body color behind status bar on iOS PWA */
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Nothing can ever show through as bare canvas.
+   viewport-fit=cover claims the whole screen including the inset zones, and
+   claiming them is a promise to paint them. A fixed backdrop behind
+   everything means a future layout mistake shows as the wrong colour rather
+   than as the black the system paints over unclaimed pixels. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  /* The backdrop must reach the corrected bottom like everything else. */
+  height: calc(100% + var(--vp-deficit));
+  z-index: -1;
+  background: var(--bg);
+  pointer-events: none;
 }
 
 #root {
-  min-height: 100dvh;
+  /* The app's scroller, and the full screen.
+     No safe-area padding here, and none may ever come back: padding on a
+     scroller clips its content at the padding boundary, so scrolled content
+     vanished 59px below the top edge and a bare strip of --bg sat above the
+     home indicator on every page. The insets live on .app-shell, which is
+     CONTENT: at rest it holds pages clear of the notch and the indicator,
+     and mid-scroll the content slides under the screen edges the way a
+     native app's does. */
+  /* Fills the body column. flex-basis 0 with grow makes the height come from
+     the parent rather than from the content, which is what a scroller needs,
+     and min-height 0 lets it actually shrink to that instead of being propped
+     open by its own children. height:100% stays as the fallback for any
+     context where this is not a flex child. */
+  flex: 1 1 0;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  /* A flex column, because the checklist screen is built on nested flex:1
+     panes that need a definite height to scroll inside instead of growing.
+     Every direct child must be grow-only (flex: 1 0 auto). A shrinkable
+     child gets squeezed to the viewport and its content clipped. */
   display: flex;
   flex-direction: column;
 }
 
 /* ── Responsive app shell ──────────────────────────────────── */
 .app-shell {
-  flex: 1;
+  /* Grow with the content, never shrink to fit the scroller: as a plain
+     flex:1 item it would be squeezed to the viewport and its content clipped.
+     Growing to fill also gives it a definite height, which is what lets the
+     checklist's nested panes scroll rather than stretch. */
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
+  /* The device insets, applied to content rather than to the scroller. At
+     rest a page starts below the notch and stops above the home indicator;
+     scrolled, it runs to the physical edges because the scroller (#root)
+     clips at the viewport, not at a padding boundary. Fixed and portaled
+     screens (checklists, the fullscreen map, overlays) never inherit these
+     and carry their own. */
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  /* 100% of the scroller, not 100dvh: inside the safe-area padding a dvh-tall
+     shell is taller than the space it sits in, and every page would scroll by
+     the height of the notch with nothing to show for it. */
+  min-height: 100%;
   width: 100%;
+}
+
+/* Screens that manage their own scrolling. The checklist steps and Home. 
+   need the shell to be exactly the scroller's height. Their inner panes are
+   built on nested flex:1 / min-height:0 chains, and those only resolve into
+   something scrollable when the height above them is definite. Left to grow
+   the panes stretch to fit their content and the scroll disappears. */
+.app-shell--fill {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  /* These screens are built as fixed, self-insetting panes. Shell padding
+     here would shrink a box nothing sits in. */
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 /* Tablet: fill most of the screen, no border treatment */
@@ -196,13 +394,47 @@ body {
   }
 }
 
+/* ── Screens whose scroller is nested inside the shell ──────────
+   The checklist scrolls in a pane inside the shell rather than in #root.
+   Centring the shell at a reading width made that pane 780 px wide in the
+   middle of the window, and the 250 px of empty space either side of it
+   belonged to #root, which has nothing to scroll. A wheel out there moved
+   nothing, and a scroll never chains down into a child, so on a desktop
+   window the checklist simply would not scroll unless the pointer happened
+   to be over the content column. (At phone widths there are no margins, which
+   is why this only ever showed up on a big screen.)
+
+   So the shell goes full width on those screens and the reading width moves
+   inside, onto the content itself. The scroller now reaches both edges of
+   the window and a wheel anywhere over it works. */
+.app-shell--bleed {
+  max-width: none;
+}
+
+.content-column {
+  width: 100%;
+  margin: 0 auto;
+}
+
+@media (min-width: 600px) {
+  .content-column {
+    max-width: 700px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .content-column {
+    max-width: 780px;
+  }
+}
+
 /* ── Fixed footer bar (checklist tab bar + action buttons) ───
    position:fixed pins to the true device viewport regardless of
-   any dvh/ancestor-height mismatch — mirrors .app-shell's centered
+   any dvh/ancestor-height mismatch. Mirrors .app-shell's centered
    width so it lines up with the content column above it. Flush to
    the screen's own left/right/bottom edges (like a native iOS sheet
    or tab bar) so its corners read as part of the device rather than
-   a card floating above it — only the top corners are rounded, and
+   a card floating above it, only the top corners are rounded, and
    the safe-area inset is padding (keeps content off the home
    indicator) rather than a bottom margin. Slides down out of view
    while a card in the active step is open, and slides back once
@@ -214,7 +446,14 @@ body {
   bottom: 0;
   width: auto;
   margin: 0 auto;
-  padding-bottom: env(safe-area-inset-bottom);
+  /* Keeps the controls above the home indicator. The bar used to leave this
+     strip transparent, because the white came from the children rather than
+     from here, so the page showed through underneath as a band of --bg. It
+     only became visible once the status bar meta let the web view run
+     full-screen and the inset stopped being zero. The background belongs on
+     the bar so the colour reaches the bottom edge whatever the inset is. */
+  padding-bottom: var(--safe-bottom);
+  background: var(--bg-card);
   z-index: 40;
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
   overflow: hidden;
@@ -376,12 +615,12 @@ input[type="number"]::-webkit-outer-spin-button {
   to   { opacity: 1; transform: translateY(0)    scale(1); }
 }
 
-/* Sectional chart tiles — multiply blend removes grey no-coverage areas on light base */
+/* Sectional chart tiles: multiply blend removes grey no-coverage areas on light base */
 .sectional-layer { mix-blend-mode: multiply; }
 
-/* ── Weather detail overlay — CSS sky layers ─────────────────── */
+/* ── Weather detail overlay. CSS sky layers ─────────────────── */
 
-/* Cloud banks — pure CSS radial gradients, no canvas */
+/* Cloud banks: pure CSS radial gradients, no canvas */
 .wd-cloud-bank {
   position: absolute;
   left: -24%;
@@ -423,7 +662,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .wd-wisp-one { top: 78px;  opacity: 0.22; animation: wdWispSlide 54s ease-in-out infinite alternate; }
 .wd-wisp-two { top: 430px; opacity: 0.18; animation: wdWispSlide 42s ease-in-out infinite alternate-reverse; }
 
-/* Rain — seamless CSS background-position animation, three depth layers */
+/* Rain: seamless CSS background-position animation, three depth layers */
 .wd-rain-curtain {
   position: absolute;
   inset: -12% -28%;
@@ -490,7 +729,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .wd-haze-high { top: 220px;  height: 170px; opacity: 0.32; }
 .wd-haze-low  { bottom: 42px; height: 180px; opacity: 0.24; animation-delay: -9s; }
 
-/* Home card rain — compact card background rain effect */
+/* Home card rain: compact card background rain effect */
 .home-card-rain {
   position: absolute;
   inset: -20px;
@@ -537,12 +776,44 @@ input[type="number"]::-webkit-outer-spin-button {
 
 /* ── Leaflet maps on iOS ──────────────────────────────────────
    Press-and-hold is our "drop waypoint" gesture (Leaflet contextmenu).
-   Without these, iOS interprets the hold as text selection — magnifier
-   loupe, blue selection handles, callout — fighting the map. */
+   Without these, iOS interprets the hold as text selection. Magnifier
+   loupe, blue selection handles, callout. Fighting the map. */
 .leaflet-container,
 .leaflet-container * {
   -webkit-user-select: none !important;
   user-select: none !important;
   -webkit-touch-callout: none !important;
   -webkit-tap-highlight-color: transparent;
+}
+
+
+/* The paint probes that lived here (pink backdrop, lime canvas) settled the
+   standalone bottom-band question on 2026-08-02: neither elements nor the
+   canvas paint below the short view. The band is the OS window behind a
+   793pt web view, and the fix is the status-bar-style meta in index.html,
+   applied at web clip install time. */
+
+/* ── Airport code inputs ─────────────────────────────────────
+   A field must say it is listening. Tapping FROM or TO focused the input
+   but changed nothing visible, and with the keyboard already up from a
+   previous field the only evidence was a caret, which in a 4-character
+   monospace box is easy to miss. Industry practice (Material's states
+   model, GOV.UK's focus rules): on focus the border takes the accent
+   colour with a soft ring, animated fast enough to feel immediate and
+   slow enough to read as motion rather than a jump. */
+.icao-input {
+  border: 0.5px solid var(--border);
+  caret-color: var(--accent);
+  transition: border-color 0.18s ease-out, box-shadow 0.18s ease-out;
+}
+.icao-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+.icao-input--error {
+  border-color: var(--danger);
+}
+.icao-input--error:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 15%, transparent);
 }

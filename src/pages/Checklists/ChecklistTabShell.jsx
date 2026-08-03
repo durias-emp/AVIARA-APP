@@ -26,7 +26,7 @@ function PaneActivityProvider({ onActiveChange, children }) {
   return <PaneActivityContext.Provider value={value}>{children}</PaneActivityContext.Provider>
 }
 
-/* ── Full-screen tabbed step navigation — one section per tab,
+/* ── Full-screen tabbed step navigation, one section per tab,
    fixed tab bar at the bottom, sections slide horizontally as a
    single translated track. Index-based positioning makes tap
    navigation direction-correct automatically; a drag gesture on
@@ -66,7 +66,7 @@ export default function ChecklistTabShell({
   }, [])
 
   function onTouchStart(e) {
-    // Gestures that start on a map belong to the map (pan/zoom/long-press) —
+    // Gestures that start on a map belong to the map (pan/zoom/long-press). 
     // never turn them into tab swipes. This was the "glitchy map" bug: any
     // horizontal pan on the route map dragged the whole checklist sideways.
     if (e.target.closest?.('.leaflet-container')) return
@@ -76,8 +76,12 @@ export default function ChecklistTabShell({
       startY: t.clientY,
       width: containerRef.current?.clientWidth || 1,
       tracking: true,
+      // Nothing is a swipe until it proves horizontal. Flipping state on every
+      // touchstart re-rendered the track, including its transition property. 
+      // at the instant a finger landed, which is enough for iOS to abandon the
+      // scroll it was about to start.
+      committed: false,
     }
-    setDragging(true)
   }
 
   function onTouchMove(e) {
@@ -87,13 +91,20 @@ export default function ChecklistTabShell({
     const dx = t.clientX - g.startX
     const dy = Math.abs(t.clientY - g.startY)
 
-    // Vertical-dominant gesture — this is a scroll, not a tab swipe. Bail out
-    // and let the pane's own overflowY handle it.
+    // Vertical-dominant gesture: this is a scroll, not a tab swipe. Bail out
+    // and let the pane's own overflowY handle it, without touching state:
+    // a re-render here lands mid-scroll.
     if (dy > MAX_VERTICAL_DRIFT && dy > Math.abs(dx)) {
       g.tracking = false
-      setDragging(false)
-      setDragPx(0)
+      if (g.committed) { setDragging(false); setDragPx(0) }
       return
+    }
+
+    // Horizontal enough to be a swipe, only now does the track start moving.
+    if (!g.committed) {
+      if (Math.abs(dx) < MAX_VERTICAL_DRIFT) return
+      g.committed = true
+      setDragging(true)
     }
 
     let clamped = dx
@@ -105,6 +116,7 @@ export default function ChecklistTabShell({
   function onTouchEnd() {
     const g = gesture.current
     gesture.current = null
+    if (!g?.committed) return          // a scroll, or a tap: nothing to settle
     setDragging(false)
 
     if (g?.tracking) {
@@ -132,11 +144,28 @@ export default function ChecklistTabShell({
           transition: dragging ? 'none' : 'transform 0.32s cubic-bezier(0.4,0,0.2,1)',
         }}>
           {sections.map((section, i) => (
-            <div key={section.title} style={{ width: `${100 / n}%`, flexShrink: 0, height: '100%', overflowY: 'auto' }}>
-              <div style={{ paddingBottom: footerHeight }}>
+            <div key={section.title} style={{
+              width: `${100 / n}%`, flexShrink: 0, height: '100%',
+              overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+              overscrollBehaviorY: 'contain',
+              // A flex column so the content column can be told to fill the
+              // pane's height. A percentage min-height would resolve against
+              // an auto-height parent and quietly do nothing.
+              display: 'flex', flexDirection: 'column',
+            }}>
+              {/* The pane itself spans the whole window so a wheel anywhere
+                  over it scrolls; the reading width lives here instead. */}
+              <div className="content-column" style={{
+                paddingBottom: footerHeight,
+                // Grow past the pane when the content is taller, fill it when
+                // it is shorter, which is what lets collapsed cards share the
+                // screen instead of stacking at the top of it.
+                flex: '1 0 auto', display: 'flex', flexDirection: 'column',
+              }}>
                 <PaneActivityProvider onActiveChange={onActiveChangeFns[i]}>
                   <StepPane
                     key={`${section.title}-${resetKey}`}
+                    stretch={!paneOpen[i]}
                     section={section}
                     checked={checked}
                     onToggle={onToggle}
@@ -155,7 +184,7 @@ export default function ChecklistTabShell({
       <div
         ref={footerRef}
         className="fixed-footer-bar"
-        style={{ transform: footerHidden ? 'translateY(calc(100% + 24px + env(safe-area-inset-bottom, 0px)))' : 'translateY(0)' }}
+        style={{ transform: footerHidden ? 'translateY(calc(100% + 24px + var(--safe-bottom)))' : 'translateY(0)' }}
       >
         <StepTabBar
           sections={sections}

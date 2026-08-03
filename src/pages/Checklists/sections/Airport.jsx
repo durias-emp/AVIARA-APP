@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
+import { analyzeAerodromes } from '../../../lib/aerodromes'
 import { get, put, del } from '../../../lib/db'
 import { ExpandableCard, DoneButton, CheckRow as SharedCheckRow } from '../shared/ui'
 import { FAA_DTPP_BASE } from '../shared/faaData'
@@ -11,7 +12,7 @@ export function NotamItem({ item, isChecked, onToggle }) {
   const NOTAM_LINKS = [
     { label: 'FAA NOTAM Search', sub: 'Official FAA NOTAM system', url: 'https://notams.aim.faa.gov/notamSearch/' },
     { label: 'FAA TFR Map', sub: 'Active TFRs plotted on a map', url: 'https://tfr.faa.gov/tfr2/list.html' },
-    { label: '1800wxbrief.com', sub: 'Leidos flight service — full preflight briefing', url: 'https://www.1800wxbrief.com' },
+    { label: '1800wxbrief.com', sub: 'Leidos flight service. Full preflight briefing', url: 'https://www.1800wxbrief.com' },
   ]
   const TFR_TYPES = [
     { label: 'VIP / POTUS movement', color: '#FF3B30' },
@@ -65,7 +66,7 @@ export function NotamItem({ item, isChecked, onToggle }) {
             ))}
           </div>
           <div style={{ padding: '10px 14px 10px', marginTop: 4 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>NOTAMs change daily — always check on the day of flight.</div>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>NOTAMs change daily, always check on the day of flight.</div>
           </div>
           <DoneButton isChecked={isChecked} onDone={() => { onToggle(item.id); setOpen(false) }} />
     </ExpandableCard>
@@ -107,7 +108,7 @@ export function NotamSection({ icao, CheckRow }) {
     fetch(`${workerUrl.replace(/\/$/, '')}?icao=${icao}`)
       .then(r => r.json())
       .then(data => { setNotams(data?.items || []); setLoading(false) })
-      .catch(() => { setError('Could not reach the NOTAM worker — check the URL'); setLoading(false) })
+      .catch(() => { setError('Could not reach the NOTAM worker. Check the URL'); setLoading(false) })
   }, [workerUrl, icao])
 
   const saveUrl = () => {
@@ -233,6 +234,11 @@ export function AirportItem({ item, isChecked, onToggle }) {
   const [fboNote, setFboNote]       = useState(() => localStorage.getItem('apt_fbo_note') || '')
   const [checkedIds, setCheckedIds] = useState(new Set())
   const [destIcao, setDestIcao]     = useState('')
+  // Which airport the card is showing. Defaults to the destination and
+  // changes when a field along the route is picked from the list below.
+  const [viewIcao, setViewIcao]     = useState('')
+  const [enroute, setEnroute]       = useState([])
+  const [pickerOpen, setPickerOpen] = useState(false)
 
 
   const toggleSub = id => {
@@ -244,11 +250,30 @@ export function AirportItem({ item, isChecked, onToggle }) {
   }
 
   const [aptWind, setAptWind]       = useState(null) // { dir, spd }
-  const [selectedRwy, setSelectedRwy] = useState(null) // { icao, id, hdg } — pilot's chosen/assigned runway
+  const [selectedRwy, setSelectedRwy] = useState(null) // { icao, id, hdg }. Pilot's chosen/assigned runway
 
   useEffect(() => {
-    get('settings', 'route').then(r => {
-      if (r?.dest) setDestIcao(r.dest.toUpperCase())
+    get('settings', 'route').then(async r => {
+      if (r?.dest) {
+        setDestIcao(r.dest.toUpperCase())
+        // The destination is what the card opens on. It is the airport the
+        // rest of the checklist is about, but it is no longer the only one
+        // it can show.
+        setViewIcao(prev => prev || r.dest.toUpperCase())
+      }
+      if (r?.depPos && r?.destPos) {
+        // Recomputed here rather than passed in: analyzeAerodromes reads only
+        // bundled data, so this costs no network, and the alternative is
+        // threading the route card's state across two sections of the
+        // checklist to say something both can work out for themselves.
+        const wps = [
+          { lat: r.depPos[0], lon: r.depPos[1] },
+          ...(r.wpts ?? []).filter(w => Number.isFinite(w?.lat)).map(w => ({ lat: w.lat, lon: w.lon })),
+          { lat: r.destPos[0], lon: r.destPos[1] },
+        ]
+        const aero = await analyzeAerodromes(wps)
+        setEnroute(aero.status === 'ok' ? aero.fields : [])
+      }
     })
     get('settings', 'selectedRunway').then(sr => {
       setSelectedRwy(sr ?? null)
@@ -256,6 +281,11 @@ export function AirportItem({ item, isChecked, onToggle }) {
   }, [open])
 
   function toggleRunwaySelection(r) {
+    // The chosen runway feeds the landing distance calculation, which is about
+    // the arrival. Picking one while looking at a field 200 NM up the route
+    // would quietly re-point that calculation at an airport you are not
+    // landing at, so it only applies at the destination.
+    if (!atDestination) return
     if (selectedRwy?.id === r.id) {
       setSelectedRwy(null)
       del('settings', 'selectedRunway').catch(() => {})
@@ -267,26 +297,27 @@ export function AirportItem({ item, isChecked, onToggle }) {
   }
 
   useEffect(() => {
-    if (!open || !destIcao) return
-    proxyJSON(awcUrl('metar', { ids: destIcao, format: 'json', hours: '3' }))
+    if (!open || !viewIcao) return
+    proxyJSON(awcUrl('metar', { ids: viewIcao, format: 'json', hours: '3' }))
       .then(data => {
         const m = Array.isArray(data) ? data[0] : null
         if (m?.wdir != null && m?.wspd != null) setAptWind({ dir: m.wdir, spd: m.wspd })
       })
       .catch(() => {})
-  }, [open, destIcao])
+  }, [open, viewIcao])
 
   useEffect(() => {
-    if (!open || !destIcao) return
+    if (!open || !viewIcao) return
     setAptLoading(true)
     setAptError(null)
-    lookupAirport(destIcao)
+    lookupAirport(viewIcao)
       .then(d => { setAptData(d); setAptLoading(false) })
       .catch(() => { setAptError('Airport data unavailable'); setAptLoading(false) })
-  }, [open, destIcao])
+  }, [open, viewIcao])
 
 
-  const icao = destIcao || 'XXXX'
+  const icao = viewIcao || destIcao || 'XXXX'
+  const atDestination = !!viewIcao && viewIcao === destIcao
 
   const ExternalIcon = () => (
     <svg width={12} height={12} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, color: 'var(--text-tertiary)' }}>
@@ -302,12 +333,12 @@ export function AirportItem({ item, isChecked, onToggle }) {
     'apt-hours':  'Verify the airport and any required services (tower, FBO, customs) are open for your planned arrival time.',
     'apt-taxi':   'Study the taxi chart before landing. Know your route from the runway to parking before you touch down.',
     'apt-taxi-a': 'Identify all runway incursion hot spots marked on the airport diagram. These are areas with a history of confusion or incidents.',
-    'apt-taxi-b': 'Note your planned parking location — FBO ramp, transient parking, helipad, or customs ramp — so you taxi with purpose.',
+    'apt-taxi-b': 'Note your planned parking location. FBO ramp, transient parking, helipad, or customs ramp, so you taxi with purpose.',
     'apt-light':  'Confirm runway, taxiway, and ramp lighting is available and operational if arriving at night or in low visibility.',
     'apt-sat':    'Use the satellite view to familiarize yourself with the airport environment, surroundings, and any construction or obstacles not shown on charts.',
-    'apt-notam':  'Check all active NOTAMs for this airport — runway closures, NAVAID outages, TFRs, and construction that may affect your arrival.',
+    'apt-notam':  'Check all active NOTAMs for this airport. Runway closures, NAVAID outages, TFRs, and construction that may affect your arrival.',
     'apt-svc-a':  'Confirm fuel type and availability, oil if needed, parking arrangements, and any amenities required for crew or passengers.',
-    'apt-caution':'Review any airport-specific cautions — noise abatement, bird activity, terrain, noise-sensitive areas, or special local procedures.',
+    'apt-caution':'Review any airport-specific cautions. Noise abatement, bird activity, terrain, noise-sensitive areas, or special local procedures.',
     'apt-fbo':    'Contact the FBO in advance to confirm parking, ground handling, and any special arrival requirements.',
     'apt-fbo-a':  'Note the FBO ground frequency so you can call them on the radio during taxi-in for marshallers or parking guidance.',
   }
@@ -329,6 +360,95 @@ export function AirportItem({ item, isChecked, onToggle }) {
   return (
     <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
 
+      {/* ── Which airport ──
+          The card used to be about the destination and nothing else, which
+          left the fields you would actually divert to unreachable from the
+          checklist. They existed only on the route map. The destination is
+          still what it opens on and still what the runway selection below
+          belongs to; the rest of the route's fields are now one tap away. */}
+      {destIcao && (
+        <div style={{ padding: '12px 14px 0' }}>
+          {/* The same sliding two-segment control the Density Altitude card
+              uses for DEP/ARR, one switcher pattern across the checklist
+              rather than a second one that merely resembles it. */}
+          <div style={{
+            position: 'relative', display: 'flex',
+            background: 'var(--bg-card-2)', borderRadius: 10, padding: 3,
+            cursor: 'pointer', userSelect: 'none',
+          }}>
+            <div style={{
+              position: 'absolute', top: 3, bottom: 3, width: 'calc(50% - 3px)',
+              left: atDestination ? 3 : 'calc(50%)',
+              background: 'var(--accent)', borderRadius: 7,
+              transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1)',
+              pointerEvents: 'none',
+            }} />
+            <div
+              onClick={() => { setViewIcao(destIcao); setPickerOpen(false) }}
+              style={{
+                flex: 1, padding: '5px 10px', zIndex: 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                color: atDestination ? 'var(--accent-fg)' : 'var(--text-secondary)',
+              }}>
+              <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '1px' }}>
+                {destIcao}
+              </span>
+            </div>
+            <div
+              onClick={() => { if (enroute.length) setPickerOpen(o => !o) }}
+              style={{
+                flex: 1, padding: '5px 10px', zIndex: 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                color: !atDestination ? 'var(--accent-fg)' : 'var(--text-secondary)',
+                opacity: enroute.length ? 1 : 0.45,
+              }}>
+              <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '1px' }}>
+                {atDestination ? 'EN ROUTE' : icao}
+              </span>
+              {enroute.length > 0 && atDestination && (
+                <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.7 }}>{enroute.length}</span>
+              )}
+            </div>
+          </div>
+
+          {pickerOpen && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 8,
+              maxHeight: 190, overflowY: 'auto' }}>
+              {enroute.map(f => (
+                <div key={f.ident + f.alongNm}
+                  onClick={() => { setViewIcao(f.ident); setPickerOpen(false) }}
+                  style={{ display: 'flex', alignItems: 'baseline', gap: 8, cursor: 'pointer',
+                    padding: '6px 8px', borderRadius: 7,
+                    background: f.ident === viewIcao ? 'var(--bg-card-2)' : 'transparent' }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, fontFamily: 'monospace',
+                    letterSpacing: '0.5px', color: 'var(--text)', minWidth: 54 }}>{f.ident}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-tertiary)', flex: 1, minWidth: 0,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {f.name || f.clsLabel}
+                  </span>
+                  <span style={{ fontSize: 10.5, color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                    {f.distNm} NM off · {f.alongNm} NM in
+                  </span>
+                </div>
+              ))}
+              <div style={{ fontSize: 9.5, color: 'var(--text-tertiary)', lineHeight: 1.45, padding: '4px 8px 0' }}>
+                Fields within {10} NM of track, nearest first. Departure and destination excluded.
+              </div>
+            </div>
+          )}
+
+          {/* Everything below is about the airport named here, and when that is
+              not the destination it is worth saying so plainly. The checklist
+              items underneath still belong to the arrival. */}
+          {!atDestination && (
+            <div style={{ fontSize: 10.5, color: 'var(--warn)', marginTop: 8, lineHeight: 1.45 }}>
+              Showing {icao}, a field along the route. The checklist items below are for
+              your arrival at {destIcao}.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Airport info ── */}
       <div style={{ padding: '14px 14px 0' }}>
         {aptLoading && (
@@ -339,7 +459,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
         )}
         {!aptLoading && !aptData && !aptError && (
           <div style={{ fontSize: 11, color: 'var(--text-tertiary)', paddingBottom: 12 }}>
-            {destIcao ? `Looking up ${destIcao}...` : 'Set a destination in the Route card to load airport data.'}
+            {icao !== 'XXXX' ? `Looking up ${icao}...` : 'Set a destination in the Route card to load airport data.'}
           </div>
         )}
         {aptData && (() => {
@@ -360,7 +480,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
           })
           const others = (aptData.frequencies || []).filter(f => !used.has(f.freq + f.type))
 
-          // Wind components for every runway end — headwind/tailwind + crosswind,
+          // Wind components for every runway end. Headwind/tailwind + crosswind,
           // computed independently per direction so each end can be judged on its
           // own face into the wind. Planning aid only, not a runway assignment.
           const runwayWinds = aptWind
@@ -426,7 +546,11 @@ export function AirportItem({ item, isChecked, onToggle }) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                       {runwayWinds.map(r => {
                         const isBest = r.id === bestRwyId
-                        const isSelected = selectedRwy?.id === r.id
+                        // Scoped to the airport, not just the runway number.
+                        // Runway identifiers repeat everywhere. A 20R chosen
+                        // at the destination was lighting up the 20R of every
+                        // other field the card can now show.
+                        const isSelected = selectedRwy?.icao === icao && selectedRwy?.id === r.id
                         return (
                           <button key={r.id} onClick={() => toggleRunwaySelection(r)} style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -476,7 +600,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
                       </div>
                     </div>
                   ) : (
-                    /* No METAR wind yet — headings only */
+                    /* No METAR wind yet. Headings only */
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 5 }}>
                       {aptData.runways.map(r => (
                         <div key={r.id} style={{
@@ -510,7 +634,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
           const apdChart = (FAA_CHARTS_DATA[ident] || []).find(([code]) => code === 'APD')
           const apdUrl = apdChart ? `${FAA_DTPP_BASE}${apdChart[2]}` : null
           // Fallbacks go to the FAA's own products rather than a third-party
-          // chart site — the app renders its charts from FAA tiles now.
+          // chart site: the app renders its charts from FAA tiles now.
           const faaDafd = `https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dafd/search/advanced/?ident=${ident}`
           const faaDtpp = `https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dtpp/search/results/?cycle=&ident=${ident}`
           const gridBtn = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center',
@@ -619,7 +743,7 @@ export function AirportItem({ item, isChecked, onToggle }) {
         )}
 
         {/* No published frequencies is a real answer for some fields in the
-            bundled data — say so rather than leaving a gap that reads as though
+            bundled data. Say so rather than leaving a gap that reads as though
             the section failed to load. */}
         {aptData && !aptData.frequencies?.length && (
           <div style={{ padding: '4px 14px' }}>
@@ -627,12 +751,12 @@ export function AirportItem({ item, isChecked, onToggle }) {
               borderRadius: 11, background: 'var(--bg-card-2)', padding: '12px 16px',
               fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.45,
             }}>
-              No frequencies published for {icao} in our data — check the Chart Supplement or the AIP.
+              No frequencies published for {icao} in our data. Check the Chart Supplement or the AIP.
             </div>
           </div>
         )}
 
-        {/* Frequencies — card button that drops down the list */}
+        {/* Frequencies: card button that drops down the list */}
         {aptData?.frequencies?.length > 0 && (
           <div style={{ padding: '4px 14px 4px' }}>
             <div style={{

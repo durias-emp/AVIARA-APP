@@ -2,7 +2,7 @@ import { IconChevronRight } from '../../../components/Icons'
 
 // ── Shared visual atoms for Reference topic pages ─────────────────────────
 
-// Back-to-grid header used by every topic detail view — matches the app's
+// Back-to-grid header used by every topic detail view. Matches the app's
 // existing card title style (SectionCard in Calculators.jsx) rather than
 // full page navigation, since topics are shown inline within one page.
 export function TopicHeader({ title, onBack }) {

@@ -1,10 +1,10 @@
-// FAA AIRAC chart cycle — updates every 28 days. Single source of truth for
+// FAA AIRAC chart cycle. Updates every 28 days. Single source of truth for
 // every d-tpp URL and the bundled chart index; bump this one string per cycle.
 export const FAA_CHART_CYCLE = '2606'
 export const FAA_DTPP_BASE = `https://aeronav.faa.gov/d-tpp/${FAA_CHART_CYCLE}/`
 
 export const FAA_AIRPORTS = [
-  // US — Major hubs
+  // US: Major hubs
   { icao:'KATL', name:'Hartsfield-Jackson Atlanta Intl',  city:'Atlanta, GA' },
   { icao:'KLAX', name:'Los Angeles Intl',                  city:'Los Angeles, CA' },
   { icao:'KORD', name:"O'Hare Intl",                       city:'Chicago, IL' },
@@ -87,7 +87,7 @@ export const FAA_AIRPORTS = [
   { icao:'MMMX', name:'Benito Juárez Intl',                city:'Mexico City, MX' },
   { icao:'MMUN', name:'Cancún Intl',                       city:'Cancún, MX' },
   { icao:'MMGL', name:'Don Miguel Hidalgo y Costilla Intl',city:'Guadalajara, MX' },
-  { icao:'MMTJ', name:'Tijuana Intl — Gen Abelardo L Rodriguez', city:'Tijuana, MX' },
+  { icao:'MMTJ', name:'Tijuana Intl. Gen Abelardo L Rodriguez', city:'Tijuana, MX' },
   { icao:'MGGT', name:'La Aurora Intl',                    city:'Guatemala City, GT' },
   { icao:'MHTG', name:'Toncontín Intl',                    city:'Tegucigalpa, HN' },
   { icao:'MNMG', name:'Augusto C. Sandino Intl',           city:'Managua, NI' },

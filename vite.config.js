@@ -10,6 +10,30 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 // though it works fine once deployed. Without this, every airport lookup
 // looks "broken" locally regardless of the actual proxy's health.
 // Dev-only middleware mirroring api/tfr.js (same reasoning as awcDevProxy).
+// Dev-only sink for on-device measurements. The numbers that decide whether
+// the app fills the screen exist only on the phone: the desktop preview
+// reports zero insets, and the phone's console does not reach this terminal.
+// main.jsx (dev builds only) posts its viewport readings here, so opening the
+// app on the phone prints the truth where the developer is actually looking.
+function deviceLogSink() {
+  return {
+    name: 'device-log-sink',
+    configureServer(server) {
+      server.middlewares.use('/__device-log', (req, res) => {
+        let body = ''
+        req.on('data', (c) => { body += c })
+        req.on('end', () => {
+          try {
+            console.log('\n[device] ' + JSON.stringify(JSON.parse(body)))
+          } catch { console.log('\n[device] ' + body.slice(0, 500)) }
+          res.statusCode = 204
+          res.end()
+        })
+      })
+    },
+  }
+}
+
 function tfrDevProxy() {
   const WFS_URL =
     'https://tfr.faa.gov/geoserver/TFR/ows?service=WFS&version=1.1.0&request=GetFeature' +
@@ -503,10 +527,18 @@ export default defineConfig(({ mode }) => {
   Object.assign(process.env, loadEnv(mode, process.cwd(), ''))
 
   return {
-    server: phoneTest ? { host: true } : undefined,
+    server: {
+      // Vite rejects requests whose Host header it doesn't recognise, which
+      // blocks the phone preview served through a Cloudflare quick tunnel.
+      // The leading dot allows any *.trycloudflare.com subdomain — the quick
+      // tunnel picks a fresh random one on every run.
+      allowedHosts: ['.trycloudflare.com'],
+      ...(phoneTest ? { host: true } : {}),
+    },
     plugins: [
       awcDevProxy(),
       tfrDevProxy(),
+      deviceLogSink(),
       tfrDetailDevProxy(),
       iconDevProxy(),
       pohDevProxy(),
@@ -524,8 +556,8 @@ export default defineConfig(({ mode }) => {
           description: 'Offline pilot quick reference: calculators, checklists, air law, currency tracker.',
           // matches --bg in the dark theme, so the install splash and app
           // surface are the same colour instead of slate vs near-black
-          theme_color: '#1c1c22',
-          background_color: '#1c1c22',
+          theme_color: '#000000',
+          background_color: '#000000',
           display: 'standalone',
           orientation: 'portrait',
           start_url: '/',
@@ -537,10 +569,31 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-          // The bundled navdata (fixes.json chunk, ~2 MB) exceeds workbox's
-          // 2 MiB default — raise so waypoint lookup works offline.
-          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+          // The aeronautical data — fixes, coastline, airport details, the
+          // world reference layer, airports, airways, navaids, procedure
+          // indexes — is deliberately NOT precached. Together it is over
+          // 10 MB, and precaching means the phone must download all of it
+          // before a new version will activate: on a weak connection the
+          // install fails, retries, and the app appears not to update at
+          // all. It is cached on first use instead (below), so it is still
+          // there offline once a route has been planned.
+          globIgnores: [
+            '**/assets/{fixes,land,airport_details,world_ref,airports,airways,navaids,cenamer_airspace,preferred_routes,procedures,procedures_index,aux_aerodromes}-*.js',
+          ],
+          maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
           runtimeCaching: [
+            {
+              // Content-hashed filenames, so a cached copy is never stale — a
+              // new build simply asks for a different URL. maxEntries clears
+              // the ones previous builds left behind.
+              urlPattern: /\/assets\/(fixes|land|airport_details|world_ref|airports|airways|navaids|cenamer_airspace|preferred_routes|procedures|procedures_index|aux_aerodromes)-[^/]+\.js$/,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'aviara-navdata',
+                expiration: { maxEntries: 20, purgeOnQuotaError: true },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
             {
               urlPattern: /^https:\/\/aviationweather\.gov\/.*/i,
               handler: 'NetworkFirst',

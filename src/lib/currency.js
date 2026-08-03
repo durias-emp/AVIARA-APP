@@ -1,43 +1,43 @@
 /**
- * Currency date-logic utilities — 14 CFR 61 / 91
+ * Currency date-logic utilities: 14 CFR 61 / 91
  * All functions are pure (no side-effects) so they can be unit-tested independently.
  */
 
 // ---------------------------------------------------------------------------
-// FAR reference config — keep here so numbers are easy to verify / update
+// FAR reference config: keep here so numbers are easy to verify / update
 // ---------------------------------------------------------------------------
 export const FAR = {
   imsafe:         { ref: '91.3',    label: 'FAR 91.3',     desc: 'Responsibility and authority of the pilot in command.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-A/section-91.3' },
-  flightReview:   { ref: '61.56',   label: 'FAR 61.56',    desc: 'Flight review — required every 24 calendar months to act as PIC.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.56' },
-  passenger90:    { ref: '61.57(a)',label: 'FAR 61.57(a)', desc: 'Recent flight experience — 3 takeoffs/landings in 90 days to carry passengers.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.57' },
-  night90:        { ref: '61.57(b)',label: 'FAR 61.57(b)', desc: 'Night recent experience — 3 full-stop takeoffs/landings at night in 90 days to carry passengers at night.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.57' },
-  ifrCurrency:    { ref: '61.57(c)',label: 'FAR 61.57(c)', desc: 'Instrument experience — 6 approaches, holding, and intercepting/tracking courses within 6 calendar months.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.57' },
-  ipc:            { ref: '61.57(d)',label: 'FAR 61.57(d)', desc: 'Instrument proficiency check — required if instrument currency lapses beyond the 6-month grace period.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.57' },
-  medical:        { ref: '61.23',   label: 'FAR 61.23',    desc: 'Medical certificates — class, duration, and when required.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.23' },
+  flightReview:   { ref: '61.56',   label: 'FAR 61.56',    desc: 'Flight review. Required every 24 calendar months to act as PIC.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.56' },
+  passenger90:    { ref: '61.57(a)',label: 'FAR 61.57(a)', desc: 'Recent flight experience. 3 takeoffs/landings in 90 days to carry passengers.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.57' },
+  night90:        { ref: '61.57(b)',label: 'FAR 61.57(b)', desc: 'Night recent experience. 3 full-stop takeoffs/landings at night in 90 days to carry passengers at night.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.57' },
+  ifrCurrency:    { ref: '61.57(c)',label: 'FAR 61.57(c)', desc: 'Instrument experience. 6 approaches, holding, and intercepting/tracking courses within 6 calendar months.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.57' },
+  ipc:            { ref: '61.57(d)',label: 'FAR 61.57(d)', desc: 'Instrument proficiency check. Required if instrument currency lapses beyond the 6-month grace period.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.57' },
+  medical:        { ref: '61.23',   label: 'FAR 61.23',    desc: 'Medical certificates. Class, duration, and when required.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.23' },
   medicalDur:     { ref: '61.23(d)',label: 'FAR 61.23(d)', desc: 'Medical certificate duration matrix by class and age at exam.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.23' },
   crewDocs:       { ref: '61.3',    label: 'FAR 61.3',     desc: 'Certificates, ratings, and documents pilots must carry and present.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-D/part-61/subpart-A/section-61.3' },
-  airworthCert:   { ref: '91.203',  label: 'FAR 91.203',   desc: 'Civil aircraft — required certificates and markings on board.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-C/section-91.203' },
+  airworthCert:   { ref: '91.203',  label: 'FAR 91.203',   desc: 'Civil aircraft. Required certificates and markings on board.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-C/section-91.203' },
   registration:   { ref: '91.203',  label: 'FAR 91.203',   desc: 'Aircraft registration must be aboard and available.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-C/section-91.203' },
   opLimitations:  { ref: '91.9',    label: 'FAR 91.9',     desc: 'Civil aircraft flight manual, markings, and placard requirements.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-A/section-91.9' },
-  weightBalance:  { ref: '91.103',  label: 'FAR 91.103',   desc: 'Preflight action — weight and balance, performance, and runway data must be checked.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-A/section-91.103' },
-  annual:         { ref: '91.409',  label: 'FAR 91.409',   desc: 'Annual inspection — required within the preceding 12 calendar months.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-E/section-91.409' },
-  hundredHour:    { ref: '91.409',  label: 'FAR 91.409',   desc: '100-hour inspection — required for aircraft used for hire/flight instruction for hire.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-E/section-91.409' },
-  pitotStatic:    { ref: '91.411',  label: 'FAR 91.411',   desc: 'Pitot-static and altimeter system tests — required every 24 calendar months for IFR flight.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-E/section-91.411' },
-  transponder:    { ref: '91.413',  label: 'FAR 91.413',   desc: 'Transponder tests and inspections — required every 24 calendar months.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-E/section-91.413' },
-  elt:            { ref: '91.207',  label: 'FAR 91.207',   desc: 'Emergency locator transmitters — required equipment and battery/inspection intervals.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-C/section-91.207' },
+  weightBalance:  { ref: '91.103',  label: 'FAR 91.103',   desc: 'Preflight action. Weight and balance, performance, and runway data must be checked.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-A/section-91.103' },
+  annual:         { ref: '91.409',  label: 'FAR 91.409',   desc: 'Annual inspection. Required within the preceding 12 calendar months.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-E/section-91.409' },
+  hundredHour:    { ref: '91.409',  label: 'FAR 91.409',   desc: '100-hour inspection. Required for aircraft used for hire/flight instruction for hire.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-E/section-91.409' },
+  pitotStatic:    { ref: '91.411',  label: 'FAR 91.411',   desc: 'Pitot-static and altimeter system tests. Required every 24 calendar months for IFR flight.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-E/section-91.411' },
+  transponder:    { ref: '91.413',  label: 'FAR 91.413',   desc: 'Transponder tests and inspections. Required every 24 calendar months.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-E/section-91.413' },
+  elt:            { ref: '91.207',  label: 'FAR 91.207',   desc: 'Emergency locator transmitters. Required equipment and battery/inspection intervals.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-C/section-91.207' },
   ads:            { ref: '91.417',  label: 'FAR 91.417',   desc: 'Maintenance record keeping requirements.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-E/section-91.417' },
-  requiredEquip:  { ref: '91.205',  label: 'FAR 91.205',   desc: 'Powered civil aircraft with standard category U.S. airworthiness certificates — instrument and equipment requirements.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-C/section-91.205' },
-  vorCheck:       { ref: '91.171',  label: 'FAR 91.171',   desc: 'VOR equipment check — required every 30 days for IFR flight under VOR navigation.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.171' },
+  requiredEquip:  { ref: '91.205',  label: 'FAR 91.205',   desc: 'Powered civil aircraft with standard category U.S. airworthiness certificates. Instrument and equipment requirements.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-C/section-91.205' },
+  vorCheck:       { ref: '91.171',  label: 'FAR 91.171',   desc: 'VOR equipment check. Required every 30 days for IFR flight under VOR navigation.', url: 'https://www.ecfr.gov/current/title-14/chapter-I/subchapter-F/part-91/subpart-B/section-91.171' },
 }
 
 // ---------------------------------------------------------------------------
-// Core date functions — write once, used across all cards
+// Core date functions: write once, used across all cards
 // ---------------------------------------------------------------------------
 
 /**
  * Calendar-month expiry per 14 CFR 61.23(d):
  * "end of the last day of the Nth month after the month of the date of examination."
- * The day of baseDate is irrelevant — only the month matters.
+ * The day of baseDate is irrelevant, only the month matters.
  *
  * Sanity check: exam Jan 15 2025, 12 months -> valid through Jan 31 2026.
  */
@@ -57,7 +57,7 @@ export function calendarMonthExpiry(baseDate, months) {
 }
 
 /**
- * Rolling-days currency — e.g. 61.57(a) 90-day passenger currency.
+ * Rolling-days currency: e.g. 61.57(a) 90-day passenger currency.
  */
 export function daysCurrencyExpiry(lastEventDate, windowDays = 90) {
   const expiry = parseLocal(lastEventDate)
@@ -94,7 +94,7 @@ export function statusFromHours(nextDueHours, currentHobbs, warnHours = 10) {
 }
 
 // ---------------------------------------------------------------------------
-// Medical duration matrix — 14 CFR 61.23(d)
+// Medical duration matrix: 14 CFR 61.23(d)
 // Auditable single source of truth. A row applies when medicalClass <= classMax.
 // u40 = months if age-at-exam < 40; o40 = months if age-at-exam >= 40.
 // ---------------------------------------------------------------------------
@@ -139,7 +139,7 @@ export function ageAt(dob, examDate) {
 }
 
 // ---------------------------------------------------------------------------
-// getCurrencyStatus — shared selector for Flight Planning module
+// getCurrencyStatus: shared selector for Flight Planning module
 // ---------------------------------------------------------------------------
 
 /**
@@ -163,7 +163,7 @@ export function getCurrencyStatus(data = {}, warnDays = 30) {
   // ── IM CURRENT ───────────────────────────────────────────────────────────
   const currentChecks = []
 
-  // Flight review — 24 calendar months
+  // Flight review: 24 calendar months
   if (data.current?.flightReviewDate) {
     const exp = calendarMonthExpiry(data.current.flightReviewDate, 24)
     currentChecks.push(statusFromExpiry(exp, warnDays))
@@ -171,10 +171,10 @@ export function getCurrencyStatus(data = {}, warnDays = 30) {
     currentChecks.push({ status: 'unknown' })
   }
 
-  // Day passenger currency — 90 days, self-reported acknowledgment (no date tracked)
+  // Day passenger currency: 90 days, self-reported acknowledgment (no date tracked)
   currentChecks.push({ status: data.current?.dayCurrent === true ? 'valid' : 'unknown' })
 
-  // IFR — 6 calendar months; IPC date still decays on a calendar-month basis,
+  // IFR: 6 calendar months; IPC date still decays on a calendar-month basis,
   // otherwise fall back to the self-reported acknowledgment checkbox
   if (data.current?.ipcDate) {
     const exp = calendarMonthExpiry(data.current.ipcDate, 6)
@@ -236,13 +236,13 @@ export function getCurrencyStatus(data = {}, warnDays = 30) {
 }
 
 // ---------------------------------------------------------------------------
-// getGlobalCurrencyStatus — single worst-of-all status for the Home icon
+// getGlobalCurrencyStatus: single worst-of-all status for the Home icon
 // ---------------------------------------------------------------------------
 
 /**
  * Rolls the four getCurrencyStatus() cards up into one status for a status-
  * indicator icon. 'incomplete'/'unknown' (data not entered yet) reads as
- * 'valid' — the icon should only warn about things actually tracked and
+ * 'valid': the icon should only warn about things actually tracked and
  * approaching/past their due date, not nag about unfilled fields.
  * Returns: 'valid' | 'expiring' | 'expired'
  */

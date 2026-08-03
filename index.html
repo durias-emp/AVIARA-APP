@@ -9,9 +9,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <!-- Browser/PWA chrome follows the system appearance, matching --bg in each theme -->
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2f7" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1c1c22" />
+    <!-- Kept for engines that honour it; the device under test ignores every
+         value of this tag (default, black, and translucent all painted the
+         same bar). black matches the dark-first fallback. translucent stays
+         off the table: it triggers the container bug that left a dead
+         OS-owned band under the app; see main.jsx. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <!-- The value the bar actually tracked through three days of on-device
+         experiments: it stayed white through every bar-style change, every
+         reinstall, and dark mode, which is exactly the behaviour of a bar
+         painted from a static white theme-color. Media-scoped tags hand the
+         choice to iOS's own evaluation of the system appearance, which is
+         the only evaluation that cannot be lied to: prefers-color-scheme as
+         seen by SCRIPT at document-parse time reports the previous
+         session's value (proven with an on-screen diagnostic), so the old
+         inline script that rewrote theme-color at parse was poisoning the
+         very value iOS sampled. No script touches these at load. useTheme
+         updates the matching tag afterwards for engines that re-read
+         (Android, desktop Chrome, the red palette). -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
+    <!-- Both schemes, declared before any script runs. See the :root
+         color-scheme note in index.css. -->
+    <meta name="color-scheme" content="light dark" />
     <title>AVIARA</title>
   </head>
   <body>

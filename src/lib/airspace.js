@@ -1,4 +1,4 @@
-// Controlled airspace along the route — Class B, C and D.
+// Controlled airspace along the route. Class B, C and D.
 //
 // This is a different question from the Special Use Airspace check, which
 // looks for Prohibited/Restricted/Warning/Alert areas and MOAs. Nothing in
@@ -15,12 +15,12 @@
 // clearance before entry.
 //
 // Central America is covered too, from a bundled pack built out of COCESNA's
-// eAIP (see scripts/build_cenamer_airspace.py) — there is no queryable source
+// eAIP (see scripts/build_cenamer_airspace.py): there is no queryable source
 // for that region at all, so the TMAs are parsed from the published prose.
 // Anywhere else, the caller is told the route is not covered rather than shown
 // an empty list.
 
-import { bboxOf, sampleRoute } from './corridor'
+import { sampleRoute } from './corridor'
 import { get } from './db'
 
 const URL = 'https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/Class_Airspace/FeatureServer/0/query'
@@ -56,8 +56,13 @@ const touchesCenamer = wps => wps.some(w => inBox(w, CENAMER_BOX))
 
 let _cenamer = null
 async function getCenamer() {
-  if (!_cenamer) _cenamer = (await import('../data/geo/cenamer_airspace.json')).default.areas
-  return _cenamer
+  if (_cenamer) return _cenamer
+  try {
+    _cenamer = (await import('../data/geo/cenamer_airspace.json')).default.areas
+    return _cenamer
+  } catch {
+    return null    // not downloaded yet and offline. Reported, not assumed empty
+  }
 }
 
 function pointInPoly(pt, poly) {
@@ -97,8 +102,19 @@ function limitFt(val, code) {
   return Number.isFinite(n) ? n : null
 }
 
+// Thin a sampled path down to at most `max` points, keeping both ends. The
+// route travels in the query string, so it has to stay a sensible length; at
+// 25 NM spacing only a transoceanic route ever reaches the cap.
+function decimate(pts, max) {
+  if (pts.length <= max) return pts
+  const step = (pts.length - 1) / (max - 1)
+  return Array.from({ length: max }, (_, i) => pts[Math.round(i * step)])
+}
+
+const round6 = v => Math.round(v * 1e6) / 1e6
+
 // waypoints: [{lat,lon}, ...]
-// altFt: planned cruise altitude — used to mark which airspaces the cruise
+// altFt: planned cruise altitude. Used to mark which airspaces the cruise
 //   itself sits inside, NOT to filter. A Class B whose ceiling is below the
 //   cruise altitude is still entered on the climb and the descent, and
 //   dropping it would be a false negative on the part of the flight where it
@@ -110,22 +126,34 @@ async function faaAreas(wps, timeoutMs) {
   const { samples } = sampleRoute(wps, { spacingNm: 25 })
   // Query only the part of the route actually inside US coverage. A
   // transatlantic route's full envelope spans an ocean, and the service
-  // rejects an envelope that large — which surfaced as "unavailable" on a
+  // rejects an envelope that large, which surfaced as "unavailable" on a
   // route whose US portion queries perfectly well.
   const inside = samples.filter(s => US_BOXES.some(b => inBox(s, b)))
-  const b = bboxOf(inside.length ? inside : samples, 3)
-  const geom = `${b.minLon},${b.minLat},${b.maxLon},${b.maxLat}`
+  const path = inside.length ? inside : samples
+
+  // Ask about the route, not the rectangle around it.
+  //
+  // This used to send the bounding envelope and every polygon inside it, then
+  // run the crossing test here. A rectangle around a 340 NM route covers most
+  // of a state, so the service answered with 114 airspaces and 6.2 MB of
+  // boundary geometry, over ten seconds on a good connection, of which six
+  // were actually crossed and the rest were discarded. The download regularly
+  // outran the timeout, and the card reported the airspace as unavailable on
+  // routes the service answers perfectly well.
+  //
+  // Sending the route itself as a polyline moves the intersection test to the
+  // server, which is where the geometry already lives. The same query comes
+  // back in 1.8 KB and under a second, and the geometry never has to travel at
+  // all because the only things kept from it were the name, class and limits.
+  const pts = decimate(path, 60).map(s => [round6(s.lon), round6(s.lat)])
   const params = new URLSearchParams({
     where: "CLASS IN ('B','C','D')",
-    geometry: geom,
-    geometryType: 'esriGeometryEnvelope',
+    geometry: JSON.stringify({ paths: [pts], spatialReference: { wkid: 4326 } }),
+    geometryType: 'esriGeometryPolyline',
     inSR: '4326',
     spatialRel: 'esriSpatialRelIntersects',
     outFields: 'NAME,CLASS,LOCAL_TYPE,LOWER_VAL,LOWER_CODE,UPPER_VAL',
-    returnGeometry: 'true',
-    // the raw boundaries carry ~6,000 points each; generalised they are still
-    // far finer than a route-crossing test needs
-    maxAllowableOffset: '0.002',
+    returnGeometry: 'false',
     f: 'json',
   })
 
@@ -143,10 +171,8 @@ async function faaAreas(wps, timeoutMs) {
   const byKey = new Map()
   for (const f of features) {
     const a = f.attributes || {}
-    const rings = f.geometry?.rings || []
-    const hit = rings.some(r => routeCrossesPoly(wps, r.map(([x, y]) => [y, x])))
-    if (!hit) continue
-
+    // No crossing test here any more: the service was asked which airspaces
+    // the route intersects, so everything that came back is one.
     const lowerFt = limitFt(a.LOWER_VAL, a.LOWER_CODE)
     const upperFt = limitFt(a.UPPER_VAL, null)
     // One airspace arrives as several shelves (Miami Class B is eight rings
@@ -164,11 +190,12 @@ async function faaAreas(wps, timeoutMs) {
   return { status: 'ok', areas: [...byKey.values()] }
 }
 
-// Bundled CENAMER pack — no network, so it cannot fail; the areas carry their
+// Bundled CENAMER pack: no network, so it cannot fail; the areas carry their
 // own approx flag where the eAIP describes a boundary by naming a national
 // border instead of publishing coordinates.
 async function cenamerAreas(wps) {
   const all = await getCenamer()
+  if (!all) return null
   return all
     .filter(a => routeCrossesPoly(wps, a.poly))
     .map(a => ({
@@ -297,7 +324,7 @@ export async function classAtPoint(lat, lon, icao, timeoutMs = 8000) {
 }
 
 // waypoints: [{lat,lon}, ...]
-// altFt: planned cruise altitude — marks which areas the cruise sits inside.
+// altFt: planned cruise altitude. Marks which areas the cruise sits inside.
 //
 // Returns { status:'ok', areas, count, sources } | { status:'unavailable' }
 //        | { status:'not-covered' } | { status:'empty' }
@@ -315,8 +342,9 @@ export async function analyzeAirspace(waypoints, { altFt = null, timeoutMs = 100
   // The bundled pack cannot fail, so a live failure only sinks the whole
   // result when it was the only source that applied.
   if (faa.status === 'unavailable' && !ca) return { status: 'unavailable' }
+  if (ca && cen === null && !us) return { status: 'unavailable' }
 
-  const areas = [...faa.areas.map(a => ({ ...a, ref: 'AMSL', approx: false, source: 'FAA' })), ...cen]
+  const areas = [...faa.areas.map(a => ({ ...a, ref: 'AMSL', approx: false, source: 'FAA' })), ...(cen || [])]
     .map(x => ({
       ...x,
       // An AGL floor cannot be compared with a planned MSL altitude without

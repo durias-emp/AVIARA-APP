@@ -1,9 +1,9 @@
-// Waypoint resolution — Garmin/ForeFlight-style named waypoints.
+// Waypoint resolution: Garmin/ForeFlight-style named waypoints.
 //
 // Three kinds:
-//   GPS  — 5-letter RNAV/intersection fixes (FAA NASR, US coverage)
-//   VOR  — 2-3 letter navaid identifiers (NASR + openAIP, worldwide)
-//   USER — user-defined names, stored locally (settings key 'user_waypoints',
+//   GPS: 5-letter RNAV/intersection fixes (FAA NASR, US coverage)
+//   VOR: 2-3 letter navaid identifiers (NASR + openAIP, worldwide)
+//   USER: user-defined names, stored locally (settings key 'user_waypoints',
 //          synced to cloud backup). A user waypoint name must not shadow an
 //          existing GPS fix or VOR identifier.
 //
@@ -121,8 +121,24 @@ async function loadAirways() {
   return _airways
 }
 
-// Airway IDs are 1-2 letters + digits (V25, J501, Q822, T254) — never collides
+// Airway IDs are 1-2 letters + digits (V25, J501, Q822, T254), never collides
 // with VOR idents (pure letters) or 5-letter fixes.
+// Pull every pack the route resolver needs, at once.
+//
+// Resolving a route string touches three of them. Airways, fixes/navaids and
+// procedures, and each is triggered by a different stage of the same
+// per-token pipeline: check for an airway, then resolve a fix, then look for a
+// procedure. Every token walks those stages in order, so the packs ended up
+// loading in three sequential waves rather than together. Measured on a
+// KSAN–KSEA routing: airways done at 942 ms, fixes at 1,581 ms, procedures at
+// 1,983 ms, two seconds of waiting for work that overlaps completely.
+//
+// Callers warm this when they know a route string is about to be resolved, so
+// the packs are already in memory by the time a finger lands on one.
+export function preloadNavdata() {
+  return Promise.all([loadNavdata(), loadAirways()])
+}
+
 export function looksLikeAirway(ident) {
   return /^[A-Z]{1,2}\d{1,4}$/.test((ident || '').trim().toUpperCase())
 }
@@ -135,7 +151,7 @@ export async function lookupAirway(ident) {
 // Expand an airway between two named points that must both lie on it.
 // Returns { fixes: [{kind,name,lat,lon,via}], maxMEA } or { error }.
 // Duplicate-ID airways (e.g. V25 exists in CONUS and Hawaii) are stored as
-// variants — the one containing both endpoints wins. Direction follows the
+// variants: the one containing both endpoints wins. Direction follows the
 // entry→exit order; endpoints themselves are excluded.
 export async function expandAirway(ident, fromName, toName, fromPos) {
   const id = ident.trim().toUpperCase()
@@ -154,12 +170,12 @@ export async function expandAirway(ident, fromName, toName, fromPos) {
     const maxMEA = meas.length ? Math.max(...meas) : null
 
     const fixes = []
-    // fromPos anchors the chain to the right continent — the entry fix the
+    // fromPos anchors the chain to the right continent. The entry fix the
     // pilot typed is already resolved, so duplicates downstream follow it.
     let near = fromPos
     for (const pt of idents) {
       const hit = await resolveWaypoint(pt, near)
-      if (!hit) continue // not in our navdata (rare) — the leg just spans it
+      if (!hit) continue // not in our navdata (rare). The leg just spans it
       fixes.push({ kind: hit.kind, name: hit.name, lat: hit.lat, lon: hit.lon, via: id })
       near = [hit.lat, hit.lon]
     }
@@ -170,7 +186,7 @@ export async function expandAirway(ident, fromName, toName, fromPos) {
 
 // ── Airway geometry for map rendering ───────────────────────────
 // Resolves every airway's fix chain to coordinates once (memoized) so the
-// map can draw the network like SkyVector's World Lo/Hi — essential where
+// map can draw the network like SkyVector's World Lo/Hi. Essential where
 // no raster chart exists (Central America). Unresolvable points split the
 // line rather than rubber-banding across the gap.
 let _geometry = null
@@ -241,13 +257,19 @@ export async function getAirwayGeometry() {
           while (cLon - prevLon > 180) cLon -= 360
           while (cLon - prevLon < -180) cLon += 360
         }
-        // Anything still over 600 NM is a genuinely bad resolve — break the
-        // line rather than draw a rubber band.
+        // A leg this long is either a genuine oceanic route or a fix that
+        // resolved to the wrong continent. 600 NM caught the second and
+        // severed the first: routes across the Gulf and the eastern Pacific
+        // are drawn between fixes hundreds of miles apart, and cutting them
+        // left the map full of lines that stop over open water. The anchor
+        // pass above is what guards against a bad resolve now, so this only
+        // has to catch what survives it, and nothing legitimate reaches
+        // 1,000 NM between adjacent points.
         if (seg.length) {
           const p = seg[seg.length - 1]
           const dLat = (c[0] - p[0]) * 60
           const dLon = (cLon - p[1]) * 60 * Math.cos(((c[0] + p[0]) / 2) * Math.PI / 180)
-          if (Math.hypot(dLat, dLon) > 600) {
+          if (Math.hypot(dLat, dLon) > 1000) {
             if (seg.length >= 2) lines.push({ id, cls, latlngs: seg, trk: segTrk, mea: segMea })
             seg = []; segTrk = []; segMea = []
             near = c
@@ -283,7 +305,7 @@ export async function getAirwayGeometry() {
 
 // ── World reference layer (TIER 2) ──────────────────────────────
 // Global airway geometry for regions with no authoritative pack. GPL v3
-// X-Plane/Robin Peel data, cycle 2012.08 — REFERENCE ONLY, deliberately
+// X-Plane/Robin Peel data, cycle 2012.08. REFERENCE ONLY, deliberately
 // isolated from resolveWaypoint/expandAirway so a stale airway can never
 // end up in a filed route. Bounding boxes are precomputed for viewport
 // culling: there are ~40k polylines.
@@ -307,7 +329,7 @@ export async function getWorldRef() {
 }
 
 // Main entry: resolve a typed identifier to a waypoint.
-// nearPos ([lat, lon], optional) disambiguates duplicate idents by proximity —
+// nearPos ([lat, lon], optional) disambiguates duplicate idents by proximity. 
 // pass the departure airport or route midpoint.
 // Returns { kind: 'GPS'|'VOR'|'USER', name, lat, lon, vorName?, freq? } or null.
 export async function resolveWaypoint(name, nearPos) {

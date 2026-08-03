@@ -5,18 +5,18 @@ import { trackEvent } from '../lib/analytics'
 
 const AuthContext = createContext(null)
 
-// session: undefined = still loading from local storage (no network needed —
+// session: undefined = still loading from local storage (no network needed. 
 // see src/lib/supabase.js), null = signed out, object = signed in.
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined)
-  // True while the user arrived via a password-reset email link — the app
+  // True while the user arrived via a password-reset email link. The app
   // shows the "set a new password" screen instead of the normal gate, even
   // though Supabase has technically created a session from the recovery
   // token. Cleared once the new password is saved.
   const [recovery, setRecovery] = useState(false)
   // False while the post-sign-in cloud restore is running. The app gate must
   // wait for it: reading the (still empty) local profile mid-restore sent
-  // returning users to onboarding — and re-completing onboarding would then
+  // returning users to onboarding, and re-completing onboarding would then
   // overwrite their cloud backup.
   const [hydrated, setHydrated] = useState(true)
   const syncedRef = useRef(false)
@@ -54,7 +54,7 @@ export function AuthProvider({ children }) {
           .catch(() => {})
           .finally(() => {
             setHydrated(true)
-            // Local stores may have just been filled from the cloud —
+            // Local stores may have just been filled from the cloud. 
             // anything that cached a pre-hydration read must re-read.
             window.dispatchEvent(new Event('aviara-hydrated'))
           })

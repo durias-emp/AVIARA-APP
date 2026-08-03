@@ -42,7 +42,7 @@ function Rule() {
   return <div style={{ borderTop: `1px dashed ${PAPER_RULE}`, margin: '6px 0' }} />
 }
 
-// Tappable stage heading — tapping highlights only that stage (dims the
+// Tappable stage heading: tapping highlights only that stage (dims the
 // other two) without hiding any data, so the full page still prints intact.
 function StageHead({ label, active, dimmed, onClick }) {
   return (
@@ -67,10 +67,10 @@ export default function FlightPlanOnePager({ onClose }) {
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const [route, cruise, perfdist, lastWB, selectedRunway, alternates, pilot, acProfile] = await Promise.all([
+      const [route, cruise, perfdist, lastWB, selectedRunway, alternates, pilot, acProfile, fpType] = await Promise.all([
         get('settings', 'route'), get('settings', scopedSettingsKey('cruise', aircraftId)), get('settings', scopedSettingsKey('perfdist', aircraftId)),
         get('settings', scopedSettingsKey('lastWB', aircraftId)), get('settings', 'selectedRunway'), get('settings', 'alternates'),
-        get('settings', 'pilot'), aircraftId ? get('aircraft', aircraftId) : null,
+        get('settings', 'pilot'), aircraftId ? get('aircraft', aircraftId) : null, get('settings', 'flightPlanType'),
       ])
 
       const dep = route?.dep?.toUpperCase() || ''
@@ -85,7 +85,7 @@ export default function FlightPlanOnePager({ onClose }) {
 
       if (cancelled) return
       setData({
-        route, cruise, perfdist, lastWB, selectedRunway, alternates, pilot, acProfile,
+        route, cruise, perfdist, lastWB, selectedRunway, alternates, pilot, acProfile, fpType,
         depApt: depApt.status  === 'fulfilled' ? depApt.value  : null,
         destApt: destApt.status === 'fulfilled' ? destApt.value : null,
         depWx: depWx.status   === 'fulfilled' ? depWx.value   : null,
@@ -108,12 +108,18 @@ export default function FlightPlanOnePager({ onClose }) {
     )
   }
 
-  const { route, cruise, perfdist, lastWB, selectedRunway, alternates, pilot, acProfile, depApt, destApt, depWx, destWx } = data
+  const { route, cruise, perfdist, lastWB, selectedRunway, alternates, pilot, acProfile, fpType, depApt, destApt, depWx, destWx } = data
 
   const dep = route?.dep?.toUpperCase() || '—'
   const dest = route?.dest?.toUpperCase() || '—'
   const isHelicopter = acProfile?.category === 'helicopter'
-  const flightRules = cruise?.flightRules || 'VFR'
+  // The Cruise & Fuel section is where the rules were last confirmed against a
+  // fuel plan, so it wins. Falling straight through to VFR when that section
+  // hasn't been filled in was wrong twice over: an IFR flight printed RULES
+  // VFR DAY, and the reserve requirement below silently dropped from 45
+  // minutes to 30. The type picked at the top of the flight plan is the
+  // pilot's stated intent and stands until the fuel plan says otherwise.
+  const flightRules = cruise?.flightRules || fpType?.value?.flightRules || 'VFR'
   const timeOfDay = cruise?.timeOfDay || 'day'
   // Jurisdiction-aware (see src/lib/regulations.js) — this strip is styled
   // as a printable dispatch release, so unlike the interactive Cruise & Fuel
@@ -199,7 +205,7 @@ export default function FlightPlanOnePager({ onClose }) {
 
         <PLine l={route?.wpts?.length ? [dep, ...route.wpts.map(w => w.name), dest].join(' ') : `${dep}-${dest} DCT`} r="" />
         <PLine l={aircraftLine || 'AIRCRAFT'} r={lastWB ? `TOW ${Math.round(lastWB.weight)}` : 'TOW ----'} />
-        <PLine l={`CRZ ALT ${cruise?.cruiseAlt || route?.cruiseAlt || '----'}`} r={`WIND ${toWindStr}`} />
+        <PLine l={`CRZ ALT ${route?.cruiseAlt || '----'}`} r={`WIND ${toWindStr}`} />
         <PLine l={`RES ${reqReserve}MIN`} r={cruise?.fuelOnBoard ? `FOB ${cruise.fuelOnBoard}` : 'FOB --'} />
 
         <Rule />
@@ -214,7 +220,7 @@ export default function FlightPlanOnePager({ onClose }) {
 
         <Rule />
 
-        {/* WPT table — the two endpoints, ACARS-style columns */}
+        {/* WPT table: the two endpoints, ACARS-style columns */}
         <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr 0.8fr 1.3fr', fontWeight: 700, color: PAPER_MUTE, marginBottom: 2 }}>
           <span>WPT</span><span>FREQ</span><span>RWY</span><span>WIND</span>
         </div>
@@ -257,7 +263,7 @@ export default function FlightPlanOnePager({ onClose }) {
         {/* ── ENROUTE ── */}
         <StageHead label="ENROUTE" active={stage === 'ENROUTE'} dimmed={dim('ENROUTE')} onClick={() => toggleStage('ENROUTE')} />
         <div style={{ opacity: dim('ENROUTE') ? 0.35 : 1, transition: 'opacity 0.15s' }}>
-          <PLine l="CRZ ALT / DIST" r={`${cruise?.cruiseAlt || route?.cruiseAlt || '----'} / ${route?.distNm ?? '---'}NM`} />
+          <PLine l="CRZ ALT / DIST" r={`${route?.cruiseAlt || '----'} / ${route?.distNm ?? '---'}NM`} />
           <PLine l="TAS / BURN" r={`${cruise?.tas ?? '---'} / ${cruise?.burnRate ?? '---'}GPH`} />
           <PLine l="FOB / RSV REQ" r={`${cruise?.fuelOnBoard ?? '--'}GAL / ${reqReserve}MIN`} />
           <PLine l="LOST COMM" r="SQUAWK 7600" />
@@ -278,7 +284,7 @@ export default function FlightPlanOnePager({ onClose }) {
 
         <Rule />
         <div style={{ textAlign: 'center', fontSize: 9, color: PAPER_MUTE, marginTop: 6, lineHeight: 1.5 }}>
-          COCKPIT REFERENCE ONLY — NOT A FILED ATC FLIGHT PLAN.<br />
+          COCKPIT REFERENCE ONLY, NOT A FILED ATC FLIGHT PLAN.<br />
           TO FILE, CALL 1-800-WX-BRIEF OR USE 1800WXBRIEF.COM.
         </div>
       </div>

@@ -112,7 +112,7 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
     }).catch(() => {})
   }, [open, aircraftId])
 
-  // Persist chosen alternates so the Flight Plan one-pager can read them —
+  // Persist chosen alternates so the Flight Plan one-pager can read them. 
   // this list was previously local-only and vanished when the card closed.
   const altsRestored = useRef(false)
   useEffect(() => {
@@ -345,14 +345,14 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
   return (
     <ExpandableCard item={item} isChecked={isChecked} onToggle={onToggle} open={open} setOpen={setOpen}>
 
-      {/* No route set — prompt */}
+      {/* No route set. Prompt */}
       {!depPos && !destPos && !toSuggestLoad && !ldSuggestLoad && (
         <div style={{ padding: '16px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></svg>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Set your route first</div>
             <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>
-              Enter departure and destination in Route &amp; Altitude — nearby alternates will auto-suggest here.
+              Enter departure and destination in Route &amp; Altitude. Nearby alternates will auto-suggest here.
             </div>
           </div>
         </div>
@@ -423,11 +423,11 @@ export function MetarItem({ item, isChecked, onToggle }) {
     setLoading(true); setError(null)
     const [dRes, xRes] = await Promise.all([fetchMetar(d), fetchMetar(x)])
     setDepData(dRes); setDestData(xRes)
-    if (!dRes && !xRes) setError('METAR unavailable — check aviationweather.gov')
+    if (!dRes && !xRes) setError('METAR unavailable. Check aviationweather.gov')
     setLoading(false)
   }
 
-  // Fetch when card opens — always reads current saved route
+  // Fetch when card opens, always reads current saved route
   useEffect(() => {
     if (!open) return
     get('settings', 'route').then(r => {

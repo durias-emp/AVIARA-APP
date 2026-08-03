@@ -135,7 +135,7 @@ function FuelReferenceModal({ onClose }) {
 }
 
 // Each list defines every unit's conversion to/from a shared base unit
-// (liters, kg, °C, or millibars) so any one field can drive all the others —
+// (liters, kg, °C, or millibars) so any one field can drive all the others. 
 // same interaction pattern as the Distance and Fuel Conversion cards.
 const VOLUME_UNITS = [
   { key: 'usg',    label: 'US Gallons',     toBase: v => conv.usgToL(v),   fromBase: v => conv.lToUsg(v) },
@@ -403,12 +403,12 @@ function WeightShiftCalc() {
   const result = blanks === 1 ? weightShift(vals) : null
 
   return (
-    <SectionCard title="Weight Shift" formula="w/W = D/d — leave one field blank to solve">
+    <SectionCard title="Weight Shift" formula="w/W = D/d. Leave one field blank to solve">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <NumField label="w — weight moved (lb)" value={w} onChange={setW} step="1" />
-        <NumField label="W — total weight (lb)" value={W} onChange={setWW} step="1" />
-        <NumField label="D — CG shift (in)" value={D} onChange={setD} step="0.1" />
-        <NumField label="d — station dist (in)" value={d} onChange={setDd} step="0.1" />
+        <NumField label="w. Weight moved (lb)" value={w} onChange={setW} step="1" />
+        <NumField label="W: Total weight (lb)" value={W} onChange={setWW} step="1" />
+        <NumField label="D: CG shift (in)" value={D} onChange={setD} step="0.1" />
+        <NumField label="d. Station dist (in)" value={d} onChange={setDd} step="0.1" />
       </div>
       {result !== null && (
         <div style={{ marginTop: 12, borderRadius: 10, overflow: 'hidden', background: 'var(--bg-card-2)' }}>
@@ -511,7 +511,7 @@ function SectionCard({ title, formula, children, headerRight }) {
   )
 }
 
-// Same interaction as Fuel Conversion's "Reference" chip — the formula is
+// Same interaction as Fuel Conversion's "Reference" chip. The formula is
 // tucked behind a modal instead of always sitting under the title, so the
 // card stays compact and the formula is available on demand.
 function FormulaModal({ title, formula, onClose }) {

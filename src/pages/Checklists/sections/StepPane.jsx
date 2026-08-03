@@ -4,6 +4,7 @@ import { WBExpand, DensityAltItem, PerfDistItem, CruiseItem } from './Performanc
 import { AirportItem, NotamItem } from './Airport'
 import { AlternatesItem, MetarItem } from './Weather'
 import { AltitudeItem, ChartsItem } from './RouteAltitude'
+import { CardLayoutContext, useCardLayout } from '../shared/CardLayout'
 
 const EXPAND_MAP = {
   wb:          WBExpand,
@@ -35,8 +36,18 @@ function SubPills({ sub, isChecked }) {
   )
 }
 
-/* ── Item rows — expandable items via EXPAND_MAP, plain checkable rows otherwise ── */
-function StepItems({ items, checked, onToggle, total }) {
+/* ── Item rows: expandable items via EXPAND_MAP, plain checkable rows otherwise ── */
+function StepItems({ items, checked, onToggle, total, top = false }) {
+  const { stretch } = useCardLayout()
+  // Each item sits in a wrapper that is the flex child of the pane, so the
+  // wrapper is what has to take a share of the height. Styling the card
+  // inside it achieves nothing while its parent is still content-sized.
+  // Only the top-level list divides the pane; a nested list belongs to its
+  // parent card's share.
+  const share = top && stretch
+    ? { flex: '1 1 0', minHeight: 46, display: 'flex', flexDirection: 'column' }
+    : null
+
   return (
     <>
       {items.map(item => {
@@ -45,7 +56,7 @@ function StepItems({ items, checked, onToggle, total }) {
         if (item.expand && EXPAND_MAP[item.expand]) {
           const ExpandComp = EXPAND_MAP[item.expand]
           return (
-            <div key={item.id}>
+            <div key={item.id} style={share}>
               <ExpandComp item={item} isChecked={isChecked} onToggle={onToggle} checked={checked} total={total} />
               {item.items && (
                 <StepItems items={item.items} checked={checked} onToggle={onToggle} total={total} />
@@ -55,7 +66,7 @@ function StepItems({ items, checked, onToggle, total }) {
         }
 
         return (
-          <div key={item.id}>
+          <div key={item.id} style={share}>
             <button
               onClick={() => onToggle(item.id)}
               style={{
@@ -92,13 +103,25 @@ function StepItems({ items, checked, onToggle, total }) {
   )
 }
 
-/* ── One section's full content — built-in items + pilot-added custom items ── */
-export default function StepPane({ section, checked, onToggle, total, customItems, onDeleteCustomItem, onUpdateCustomItemValue }) {
+/* ── One section's full content. Built-in items + pilot-added custom items ── */
+export default function StepPane({ section, checked, onToggle, total, customItems, onDeleteCustomItem, onUpdateCustomItemValue, stretch = false }) {
   const custom = customItems[section.title] ?? []
 
+  // Cards divide the pane between them only while they are all closed, and
+  // only when there is more than one. A single card is opened by
+  // ExpandableCard itself rather than stretched to fill the screen as a
+  // button that does nothing but wait to be pressed.
+  const cardCount = section.items.length
+  const solo = cardCount === 1
+  const layout = { stretch: stretch && !solo && cardCount > 1, solo }
+
   return (
-    <div style={{ padding: '20px 16px 24px' }}>
-      <StepItems items={section.items} checked={checked} onToggle={onToggle} total={total} />
+    <CardLayoutContext.Provider value={layout}>
+    <div style={{
+      padding: '20px 16px 24px',
+      ...(layout.stretch ? { minHeight: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' } : null),
+    }}>
+      <StepItems items={section.items} checked={checked} onToggle={onToggle} total={total} top />
 
       {custom.length > 0 && custom.map(ci => (
         <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', minHeight: 36 }}>
@@ -145,5 +168,6 @@ export default function StepPane({ section, checked, onToggle, total, customItem
         </div>
       ))}
     </div>
+    </CardLayoutContext.Provider>
   )
 }

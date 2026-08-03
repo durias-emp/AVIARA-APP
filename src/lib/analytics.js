@@ -1,8 +1,8 @@
 import { supabase } from './supabase'
 
-// Minimal usage analytics — "what do pilots do," not a full analytics
+// Minimal usage analytics: "what do pilots do," not a full analytics
 // platform. Fire-and-forget: never awaited by callers, never throws, and
-// doesn't queue locally — an event lost while offline is an acceptable
+// doesn't queue locally: an event lost while offline is an acceptable
 // trade-off for how small/simple this needs to be.
 export function trackEvent(name, meta = {}) {
   supabase.auth.getSession().then(({ data }) => {

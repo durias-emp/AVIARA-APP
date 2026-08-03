@@ -84,7 +84,7 @@ function GenerateIconButton({ aircraftName, onGenerated }) {
     }}>
       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Generate aircraft icon</div>
       <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: -4 }}>
-        Describe your aircraft — model name is enough, add details if you want.
+        Describe your aircraft. Model name is enough, add details if you want.
       </div>
       <input
         autoFocus
@@ -133,7 +133,7 @@ function GenerateIconButton({ aircraftName, onGenerated }) {
   )
 }
 
-/* ── Hobbs time entry — cumulative aircraft hours, odometer-style ──
+/* ── Hobbs time entry. Cumulative aircraft hours, odometer-style ──
    Single digit buffer, right-aligned: typing pushes older digits left,
    same feel as a price/odometer input rather than 6 separately-tabbed boxes. ── */
 function HobbsTimeModal({ onCancel, onConfirm, initialValue }) {
@@ -235,7 +235,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '43', vs0: '35', vx: '55', vy: '67', vg: '60', va: '90', vfe: '85', vno: '107', vne: '149', vref: '54', cruise: '107' },
     fuel: { total: '26 USG', usable: '24.5 USG', type: '100LL' },
     burnRate: { climb: '6.1 GPH', cruise: '6.1 GPH' },
-    perf: { toRoll: '735 ft', to50ft: '1,340 ft', ldgRoll: '475 ft', ldg50ft: '1,200 ft' },
+    perf: { toRoll: '735 ft', to50ft: '1,340 ft', ldgRoll: '475 ft', ldg50ft: '1,200 ft', roc: '715 fpm', ceiling: '14,700 ft' },
     notes: 'VA at MTOW (1,670 lb). VFE applies all flap settings. Standard avgas trainer.',
   },
   {
@@ -248,7 +248,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '48', vs0: '40', vx: '62', vy: '74', vg: '68', va: '105', vfe: '85', vno: '129', vne: '163', vref: '62', cruise: '122' },
     fuel: { total: '56 USG', usable: '53 USG', type: '100LL' },
     burnRate: { climb: '11.5 GPH', cruise: '8.5 GPH' },
-    perf: { toRoll: '960 ft', to50ft: '1,630 ft', ldgRoll: '575 ft', ldg50ft: '1,335 ft' },
+    perf: { toRoll: '960 ft', to50ft: '1,630 ft', ldgRoll: '575 ft', ldg50ft: '1,335 ft', roc: '730 fpm', ceiling: '14,000 ft' },
     notes: '180 hp IO-360. VFE 110 kt (first 10° flap), 85 kt (10–30°). VA reduces with weight.',
   },
   {
@@ -261,7 +261,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '50', vs0: '45', vx: '64', vy: '76', vg: '76', va: '113', vfe: '102', vno: '125', vne: '154', vref: '66', cruise: '128' },
     fuel: { total: '50 USG', usable: '48 USG', type: '100LL' },
     burnRate: { climb: '11.5 GPH', cruise: '10 GPH' },
-    perf: { toRoll: '870 ft', to50ft: '1,600 ft', ldgRoll: '600 ft', ldg50ft: '1,390 ft' },
+    perf: { toRoll: '870 ft', to50ft: '1,600 ft', ldgRoll: '600 ft', ldg50ft: '1,390 ft', roc: '667 fpm', ceiling: '13,240 ft' },
     notes: 'Low wing, 180 hp O-360. Electric fuel pump ON for T/O & landing. VY = VG (76 kt). Differential braking for steering.',
   },
   {
@@ -274,7 +274,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '50', vs0: '41', vx: '60', vy: '84', vg: '70', va: '110', vfe: '100', vno: '140', vne: '175', vref: '62', cruise: '145' },
     fuel: { total: '92 USG', usable: '87 USG', type: '100LL' },
     burnRate: { climb: '17 GPH', cruise: '14 GPH' },
-    perf: { toRoll: '795 ft', to50ft: '1,514 ft', ldgRoll: '590 ft', ldg50ft: '1,350 ft' },
+    perf: { toRoll: '795 ft', to50ft: '1,514 ft', ldgRoll: '590 ft', ldg50ft: '1,350 ft', roc: '924 fpm', ceiling: '18,100 ft' },
     notes: '230 hp IO-540, constant-speed prop, cowl flaps. VFE 140 (10°) / 120 (20°) / 100 (30°). Turbo T182T differs at altitude.',
   },
   {
@@ -287,7 +287,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '73', vs0: '60', vx: '88', vy: '102', vg: '88', va: '133', vfe: '110', vno: '176', vne: '205', vref: '79', cruise: '183' },
     fuel: { total: '94.5 USG', usable: '92 USG', type: '100LL' },
     burnRate: { climb: '19 GPH', cruise: '16.5 GPH' },
-    perf: { toRoll: '1,082 ft', to50ft: '1,628 ft', ldgRoll: '693 ft', ldg50ft: '1,178 ft' },
+    perf: { toRoll: '1,082 ft', to50ft: '1,628 ft', ldgRoll: '693 ft', ldg50ft: '1,178 ft', roc: '1,270 fpm', ceiling: '17,500 ft' },
     notes: '310 hp IO-550-N, composite. CAPS parachute deploy ≤ 140 KIAS. Single power lever. VFE 150 kt (50% flap), 110 kt (full).',
   },
   {
@@ -300,7 +300,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '78', vs0: '61', vx: '72', vy: '104', vg: '95', va: '149', vfe: '95', vno: '175', vne: '175', vref: '82', cruise: '185' },
     fuel: { total: '335.6 USG', usable: '332 USG', type: 'Jet-A' },
     burnRate: { climb: '80 GPH', cruise: '62 GPH' },
-    perf: { toRoll: '1,365 ft', to50ft: '2,055 ft', ldgRoll: '950 ft', ldg50ft: '1,795 ft' },
+    perf: { toRoll: '1,365 ft', to50ft: '2,055 ft', ldgRoll: '950 ft', ldg50ft: '1,795 ft', roc: '1,275 fpm', ceiling: '25,000 ft' },
     notes: 'PT6A-140, 867 SHP. VMO replaces Vno/Vne. Inertial separator reduces perf. Rotate ~65–70 kt. Cargo pod ~1,090 lb.',
   },
   {
@@ -313,8 +313,8 @@ export const TEMPLATES = [
     vspeeds: { vs: '67', vs0: '67', vx: '120', vy: '130', vg: '120', va: '166', vfe: '130', vno: '240', vne: '240', vref: '88', cruise: '290' },
     fuel: { total: '406.8 USG', usable: '402 USG', type: 'Jet-A' },
     burnRate: { climb: '75 GPH', cruise: '58 GPH' },
-    perf: { toRoll: '1,180 ft', to50ft: '2,485 ft', ldgRoll: '1,800 ft', ldg50ft: '2,170 ft' },
-    notes: 'PT6E-67XP, 1,200 SHP. EPECS (FADEC + autothrottle), single-lever. Pressurized to 30,000 ft. VMO 240 KCAS / M0.49. VFE by flap setting — verify AFM.',
+    perf: { toRoll: '1,180 ft', to50ft: '2,485 ft', ldgRoll: '1,800 ft', ldg50ft: '2,170 ft', roc: '1,920 fpm', ceiling: '30,000 ft' },
+    notes: 'PT6E-67XP, 1,200 SHP. EPECS (FADEC + autothrottle), single-lever. Pressurized to 30,000 ft. VMO 240 KCAS / M0.49. VFE by flap setting. Verify AFM.',
   },
   {
     id: 'ka350',
@@ -326,8 +326,8 @@ export const TEMPLATES = [
     vspeeds: { vs: '78', vs0: '81', vx: '125', vy: '140', vg: '135', va: '184', vfe: '158', vno: '260', vne: '260', vref: '109', cruise: '312' },
     fuel: { total: '544 USG', usable: '539 USG', type: 'Jet-A' },
     burnRate: { climb: '130 GPH', cruise: '96 GPH' },
-    perf: { toRoll: '1,940 ft', to50ft: '3,300 ft', ldgRoll: '2,100 ft', ldg50ft: '2,550 ft' },
-    notes: '2× PT6A-60A (1,050 SHP). Pressurized, winglets. VMO 260 KIAS / M0.58. V1 ≈ 99, Vr ≈ 104, V2 ≈ 109, Vmca 93 — compute per weight/condition. VFE 202 kt approach, 158 kt full. Burn at LRC FL350.',
+    perf: { toRoll: '1,940 ft', to50ft: '3,300 ft', ldgRoll: '2,100 ft', ldg50ft: '2,550 ft', roc: '2,731 fpm', ceiling: '35,000 ft' },
+    notes: '2× PT6A-60A (1,050 SHP). Pressurized, winglets. VMO 260 KIAS / M0.58. V1 ≈ 99, Vr ≈ 104, V2 ≈ 109, Vmca 93. Compute per weight/condition. VFE 202 kt approach, 158 kt full. Burn at LRC FL350.',
   },
   // ── Helicopters ─────────────────────────────────────────
   {
@@ -407,7 +407,7 @@ export function deepMerge(base, overrides) {
 }
 
 
-/* ── Airworthiness — documents + inspections, moved here from Currency so
+/* ── Airworthiness: documents + inspections, moved here from Currency so
    it lives alongside the aircraft it describes. Still reads/writes the same
    currency/profile.airworthy data other parts of the app depend on
    (getCurrencyStatus, the Checklists "IM AIRWORTHY" item). ── */
@@ -415,21 +415,21 @@ const WARN_DAYS_DEFAULT = 30
 const WARN_HOURS_DEFAULT = 10 // hrs before an hour-based inspection is "expiring"
 
 const ARROW_DOCS = [
-  { key: 'crew',      label: 'C — Crew documents (license · photo ID · medical)', far: FAR.crewDocs },
-  { key: 'airworth',  label: 'A — Certificate of Airworthiness',                  far: FAR.airworthCert },
-  { key: 'reg',       label: 'R — Certificate of Registration',                   far: FAR.registration },
-  { key: 'radio',     label: 'R — Radio License (FCC / international)',            far: null },
-  { key: 'oplim',     label: 'O — Operating Limitations (AFM / POH)',             far: FAR.opLimitations },
-  { key: 'wb',        label: 'W — Weight &amp; Balance data',                     far: FAR.weightBalance },
+  { key: 'crew',      label: 'C: Crew documents (license · photo ID · medical)', far: FAR.crewDocs },
+  { key: 'airworth',  label: 'A: Certificate of Airworthiness',                  far: FAR.airworthCert },
+  { key: 'reg',       label: 'R: Certificate of Registration',                   far: FAR.registration },
+  { key: 'radio',     label: 'R: Radio License (FCC / international)',            far: null },
+  { key: 'oplim',     label: 'O: Operating Limitations (AFM / POH)',             far: FAR.opLimitations },
+  { key: 'wb',        label: 'W: Weight &amp; Balance data',                     far: FAR.weightBalance },
   { key: 'insurance', label: 'Insurance current',                                  far: null },
 ]
 
 // Inspections with calendar-month expiry
 const INSPECTIONS = [
   { key: 'annualDate',      label: 'Annual Inspection',        months: 12, far: FAR.annual,      unit: 'date',  hint: '12 calendar months' },
-  { key: 'transponderDate', label: 'Transponder (24-mo)',       months: 24, far: FAR.transponder, unit: 'date',  hint: '24 calendar months — FAR 91.413' },
-  { key: 'pitotDate',       label: 'Pitot-Static / Altimeter', months: 24, far: FAR.pitotStatic, unit: 'date',  hint: '24 calendar months — IFR required — FAR 91.411' },
-  { key: 'eltDate',         label: 'ELT Battery',              months: null, far: FAR.elt,         unit: 'date',  hint: 'Per manufacturer / FAR 91.207 — enter expiry date' },
+  { key: 'transponderDate', label: 'Transponder (24-mo)',       months: 24, far: FAR.transponder, unit: 'date',  hint: '24 calendar months. FAR 91.413' },
+  { key: 'pitotDate',       label: 'Pitot-Static / Altimeter', months: 24, far: FAR.pitotStatic, unit: 'date',  hint: '24 calendar months. IFR required. FAR 91.411' },
+  { key: 'eltDate',         label: 'ELT Battery',              months: null, far: FAR.elt,         unit: 'date',  hint: 'Per manufacturer / FAR 91.207. Enter expiry date' },
   { key: 'oilDate',         label: 'Oil Change',               months: null, far: null,            unit: 'hours', hint: null },
   { key: 'hundredHrHours',  label: '100-hr Inspection',        months: null, far: FAR.hundredHour, unit: 'hours', hint: null },
 ]
@@ -456,13 +456,13 @@ function sbSearchUrl(make) {
   return `https://www.google.com/search?q=${q}`
 }
 
-// AD lookup — queries the Federal Register's public API (the only official,
+// AD lookup: queries the Federal Register's public API (the only official,
 // free, CORS-open source for AD text; FAA's own DRS/registry have no public
 // API) for Final Rule documents mentioning this make/model. This is a
-// keyword match on document titles, not a serial-number eligibility check —
+// keyword match on document titles, not a serial-number eligibility check. 
 // always shown with a disclaimer to verify via FAA DRS / an A&P.
 // AD titles never include a model's trailing letter suffix as a literal
-// token (e.g. "King Air 350i" is filed under "350", "172S" under "172") —
+// token (e.g. "King Air 350i" is filed under "350", "172S" under "172"). 
 // searching with the suffix attached reliably returns zero results. Strips
 // a letter (or letter+digit, e.g. "G6") tail off the last numeric token.
 function simplifyModel(model) {
@@ -506,7 +506,7 @@ function AdSbLookup({ make, model, year }) {
     // Try, in priority order, stopping at the first query that returns hits so
     // the pilot always sees something useful:
     //   make+model+year -> make+model -> make+numeric-core model -> make alone.
-    // Year goes FIRST only as an optional refinement — AD titles almost never
+    // Year goes FIRST only as an optional refinement. AD titles almost never
     // contain the model year (a 2024 AD can apply to a 1978 airframe), so a
     // year-qualified search usually returns nothing and we fall straight back
     // to the make/model results. It can only add precision, never zero them out.
@@ -529,7 +529,7 @@ function AdSbLookup({ make, model, year }) {
     }
 
     run()
-      .catch(() => { if (!cancelled) setError('Could not reach the Federal Register — check your connection and try again.') })
+      .catch(() => { if (!cancelled) setError('Could not reach the Federal Register. Check your connection and try again.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [make, model, year])
@@ -567,7 +567,7 @@ function AdSbLookup({ make, model, year }) {
           </div>
         )}
         <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 8, lineHeight: 1.5 }}>
-          Title/keyword search only, not an applicability check — verify with the FAA's DRS or your A&amp;P/IA.
+          Title/keyword search only, not an applicability check. Verify with the FAA's DRS or your A&amp;P/IA.
         </div>
       </div>
 
@@ -582,7 +582,7 @@ function AdSbLookup({ make, model, year }) {
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Search {make} Service Bulletins</span>
         </a>
         <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 8, lineHeight: 1.5 }}>
-          No centralized SB database exists — this searches for the right manufacturer portal.
+          No centralized SB database exists. This searches for the right manufacturer portal.
         </div>
       </div>
     </>
@@ -606,7 +606,7 @@ function AirworthinessBadge({ status }) {
   )
 }
 
-// Compliance status for one AD entry — same status vocabulary as the
+// Compliance status for one AD entry, same status vocabulary as the
 // inspection rows (valid/expiring/expired/incomplete) via the shared
 // currency helpers, so the AirworthinessBadge renders consistently.
 function adStatus(ad, currentHobbs) {
@@ -770,13 +770,13 @@ function CheckRowSimple({ checked, onChange, label, far, padding = '10px 14px' }
         )}
       </div>
       <span style={{ flex: 1, display: 'flex', alignItems: 'baseline', gap: 5, minWidth: 0 }}>
-        {label.includes(' — ') ? (
+        {label.includes(': ') ? (
           <>
             <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.2px', flexShrink: 0 }}>
-              {label.split(' — ')[0]}
+              {label.split(': ')[0]}
             </span>
             <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {label.split(' — ')[1]}
+              {label.split(': ')[1]}
             </span>
           </>
         ) : (
@@ -788,7 +788,7 @@ function CheckRowSimple({ checked, onChange, label, far, padding = '10px 14px' }
   )
 }
 
-// Read-only digit boxes showing the current Hobbs reading — placed above
+// Read-only digit boxes showing the current Hobbs reading. Placed above
 // the next-due field so the user has it in view while entering a value.
 function CurrentHobbsBoxes({ value }) {
   if (value == null) return null
@@ -1279,7 +1279,7 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
     get('currency', 'profile').then(saved => setCurrencyData(saved ?? {}))
   }, [aircraftId])
 
-  // Airworthiness — patches only the `airworthy` key of the shared currency
+  // Airworthiness: patches only the `airworthy` key of the shared currency
   // record, leaving `safe`/`current`/`medical` (owned by the Currency page)
   // untouched.
   function patchAirworthyDocs(key, val) {
@@ -1303,7 +1303,7 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
     })
   }
 
-  // AD compliance log — a manual list under airworthy.ads, filled from the
+  // AD compliance log: a manual list under airworthy.ads, filled from the
   // aircraft's logbook AD-compliance record. Each entry tracks its own
   // recurring/one-time status; mirrors patchAirworthyInsp's write path.
   function writeAds(mapper) {
@@ -1420,7 +1420,7 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
     })
   }
 
-  // ── Weight & Balance setup — belongs to this aircraft's profile, never a
+  // ── Weight & Balance setup. Belongs to this aircraft's profile, never a
   // generic per-model default. `path` is ['bew','weight'] / ['maxTOW'] / etc. ──
   function patchWB(path, value) {
     setProfile(prev => {
@@ -1605,7 +1605,7 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
   const displayName = profile.fullName || profile.label || '—'
   const isHelicopter = profile.category === 'helicopter'
 
-  // Airworthiness — worst status across docs + inspections
+  // Airworthiness: worst status across docs + inspections
   const airworthy = currencyData?.airworthy ?? {}
   const airworthyDocs = airworthy.docs ?? {}
   const docsComplete = ARROW_DOCS.filter(d => !d.key.includes('insurance')).every(d => airworthyDocs[d.key])
@@ -1644,7 +1644,7 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
         {/* Aircraft hero */}
         <div style={{ position: 'relative' }}>
 
-          {/* Hover/swipe zone — wraps dots + image */}
+          {/* Hover/swipe zone: wraps dots + image */}
           <div
             onMouseEnter={showNavHints}
             onMouseLeave={hideNavHints}
@@ -1728,7 +1728,7 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
           </div>
           </div>{/* end hover/swipe zone */}
 
-          {/* Generate icon button — only when no built-in template image exists */}
+          {/* Generate icon button, only when no built-in template image exists */}
           {!activeTemplate?.image && (
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10, marginBottom: 4 }}>
               <GenerateIconButton
@@ -1740,7 +1740,7 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
             </div>
           )}
 
-          {/* Name + reg — centered */}
+          {/* Name + reg. Centered */}
           <div key={slideKey} style={{ position: 'relative', zIndex: 1, textAlign: 'center', marginBottom: 14, animation: slideKey > 0 ? `slide-in-${slideDir > 0 ? 'right' : 'left'} 0.35s cubic-bezier(0.25,0.46,0.45,0.94) both` : 'none' }}>
             <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.5px', lineHeight: 1.1 }}>
               {displayName}
@@ -1850,7 +1850,7 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
         <Section title="Airworthiness Directives & Service Bulletins">
           <AdSbLookup make={profile.make} model={profile.model} year={profile.year} />
 
-          {/* AD compliance log — filled from the aircraft's logbook AD record */}
+          {/* AD compliance log. Filled from the aircraft's logbook AD record */}
           <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
               AD Compliance Log

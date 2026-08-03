@@ -1,7 +1,7 @@
 // Terrain analysis along a route corridor.
 //
-// Answers the question the mountain checklist actually asks — "1,000 ft above
-// the highest terrain within 5 NM" — with a number instead of a chip. That
+// Answers the question the mountain checklist actually asks, "1,000 ft above
+// the highest terrain within 5 NM", with a number instead of a chip. That
 // needs three things the previous version didn't have: samples at a fixed
 // spacing, samples either side of track, and an elevation source that can be
 // asked about hundreds of points.
@@ -12,12 +12,13 @@
 // result says so, because a silent empty result reads as "no mountains" and
 // that is the one wrong answer this must never give.
 
-import { sampleRoute, widenCorridor } from './corridor'
+import { sampleRoute, widenCorridor, crossTrackNm, haversineNm } from './corridor'
+import { isDailyLimit, DailyLimitError, isDailyLimitError } from './openMeteoLimit'
 
 const M_TO_FT = 3.28084
 const BATCH = 100
 
-// Cheap memo — waypoint drags re-run detection on every commit, and the same
+// Cheap memo: waypoint drags re-run detection on every commit, and the same
 // corridor should not be re-queried each time.
 const _cache = new Map()
 const keyOf = (wps, spacing, corridor) =>
@@ -27,7 +28,12 @@ async function openMeteo(pts, signal) {
   const lat = pts.map(p => p.lat.toFixed(4)).join(',')
   const lon = pts.map(p => p.lon.toFixed(4)).join(',')
   const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`, { signal })
-  if (!res.ok) throw new Error(`open-meteo ${res.status}`)
+  if (!res.ok) {
+    // Marked, so the retry below can tell "try again in a second" from
+    // "try again tomorrow", and so a long route stops after the first batch
+    // instead of walking every remaining batch into the same wall.
+    throw (await isDailyLimit(res)) ? new DailyLimitError() : new Error(`open-meteo ${res.status}`)
+  }
   const d = await res.json()
   if (!Array.isArray(d.elevation) || d.elevation.length !== pts.length) throw new Error('open-meteo shape')
   return d.elevation
@@ -66,7 +72,12 @@ async function fetchElevations(pts, timeoutMs) {
         let got
         try {
           got = await source(b, AbortSignal.timeout(timeoutMs))
-        } catch {
+        } catch (e) {
+          // A spent daily allowance is not a hiccup: the retry cannot succeed,
+          // and every remaining batch would repeat it. Abandon this source
+          // immediately: the fallback source is a different host and is still
+          // worth asking.
+          if (isDailyLimitError(e)) throw e
           await sleep(1200)
           got = await source(b, AbortSignal.timeout(timeoutMs))
         }
@@ -92,8 +103,8 @@ export async function getGroundElevationFt(lat, lon, timeoutMs = 8000) {
 // Returns:
 //   { status: 'ok', maxFt, atDistNm, atLat, atLon, clearanceFt, meetsMin,
 //     centerlineFt, spacingNm, corridorNm, lengthNm, pointCount }
-//   { status: 'unavailable' }  — no elevation source answered
-//   { status: 'empty' }        — fewer than two waypoints
+//   { status: 'unavailable' }: no elevation source answered
+//   { status: 'empty' }: fewer than two waypoints
 export async function analyzeTerrain(waypoints, { altFt = null, spacingNm = 5, corridorNm = 5, maxPoints = 300, timeoutMs = 12000 } = {}) {
   const wps = (waypoints || []).filter(w => Number.isFinite(w?.lat) && Number.isFinite(w?.lon))
   if (wps.length < 2) return { status: 'empty' }
@@ -106,7 +117,7 @@ export async function analyzeTerrain(waypoints, { altFt = null, spacingNm = 5, c
 
   // Three points per station (left / track / right), so the station budget is
   // a third of the point budget. On a long route this widens the spacing
-  // rather than firing more requests — the effective value is reported.
+  // rather than firing more requests. The effective value is reported.
   const { samples, spacingNm: step, lengthNm } = sampleRoute(wps, {
     spacingNm, maxSamples: Math.floor(maxPoints / 3),
   })
@@ -121,10 +132,37 @@ export async function analyzeTerrain(waypoints, { altFt = null, spacingNm = 5, c
 
   let maxFt = -Infinity, at = null
   const centerlineFt = []
+  const scored = []
   for (let i = 0; i < pts.length; i++) {
     const ft = (metres[i] ?? 0) * M_TO_FT
+    scored.push({ pt: pts[i], ft })
     if (ft > maxFt) { maxFt = ft; at = pts[i] }
     if (pts[i].offsetNm === 0) centerlineFt.push(ft)
+  }
+
+  // Second and third passes: close in on the high ground.
+  //
+  // The lattice above is 5 NM in both directions, and calling the highest of
+  // those samples "the highest within 5 NM" was wrong by a margin that
+  // matters. On a Sierra crossing it reported 7,618 ft; a 1 NM grid over the
+  // same ground finds 8,765 ft less than two miles away. Terrain clearance is
+  // computed off this figure, so an aircraft planned 1,000 ft above it would
+  // have been 150 ft BELOW the ridge it was clearing.
+  //
+  // Sampling the whole corridor finely would cost dozens of requests. The
+  // maximum only ever hides near ground that is already high, so the coarse
+  // pass picks the candidates and two refinements walk in: 1 NM around the
+  // best few, then 0.25 NM around whatever that finds.
+  const refined = await refinePeak(scored, wps, corridorNm, timeoutMs)
+  let finestNm = step
+  let pointCount = pts.length
+  if (refined) {
+    pointCount += refined.pointCount
+    finestNm = refined.finestNm
+    if (refined.ft > maxFt) {
+      maxFt = refined.ft
+      at = { ...refined.pt, distNm: nearestAlongNm(refined.pt, samples) }
+    }
   }
 
   const out = {
@@ -135,16 +173,96 @@ export async function analyzeTerrain(waypoints, { altFt = null, spacingNm = 5, c
     atLon: at?.lon ?? null,
     centerlineFt,
     spacingNm: Math.round(step * 10) / 10,
+    finestNm: Math.round(finestNm * 100) / 100,
     corridorNm,
     lengthNm: Math.round(lengthNm),
-    pointCount: pts.length,
+    pointCount,
   }
   _cache.set(key, out)
   return withClearance(out, altFt)
 }
 
+// A square of sample points around a centre, at the given spacing, keeping
+// only those still inside the corridor. Terrain 6 NM off track is not what
+// "highest within 5 NM" is promising, however tall it is.
+function boxWithin(centre, radiusNm, stepNm, wps, corridorNm) {
+  const out = []
+  const n = Math.round(radiusNm / stepNm)
+  const cosLat = Math.max(0.05, Math.cos((centre.lat * Math.PI) / 180))
+  for (let i = -n; i <= n; i++) {
+    for (let j = -n; j <= n; j++) {
+      const lat = centre.lat + (i * stepNm) / 60
+      const lon = centre.lon + (j * stepNm) / (60 * cosLat)
+      let best = Infinity
+      for (let k = 0; k < wps.length - 1; k++) {
+        const d = crossTrackNm(lat, lon, [wps[k].lat, wps[k].lon], [wps[k + 1].lat, wps[k + 1].lon])
+        if (d < best) best = d
+      }
+      if (best <= corridorNm) out.push({ lat, lon })
+    }
+  }
+  return out
+}
+
+// Nearest along-route distance, for labelling where the peak is.
+function nearestAlongNm(pt, samples) {
+  let best = Infinity, at = 0
+  for (const s of samples) {
+    const d = haversineNm(pt.lat, pt.lon, s.lat, s.lon)
+    if (d < best) { best = d; at = s.distNm }
+  }
+  return at
+}
+
+// Two candidates, not three. Every request here goes to the same host and the
+// same free-tier quota as the winds-aloft call on the same screen, and losing
+// the wind column costs the altitude advice and the whole cross-section. The
+// second candidate is cheap insurance against the highest coarse sample
+// sitting on a shoulder; a third almost never changes the answer and is not
+// worth spending another slice of the budget on.
+const TOP_CANDIDATES = 2
+
+async function refinePeak(scored, wps, corridorNm, timeoutMs) {
+  const top = [...scored].sort((a, b) => b.ft - a.ft).slice(0, TOP_CANDIDATES)
+  if (!top.length) return null
+
+  let pointCount = 0
+  let best = { ft: top[0].ft, pt: top[0].pt }
+  let finestNm = 1
+
+  // Pass 2: 1 NM around each candidate, all in one batch.
+  const coarseBox = top.flatMap(c => boxWithin(c.pt, 3, 1, wps, corridorNm))
+  if (coarseBox.length) {
+    const m = await fetchElevations(coarseBox, timeoutMs)
+    if (m) {
+      pointCount += coarseBox.length
+      for (let i = 0; i < coarseBox.length; i++) {
+        const ft = (m[i] ?? 0) * M_TO_FT
+        if (ft > best.ft) best = { ft, pt: coarseBox[i] }
+      }
+    }
+  }
+
+  // Pass 3: 0.25 NM around whatever that found. A summit is a point, and at
+  // 90 m the DEM can resolve one; the sampling is what has to catch up.
+  const fineBox = boxWithin(best.pt, 1, 0.25, wps, corridorNm)
+  if (fineBox.length) {
+    const m = await fetchElevations(fineBox, timeoutMs)
+    if (m) {
+      pointCount += fineBox.length
+      finestNm = 0.25
+      for (let i = 0; i < fineBox.length; i++) {
+        const ft = (m[i] ?? 0) * M_TO_FT
+        if (ft > best.ft) best = { ft, pt: fineBox[i] }
+      }
+    }
+  }
+
+  return { ...best, pointCount, finestNm }
+}
+
 // §91.177-style margin: 1,000 ft over the highest obstacle within the corridor
-// (2,000 ft in designated mountainous terrain — not modelled here, so this is
+// (2,000 ft in designated mountainous terrain, not modelled here, so this is
 // the floor of the rule, not the whole of it).
 function withClearance(base, altFt) {
   if (!altFt) return { ...base, clearanceFt: null, meetsMin: null }

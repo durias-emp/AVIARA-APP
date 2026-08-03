@@ -65,7 +65,7 @@ export default function FlightDetailDrawer({ flight, onClose }) {
           borderRadius: '24px 24px 0 0',
           border: '0.5px solid var(--border)', borderBottom: 'none',
           boxShadow: '0 -12px 40px rgba(0,0,0,0.35)',
-          padding: '10px 20px calc(env(safe-area-inset-bottom) + 24px)',
+          padding: '10px 20px calc(var(--safe-bottom) + 24px)',
           transform: visible ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 0.28s cubic-bezier(0.32, 0.72, 0, 1)',
         }}
