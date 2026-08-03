@@ -56,8 +56,53 @@
           }
           // theme-color only. Android and desktop Chrome honour it; iOS
           // standalone does not, and its bar comes from which shell document
-          // loaded (see syncShellAppearance in main.jsx).
+          // loaded, which is what the swap below is for.
           set('theme-color', dark ? '#000000' : '#ffffff')
+
+          // Load the shell whose status bar matches the system.
+          //
+          // iOS reads apple-mobile-web-app-status-bar-style once, when it
+          // parses the document, and honours nothing afterwards: not a tag
+          // JS rewrites, not theme-color, which Apple does not support for
+          // standalone web apps. There is also no value meaning "follow the
+          // system", so one document can only ever have one bar colour. Two
+          // documents can, and dark.html is byte-identical apart from that
+          // tag.
+          //
+          // Here, in the head, rather than in the app's entry module: this
+          // runs while the document is still parsing, so the swap happens
+          // before the module graph, React, or the service worker client
+          // load. That is both the least visible moment to replace the
+          // document and the closest to the launch navigation, which is
+          // what iOS is deciding the bar from.
+          //
+          // Both signals for standalone. navigator.standalone is a legacy
+          // Safari property and cannot be relied on alone; testing it by
+          // itself is what stopped this running at all.
+          var standalone = window.matchMedia('(display-mode: standalone)').matches
+            || window.navigator.standalone === true
+          var isIOS = 'standalone' in window.navigator
+            || /iP(hone|ad|od)/.test(window.navigator.userAgent)
+          var bar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
+          var onDarkShell = bar && bar.getAttribute('content') === 'black'
+          // Never while the URL carries an auth callback: replacing the
+          // document discards the tokens and loses the sign-in that just
+          // completed. The bar can wait; a dropped session cannot.
+          var authInUrl = /[?&#](access_token|refresh_token|code|error|error_description)=/
+            .test(window.location.search + window.location.hash)
+          var KEY = 'aviara-shell-swaps'
+          if (onDarkShell === dark) {
+            sessionStorage.removeItem(KEY)
+          } else if (standalone && isIOS && !authInUrl) {
+            // If a swap does not produce the shell it promised, swapping
+            // again would loop the app forever. Two tries, then live with
+            // the wrong bar rather than an unusable app.
+            var tries = Number(sessionStorage.getItem(KEY) || 0)
+            if (tries < 2) {
+              sessionStorage.setItem(KEY, String(tries + 1))
+              window.location.replace(dark ? '/dark.html' : '/')
+            }
+          }
         } catch (e) { /* the static tags above stand */ }
       })()
     </script>

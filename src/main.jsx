@@ -31,50 +31,29 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('focus', checkForUpdate)
 }
 
-// Load the shell whose status bar matches the system appearance.
-//
-// iOS reads apple-mobile-web-app-status-bar-style once, when it parses the
-// document, and honours nothing afterwards: not a tag JS rewrites, not
-// theme-color, which Apple does not support for standalone web apps. There is
-// also no value meaning "follow the system", so a single document can only
-// ever have one bar colour. Two documents can. dark.html (see the build
-// plugin) is byte-identical apart from the bar, both are precached, and
-// swapping between them is the only mechanism iOS respects.
-//
-// Only on iOS standalone. In a browser the bar belongs to Safari, and on
-// Android theme-color already works, so neither should pay for a second load.
-const SHELL_SWAPS = 'aviara-shell-swaps'
-function syncShellAppearance() {
-  if (window.navigator.standalone !== true) return          // iOS-only property
-  // Never while the URL is carrying an auth callback. Replacing the document
-  // discards the tokens or the PKCE code with it, and the sign-in the pilot
-  // just completed is silently lost. The bar can wait for the next
-  // foreground; a dropped session cannot be recovered.
-  if (/[?&#](access_token|refresh_token|code|error|error_description)=/.test(
-    window.location.search + window.location.hash)) return
-  const meta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
-  if (!meta) return
-  const onDarkShell = meta.getAttribute('content') === 'black'
-  const wantsDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-  if (onDarkShell === wantsDark) { sessionStorage.removeItem(SHELL_SWAPS); return }
-  // If a swap does not produce the shell it promised (a stale cache, a
-  // rewrite serving index.html for /dark.html), swapping again would loop
-  // the app forever. Two attempts, then live with the wrong bar.
-  const tries = Number(sessionStorage.getItem(SHELL_SWAPS) || 0)
-  if (tries >= 2) return
-  sessionStorage.setItem(SHELL_SWAPS, String(tries + 1))
-  // replace, not assign: the swap must not become a back-button step.
-  // /dark.html matches no route, so the router's catch-all sends it to / on
-  // the client, without a reload, which leaves the bar iOS already committed
-  // to in place and tidies the URL.
-  window.location.replace(wantsDark ? '/dark.html' : '/')
-}
-syncShellAppearance()
-// On return, not on the media change itself: switching appearance while the
-// app is open would otherwise reload the page under the pilot mid-task. The
-// system is switched from outside the app, so coming back is the moment.
+// Re-check the shell on the way back in. The launch-time decision lives in
+// index.html's head script, where it runs before this module exists; this
+// only covers the appearance being switched while the app sat in the
+// background. Deliberately not on the media query itself: switching
+// appearance with the app open would reload the page under the pilot
+// mid-task, and the system switch happens outside the app anyway, so
+// returning to it is the moment that matters.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') syncShellAppearance()
+  if (document.visibilityState !== 'visible') return
+  const bar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
+  if (!bar) return
+  const standalone = window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true
+  const isIOS = 'standalone' in window.navigator
+    || /iP(hone|ad|od)/.test(window.navigator.userAgent)
+  if (!standalone || !isIOS) return
+  const onDarkShell = bar.getAttribute('content') === 'black'
+  const wantsDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  if (onDarkShell === wantsDark) { sessionStorage.removeItem('aviara-shell-swaps'); return }
+  const tries = Number(sessionStorage.getItem('aviara-shell-swaps') || 0)
+  if (tries >= 2) return
+  sessionStorage.setItem('aviara-shell-swaps', String(tries + 1))
+  window.location.replace(wantsDark ? '/dark.html' : '/')
 })
 
 // iOS, in standalone mode with a translucent status bar, paints the web view
