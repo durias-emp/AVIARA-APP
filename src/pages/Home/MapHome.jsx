@@ -16,6 +16,7 @@ import { MapContainer, Polyline, CircleMarker, Tooltip, useMap } from 'react-lea
 import ChartLayers, { Basemap } from '../../components/ChartLayers'
 import { CHARTS, EMPTY_LAYERS } from '../../components/chartDefs'
 import ActivityCard from '../../components/ActivityCard'
+import WeatherRibbon from '../../components/WeatherRibbon'
 import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecorder'
 import { put, get, getAll } from '../../lib/db'
 import { getAirports } from '../../lib/aerodromes'
@@ -161,6 +162,9 @@ export default function MapHome() {
   // never get its turn.
   const [base, setBase] = useState(null)
   const [baseResolved, setBaseResolved] = useState(false)
+  // Units come from the pilot profile, so the ribbon reads in the same units
+  // as the rest of the app rather than inventing its own.
+  const [units, setUnits] = useState({})
   const mapRef = useRef(null)
   // Created once, via lazy initial state rather than a ref written during
   // render: a recording must outlive re-renders, and reading or writing a ref
@@ -195,6 +199,7 @@ export default function MapHome() {
     try {
       const row = await get('settings', 'homeAirport').catch(() => null)
       const pilot = await get('settings', 'pilot').catch(() => null)
+      if (pilot) setUnits(pilot)
       const ident = (row?.value || pilot?.homeAirport || '').trim().toUpperCase()
       if (!ident) return
       const airports = await getAirports()
@@ -431,12 +436,18 @@ export default function MapHome() {
         )}
       </MapContainer>
 
-      {/* Top left: hide the furniture and read the chart. The map is the point;
-          everything else should be able to get out of its way. */}
-      <div style={{ position: 'absolute', top: 'calc(var(--safe-top) + 10px)', left: 14, zIndex: 500 }}>
+      {/* Top row: get the furniture out of the way, and the one reading a pilot
+          opens the app for. The menu home showed conditions on arrival and the
+          map home has to keep doing that, or weather becomes something you go
+          looking for rather than something you are told. */}
+      <div style={{
+        position: 'absolute', top: 'calc(var(--safe-top) + 10px)', left: 14, right: 14,
+        zIndex: 500, display: 'flex', alignItems: 'center', gap: 10,
+      }}>
         <Ctrl onClick={() => setSheetOpen(o => !o)} title={sheetOpen ? 'Hide panel' : 'Show panel'} size={46}>
           <IconChevron up={!sheetOpen} />
         </Ctrl>
+        {base && <WeatherRibbon icao={base.ident} units={units} />}
       </div>
 
       {/* Right stack: charts, then position. Ordered by how often a hand
