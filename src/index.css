@@ -763,17 +763,8 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 
-/* Dev-only paint probe (set from main.jsx, never in production): colours the
-   backdrop so one phone screenshot answers whether ELEMENTS can paint below
-   the old viewport line, or only the canvas can. Pink strip: elements paint,
-   keep hunting. Grey strip: the compositor clips at the short viewport and
-   no layout fix can ever reach it. */
-html.debug-strip body::before {
-  background: #ff2d90;
-}
-/* Part two of the probe: the canvas itself goes lime. Elements stop painting
-   at the short line; whether the CANVAS reaches below it decides if the band
-   is ours to colour or Apple's window, untouchable from CSS. */
-html.debug-strip {
-  background: #32ff32;
-}
+/* The paint probes that lived here (pink backdrop, lime canvas) settled the
+   standalone bottom-band question on 2026-08-02: neither elements nor the
+   canvas paint below the short view. The band is the OS window behind a
+   793pt web view, and the fix is the status-bar-style meta in index.html,
+   applied at web clip install time. */
