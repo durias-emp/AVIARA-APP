@@ -21,6 +21,8 @@ import TrafficLayer from '../../components/TrafficLayer'
 import TrafficLegend from '../../components/TrafficLegend'
 import useLiveTraffic from '../../hooks/useLiveTraffic'
 import { CATEGORY_LABEL } from '../../components/trafficBands'
+import AirportPickerModal from '../../components/AirportPickerModal'
+import { createPortal } from 'react-dom'
 import WeatherRibbon from '../../components/WeatherRibbon'
 import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecorder'
 import { put, get, getAll } from '../../lib/db'
@@ -56,7 +58,6 @@ const DRAG_SLOP = 6
 const TOOLS = [
   { to: '/checklists', icon: '/clipboard.png',  label: 'Flight Planning' },
   { to: '/calc',       icon: '/E6B CALC.svg',   label: 'Calculators' },
-  { to: '/weather',    icon: '/cloud.png',       label: 'Weather' },
   { to: '/currency',   icon: '/cheque.png',     label: 'Currency' },
   { to: '/reference',  icon: '/libros.png',     label: 'Quick Reference' },
   { to: '/aircraft',   icon: '/modo-avion.png', label: 'Aircraft' },
@@ -275,6 +276,10 @@ export default function MapHome() {
   // GA focus by default: this app is for pilots flying light aircraft, so the
   // traffic that matters to them should be the traffic that stands out.
   const [tfcFilter, setTfcFilter] = useState('ga')
+  // The working weather screen is the detail overlay, not the /weather route,
+  // which is still a placeholder. Both ways in land on the same one.
+  const [wxDetail, setWxDetail] = useState(false)
+  const [basePicker, setBasePicker] = useState(false)
   const mapRef = useRef(null)
   // Created once, via lazy initial state rather than a ref written during
   // render: a recording must outlive re-renders, and reading or writing a ref
@@ -641,7 +646,10 @@ export default function MapHome() {
         padding: '0 74px', pointerEvents: 'none',
       }}>
         <div style={{ pointerEvents: 'auto', minWidth: 0 }}>
-          <WeatherRibbon icao={base?.ident ?? null} units={units} onChangeAirport={changeBase} />
+          <WeatherRibbon
+            icao={base?.ident ?? null} units={units}
+            onChangeAirport={changeBase}
+            detailOpen={wxDetail} onDetailChange={setWxDetail} />
         </div>
       </div>
 
@@ -769,6 +777,13 @@ export default function MapHome() {
         </div>
       )}
 
+      {basePicker && createPortal(
+        <AirportPickerModal
+          onConfirm={(id) => { setBasePicker(false); changeBase(id) }}
+          onClose={() => setBasePicker(false)} />,
+        document.body,
+      )}
+
       {/* The sheet. Collapsed it is the actions; dragged up it is the rest of
           the app. Two resting heights and nothing in between, because a
           control surface that stops wherever the finger left it is a surface
@@ -819,7 +834,9 @@ export default function MapHome() {
                 during it. The aircraft keeps its place in the tools grid
                 below; it is set once and rarely changed, which is not what a
                 slot on the main surface is for. */}
-            <button onClick={() => navigate('/weather')} style={tileBtn}>
+            <button
+              onClick={() => (base ? setWxDetail(true) : setBasePicker(true))}
+              style={tileBtn}>
               <span style={{ ...tileCircle, background: 'rgba(60,60,67,0.09)', color: '#1c1c1e' }}>
                 <IconWeather />
               </span>

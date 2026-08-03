@@ -24,12 +24,18 @@ import AirportPickerModal from './AirportPickerModal'
 // staleness is shown rather than hidden.
 const STALE_MS = 75 * 60 * 1000
 
-export default function WeatherRibbon({ icao, units = {}, style, onChangeAirport }) {
+export default function WeatherRibbon({
+  icao, units = {}, style, onChangeAirport,
+  // Controlled from the parent so the weather button in the sheet opens the
+  // same report this strip opens. There is one working weather screen and
+  // both routes into it should land there.
+  detailOpen = false, onDetailChange,
+}) {
   const [wx, setWx] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [open, setOpen] = useState(false)      // the inline expansion
-  const [detail, setDetail] = useState(false)  // the full overlay
+
   const [picker, setPicker] = useState(false)  // choosing a different base
   const [now, setNow] = useState(() => Date.now())
 
@@ -232,7 +238,7 @@ export default function WeatherRibbon({ icao, units = {}, style, onChangeAirport
                 ))}
               </div>
 
-              <button onClick={() => setDetail(true)} style={{
+              <button onClick={() => onDetailChange?.(true)} style={{
                 marginTop: 10, width: '100%', border: 'none', cursor: 'pointer',
                 background: 'rgba(60,60,67,0.07)', borderRadius: 9, padding: '7px 0',
                 fontSize: 11.5, fontWeight: 700, color: '#1c1c1e',
@@ -259,10 +265,10 @@ export default function WeatherRibbon({ icao, units = {}, style, onChangeAirport
       document.body,
     )}
 
-    {detail && createPortal(
+    {detailOpen && createPortal(
       <WeatherDetailOverlay
         wx={wx} icao={icao} loading={loading} error={error} isStale={stale}
-        onClose={() => setDetail(false)}
+        onClose={() => onDetailChange?.(false)}
         onRefresh={() => load(icao)} />,
       document.body,
     )}
