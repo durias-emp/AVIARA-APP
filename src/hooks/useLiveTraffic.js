@@ -6,6 +6,7 @@
 // to draw anyway. Only the handful of values a legend shows go into state.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { isLight } from '../components/trafficBands'
 
 const POLL_MS = 5000
 // The proxy snaps to the same grid. Matching it here means panning inside one
@@ -17,7 +18,7 @@ export default function useLiveTraffic({ enabled, lat, lon }) {
   // { aircraft, fetchedAt, serverNow }. Read by the rAF loop, never rendered.
   const snapshot = useRef({ aircraft: [], fetchedAt: 0, serverNow: 0 })
   const [meta, setMeta] = useState({
-    count: 0, fetchedAt: 0, attribution: null, error: null, loading: false,
+    count: 0, lightCount: 0, fetchedAt: 0, attribution: null, error: null, loading: false,
   })
 
   const cell = Number.isFinite(lat) && Number.isFinite(lon)
@@ -43,6 +44,9 @@ export default function useLiveTraffic({ enabled, lat, lon }) {
       }
       setMeta({
         count: data.count ?? 0,
+        // Counted here rather than in the legend so the number survives the
+        // snapshot living in a ref.
+        lightCount: (data.aircraft ?? []).filter(isLight).length,
         fetchedAt: Date.now(),
         attribution: data.attribution ?? null,
         error: null,

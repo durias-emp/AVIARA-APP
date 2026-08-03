@@ -18,7 +18,7 @@ import { ALTITUDE_BANDS } from './trafficBands'
 // count does.
 const STALE_MS = 30000
 
-export default function TrafficLegend({ meta, onClose }) {
+export default function TrafficLegend({ meta, onClose, filter, onFilter, lightCount }) {
   const [now, setNow] = useState(() => Date.now())
 
   // Ticked from state rather than read during render, so the age climbs on its
@@ -67,13 +67,35 @@ export default function TrafficLegend({ meta, onClose }) {
         <span style={{ fontSize: 20, fontWeight: 800, color: '#1c1c1e', fontVariantNumeric: 'tabular-nums' }}>
           {meta.count}
         </span>
-        <span style={{ fontSize: 11.5, color: 'rgba(60,60,67,0.6)' }}>aircraft</span>
+        <span style={{ fontSize: 11.5, color: 'rgba(60,60,67,0.6)' }}>
+          aircraft{lightCount != null ? `, ${lightCount} light` : ''}
+        </span>
         <span style={{
           marginLeft: 'auto', fontSize: 10.5, fontWeight: 700,
           color: stale ? '#FF9500' : 'rgba(60,60,67,0.55)',
           background: stale ? 'rgba(255,149,0,0.15)' : 'transparent',
           padding: stale ? '3px 6px' : 0, borderRadius: 5,
         }}>{meta.error ? 'no signal' : ageText}</span>
+      </div>
+
+      {/* What to look at. The default is not "everything": in a busy area the
+          airliners outnumber light aircraft three to one, and a GA pilot
+          scanning for the traffic they actually share the sky with should not
+          have to find it inside the flow above them. */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 10, background: 'rgba(60,60,67,0.07)', borderRadius: 9, padding: 3 }}>
+        {[
+          ['ga', 'GA focus', 'Light aircraft prominent, the rest dimmed'],
+          ['light', 'GA only', 'Hide everything above 15,500 lb'],
+          ['all', 'All', 'Every target at equal weight'],
+        ].map(([key, label, title]) => (
+          <button key={key} onClick={() => onFilter?.(key)} title={title} style={{
+            flex: 1, border: 'none', cursor: 'pointer', borderRadius: 7,
+            padding: '5px 4px', fontSize: 10.5, fontWeight: 700,
+            background: filter === key ? '#fff' : 'transparent',
+            color: filter === key ? '#1c1c1e' : 'rgba(60,60,67,0.6)',
+            boxShadow: filter === key ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
+          }}>{label}</button>
+        ))}
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 12px', marginBottom: 10 }}>
@@ -98,7 +120,8 @@ export default function TrafficLegend({ meta, onClose }) {
       }}>
         Do not use for separation or traffic avoidance. Data is delayed, and
         coverage is incomplete at low altitude. Aircraft not transmitting ADS-B
-        do not appear at all.
+        do not appear at all, and light aircraft on 978 UAT may be missing even
+        when they are transmitting.
       </div>
 
       {meta.attribution && (

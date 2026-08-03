@@ -19,6 +19,7 @@ import ActivityCard from '../../components/ActivityCard'
 import TrafficLayer from '../../components/TrafficLayer'
 import TrafficLegend from '../../components/TrafficLegend'
 import useLiveTraffic from '../../hooks/useLiveTraffic'
+import { CATEGORY_LABEL } from '../../components/trafficBands'
 import WeatherRibbon from '../../components/WeatherRibbon'
 import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecorder'
 import { put, get, getAll } from '../../lib/db'
@@ -61,11 +62,13 @@ const TOOLS = [
 // certainty than there is.
 function SelectedAircraft({ ac, onClose }) {
   const rows = [
+    ac.typ || ac.reg ? ['Aircraft', [ac.typ, ac.reg].filter(Boolean).join(' · ')] : null,
+    ac.cat ? ['Class', CATEGORY_LABEL[ac.cat] ?? ac.cat] : null,
     ['Altitude', ac.gnd ? 'On ground' : ac.alt != null ? `${ac.alt.toLocaleString()} ft` : 'Unknown'],
     ['Ground speed', ac.gs != null ? `${Math.round(ac.gs)} kt` : 'Unknown'],
     ['Track', ac.trk != null ? `${Math.round(ac.trk)}°` : 'Unknown'],
     ['Position age', `${ac.age.toFixed(1)}s`],
-  ]
+  ].filter(Boolean)
   return (
     <div style={{
       background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(18px)',
@@ -150,14 +153,22 @@ const IconArrow = ({ up }) => (
     <path d="M6 13.5l6 6 6-6" />
   </svg>
 )
-// Sun behind cloud, in the same line weight as the route icon so the two
-// flanking buttons read as a pair rather than as two different toolkits.
+// Sun behind cloud, matched to the reference: four rays rather than a full
+// starburst, and the sun drawn as an open arc so the cloud sits in front of it
+// instead of overlapping a complete circle. Drawn rather than imported so it
+// takes currentColor and stays sharp at any size.
 const IconWeather = () => (
   <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="8" cy="8" r="3.1" />
-    <path d="M8 1.9v1.4M8 12.7v1.4M2.2 8H3.6M12.4 8h1.4M4.1 4.1l1 1M11 11l.9.9M11.9 4.1l-1 1M5.1 11l-1 .9" />
-    <path d="M17.5 20.5H10a3.6 3.6 0 0 1-.5-7.2 5 5 0 0 1 9.4 1.3 3 3 0 0 1-1.4 5.9z" />
+    strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    {/* rays: top, upper left, lower left, upper right */}
+    <path d="M8.6 2.7V1.2" />
+    <path d="M3.77 5.22L2.54 4.36" />
+    <path d="M3.77 11.98L2.54 12.84" />
+    <path d="M13.43 5.22L14.66 4.36" />
+    {/* the sun, open where the cloud covers it */}
+    <path d="M4.56 10.07A4.3 4.3 0 1 1 12.83 9.35" />
+    {/* the cloud, in front */}
+    <path d="M18.5 20H9.5a4 4 0 0 1-.6-7.95 5.5 5.5 0 0 1 10.55-1.2A4.1 4.1 0 0 1 18.5 20z" />
   </svg>
 )
 
@@ -252,6 +263,9 @@ export default function MapHome() {
   // Fetched once when the chip is first switched on, not on mount: TFRs change
   // slowly and most sessions never ask for them.
   const [tfrData, setTfrData] = useState(null)
+  // GA focus by default: this app is for pilots flying light aircraft, so the
+  // traffic that matters to them should be the traffic that stands out.
+  const [tfcFilter, setTfcFilter] = useState('ga')
   const mapRef = useRef(null)
   // Created once, via lazy initial state rather than a ref written during
   // render: a recording must outlive re-renders, and reading or writing a ref
@@ -531,7 +545,7 @@ export default function MapHome() {
         style={{ height: '100%', width: '100%' }}>
         <SizeWatcher mapRef={mapRef} onReady={onMapReady} onMove={setMapCentre} />
         {layers.traffic && (
-          <TrafficLayer snapshot={traffic.snapshot} onSelect={setSelected} />
+          <TrafficLayer snapshot={traffic.snapshot} onSelect={setSelected} filter={tfcFilter} />
         )}
         <Basemap />
         <ChartLayers layers={layers} openaipKey={openaipKey} tfrData={tfrData} />
@@ -676,7 +690,12 @@ export default function MapHome() {
           {selected ? (
             <SelectedAircraft ac={selected} onClose={() => setSelected(null)} />
           ) : (
-            <TrafficLegend meta={traffic.meta} onClose={() => toggleLayer('traffic')} />
+            <TrafficLegend
+              meta={traffic.meta}
+              filter={tfcFilter}
+              onFilter={setTfcFilter}
+              lightCount={traffic.meta.lightCount}
+              onClose={() => toggleLayer('traffic')} />
           )}
         </div>
       )}

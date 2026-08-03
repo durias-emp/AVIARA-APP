@@ -12,7 +12,7 @@
 import { useEffect, useRef } from 'react'
 import { useMap } from 'react-leaflet'
 import L from 'leaflet'
-import { bandFor } from './trafficBands'
+import { bandFor, isLight } from './trafficBands'
 
 const PANE = 'aviara-traffic'
 const PANE_Z = 450          // above tile layers (200-400), below markers (600)
@@ -50,13 +50,20 @@ function project(ac, elapsedMs, reducedMotion) {
   return [(lat2 * 180) / Math.PI, (lon2 * 180) / Math.PI]
 }
 
-function drawTarget(ctx, x, y, ac, zoom) {
+function drawTarget(ctx, x, y, ac, zoom, emphasis) {
   const band = bandFor(ac)
   const heading = ac.trk ?? 0
-  const size = ac.gnd ? 4 : 7
+  const light = isLight(ac)
+  // In a busy area the airliners outnumber the light aircraft three to one.
+  // Drawing everything at one weight means the traffic a GA pilot actually
+  // shares the sky with disappears into the flow above them, so light aircraft
+  // are drawn larger and everything else recedes.
+  const size = ac.gnd ? 4 : light ? 8.5 : 6
+  const faded = emphasis && !light
 
   ctx.save()
   ctx.translate(x, y)
+  if (faded) ctx.globalAlpha = 0.32
 
   if (ac.gnd || ac.trk == null) {
     // Nothing to point: a dot is honest, an arrow pointing north would not be.
@@ -90,7 +97,11 @@ function drawTarget(ctx, x, y, ac, zoom) {
     ctx.rotate((-heading * Math.PI) / 180)
   }
 
-  if (zoom >= LABEL_ZOOM && (ac.cs || ac.alt != null)) {
+  // Labels for light aircraft one zoom level earlier than the rest: they are
+  // the ones worth identifying, and at that scale there are few enough of them
+  // to label without the map turning into text.
+  const labelFrom = light ? LABEL_ZOOM - 1 : LABEL_ZOOM
+  if (!faded && zoom >= labelFrom && (ac.cs || ac.alt != null)) {
     const label = [ac.cs, ac.gnd ? 'GND' : ac.alt != null ? Math.round(ac.alt / 100) : null]
       .filter(Boolean).join('  ')
     ctx.font = '600 10px -apple-system, system-ui, sans-serif'
@@ -105,8 +116,14 @@ function drawTarget(ctx, x, y, ac, zoom) {
   ctx.restore()
 }
 
-export default function TrafficLayer({ snapshot, onSelect }) {
+export default function TrafficLayer({ snapshot, onSelect, filter = 'ga' }) {
   const map = useMap()
+  // Mirrored into a ref through an effect, not written during render. The draw
+  // loop needs a value it can read every frame without the canvas being torn
+  // down and rebuilt each time the filter changes, and touching a ref while
+  // rendering is what the compiler rules out.
+  const filterRef = useRef(filter)
+  useEffect(() => { filterRef.current = filter }, [filter])
   const canvasRef = useRef(null)
   const rafRef = useRef(null)
   const positions = useRef([])      // last drawn screen positions, for hit-testing
@@ -161,12 +178,19 @@ export default function TrafficLayer({ snapshot, onSelect }) {
       const elapsed = Date.now() - snap.fetchedAt
       const bounds = map.getBounds().pad(0.1)
 
-      for (const ac of snap.aircraft) {
+      // Heavier traffic first so the light aircraft draw on top of it rather
+      // than under it.
+      const ordered = filterRef.current === 'light'
+        ? snap.aircraft.filter(isLight)
+        : [...snap.aircraft].sort((a, b) => Number(isLight(a)) - Number(isLight(b)))
+      const emphasis = filterRef.current !== 'all'
+
+      for (const ac of ordered) {
         const pos = project(ac, elapsed, reduced)
         if (!pos) continue
         if (!bounds.contains(pos)) continue
         const p = map.latLngToContainerPoint(pos)
-        drawTarget(ctx, p.x, p.y, ac, zoom)
+        drawTarget(ctx, p.x, p.y, ac, zoom, emphasis)
         positions.current.push({ ac, x: p.x, y: p.y })
       }
     }

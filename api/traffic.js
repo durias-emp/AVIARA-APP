@@ -73,7 +73,7 @@ export default async function handler(req, res) {
 
     const data = await upstream.json()
 
-    // Slimmed to the eight fields the map actually draws. The upstream sends
+    // Slimmed to the fields the map actually draws. The upstream sends
     // about fifty per aircraft, and this runs every five seconds on a phone
     // that may be on cellular in the air: the raw feed is roughly 100 KB for
     // 200 aircraft, and this is a fraction of it.
@@ -103,6 +103,16 @@ export default async function handler(req, res) {
         // Triangulated rather than broadcast, so it carries lower confidence
         // and is drawn differently.
         mlat: a.type === 'mlat' || (Array.isArray(a.mlat) && a.mlat.length > 0),
+        // The ADS-B emitter category, which is what makes light aircraft
+        // findable at all: A1 is under 15,500 lb, A7 rotorcraft, B1 gliders,
+        // B4 ultralights. Without it a Skyhawk and a 777 are the same dot,
+        // and in a busy area the airliners simply bury everything else.
+        cat: a.category ?? null,
+        // Type code and registration. A GA pilot identifies traffic by
+        // N-number far more often than by callsign, and most light aircraft
+        // transmit the registration as the callsign anyway.
+        typ: a.t ?? null,
+        reg: a.r ?? null,
         age,
       })
     }
