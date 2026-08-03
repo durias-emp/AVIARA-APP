@@ -280,6 +280,8 @@ body::before {
   content: "";
   position: fixed;
   inset: 0;
+  /* The backdrop must reach the corrected bottom like everything else. */
+  height: calc(100% + var(--vp-deficit));
   z-index: -1;
   background: var(--bg);
   pointer-events: none;
@@ -760,3 +762,12 @@ input[type="number"]::-webkit-outer-spin-button {
   -webkit-tap-highlight-color: transparent;
 }
 
+
+/* Dev-only paint probe (set from main.jsx, never in production): colours the
+   backdrop so one phone screenshot answers whether ELEMENTS can paint below
+   the old viewport line, or only the canvas can. Pink strip: elements paint,
+   keep hunting. Grey strip: the compositor clips at the short viewport and
+   no layout fix can ever reach it. */
+html.debug-strip body::before {
+  background: #ff2d90;
+}

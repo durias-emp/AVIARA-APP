@@ -97,6 +97,8 @@ document.addEventListener('visibilitychange', () => {
 // deviceLogSink in vite.config.js). Only when they change: resize events fire
 // in bursts and the numbers, not the events, are the story.
 if (import.meta.env.DEV) {
+  // Paint probe: see the .debug-strip rule in index.css.
+  document.documentElement.classList.add('debug-strip')
   let last = ''
   const report = () => {
     const doc = document.documentElement
@@ -123,6 +125,10 @@ if (import.meta.env.DEV) {
         return el ? Math.round(el.getBoundingClientRect().height) : null
       })(),
       leafBelieves: window.__fsMap ? Math.round(window.__fsMap.getSize().y) : null,
+      footB: (() => {
+        const el = document.querySelector('.fixed-footer-bar')
+        return el ? Math.round(el.getBoundingClientRect().bottom) : null
+      })(),
       icbH: (() => {
         const el = document.createElement('div')
         el.style.cssText = 'position:fixed;top:0;bottom:0;left:0;width:1px;visibility:hidden;pointer-events:none'
