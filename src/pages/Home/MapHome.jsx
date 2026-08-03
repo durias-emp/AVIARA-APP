@@ -35,6 +35,9 @@ const SHEET_COLLAPSED_PX = 178
 const SHEET_EXPANDED_VH = 0.82
 const SHEET_FULL_TRIGGER = 0.75
 const SHEET_RADIUS = 22
+// How far a finger must travel before the sheet treats it as a drag rather
+// than a tap. Below this the buttons in the header keep their taps.
+const DRAG_SLOP = 6
 
 // Everything else the app does. The map home would otherwise be a dead end:
 // these are the screens the old menu-style home listed, and they keep their
@@ -322,26 +325,43 @@ export default function MapHome() {
   // drag died on its first inch and the sheet snapped back. Capture keeps the
   // events coming to this element until the finger lifts, and covers touch,
   // mouse and pencil with one path.
+  // Capture is taken on the first real movement, never on pointerdown. While a
+  // pointer is captured the browser retargets the click to the capturing
+  // element, so capturing immediately swallowed every tap on the aircraft,
+  // start and route buttons inside this header: they pressed and did nothing.
+  // Waiting for movement means a tap stays a tap, and a drag still keeps
+  // receiving events after the finger leaves the header.
   function onDragStart(e) {
-    e.currentTarget.setPointerCapture?.(e.pointerId)
-    drag.current = { startY: e.clientY, fromY: restY, moved: false, t0: Date.now(), lastY: restY }
+    drag.current = {
+      startY: e.clientY, fromY: restY, moved: false,
+      t0: Date.now(), lastY: restY, captured: false,
+    }
   }
   function onDragMove(e) {
     const d = drag.current
     if (!d) return
     const dy = e.clientY - d.startY
-    if (Math.abs(dy) > 3) d.moved = true
+    if (!d.moved) {
+      if (Math.abs(dy) < DRAG_SLOP) return       // still a tap
+      d.moved = true
+      d.captured = true
+      e.currentTarget.setPointerCapture?.(e.pointerId)
+    }
+    // Subtract the slop so the sheet starts moving from where the finger
+    // crossed the threshold rather than jumping by it.
+    const shifted = dy - Math.sign(dy) * DRAG_SLOP
     // Clamped, with no rubber band past either end: a sheet that can be pulled
     // past its stops feels broken rather than playful on a control surface.
-    // Clamp between full screen and collapsed, the sheet's real extremes.
-    const next = Math.min(Y_COLLAPSED, Math.max(Y_FULL, d.fromY + dy))
+    const next = Math.min(Y_COLLAPSED, Math.max(Y_FULL, d.fromY + shifted))
     d.lastY = next
     setDragY(next)
   }
   function onDragEnd(e) {
     const d = drag.current
     drag.current = null
-    e?.currentTarget?.releasePointerCapture?.(e.pointerId)
+    // Only release what was actually taken: releasing an uncaptured pointer
+    // throws in some engines, and this path runs on every tap.
+    if (d?.captured) e?.currentTarget?.releasePointerCapture?.(e.pointerId)
     if (!d) return
     if (!d.moved) { setDragY(null); return }      // a tap, not a drag
     // Read the position off the drag record rather than off state: the last
