@@ -11,6 +11,7 @@ import MarketplaceTab from './MarketplaceTab'
 import ProfileTab from './ProfileTab'
 import Inbox from './Inbox'
 import Conversation from './Conversation'
+import Composer from './Composer'
 
 // Deliberately doesn't look like the rest of AVIARA — no BackButton/title
 // header like Tools or Settings use. A bottom tab bar + a small floating
@@ -152,6 +153,12 @@ function DiscoverShell({ profile }) {
   const [tab, setTab] = useState('feed')
   const [dmScreen, setDmScreen] = useState(null)
   const [unread, setUnread] = useState(false)
+  // null when closed, otherwise the kind the composer opens on.
+  const [composing, setComposing] = useState(null)
+  // Bumped after something is posted. Feed and Profile both watch it, so a
+  // new post appears on whichever of them the pilot lands back on without
+  // either having to know the other exists.
+  const [reloadKey, setReloadKey] = useState(0)
 
   const refreshUnread = useCallback(() => {
     hasUnreadMessages(profile.id).then(({ count }) => setUnread(count > 0))
@@ -208,13 +215,31 @@ function DiscoverShell({ profile }) {
       </div>
 
       <div style={{ paddingTop: 76 }}>
-        {tab === 'feed' && <FeedTab />}
+        {tab === 'feed' && (
+          <FeedTab myId={profile.id} onCompose={setComposing} reloadKey={reloadKey} />
+        )}
         {tab === 'explore' && <ExploreTab myId={profile.id} onMessagePilot={messagePilot} />}
         {tab === 'marketplace' && <MarketplaceTab />}
-        {tab === 'profile' && <ProfileTab profile={profile} />}
+        {tab === 'profile' && (
+          <ProfileTab profile={profile} onCompose={setComposing} reloadKey={reloadKey} />
+        )}
       </div>
 
       <TabBar active={tab} onChange={setTab} />
+
+      {composing && (
+        <Composer
+          myId={profile.id}
+          initialKind={composing}
+          onClose={() => setComposing(null)}
+          onPosted={kind => {
+            setReloadKey(k => k + 1)
+            // A story belongs on the feed's story row and a post on the
+            // profile grid, so land wherever the thing just made will be.
+            setTab(kind === 'Story' ? 'feed' : 'profile')
+          }}
+        />
+      )}
     </div>
   )
 }
