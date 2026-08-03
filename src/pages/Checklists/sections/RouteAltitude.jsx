@@ -2975,8 +2975,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                   onBlur={() => dep.trim().length >= 3 && validateDep()}
                   placeholder="KMIA"
                   maxLength={4}
+                  className={`icao-input${depError ? ' icao-input--error' : ''}`}
                   style={{
-                    width: '100%', background: 'var(--bg-card-2)', border: `0.5px solid ${depError ? 'var(--danger)' : 'var(--border)'}`,
+                    width: '100%', background: 'var(--bg-card-2)',
                     borderRadius: 9, padding: '9px 11px', color: 'var(--text)',
                     fontSize: 16, fontWeight: 700, fontFamily: 'monospace',
                     letterSpacing: '1px', outline: 'none', boxSizing: 'border-box',
@@ -3033,8 +3034,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                   onBlur={() => dest.trim().length >= 3 && validateDest()}
                   placeholder="MGGT"
                   maxLength={4}
+                  className={`icao-input${destError ? ' icao-input--error' : ''}`}
                   style={{
-                    width: '100%', background: 'var(--bg-card-2)', border: `0.5px solid ${destError ? 'var(--danger)' : 'transparent'}`,
+                    width: '100%', background: 'var(--bg-card-2)',
                     borderRadius: 9, padding: '9px 11px', color: 'var(--text)',
                     fontSize: 16, fontWeight: 700, fontFamily: 'monospace',
                     letterSpacing: '1px', outline: 'none', boxSizing: 'border-box',

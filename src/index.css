@@ -768,3 +768,28 @@ input[type="number"]::-webkit-outer-spin-button {
    canvas paint below the short view. The band is the OS window behind a
    793pt web view, and the fix is the status-bar-style meta in index.html,
    applied at web clip install time. */
+
+/* ── Airport code inputs ─────────────────────────────────────
+   A field must say it is listening. Tapping FROM or TO focused the input
+   but changed nothing visible, and with the keyboard already up from a
+   previous field the only evidence was a caret, which in a 4-character
+   monospace box is easy to miss. Industry practice (Material's states
+   model, GOV.UK's focus rules): on focus the border takes the accent
+   colour with a soft ring, animated fast enough to feel immediate and
+   slow enough to read as motion rather than a jump. */
+.icao-input {
+  border: 0.5px solid var(--border);
+  caret-color: var(--accent);
+  transition: border-color 0.18s ease-out, box-shadow 0.18s ease-out;
+}
+.icao-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+.icao-input--error {
+  border-color: var(--danger);
+}
+.icao-input--error:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 15%, transparent);
+}
