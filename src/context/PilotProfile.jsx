@@ -42,24 +42,43 @@ export function PilotProfileProvider({ children }) {
     // open forever when another connection blocks an upgrade. Either way the
     // app must still start, on the empty profile if nothing better is
     // available, so the worst case is onboarding rather than a dead screen.
-    const settle = (saved) => setProfileState(saved ?? EMPTY_PROFILE)
+    // A real profile always wins. Nothing found keeps whatever is already
+    // loaded, and only falls back to empty when there is nothing at all.
+    // The old version assigned unconditionally, so any later read that came
+    // back empty, or any failure, downgraded a signed-in pilot to the empty
+    // profile, which the gate renders as onboarding. Sign-out reloads the
+    // page (see Profile.handleSignOut), so holding a profile here can never
+    // leak one account's data into the next.
+    const settle = (saved) => setProfileState(prev => saved ?? prev ?? EMPTY_PROFILE)
 
-    // A blocked IndexedDB open never rejects, it simply never settles, so a
-    // catch alone cannot cover it. Whichever finishes first wins; a late read
-    // is still applied, because settle runs again when the real value lands.
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('IndexedDB did not respond in 5s')), 5000))
-
-    const read = seedDemoData()
-      .catch(() => {})
-      .then(() => get(STORE, KEY))
+    // Both the read and its timeout are built per call, and that is the whole
+    // point of this function. They used to be created once, outside load(),
+    // which broke the re-read after the cloud restore in two separate ways:
+    // the promise was already settled, so awaiting it again replayed the
+    // pre-restore result (empty) instead of reading the restored row, and the
+    // timeout had usually already rejected by then, since hydration involves a
+    // network round-trip, so the race rejected immediately and forced the
+    // empty profile. A returning pilot signed in, their profile was restored
+    // into IndexedDB correctly, and the app still sent them to onboarding.
+    const attempt = () => {
+      const read = seedDemoData()
+        .catch(() => {})
+        .then(() => get(STORE, KEY))
+      // A blocked IndexedDB open never rejects, it simply never settles, so a
+      // catch alone cannot cover it. Whichever finishes first wins; a late
+      // read is still applied, because settle runs again when it lands.
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('IndexedDB did not respond in 5s')), 5000))
+      return { read, timeout }
+    }
 
     const load = () => {
+      const { read, timeout } = attempt()
       read.then(settle).catch(() => {})
       return Promise.race([read, timeout])
         .then(settle)
         .catch(err => {
-          console.error('[aviara] profile load failed, starting empty', err)
+          console.error('[aviara] profile load failed', err)
           settle(null)
         })
     }

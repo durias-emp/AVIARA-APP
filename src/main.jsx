@@ -46,6 +46,12 @@ if ('serviceWorker' in navigator) {
 const SHELL_SWAPS = 'aviara-shell-swaps'
 function syncShellAppearance() {
   if (window.navigator.standalone !== true) return          // iOS-only property
+  // Never while the URL is carrying an auth callback. Replacing the document
+  // discards the tokens or the PKCE code with it, and the sign-in the pilot
+  // just completed is silently lost. The bar can wait for the next
+  // foreground; a dropped session cannot be recovered.
+  if (/[?&#](access_token|refresh_token|code|error|error_description)=/.test(
+    window.location.search + window.location.hash)) return
   const meta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
   if (!meta) return
   const onDarkShell = meta.getAttribute('content') === 'black'
