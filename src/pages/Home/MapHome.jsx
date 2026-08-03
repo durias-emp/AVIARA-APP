@@ -16,10 +16,14 @@ import { MapContainer, Polyline, CircleMarker, Tooltip, useMap } from 'react-lea
 import ChartLayers, { Basemap } from '../../components/ChartLayers'
 import { CHARTS, EMPTY_LAYERS, resolveOpenaipKey } from '../../components/chartDefs'
 import ActivityCard from '../../components/ActivityCard'
+import TrafficLayer from '../../components/TrafficLayer'
+import TrafficLegend from '../../components/TrafficLegend'
+import useLiveTraffic from '../../hooks/useLiveTraffic'
 import WeatherRibbon from '../../components/WeatherRibbon'
 import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecorder'
 import { put, get, getAll } from '../../lib/db'
 import { getAirports } from '../../lib/aerodromes'
+import { loadTfrs } from '../../lib/tfr'
 
 const ACCENT = '#FF5A1F'      // the one saturated colour on the screen, so the
                               // action is never ambiguous
@@ -51,6 +55,51 @@ const TOOLS = [
   { to: '/reference',  icon: '/libros.png',     label: 'Quick Reference' },
   { to: '/aircraft',   icon: '/modo-avion.png', label: 'Aircraft' },
 ]
+
+// One tapped aircraft. Deliberately sparse: this is a reference readout, and
+// padding it with fields the feed reports unreliably would suggest more
+// certainty than there is.
+function SelectedAircraft({ ac, onClose }) {
+  const rows = [
+    ['Altitude', ac.gnd ? 'On ground' : ac.alt != null ? `${ac.alt.toLocaleString()} ft` : 'Unknown'],
+    ['Ground speed', ac.gs != null ? `${Math.round(ac.gs)} kt` : 'Unknown'],
+    ['Track', ac.trk != null ? `${Math.round(ac.trk)}°` : 'Unknown'],
+    ['Position age', `${ac.age.toFixed(1)}s`],
+  ]
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(18px)',
+      borderRadius: 16, padding: '12px 14px', minWidth: 210,
+      boxShadow: '0 4px 20px rgba(0,0,0,0.14)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <span style={{ fontSize: 14, fontWeight: 800, color: '#1c1c1e', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
+          {ac.cs || ac.id.toUpperCase()}
+        </span>
+        {ac.mlat && (
+          <span style={{
+            fontSize: 9, fontWeight: 800, letterSpacing: '0.4px', color: 'rgba(60,60,67,0.6)',
+            background: 'rgba(60,60,67,0.09)', padding: '2px 5px', borderRadius: 4,
+          }}>MLAT</span>
+        )}
+        <button onClick={onClose} aria-label="Close" style={{
+          marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer',
+          color: 'rgba(60,60,67,0.5)', padding: 2, display: 'flex',
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      {rows.map(([k, v]) => (
+        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 14, fontSize: 11.5, padding: '2px 0' }}>
+          <span style={{ color: 'rgba(60,60,67,0.55)' }}>{k}</span>
+          <span style={{ color: '#1c1c1e', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{v}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 // A round glass control. Every floating button on this screen is one of these,
 // which is what makes the stack read as a set rather than as scattered chrome.
@@ -132,11 +181,17 @@ const IconRoute = () => (
 // invalidateSize also has to be told not to animate. The default is a
 // pan-animated resize, and animating a resize that happens while the map is
 // still settling is what produces the stuck transform in the first place.
-function SizeWatcher({ mapRef, onReady }) {
+function SizeWatcher({ mapRef, onReady, onMove }) {
   const map = useMap()
   useEffect(() => {
     mapRef.current = map
     onReady?.()
+    const report = () => {
+      const c = map.getCenter()
+      onMove?.({ lat: c.lat, lon: c.lng })
+    }
+    report()
+    map.on('moveend', report)
     const el = map.getContainer()
     const kick = () => map.invalidateSize({ animate: false, pan: false })
     // Once after layout settles, then only when the element actually changes
@@ -144,8 +199,8 @@ function SizeWatcher({ mapRef, onReady }) {
     const raf = requestAnimationFrame(kick)
     const ro = new ResizeObserver(kick)
     ro.observe(el)
-    return () => { cancelAnimationFrame(raf); ro.disconnect() }
-  }, [map, mapRef, onReady])
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); map.off('moveend', report) }
+  }, [map, mapRef, onReady, onMove])
   return null
 }
 
@@ -189,6 +244,14 @@ export default function MapHome() {
   // when it does.
   const [mapReady, setMapReady] = useState(false)
   const onMapReady = useCallback(() => setMapReady(true), [])
+  // Only the whole-degree cell matters to the traffic proxy, so this is
+  // updated on moveend rather than continuously: panning within one cell
+  // changes nothing anyone needs to know about.
+  const [mapCentre, setMapCentre] = useState(null)
+  const [selected, setSelected] = useState(null)
+  // Fetched once when the chip is first switched on, not on mount: TFRs change
+  // slowly and most sessions never ask for them.
+  const [tfrData, setTfrData] = useState(null)
   const mapRef = useRef(null)
   // Created once, via lazy initial state rather than a ref written during
   // render: a recording must outlive re-renders, and reading or writing a ref
@@ -307,7 +370,25 @@ export default function MapHome() {
     }
   }, [base, baseResolved, pos, mapReady])
 
-  const toggleLayer = (k) => setLayers(prev => ({ ...prev, [k]: !prev[k] }))
+  const toggleLayer = (k) => setLayers(prev => {
+    if (k === 'traffic' && prev.traffic) setSelected(null)
+    return { ...prev, [k]: !prev[k] }
+  })
+
+  useEffect(() => {
+    if (!layers.tfr || tfrData) return
+    let cancelled = false
+    loadTfrs()
+      .then(rows => { if (!cancelled) setTfrData(rows) })
+      .catch(() => { if (!cancelled) setTfrData([]) })
+    return () => { cancelled = true }
+  }, [layers.tfr, tfrData])
+
+  const traffic = useLiveTraffic({
+    enabled: layers.traffic,
+    lat: mapCentre?.lat ?? base?.lat,
+    lon: mapCentre?.lon ?? base?.lon,
+  })
 
   // Where am I, or failing that, where do I fly from. A locate button that
   // does nothing because the fix has not arrived reads as broken.
@@ -448,9 +529,12 @@ export default function MapHome() {
     <div style={{ position: 'fixed', inset: 0, background: '#e8e0d8', overflow: 'hidden' }}>
       <MapContainer center={INITIAL_CENTER} zoom={10} zoomControl={false} attributionControl={false}
         style={{ height: '100%', width: '100%' }}>
-        <SizeWatcher mapRef={mapRef} onReady={onMapReady} />
+        <SizeWatcher mapRef={mapRef} onReady={onMapReady} onMove={setMapCentre} />
+        {layers.traffic && (
+          <TrafficLayer snapshot={traffic.snapshot} onSelect={setSelected} />
+        )}
         <Basemap />
-        <ChartLayers layers={layers} openaipKey={openaipKey} />
+        <ChartLayers layers={layers} openaipKey={openaipKey} tfrData={tfrData} />
         {track.length > 1 && (
           <Polyline positions={track} pathOptions={{ color: ACCENT, weight: 5, opacity: 0.9, lineCap: 'round' }} />
         )}
@@ -578,6 +662,24 @@ export default function MapHome() {
           )}
         </div>
       </div>
+
+      {/* Traffic legend, and the selected aircraft. Present only while the
+          layer is on, because a warning about data that is not on screen is
+          noise, and absent once the sheet is expanded so it does not fight the
+          logbook for the same space. */}
+      {layers.traffic && !expanded && (
+        <div style={{
+          position: 'absolute', left: 14, zIndex: 520,
+          bottom: `calc(${SHEET_COLLAPSED_PX}px + var(--safe-bottom) + ${recording ? 132 : 16}px)`,
+          transition: 'bottom 280ms cubic-bezier(0.4,0,0.2,1)',
+        }}>
+          {selected ? (
+            <SelectedAircraft ac={selected} onClose={() => setSelected(null)} />
+          ) : (
+            <TrafficLegend meta={traffic.meta} onClose={() => toggleLayer('traffic')} />
+          )}
+        </div>
+      )}
 
       {/* The sheet. Collapsed it is the actions; dragged up it is the rest of
           the app. Two resting heights and nothing in between, because a

@@ -32,6 +32,38 @@ function deviceLogSink() {
   }
 }
 
+// Dev-only middleware mirroring api/traffic.js. Vercel functions do not run
+// under `npm run dev`, so without this the traffic layer 404s locally while
+// working perfectly once deployed, which is the most misleading failure of
+// all. Kept deliberately thin: it delegates to the real handler rather than
+// reimplementing it, so the two cannot drift.
+function trafficDevProxy() {
+  return {
+    name: 'traffic-dev-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/traffic', async (req, res) => {
+        const url = new URL(req.url, 'http://localhost')
+        const query = Object.fromEntries(url.searchParams)
+        const { default: handler } = await server.ssrLoadModule('/api/traffic.js')
+        // The handler expects the Vercel request/response shape.
+        const shim = {
+          status(code) { res.statusCode = code; return shim },
+          setHeader(k, v) { res.setHeader(k, v); return shim },
+          json(body) { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(body)) },
+          send(body) { res.end(body) },
+        }
+        try {
+          await handler({ query }, shim)
+        } catch (err) {
+          res.statusCode = 502
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'dev proxy failed', detail: err.message }))
+        }
+      })
+    },
+  }
+}
+
 function tfrDevProxy() {
   const WFS_URL =
     'https://tfr.faa.gov/geoserver/TFR/ows?service=WFS&version=1.1.0&request=GetFeature' +
@@ -109,6 +141,7 @@ export default defineConfig({
     awcDevProxy(),
     tfrDevProxy(),
     deviceLogSink(),
+    trafficDevProxy(),
     react(),
     tailwindcss(),
     VitePWA({

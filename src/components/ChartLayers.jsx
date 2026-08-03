@@ -25,8 +25,9 @@
 // and its mosaic edges look ragged, so handing off to the basemap is the
 // deliberate behaviour, the same one ForeFlight has.
 
-import { TileLayer } from 'react-leaflet'
+import { TileLayer, Polygon, CircleMarker, Popup } from 'react-leaflet'
 import TerrainLayer from '../pages/Checklists/sections/TerrainLayer'
+import { tfrColor } from '../lib/tfr'
 
 // A transparent 1px PNG. A missing chart tile is a hole in the mosaic, not an
 // error, and the browser's broken-image glyph tiled across the map is worse
@@ -43,7 +44,7 @@ export function Basemap() {
   )
 }
 
-export default function ChartLayers({ layers, openaipKey }) {
+export default function ChartLayers({ layers, openaipKey, tfrData }) {
   return (<>
     {layers.sectional && (
       <TileLayer url={`${FAA}/VFR_Sectional/MapServer/tile/{z}/{y}/{x}`}
@@ -70,6 +71,32 @@ export default function ChartLayers({ layers, openaipKey }) {
         at the border; this does not, which is the whole point of it south of
         one. */}
     {layers.terrain && <TerrainLayer />}
+    {/* Restrictions draw above the charts: a TFR hidden under a chart layer is
+        worse than no TFR at all. Polygons where the feed gives geometry, a
+        marker where it only gives a point. */}
+    {layers.tfr && tfrData?.map((t, i) => {
+      const color = tfrColor(t.type)
+      const info = (
+        <Popup>
+          <div style={{ fontSize: 12, lineHeight: 1.5, maxWidth: 210 }}>
+            <strong style={{ color }}>{t.type}</strong> · {t.id}<br />
+            <span style={{ fontSize: 11 }}>{(t.desc || '').slice(0, 140)}</span>
+          </div>
+        </Popup>
+      )
+      return t.polygon?.length > 2 ? (
+        <Polygon key={`tfr-${i}`} positions={t.polygon}
+          pathOptions={{ color, fillColor: color, fillOpacity: 0.18, weight: 2, opacity: 0.9 }}>
+          {info}
+        </Polygon>
+      ) : (
+        <CircleMarker key={`tfr-${i}`} center={[t.lat, t.lon]} radius={10}
+          pathOptions={{ color, fillColor: color, fillOpacity: 0.25, weight: 2 }}>
+          {info}
+        </CircleMarker>
+      )
+    })}
+
     {layers.airspace && openaipKey && (
       <TileLayer key={openaipKey}
         url={`https://api.tiles.openaip.net/api/data/openaip/{z}/{x}/{y}.png?apiKey=${openaipKey}`}

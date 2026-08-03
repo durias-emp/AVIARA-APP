@@ -8,10 +8,18 @@ export const CHARTS = [
   { key: 'ifrlo',     label: 'LO',   faaOnly: true },
   { key: 'ifrhi',     label: 'HI',   faaOnly: true },
   { key: 'airspace',  label: 'ARSP', faaOnly: false },
+  // Live traffic. Not a chart: a delayed, incomplete picture of who is
+  // transmitting, labelled as such wherever it appears.
+  { key: 'traffic',   label: 'TFC',  faaOnly: false },
+  // Temporary flight restrictions. US only in practice: the FAA feed is the
+  // source, so the chip is offered everywhere but will simply draw nothing
+  // outside its coverage.
+  { key: 'tfr',       label: 'TFR',  faaOnly: true },
 ]
 
 export const EMPTY_LAYERS = {
   sectional: false, terrain: false, ifrlo: false, ifrhi: false, airspace: false,
+  traffic: false, tfr: false,
 }
 
 // The openAIP tile key, resolved the same way the route planner resolves it:
