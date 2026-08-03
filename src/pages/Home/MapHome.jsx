@@ -16,11 +16,29 @@ import { MapContainer, Polyline, CircleMarker, useMap } from 'react-leaflet'
 import ChartLayers, { Basemap } from '../../components/ChartLayers'
 import { CHARTS, EMPTY_LAYERS } from '../../components/chartDefs'
 import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecorder'
-import { put, get } from '../../lib/db'
+import { put, get, getAll } from '../../lib/db'
 
 const ACCENT = '#FF5A1F'      // the one saturated colour on the screen, so the
                               // action is never ambiguous
 const CTRL = 52
+
+// The sheet's two resting heights. Collapsed shows the handle, the actions and
+// nothing else; expanded is tall enough for the app's other screens while still
+// leaving map visible above it, so it never reads as a full-screen takeover.
+const SHEET_COLLAPSED_PX = 178
+const SHEET_EXPANDED_VH = 0.82
+
+// Everything else the app does. The map home would otherwise be a dead end:
+// these are the screens the old menu-style home listed, and they keep their
+// icons so nothing has to be relearned.
+const TOOLS = [
+  { to: '/checklists', icon: '/clipboard.png',  label: 'Flight Planning' },
+  { to: '/calc',       icon: '/E6B CALC.svg',   label: 'Calculators' },
+  { to: '/weather',    icon: '/cloud.png',       label: 'Weather' },
+  { to: '/currency',   icon: '/cheque.png',     label: 'Currency' },
+  { to: '/reference',  icon: '/libros.png',     label: 'Quick Reference' },
+  { to: '/aircraft',   icon: '/modo-avion.png', label: 'Aircraft' },
+]
 
 // A round glass control. Every floating button on this screen is one of these,
 // which is what makes the stack read as a set rather than as scattered chrome.
@@ -110,10 +128,18 @@ export default function MapHome() {
 
   const [layers, setLayers] = useState(EMPTY_LAYERS)
   const [sheetOpen, setSheetOpen] = useState(true)
+  // The sheet has two resting heights: the actions alone, and everything the
+  // app can do. Dragging between them is how the rest of the app is reached
+  // now that the home screen is a map, so it has to feel like a sheet rather
+  // than a button that swaps screens.
+  const [expanded, setExpanded] = useState(false)
+  const [dragY, setDragY] = useState(null)      // live offset while a finger is down
+  const drag = useRef(null)
   const [chartsOpen, setChartsOpen] = useState(false)
   const [rec, setRec] = useState(null)
   const [pos, setPos] = useState(null)
   const [openaipKey, setOpenaipKey] = useState(null)
+  const [flights, setFlights] = useState([])
   const mapRef = useRef(null)
   // Created once, via lazy initial state rather than a ref written during
   // render: a recording must outlive re-renders, and reading or writing a ref
@@ -125,7 +151,15 @@ export default function MapHome() {
   useEffect(() => {
     get('settings', 'openaip').then(r => setOpenaipKey(r?.key ?? null)).catch(() => {})
     get('aircraft', 'profile').then(p => setAc(p ?? null)).catch(() => {})
+    loadFlights()
   }, [])
+
+  // Newest first, which is the only order a logbook is ever read in.
+  function loadFlights() {
+    getAll('flights')
+      .then(rows => setFlights([...rows].sort((a, b) => b.id - a.id)))
+      .catch(() => {})
+  }
 
   // Where the pilot is, whether or not anything is being recorded: an aviation
   // map that opens somewhere else is useless, and the blue dot is the one thing
@@ -185,12 +219,66 @@ export default function MapHome() {
       registration: ac?.registration ?? null,
     })
     await put('flights', record).catch(() => {})
+    loadFlights()
   }
 
   const recording = rec != null
   const track = rec?.track?.map(p => [p.lat, p.lon]) ?? []
 
+  // Travel between the two resting heights, in pixels. Measured from the
+  // viewport rather than hardcoded so the sheet is the same proportion of a
+  // small phone and a large one.
+  const travel = Math.max(0, Math.round(window.innerHeight * SHEET_EXPANDED_VH) - SHEET_COLLAPSED_PX)
+  // Where the sheet sits right now: 0 is fully expanded, travel is collapsed.
+  const restY = expanded ? 0 : travel
+  const y = dragY != null ? dragY : restY
+
+  // Pointer events with capture, not touch or mouse handlers. Pulling the
+  // sheet up moves the finger off the header almost immediately, and without
+  // capture the element stops receiving moves the moment that happens: the
+  // drag died on its first inch and the sheet snapped back. Capture keeps the
+  // events coming to this element until the finger lifts, and covers touch,
+  // mouse and pencil with one path.
+  function onDragStart(e) {
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+    drag.current = { startY: e.clientY, fromY: restY, moved: false, t0: Date.now(), lastY: restY }
+  }
+  function onDragMove(e) {
+    const d = drag.current
+    if (!d) return
+    const dy = e.clientY - d.startY
+    if (Math.abs(dy) > 3) d.moved = true
+    // Clamped, with no rubber band past either end: a sheet that can be pulled
+    // past its stops feels broken rather than playful on a control surface.
+    const next = Math.min(travel, Math.max(0, d.fromY + dy))
+    d.lastY = next
+    setDragY(next)
+  }
+  function onDragEnd(e) {
+    const d = drag.current
+    drag.current = null
+    e?.currentTarget?.releasePointerCapture?.(e.pointerId)
+    if (!d) return
+    if (!d.moved) { setDragY(null); return }      // a tap, not a drag
+    // Read the position off the drag record rather than off state: the last
+    // pointermove and this pointerup can land in the same batch, and state
+    // would still be one frame behind.
+    const dist = d.lastY - d.fromY
+    const ms = Date.now() - d.t0
+    // A fast flick decides on its own, regardless of how far it got: a short
+    // sharp pull up should open the sheet even from the very bottom.
+    const flick = ms < 260 && Math.abs(dist) > 24
+    setExpanded(flick ? dist < 0 : d.lastY < travel / 2)
+    setDragY(null)
+  }
+
   const statFont = { fontSize: 11, fontWeight: 600, color: 'rgba(60,60,67,0.6)', letterSpacing: '0.2px' }
+  const statBig = { fontSize: 26, fontWeight: 800, color: '#1c1c1e', letterSpacing: '-0.6px', fontVariantNumeric: 'tabular-nums' }
+  const tileBtn = { background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, width: 92 }
+  const tileCircle = { width: 58, height: 58, borderRadius: '50%',
+    display: 'flex', alignItems: 'center', justifyContent: 'center' }
+  const tileLabel = { fontSize: 12, fontWeight: 600, color: '#1c1c1e' }
 
   return (
     // Fixed to the viewport rather than flowing in the shell: the map is the
@@ -224,9 +312,13 @@ export default function MapHome() {
           reaches for them in the air. */}
       <div style={{
         position: 'absolute', right: 14, zIndex: 500,
-        bottom: sheetOpen ? 'calc(var(--safe-bottom) + 250px)' : 'calc(var(--safe-bottom) + 28px)',
+        bottom: sheetOpen
+          ? `calc(${SHEET_COLLAPSED_PX}px + var(--safe-bottom) + ${recording ? 132 : 16}px)`
+          : 'calc(var(--safe-bottom) + 28px)',
         display: 'flex', flexDirection: 'column', gap: 12,
-        transition: 'bottom 260ms cubic-bezier(0.4,0,0.2,1)',
+        transition: 'bottom 280ms cubic-bezier(0.4,0,0.2,1), opacity 200ms',
+        opacity: expanded ? 0 : 1,
+        pointerEvents: expanded ? 'none' : 'auto',
       }}>
         <Ctrl onClick={() => setChartsOpen(o => !o)} title="Chart layers"
           active={chartsOpen} badge={activeCount}><IconLayers /></Ctrl>
@@ -238,8 +330,11 @@ export default function MapHome() {
       {chartsOpen && (
         <div style={{
           position: 'absolute', right: 14 + CTRL + 12, zIndex: 500,
-          bottom: sheetOpen ? 'calc(var(--safe-bottom) + 250px)' : 'calc(var(--safe-bottom) + 28px)',
+          bottom: sheetOpen
+            ? `calc(${SHEET_COLLAPSED_PX}px + var(--safe-bottom) + ${recording ? 132 : 16}px)`
+            : 'calc(var(--safe-bottom) + 28px)',
           display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end',
+          transition: 'bottom 280ms cubic-bezier(0.4,0,0.2,1)',
         }}>
           {CHARTS.map(c => (
             <button key={c.key} onClick={() => toggleLayer(c.key)} style={{
@@ -253,41 +348,38 @@ export default function MapHome() {
         </div>
       )}
 
-      {/* The panel: what is happening, then what to do about it. */}
+      {/* The numbers, only once there are numbers. Before departure this card
+          said 00:00 / 0 / 0.0, which is three lies dressed as instruments and
+          a quarter of the screen spent saying nothing. It now arrives with the
+          recording and leaves with it. */}
       <div style={{
-        position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 600,
-        transform: sheetOpen ? 'translateY(0)' : 'translateY(calc(100% - 0px))',
-        transition: 'transform 300ms cubic-bezier(0.4,0,0.2,1)',
-        pointerEvents: sheetOpen ? 'auto' : 'none',
+        position: 'absolute', left: 12, right: 12, zIndex: 550,
+        bottom: `calc(${SHEET_COLLAPSED_PX}px + var(--safe-bottom) + 10px)`,
+        transform: recording ? 'translateY(0) scale(1)' : 'translateY(16px) scale(0.97)',
+        opacity: recording ? 1 : 0,
+        pointerEvents: recording ? 'auto' : 'none',
+        transition: 'opacity 260ms ease-out, transform 260ms cubic-bezier(0.34,1.2,0.64,1)',
       }}>
-        {/* Live numbers. Zeros before departure, which is honest: the card is
-            the same object before and during, so nothing appears or moves when
-            the flight starts. */}
         <div style={{
-          margin: '0 12px 10px', background: 'rgba(255,255,255,0.97)',
-          backdropFilter: 'blur(20px)', borderRadius: 18, padding: '16px 18px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+          background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(20px)',
+          borderRadius: 18, padding: '16px 18px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
         }}>
           <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: '#1c1c1e', marginBottom: 12 }}>
-            {recording ? (rec.paused ? 'Paused' : 'Recording') : 'Flight'}
+            {rec?.paused ? 'Paused' : 'Recording'}
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 }}>
             <div style={{ flex: 1, textAlign: 'left' }}>
-              <div style={{ fontSize: 26, fontWeight: 800, color: '#1c1c1e', letterSpacing: '-0.6px', fontVariantNumeric: 'tabular-nums' }}>
-                {fmtClock(rec?.elapsedMs ?? 0)}
-              </div>
+              <div style={statBig}>{fmtClock(rec?.elapsedMs ?? 0)}</div>
               <div style={statFont}>Time</div>
             </div>
             <div style={{ flex: 1.2, textAlign: 'center' }}>
-              <div style={{ fontSize: 42, fontWeight: 800, color: '#1c1c1e', letterSpacing: '-1.4px', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+              <div style={{ ...statBig, fontSize: 42, letterSpacing: '-1.4px', lineHeight: 1 }}>
                 {rec?.gsKt != null ? Math.round(rec.gsKt) : '0'}
               </div>
               <div style={statFont}>Ground speed (kt)</div>
             </div>
             <div style={{ flex: 1, textAlign: 'right' }}>
-              <div style={{ fontSize: 26, fontWeight: 800, color: '#1c1c1e', letterSpacing: '-0.6px', fontVariantNumeric: 'tabular-nums' }}>
-                {(rec?.distNm ?? 0).toFixed(1)}
-              </div>
+              <div style={statBig}>{(rec?.distNm ?? 0).toFixed(1)}</div>
               <div style={statFont}>Distance (NM)</div>
             </div>
           </div>
@@ -297,32 +389,47 @@ export default function MapHome() {
             </div>
           )}
         </div>
+      </div>
 
-        {/* Actions. One is bigger and coloured because one is the point of the
-            screen; the other two are where you were going anyway. */}
-        <div style={{
-          background: 'rgba(255,255,255,0.98)', backdropFilter: 'blur(20px)',
-          borderRadius: '22px 22px 0 0', boxShadow: '0 -4px 24px rgba(0,0,0,0.10)',
-          padding: '10px 18px calc(var(--safe-bottom) + 14px)',
-        }}>
-          <div style={{ width: 40, height: 5, borderRadius: 3, background: 'rgba(60,60,67,0.2)', margin: '0 auto 14px' }} />
+      {/* The sheet. Collapsed it is the actions; dragged up it is the rest of
+          the app. Two resting heights and nothing in between, because a
+          control surface that stops wherever the finger left it is a surface
+          you have to aim at. */}
+      <div style={{
+        position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 600,
+        height: `${Math.round(SHEET_EXPANDED_VH * 100)}vh`,
+        transform: sheetOpen ? `translateY(${y}px)` : 'translateY(100%)',
+        // No transition while a finger is down: the sheet must track the
+        // finger exactly, and easing a live drag is what makes one feel laggy.
+        transition: dragY != null ? 'none'
+          : 'transform 340ms cubic-bezier(0.32,0.72,0,1)',
+        background: 'rgba(255,255,255,0.98)', backdropFilter: 'blur(20px)',
+        borderRadius: '22px 22px 0 0', boxShadow: '0 -4px 24px rgba(0,0,0,0.10)',
+        display: 'flex', flexDirection: 'column',
+        pointerEvents: sheetOpen ? 'auto' : 'none',
+      }}>
+
+        {/* The grab area: handle and actions. Dragging anywhere on this moves
+            the sheet, which is a bigger target than the handle alone and is
+            what people reach for anyway. */}
+        <div
+          onPointerDown={onDragStart} onPointerMove={onDragMove}
+          onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
+          style={{ flexShrink: 0, padding: '10px 18px 0', touchAction: 'none', cursor: 'grab' }}>
+          <div onClick={() => setExpanded(e => !e)} style={{
+            width: 40, height: 5, borderRadius: 3, background: 'rgba(60,60,67,0.2)',
+            margin: '0 auto 14px', cursor: 'pointer',
+          }} />
+
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', gap: 10 }}>
-
-            <button onClick={() => navigate('/aircraft')} style={{
-              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, width: 92,
-            }}>
-              <span style={{
-                width: 58, height: 58, borderRadius: '50%', background: 'rgba(255,90,31,0.14)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
+            <button onClick={() => navigate('/aircraft')} style={tileBtn}>
+              <span style={{ ...tileCircle, background: 'rgba(255,90,31,0.14)' }}>
                 {ac?.image
-                  ? <img src={ac.image} width={40} height={40} alt=""
-                      style={{ objectFit: 'contain' }} />
+                  ? <img src={ac.image} width={40} height={40} alt="" style={{ objectFit: 'contain' }} />
                   : <img src="/modo-avion.png" width={26} height={26} alt=""
                       style={{ objectFit: 'contain', transform: 'rotate(45deg)' }} />}
               </span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#1c1c1e', maxWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ ...tileLabel, maxWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {ac?.registration || ac?.fullName || 'Aircraft'}
               </span>
             </button>
@@ -331,33 +438,89 @@ export default function MapHome() {
               width: 86, height: 86, borderRadius: '50%', border: 'none', cursor: 'pointer',
               background: recording ? '#1c1c1e' : ACCENT,
               boxShadow: `0 6px 20px ${recording ? 'rgba(28,28,30,0.3)' : 'rgba(255,90,31,0.38)'}`,
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              gap: 3, transition: 'background 200ms',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'background 200ms',
             }}>
-              {recording ? (
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
-              ) : (
-                <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M8 5.5v13l11-6.5z" /></svg>
-              )}
+              {recording
+                ? <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+                : <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M8 5.5v13l11-6.5z" /></svg>}
             </button>
 
-            <button onClick={() => navigate('/checklists')} style={{
-              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, width: 92,
-            }}>
-              <span style={{
-                width: 58, height: 58, borderRadius: '50%', background: 'rgba(60,60,67,0.09)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1c1c1e',
-              }}>
+            <button onClick={() => navigate('/checklists')} style={tileBtn}>
+              <span style={{ ...tileCircle, background: 'rgba(60,60,67,0.09)', color: '#1c1c1e' }}>
                 <IconRoute />
               </span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#1c1c1e' }}>Plan Route</span>
+              <span style={tileLabel}>Plan Route</span>
             </button>
           </div>
-          <div style={{ textAlign: 'center', marginTop: 10, fontSize: 10, color: 'rgba(60,60,67,0.45)' }}>
+
+          <div style={{ textAlign: 'center', margin: '10px 0 6px', fontSize: 10, color: 'rgba(60,60,67,0.45)' }}>
             {recording ? 'Recording your track · tap the square to end and log it'
-              : 'Reference aid only · Always consult current FAR/AIM'}
+              : expanded ? 'Reference aid only · Always consult current FAR/AIM'
+              : 'Pull up for everything else'}
           </div>
+        </div>
+
+        {/* Everything else. Scrolls inside the sheet once expanded; inert while
+            collapsed so a swipe there moves the sheet instead of the list. */}
+        <div style={{
+          flex: 1, minHeight: 0, overflowY: expanded ? 'auto' : 'hidden',
+          WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
+          padding: '6px 18px calc(var(--safe-bottom) + 24px)',
+          opacity: expanded ? 1 : 0,
+          transition: 'opacity 200ms ease-out',
+          pointerEvents: expanded ? 'auto' : 'none',
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {TOOLS.map(t => (
+              <button key={t.to} onClick={() => navigate(t.to)} style={{
+                display: 'flex', alignItems: 'center', gap: 12, padding: '14px 14px',
+                background: 'rgba(60,60,67,0.05)', border: 'none', borderRadius: 16,
+                cursor: 'pointer', textAlign: 'left',
+              }}>
+                <img src={t.icon} width={24} height={24} alt="" style={{ objectFit: 'contain', flexShrink: 0 }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#1c1c1e', lineHeight: 1.25 }}>{t.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 22, fontSize: 11, fontWeight: 700, letterSpacing: '0.6px',
+            color: 'rgba(60,60,67,0.5)', textTransform: 'uppercase' }}>Recent flights</div>
+          {flights.length === 0 ? (
+            <div style={{ marginTop: 10, padding: '22px 16px', borderRadius: 16,
+              background: 'rgba(60,60,67,0.05)', textAlign: 'center' }}>
+              <div style={{ fontSize: 13, color: 'rgba(60,60,67,0.6)' }}>No flights logged yet</div>
+              <div style={{ fontSize: 11.5, color: 'rgba(60,60,67,0.45)', marginTop: 4 }}>
+                Press start to record one, or complete a flight plan
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {flights.slice(0, 8).map(f => (
+                <div key={f.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  gap: 10, padding: '13px 15px', borderRadius: 14, background: 'rgba(60,60,67,0.05)',
+                }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#1c1c1e' }}>
+                      {f.dep && f.dest ? `${f.dep} → ${f.dest}` : (f.source === 'recorded' ? 'Recorded flight' : 'Flight')}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'rgba(60,60,67,0.55)', marginTop: 2 }}>
+                      {new Date(f.savedAt ?? f.id).toLocaleDateString()} · {f.registration || f.aircraft || 'No aircraft'}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#1c1c1e', fontVariantNumeric: 'tabular-nums' }}>
+                      {f.distNm != null ? `${Math.round(f.distNm)} NM` : '—'}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'rgba(60,60,67,0.55)', fontVariantNumeric: 'tabular-nums' }}>
+                      {f.flightTimeH != null ? `${f.flightTimeH.toFixed(1)} h` : ''}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
