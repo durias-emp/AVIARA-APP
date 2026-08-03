@@ -13,7 +13,7 @@ import { getProcedures, getProceduresCycle } from '../lib/procedureCharts'
 import { useBackOverride } from '../context/BackOverride'
 import airportDetails from '../data/geo/airport_details.json'
 import {
-  loadWeather, nearestStation, parseFltCat, parseWindParts, parseWind, parseVisib, parseCeiling,
+  loadWeather, substituteWeather, parseFltCat, parseWindParts, parseWind, parseVisib, parseCeiling,
   parseTemp, parseDewp, parseAltim, parseAirportName, colorizeTaf,
   parseObsAge, parseTafAge, parseFetchAge,
 } from '../lib/weather'
@@ -115,38 +115,48 @@ function NotFromHere({ children }) {
   )
 }
 
+// Label above value rather than beside it. Side-by-side in a half-width
+// column, a gusting wind ("310° 10G15 kt") wraps back underneath its own
+// label and the two collide; stacking is immune to however long the value
+// turns out to be, which on a phone is the only safe assumption.
 function AreaRow({ label, value, first }) {
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '10px 16px', borderTop: first ? 'none' : '0.5px solid var(--border)',
+      padding: '8px 16px 9px', borderTop: first ? 'none' : '0.5px solid var(--border)',
     }}>
-      <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{label}</span>
-      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', fontFamily: 'monospace' }}>{value}</span>
+      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 1 }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', fontFamily: 'monospace' }}>{value}</div>
     </div>
   )
 }
 
 // Shown only for a field that publishes no observation of its own — the
-// noReport gate in loadWeather, never a failed fetch. Two independent
+// noReport gate in loadWeather, never a failed fetch. Three independent
 // stand-ins, each labelled with where it actually came from:
 //
-//   * the nearest station that does report. Within ON_FIELD_NM this is the
-//     field's own automated station under a different identifier (CYLS's is
-//     CXBI), so it is introduced as this airport's weather; further out it
-//     is introduced as somewhere else's, with distance and bearing
-//   * a model estimate for the airport's own coordinates, which fills the
-//     gaps a partial AUTO station leaves — CXBI publishes no visibility, no
-//     altimeter and no cloud at all
+//   * the nearest station that does report, of any kind. Within ON_FIELD_NM
+//     this is the field's own automated station under a different identifier
+//     (CYLS's is CXBI), so it is introduced as this airport's weather;
+//     further out it is introduced as somewhere else's, with distance and
+//     bearing
+//   * the nearest actual aerodrome publishing a METAR. A different question
+//     with a genuinely different answer: CXBI sits on the field but gives no
+//     visibility, no altimeter and no forecast, while CYQA 31 NM away gives
+//     a complete observation and a TAF. Closest is not the same as most
+//     complete, so both are offered rather than one being chosen for the
+//     pilot
+//   * a model estimate for the airport's own coordinates, filling whatever
+//     the stations leave out
 //
-// No flight category is derived from either one. See areaWeather.js.
+// No flight category is derived from any of them. See areaWeather.js.
 function SubstituteWeather({ icao, sub, loading, units, RawRow }) {
   if (!sub && loading) {
     return <div style={CARD}><EmptyRow>Looking for nearby weather…</EmptyRow></div>
   }
   const station = sub?.station
+  const airport = sub?.airport
   const area = sub?.area
-  if (!station && !area) {
+  if (!station && !airport && !area) {
     return (
       <div style={CARD}>
         <EmptyRow>{icao} publishes no weather report, and no station or forecast could be reached nearby.</EmptyRow>
@@ -174,6 +184,30 @@ function SubstituteWeather({ icao, sub, loading, units, RawRow }) {
           </div>
           <RawRow title={`Raw METAR · ${station.ident}`} text={station.metar?.rawOb} age={parseObsAge(station.metar)} />
           <RawRow title={`Raw TAF · ${station.ident}`} text={station.taf?.rawTAF} colorize age={parseTafAge(station.taf)} />
+        </div>
+      )}
+
+      {airport && (
+        <div style={{ ...CARD, marginBottom: 12 }}>
+          <NotFromHere>
+            Nearest airport publishing a full report: <b>{airport.ident}</b>, {Math.round(airport.distNm)} nm {airport.point}. This is {airport.ident} weather, not {icao}'s.
+          </NotFromHere>
+          <div style={{ padding: '12px 16px 4px' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{airport.name || airport.ident}</div>
+          </div>
+          {/* An airport METAR carries what a bare station does not — the
+              ceiling and the altimeter setting are the whole reason this
+              card is worth a second lookup. */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 0' }}>
+            <AreaRow first label="Wind" value={parseWind(airport.metar, units)} />
+            <AreaRow first label="Temp" value={parseTemp(airport.metar, units)} />
+            <AreaRow label="Visibility" value={parseVisib(airport.metar, units)} />
+            <AreaRow label="Dewpoint" value={parseDewp(airport.metar, units)} />
+            <AreaRow label="Ceiling" value={parseCeiling(airport.metar, units)} />
+            <AreaRow label="Altimeter" value={parseAltim(airport.metar, units)} />
+          </div>
+          <RawRow title={`Raw METAR · ${airport.ident}`} text={airport.metar?.rawOb} age={parseObsAge(airport.metar)} />
+          <RawRow title={`Raw TAF · ${airport.ident}`} text={airport.taf?.rawTAF} colorize age={parseTafAge(airport.taf)} />
         </div>
       )}
 
@@ -304,11 +338,11 @@ export default function AirportInfo() {
     let cancelled = false
     setSubLoading(true)
     Promise.all([
-      nearestStation(info.lat, info.lon, { withinNm: 60 }).catch(() => null),
+      substituteWeather(info.lat, info.lon).catch(() => ({ station: null, airport: null })),
       loadAreaWeather(icao, info.lat, info.lon).catch(() => null),
-    ]).then(([station, area]) => {
+    ]).then(([stations, area]) => {
       if (cancelled) return
-      setSub({ station, area })
+      setSub({ station: stations.station, airport: stations.airport, area })
       setSubLoading(false)
     })
     return () => { cancelled = true }

@@ -60,6 +60,23 @@ export async function findAirport(ident) {
   return hit ? { icaoId: hit[0], name: hit[4], lat: hit[1], lon: hit[2] } : null
 }
 
+// Just the idents, as a Set, for "is this thing an airport?" questions.
+//
+// Weather stations and aerodromes share an identifier space but are not the
+// same population: CXBI reports Barrie's weather and is not an airport,
+// CYQA is both. Telling them apart is what lets the airport page offer a
+// full airport METAR/TAF separately from whatever station happens to sit
+// closest. Memoised because the alternative is a linear scan of 34k rows
+// per candidate station.
+let _identSet = null
+export async function getAirportIdents() {
+  if (_identSet) return _identSet
+  const list = await getAirports()
+  if (!list) return null
+  _identSet = new Set(list.map(a => a[0]))
+  return _identSet
+}
+
 // Frequencies/runways, keyed by ident — no lat/lon of its own, always used
 // alongside getAirports(). Dynamic import so the map's airport layer (and
 // anything else that doesn't need this) never pays for the ~2MB chunk.
