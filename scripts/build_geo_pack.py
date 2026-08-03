@@ -204,6 +204,27 @@ if not os.path.exists(ap_path):
     urllib.request.urlretrieve(AIRPORTS_URL, ap_path)
 
 airports = []
+# Everything the airport picker can search on that isn't already in
+# airports.json — city, IATA code, country — as a positional sidecar rather
+# than extra columns on the main file. Two reasons for the split:
+#
+#   * airports.json is loaded by the map layer and the en-route corridor
+#     analysis on every flight, and neither of them will ever search by city.
+#     Inlining the same data costs those paths 166 KB gzipped for nothing;
+#     the sidecar is fetched only when a pilot actually types a word
+#   * positional means the ident is not repeated, which is most of the
+#     saving: keyed by ident the same content is 260 KB gzipped, positional
+#     it is 131 KB
+#
+# A city that already appears inside the airport's own name is stored as
+# empty — searching the name finds it either way, and that alone is 10,932
+# of the 27,924 cities.
+#
+# Built in this loop, not a second pass, because the alignment IS the schema:
+# row i here describes airports[i] there. The reader re-checks the length and
+# the first/last idents before trusting it, and disables city search rather
+# than mislabelling airports if a future edit ever breaks the pairing.
+search = []
 for row in csv.DictReader(open(ap_path, encoding='utf-8')):
     cls = CLASS.get(row['type'])
     if cls is None:
@@ -219,6 +240,14 @@ for row in csv.DictReader(open(ap_path, encoding='utf-8')):
         continue
     airports.append([ident, la, lo, cls, row['name']])
 
+    muni = (row['municipality'] or '').strip()
+    iata = (row['iata_code'] or '').strip()
+    if muni and muni.lower() in row['name'].lower():
+        muni = ''
+    # Trailing empties only — a field with a city and no IATA code keeps its
+    # leading position, so the reader can split on tab without counting.
+    search.append('\t'.join([muni, iata, (row['iso_country'] or '').strip()]).rstrip('\t'))
+
 ap_out = f'{OUT}/airports.json'
 json.dump({'airports': airports,
            'note': 'OurAirports, public domain. Large/medium/small airports; '
@@ -227,6 +256,22 @@ json.dump({'airports': airports,
                    'aux_aerodromes.json instead).'},
           open(ap_out, 'w'), separators=(',', ':'))
 print(f'aerodromes: {len(airports)} fields -> {os.path.getsize(ap_out)/1e6:.2f} MB')
+
+search_out = f'{OUT}/airport_search.json'
+json.dump({'n': len(airports),
+           'first': airports[0][0],
+           'last': airports[-1][0],
+           'rows': search,
+           'note': 'Positional sidecar to airports.json: rows[i] describes '
+                   'airports[i]. Each row is "city\\tIATA\\tcountry" with '
+                   'trailing empties dropped, and city omitted where it '
+                   'already appears in the airport name. n/first/last exist '
+                   'so a reader can prove the two files still line up.'},
+          open(search_out, 'w'), separators=(',', ':'))
+n_city = sum(1 for s in search if s.split('\t')[0])
+n_iata = sum(1 for s in search if len(s.split('\t')) > 1 and s.split('\t')[1])
+print(f'search index: {n_city} cities, {n_iata} IATA codes '
+      f'-> {os.path.getsize(search_out)/1e6:.2f} MB')
 
 # ── Heliports & seaplane bases ─────────────────────────────────────
 # Own file, own [ident, lat, lon, name] shape — no `cls`, since these
