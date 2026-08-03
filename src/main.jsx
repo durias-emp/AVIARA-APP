@@ -49,7 +49,21 @@ function correctViewportDeficit() {
   const standalone = window.matchMedia('(display-mode: standalone)').matches
     || window.navigator.standalone === true
   const safeTop = parseFloat(getComputedStyle(doc).getPropertyValue('--safe-top')) || 0
-  const deficit = (window.screen?.height ?? 0) - window.innerHeight
+  // Measure the fixed-positioning box directly instead of trusting
+  // innerHeight. The keyboard collapses innerHeight (617 with visualViewport
+  // 476, on record) while fixed positioning keeps resolving against the
+  // unchanged containing block, so a deficit computed from innerHeight
+  // switched the correction off the moment a pilot tapped a text field and
+  // the dead strip returned mid-typing, surviving until iOS felt like firing
+  // a resize. The probe hangs off <html>, not body: body carries a transform
+  // precisely so it captures fixed descendants, and a captured probe would
+  // measure the corrected box, feeding the correction its own output.
+  const probe = document.createElement('div')
+  probe.style.cssText = 'position:fixed;top:0;bottom:0;left:0;width:1px;visibility:hidden;pointer-events:none'
+  doc.appendChild(probe)
+  const icb = probe.getBoundingClientRect().height
+  probe.remove()
+  const deficit = Math.round((window.screen?.height ?? 0) - icb)
   const lying = standalone && safeTop > 0 && deficit > 0 && Math.abs(deficit - safeTop) <= 2
   doc.style.setProperty('--vp-deficit', lying ? deficit + 'px' : '0px')
 }
@@ -75,6 +89,14 @@ if (import.meta.env.DEV) {
       safeBottom: getComputedStyle(doc).getPropertyValue('--safe-bottom').trim(),
       deficit: getComputedStyle(doc).getPropertyValue('--vp-deficit').trim(),
       bodyH: Math.round(document.body.getBoundingClientRect().height),
+      icbH: (() => {
+        const el = document.createElement('div')
+        el.style.cssText = 'position:fixed;top:0;bottom:0;left:0;width:1px;visibility:hidden;pointer-events:none'
+        doc.appendChild(el)
+        const h = Math.round(el.getBoundingClientRect().height)
+        el.remove()
+        return h
+      })(),
       // What a fixed inset:0 overlay actually measures on this device. body
       // being right proves nothing about its children if the browser ignored
       // the transform capture; this is the direct answer.
