@@ -12,12 +12,13 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MapContainer, Polyline, CircleMarker, useMap } from 'react-leaflet'
+import { MapContainer, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet'
 import ChartLayers, { Basemap } from '../../components/ChartLayers'
 import { CHARTS, EMPTY_LAYERS } from '../../components/chartDefs'
 import ActivityCard from '../../components/ActivityCard'
 import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecorder'
 import { put, get, getAll } from '../../lib/db'
+import { getAirports } from '../../lib/aerodromes'
 
 const ACCENT = '#FF5A1F'      // the one saturated colour on the screen, so the
                               // action is never ambiguous
@@ -151,6 +152,12 @@ export default function MapHome() {
   const [pos, setPos] = useState(null)
   const [openaipKey, setOpenaipKey] = useState(null)
   const [flights, setFlights] = useState([])
+  // The pilot's base, and whether we are still looking for it. The map must
+  // not settle anywhere until this resolves one way or the other, or a GPS fix
+  // that lands first would frame the map somewhere else and the base would
+  // never get its turn.
+  const [base, setBase] = useState(null)
+  const [baseResolved, setBaseResolved] = useState(false)
   const mapRef = useRef(null)
   // Created once, via lazy initial state rather than a ref written during
   // render: a recording must outlive re-renders, and reading or writing a ref
@@ -174,7 +181,30 @@ export default function MapHome() {
     get('settings', 'openaip').then(r => setOpenaipKey(r?.key ?? null)).catch(() => {})
     get('aircraft', 'profile').then(p => setAc(p ?? null)).catch(() => {})
     loadFlights()
+    resolveBase()
   }, [])
+
+  // The home airport, from wherever the pilot last set it. The weather card
+  // writes settings/homeAirport when they change it there, and onboarding
+  // writes the same field onto the pilot profile, so both are read and the
+  // explicit choice wins.
+  async function resolveBase() {
+    try {
+      const row = await get('settings', 'homeAirport').catch(() => null)
+      const pilot = await get('settings', 'pilot').catch(() => null)
+      const ident = (row?.value || pilot?.homeAirport || '').trim().toUpperCase()
+      if (!ident) return
+      const airports = await getAirports()
+      // [ident, lat, lon, class]
+      const hit = airports?.find(a => a[0] === ident)
+      if (hit) setBase({ ident, lat: hit[1], lon: hit[2] })
+    } catch {
+      // No base is a normal state, not an error: the map falls back to the
+      // pilot's position, and to a default before that arrives.
+    } finally {
+      setBaseResolved(true)
+    }
+  }
 
   // Newest first, which is the only order a logbook is ever read in.
   function loadFlights() {
@@ -208,20 +238,40 @@ export default function MapHome() {
   // this only decides where the map opens before the first fix arrives.
   const INITIAL_CENTER = [37.6188, -122.3750]        // KSFO
 
-  // Move to the pilot once, on the first fix. Following every fix afterwards
-  // would fight the pilot panning the chart, which is the ForeFlight rule the
-  // planner already follows: the camera belongs to them.
-  const [centred, setCentred] = useState(false)
+  // Frame the map once, and only once. The base airport wins: it is the place
+  // the pilot chose, it is there before any fix arrives, and it does not
+  // wander. A GPS fix only frames the map when there is no base to use, so
+  // opening the app away from home does not silently move the map off the
+  // field the pilot planned around.
+  //
+  // Once framed the camera belongs to the pilot. Following every fix would
+  // fight them panning the chart, which is the rule the planner already
+  // follows; the locate button is how they ask to come back.
+  // A ref, not state: this is a latch that guards an imperative camera move,
+  // and flipping state inside the same effect that reads it is the cascading
+  // render the compiler rightly rejects. Nothing renders from it.
+  const framed = useRef(false)
   useEffect(() => {
-    if (!pos || centred || !mapRef.current) return
-    setCentred(true)
-    mapRef.current.setView([pos.lat, pos.lon], 11, { animate: false })
-  }, [pos, centred])
+    if (framed.current || !mapRef.current) return
+    if (base) {
+      framed.current = true
+      mapRef.current.setView([base.lat, base.lon], 10, { animate: false })
+      return
+    }
+    // Wait for the base lookup before letting a fix decide.
+    if (baseResolved && pos) {
+      framed.current = true
+      mapRef.current.setView([pos.lat, pos.lon], 11, { animate: false })
+    }
+  }, [base, baseResolved, pos])
 
   const toggleLayer = (k) => setLayers(prev => ({ ...prev, [k]: !prev[k] }))
 
+  // Where am I, or failing that, where do I fly from. A locate button that
+  // does nothing because the fix has not arrived reads as broken.
   function locate() {
-    if (pos && mapRef.current) mapRef.current.setView([pos.lat, pos.lon], 12, { animate: true })
+    const target = pos ?? base
+    if (target && mapRef.current) mapRef.current.setView([target.lat, target.lon], 12, { animate: true })
   }
 
   function startFlight() {
@@ -344,6 +394,16 @@ export default function MapHome() {
         <ChartLayers layers={layers} openaipKey={openaipKey} />
         {track.length > 1 && (
           <Polyline positions={track} pathOptions={{ color: ACCENT, weight: 5, opacity: 0.9, lineCap: 'round' }} />
+        )}
+        {/* Home, marked. Framing the map on an unmarked field just looks like
+            an arbitrary starting position. */}
+        {base && (
+          <CircleMarker center={[base.lat, base.lon]} radius={7}
+            pathOptions={{ color: ACCENT, weight: 3, fillColor: '#fff', fillOpacity: 1 }}>
+            <Tooltip permanent direction="top" offset={[0, -8]} className="home-base-label">
+              {base.ident}
+            </Tooltip>
+          </CircleMarker>
         )}
         {pos && (
           <CircleMarker center={[pos.lat, pos.lon]} radius={8}
