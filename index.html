@@ -9,61 +9,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <!-- black, fixed, and the end of a long investigation. Findings, all
-         verified on device: black-translucent triggers a container bug that
-         leaves a dead OS-owned band under the app. The non-translucent bar
-         is painted by iOS and honours neither theme-color nor the manifest.
-         It is re-read on every launch from the FIRST document of the launch
-         navigation, which is always start_url, so serving a dark variant on
-         another path can never affect it. And prefers-color-scheme lies at
-         document-parse time in a web clip (it reports the previous value and
-         corrects itself after parse), so no script in the head can pick a
-         bar to match the system either. There is no adaptive bar for a web
-         clip. Black is the fixed choice: seamless in dark, a deliberate
-         black bar over the white app in light.
-         The comment above main.jsx's viewport correction tells the band
-         story; git tells the rest of this one. -->
+    <!-- Kept for engines that honour it; the device under test ignores every
+         value of this tag (default, black, and translucent all painted the
+         same bar). black matches the dark-first fallback. translucent stays
+         off the table: it triggers the container bug that left a dead
+         OS-owned band under the app; see main.jsx. -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-    <!-- Browser/PWA chrome colour. Deliberately a single tag with no media
-         query: iOS reads media-scoped theme-color tags when the app launches
-         and does not re-evaluate them afterwards, so switching the system
-         appearance left the status bar on the colour it started with until the
-         app was killed and reopened. useTheme rewrites this one on every
-         change instead. -->
-    <meta name="theme-color" content="#ffffff" />
-    <!-- Both schemes, declared before any script runs: iOS reads this when
-         painting the standalone status bar. See the :root color-scheme note
-         in index.css. -->
+    <!-- The value the bar actually tracked through three days of on-device
+         experiments: it stayed white through every bar-style change, every
+         reinstall, and dark mode, which is exactly the behaviour of a bar
+         painted from a static white theme-color. Media-scoped tags hand the
+         choice to iOS's own evaluation of the system appearance, which is
+         the only evaluation that cannot be lied to: prefers-color-scheme as
+         seen by SCRIPT at document-parse time reports the previous
+         session's value (proven with an on-screen diagnostic), so the old
+         inline script that rewrote theme-color at parse was poisoning the
+         very value iOS sampled. No script touches these at load. useTheme
+         updates the matching tag afterwards for engines that re-read
+         (Android, desktop Chrome, the red palette). -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
+    <!-- Both schemes, declared before any script runs. See the :root
+         color-scheme note in index.css. -->
     <meta name="color-scheme" content="light dark" />
-    <!-- Runs before first paint, and deliberately inline: everything that
-         decides the status bar's colour is sampled by iOS at launch, so the
-         correct values have to be in the document by then. A module script,
-         React, or anything else that lands a frame later cannot undo the
-         bar iOS has already committed to.
-         Sets theme-color only. The iOS status bar is not settable from
-         script at all: it comes from the static tag above, which is why the
-         build emits a second shell with a different one. -->
-    <script>
-      (function () {
-        try {
-          var dark = window.matchMedia('(prefers-color-scheme: dark)').matches
-          var set = function (name, content) {
-            var m = document.querySelector('meta[name="' + name + '"]')
-            if (!m) {
-              m = document.createElement('meta')
-              m.setAttribute('name', name)
-              document.head.appendChild(m)
-            }
-            m.setAttribute('content', content)
-          }
-          // theme-color only. Android and desktop Chrome honour it; iOS
-          // standalone does not, and its bar comes from which shell document
-          // loaded, which is what the swap below is for.
-          set('theme-color', dark ? '#000000' : '#ffffff')
-
-        } catch (e) { /* the static tags above stand */ }
-      })()
-    </script>
     <title>AVIARA</title>
   </head>
   <body>

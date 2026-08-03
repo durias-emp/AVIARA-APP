@@ -14,25 +14,21 @@ function currentTheme() {
 // system between light and dark left the bar stuck on whichever colour the app
 // started with until it was force-quit and reopened. Rewriting the tag's
 // content is picked up live.
-function setMeta(name, content) {
-  let meta = document.querySelector(`meta[name="${name}"]`)
-  if (!meta) {
-    meta = document.createElement('meta')
-    meta.setAttribute('name', name)
-    document.head.appendChild(meta)
-  }
-  meta.setAttribute('content', content)
-}
-
 function paintChrome() {
   const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
   if (!bg) return
-  // theme-color, and nothing else. iOS standalone ignores it for the status
-  // bar (Apple does not support it there), so the bar is handled by loading
-  // the matching shell document instead: see syncShellAppearance in main.jsx.
-  // This still drives Android and desktop Chrome, including the red palette,
-  // which the shells know nothing about.
-  setMeta('theme-color', bg)
+  // theme-color lives as a MEDIA-SCOPED PAIR in index.html, because iOS
+  // paints the standalone status bar from it and samples it at parse, when
+  // prefers-color-scheme still reports the previous session's value: only
+  // tags iOS evaluates itself dodge that lie. So: update the tag matching
+  // the current theme, never collapse the pair to a single tag, and never
+  // rewrite at load. This keeps Android and desktop Chrome current for
+  // themes the static pair cannot know, like the red palette, whose --bg
+  // lands in the dark-scoped tag.
+  const dark = document.documentElement.getAttribute('data-theme') !== 'light'
+  const sel = `meta[name="theme-color"][media*="${dark ? 'dark' : 'light'}"]`
+  const meta = document.querySelector(sel)
+  if (meta) meta.setAttribute('content', bg)
   // color-scheme stays in the stylesheet, where it is keyed to data-theme. 
   // setting it here as well would override the red palette's dark scheme with
   // whatever the system happens to be.
