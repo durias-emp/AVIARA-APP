@@ -31,6 +31,46 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('focus', checkForUpdate)
 }
 
+// Load the shell whose status bar matches the system appearance.
+//
+// iOS reads apple-mobile-web-app-status-bar-style once, when it parses the
+// document, and honours nothing afterwards: not a tag JS rewrites, not
+// theme-color, which Apple does not support for standalone web apps. There is
+// also no value meaning "follow the system", so a single document can only
+// ever have one bar colour. Two documents can. dark.html (see the build
+// plugin) is byte-identical apart from the bar, both are precached, and
+// swapping between them is the only mechanism iOS respects.
+//
+// Only on iOS standalone. In a browser the bar belongs to Safari, and on
+// Android theme-color already works, so neither should pay for a second load.
+const SHELL_SWAPS = 'aviara-shell-swaps'
+function syncShellAppearance() {
+  if (window.navigator.standalone !== true) return          // iOS-only property
+  const meta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
+  if (!meta) return
+  const onDarkShell = meta.getAttribute('content') === 'black'
+  const wantsDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  if (onDarkShell === wantsDark) { sessionStorage.removeItem(SHELL_SWAPS); return }
+  // If a swap does not produce the shell it promised (a stale cache, a
+  // rewrite serving index.html for /dark.html), swapping again would loop
+  // the app forever. Two attempts, then live with the wrong bar.
+  const tries = Number(sessionStorage.getItem(SHELL_SWAPS) || 0)
+  if (tries >= 2) return
+  sessionStorage.setItem(SHELL_SWAPS, String(tries + 1))
+  // replace, not assign: the swap must not become a back-button step.
+  // /dark.html matches no route, so the router's catch-all sends it to / on
+  // the client, without a reload, which leaves the bar iOS already committed
+  // to in place and tidies the URL.
+  window.location.replace(wantsDark ? '/dark.html' : '/')
+}
+syncShellAppearance()
+// On return, not on the media change itself: switching appearance while the
+// app is open would otherwise reload the page under the pilot mid-task. The
+// system is switched from outside the app, so coming back is the moment.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') syncShellAppearance()
+})
+
 // iOS, in standalone mode with a translucent status bar, paints the web view
 // over the whole screen but sizes the CSS viewport as if the status bar were
 // opaque: every length in the app resolves against a box exactly one status

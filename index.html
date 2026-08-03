@@ -38,11 +38,9 @@
          correct values have to be in the document by then. A module script,
          React, or anything else that lands a frame later cannot undo the
          bar iOS has already committed to.
-         Two tags, because which one iOS honours varies by version: 'black'
-         paints the bar black outright, and theme-color covers the versions
-         that tint from it instead. Both point at the same colour, so the
-         result is the same either way. Neither is translucent, so the view
-         still stops below the bar and reaches the physical bottom. -->
+         Sets theme-color only. The iOS status bar is not settable from
+         script at all: it comes from the static tag above, which is why the
+         build emits a second shell with a different one. -->
     <script>
       (function () {
         try {
@@ -56,7 +54,9 @@
             }
             m.setAttribute('content', content)
           }
-          set('apple-mobile-web-app-status-bar-style', dark ? 'black' : 'default')
+          // theme-color only. Android and desktop Chrome honour it; iOS
+          // standalone does not, and its bar comes from which shell document
+          // loaded (see syncShellAppearance in main.jsx).
           set('theme-color', dark ? '#000000' : '#ffffff')
         } catch (e) { /* the static tags above stand */ }
       })()

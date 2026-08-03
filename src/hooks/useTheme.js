@@ -27,14 +27,12 @@ function setMeta(name, content) {
 function paintChrome() {
   const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
   if (!bg) return
+  // theme-color, and nothing else. iOS standalone ignores it for the status
+  // bar (Apple does not support it there), so the bar is handled by loading
+  // the matching shell document instead: see syncShellAppearance in main.jsx.
+  // This still drives Android and desktop Chrome, including the red palette,
+  // which the shells know nothing about.
   setMeta('theme-color', bg)
-  // Kept in step with theme-color for the same reason the inline script in
-  // index.html sets it: whichever of the two a given iOS honours, both say
-  // the same thing. iOS is unlikely to re-read this mid-session, so the
-  // launch value is what shows; this keeps the document honest for the next
-  // launch and for any engine that does re-read.
-  const dark = document.documentElement.getAttribute('data-theme') !== 'light'
-  setMeta('apple-mobile-web-app-status-bar-style', dark ? 'black' : 'default')
   // color-scheme stays in the stylesheet, where it is keyed to data-theme. 
   // setting it here as well would override the red palette's dark scheme with
   // whatever the system happens to be.
