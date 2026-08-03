@@ -406,27 +406,26 @@ export default function MapHome() {
     }
   }, [base, baseResolved, pos, mapReady])
 
-  // A Leaflet DivIcon rather than an image marker: the drop shadow and the
-  // ring behind it keep the silhouette readable over a sectional, where a bare
-  // dark icon disappears into terrain and airspace lines.
+  // The pilot's own position marker, in the shape of what they fly. The
+  // top-down silhouette is the one that reads as an aircraft on a map; the
+  // other plane icon is a three-quarter view of one taking off, which points
+  // nowhere useful once it is sitting on a chart.
+  //
+  // No badge behind it. A drop shadow carries it over the basemap without
+  // putting a disc on the map, though it will work harder over a sectional
+  // than over the plain basemap: that is the trade for a clean marker.
   const isHelicopter = ac?.category === 'helicopter'
   const baseIcon = useMemo(() => L.divIcon({
     className: 'home-base-icon',
-    iconSize: [34, 34],
-    iconAnchor: [17, 17],
-    html: `<span style="
-      display:flex;align-items:center;justify-content:center;
-      width:34px;height:34px;border-radius:50%;
-      background:rgba(255,255,255,0.95);
-      box-shadow:0 1px 6px rgba(0,0,0,0.28);
-      border:2px solid ${ACCENT};
-    "><img src="${isHelicopter ? '/helicopter.png' : '/avion.png'}" alt=""
-        style="width:19px;height:19px;object-fit:contain;filter:brightness(0)" /></span>`,
-    // The size has to be an inline style, not width/height attributes. Those
-    // are presentational hints that lose to any CSS rule, and leaflet.css
-    // forces max-width:none on images inside the map, so the icon rendered at
-    // its natural 512px and covered half the screen.
-
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+    html: `<img src="${isHelicopter ? '/helicopter.png' : '/modo-avion.png'}" alt=""
+      style="width:30px;height:30px;object-fit:contain;
+             filter:brightness(0) drop-shadow(0 1px 2px rgba(0,0,0,0.45));" />`,
+    // Inline styles, not width and height attributes: those are presentational
+    // hints that lose to any CSS rule, and leaflet.css forces max-width:none
+    // on images in the map, so attributes alone rendered this at its natural
+    // 512px and covered half the screen.
   }), [isHelicopter])
 
   const toggleLayer = (k) => setLayers(prev => {

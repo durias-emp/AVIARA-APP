@@ -124,7 +124,6 @@ export default function WeatherRibbon({ icao, units = {}, style, onChangeAirport
       // code, and a pill with a stretch of empty space between them reads as
       // something that failed to load rather than something compact.
       width: 'fit-content', maxWidth: 'calc(100vw - 130px)',
-      transition: 'width 220ms cubic-bezier(0.4,0,0.2,1)',
       ...style,
     }}>
       {/* Collapsed, this is the whole thing: what the field is doing, and
@@ -201,7 +200,11 @@ export default function WeatherRibbon({ icao, units = {}, style, onChangeAirport
         gridTemplateRows: open ? '1fr' : '0fr',
         transition: 'grid-template-rows 260ms cubic-bezier(0.4,0,0.2,1)',
       }}>
-        <div style={{ overflow: 'hidden', minHeight: 0 }}>
+        {/* Width zero while closed, not just height. A grid row collapsed to
+            0fr still contributes its content's WIDTH, so the airport name and
+            the metric grid were setting the width of a pill showing two short
+            words: it measured 231px for something that needs about 120. */}
+        <div style={{ overflow: 'hidden', minHeight: 0, width: open ? 'auto' : 0 }}>
           {/* The min width belongs to the open state only. Applied always, it
               set the width of the collapsed pill too, which is why a strip
               showing two short words still stretched halfway across the map. */}
