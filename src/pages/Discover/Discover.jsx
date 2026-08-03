@@ -219,7 +219,12 @@ function DiscoverShell({ profile }) {
           <FeedTab myId={profile.id} onCompose={setComposing} reloadKey={reloadKey} />
         )}
         {tab === 'explore' && <ExploreTab myId={profile.id} onMessagePilot={messagePilot} />}
-        {tab === 'marketplace' && <MarketplaceTab />}
+        {/* Reuses the same DM flow the pilot list uses, so "message the
+            seller" lands in the inbox rather than inventing a second
+            channel that only the marketplace knows about. */}
+        {tab === 'marketplace' && (
+          <MarketplaceTab myId={profile.id} onMessageSeller={messagePilot} />
+        )}
         {tab === 'profile' && (
           <ProfileTab profile={profile} onCompose={setComposing} reloadKey={reloadKey} />
         )}
