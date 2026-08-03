@@ -30,6 +30,10 @@ import { loadTfrs } from '../../lib/tfr'
 const ACCENT = '#FF5A1F'      // the one saturated colour on the screen, so the
                               // action is never ambiguous
 const CTRL = 52
+// One size for every chart chip, so the column has a straight edge instead of
+// stepping in and out with the length of each label.
+const CHIP_W = 62
+const CHIP_H = 38
 
 // Three resting heights. Collapsed is the handle and the actions; expanded
 // leaves a strip of map above it so it never reads as a takeover; full is a
@@ -236,6 +240,10 @@ export default function MapHome() {
   const [dragY, setDragY] = useState(null)      // live offset while a finger is down
   const drag = useRef(null)
   const [chartsOpen, setChartsOpen] = useState(false)
+  // Nothing renders until the layers button is tapped once. Without this the
+  // closing animation would play on first paint and the chips would flash in
+  // and out before anyone asked for them.
+  const [chartsEverOpened, setChartsEverOpened] = useState(false)
   const [rec, setRec] = useState(null)
   const [pos, setPos] = useState(null)
   // Resolved at first render rather than in an effect: the key is synchronous
@@ -649,14 +657,14 @@ export default function MapHome() {
         opacity: expanded ? 0 : 1,
         pointerEvents: expanded ? 'none' : 'auto',
       }}>
-        <Ctrl onClick={() => setChartsOpen(o => !o)} title="Chart layers"
+        <Ctrl onClick={() => { setChartsOpen(o => !o); setChartsEverOpened(true) }} title="Chart layers"
           active={chartsOpen} badge={activeCount}><IconLayers /></Ctrl>
         <Ctrl onClick={locate} title="Center on my position"><IconLocate /></Ctrl>
       </div>
 
       {/* Chart chips, revealed by the layers button rather than always on
           screen: six permanent chips is what a cluttered EFB looks like. */}
-      {chartsOpen && (
+      {chartsEverOpened && (
         <div style={{
           position: 'absolute', right: 14 + CTRL + 12, zIndex: 500,
           bottom: sheetOpen
@@ -664,14 +672,32 @@ export default function MapHome() {
             : 'calc(var(--safe-bottom) + 28px)',
           display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end',
           transition: 'bottom 280ms cubic-bezier(0.4,0,0.2,1)',
+          // Closed, the chips are still in the DOM so they can animate out;
+          // they must not still be tappable.
+          pointerEvents: chartsOpen ? 'auto' : 'none',
         }}>
-          {CHARTS.map(c => (
-            <button key={c.key} onClick={() => toggleLayer(c.key)} style={{
+          {CHARTS.map((c, i) => (
+            <button key={c.key} className="chart-chip" onClick={() => toggleLayer(c.key)} style={{
               background: layers[c.key] ? '#1c1c1e' : 'rgba(255,255,255,0.96)',
               color: layers[c.key] ? '#fff' : '#1c1c1e',
-              border: 'none', borderRadius: 9, padding: '9px 13px',
+              border: 'none', borderRadius: 10, cursor: 'pointer',
+              // One width for all of them. Sized to its own label, TFR came out
+              // narrower than ARSP and the column read as a ragged edge rather
+              // than a set of controls.
+              width: CHIP_W, height: CHIP_H,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 11.5, fontWeight: 700, letterSpacing: '0.4px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.18)', cursor: 'pointer',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
+              // Opening, each chip arrives a beat after the one below it, so
+              // the column unrolls upward from the layers button. Closing runs
+              // the other way, top first, so it retracts back into it. The
+              // stagger is what makes it read as one object rather than seven
+              // things that happened to move at once.
+              animation: `${chartsOpen ? 'chipIn' : 'chipOut'} 220ms cubic-bezier(0.34,1.3,0.64,1) both`,
+              animationDelay: chartsOpen
+                ? `${(CHARTS.length - 1 - i) * 28}ms`
+                : `${i * 24}ms`,
+              transition: 'background 160ms, color 160ms',
             }}>{c.label}</button>
           ))}
         </div>

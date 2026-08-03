@@ -836,3 +836,23 @@ input[type="number"]::-webkit-outer-spin-button {
      0 1px 0 #fff, 0 -1px 0 #fff, 1px 0 0 #fff, -1px 0 0 #fff;
 }
 .home-base-label::before { display: none; }   /* the pointer arrow */
+
+/* ── Chart chips ──────────────────────────────────────────────
+   The column unrolls from the layers button rather than appearing whole.
+   Scale and offset together so each chip reads as coming out from behind
+   that button, and a slight overshoot in the easing gives it weight
+   without the wobble a spring would add on a control surface. */
+@keyframes chipIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.86); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+@keyframes chipOut {
+  from { opacity: 1; transform: translateY(0)    scale(1); }
+  to   { opacity: 0; transform: translateY(10px) scale(0.86); }
+}
+
+/* Motion is a preference, not a given. Anyone who has asked for less gets
+   the chips immediately, which is also the safer behaviour in turbulence. */
+@media (prefers-reduced-motion: reduce) {
+  .chart-chip { animation: none !important; }
+}
