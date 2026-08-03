@@ -73,6 +73,26 @@ window.addEventListener('orientationchange', correctViewportDeficit)
 window.addEventListener('pageshow', correctViewportDeficit)
 window.visualViewport?.addEventListener('resize', correctViewportDeficit)
 
+// The launch race. For the first moments of a cold standalone open iOS
+// reports the safe-area insets as ZERO while already sizing the viewport
+// short, so the guard above (rightly) stands down; when the insets appear a
+// beat later there is no event announcing them. Waiting for a resize leaves
+// the dead strip on screen for however long iOS dawdles. Re-check rapidly
+// through the launch window instead: cheap (one probe measurement), bounded,
+// and it also covers returning from the background, where iOS re-runs the
+// same theatre.
+function chaseLaunchRace() {
+  let ticks = 0
+  const t = setInterval(() => {
+    correctViewportDeficit()
+    if (++ticks >= 30) clearInterval(t)   // 3 seconds, then the listeners own it
+  }, 100)
+}
+chaseLaunchRace()
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') chaseLaunchRace()
+})
+
 // Dev builds report the readings to the dev server's terminal (see
 // deviceLogSink in vite.config.js). Only when they change: resize events fire
 // in bursts and the numbers, not the events, are the story.
