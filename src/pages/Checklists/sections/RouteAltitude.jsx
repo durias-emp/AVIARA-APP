@@ -12,7 +12,7 @@ import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expan
 import { sampleRoute } from '../../../lib/corridor'
 import { analyzeTerrain, MOUNTAIN_FT } from '../../../lib/terrain'
 import { analyzeWater } from '../../../lib/water'
-import { analyzeAerodromes } from '../../../lib/aerodromes'
+import { analyzeAerodromes, getAirports } from '../../../lib/aerodromes'
 import { analyzeAirspace } from '../../../lib/airspace'
 import { recommendCruise, fmtAlt } from '../../../lib/cruiseAdvisor'
 import { parseAircraftPerf } from '../../../lib/climbPerf'
@@ -1797,11 +1797,29 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     })
   }, [])
 
+  // AWC answers "does this field report weather", which is not the same
+  // question as "does this field exist". Its airport endpoint returns nothing
+  // at all for Canada, and its METAR fallback only covers fields with a
+  // station, so validating against it alone rejected real aerodromes as
+  // nonexistent: CYLS (Barrie-Lake Simcoe) is in the bundled database with
+  // coordinates, has no METAR, and came back "Airport not found". That fails
+  // hardest at exactly the small fields this app sets out to serve as well as
+  // the majors. AWC still goes first, since when it does answer it carries
+  // elevation and runway detail the bundled list has no room for; the 34,000
+  // airport database — the same one the Airports section trusts — is the
+  // fallback rather than the last word.
+  async function resolveEndpoint(id) {
+    const awc = await fetchAWC(id)
+    if (awc) return awc
+    const hit = (await getAirports())?.find(a => a[0] === id)
+    return hit ? { icaoId: hit[0], name: hit[4], lat: hit[1], lon: hit[2] } : null
+  }
+
   async function validateDep() {
     const id = dep.trim().toUpperCase()
     if (id.length < 3) return
     setDepChk(true); setDepErr(null)
-    const result = await fetchAWC(id)
+    const result = await resolveEndpoint(id)
     setDepChk(false)
     if (result) {
       setDep(id); setDepVal(true)
@@ -1814,7 +1832,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     const id = dest.trim().toUpperCase()
     if (id.length < 3) return
     setDestChk(true); setDestErr(null)
-    const result = await fetchAWC(id)
+    const result = await resolveEndpoint(id)
     setDestChk(false)
     if (result) { setDest(id); setDestVal(true) }
     else setDestErr('Airport not found')
