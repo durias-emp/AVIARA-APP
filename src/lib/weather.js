@@ -1,4 +1,5 @@
 import { get, put } from './db'
+import { getAirportIdents } from './aerodromes'
 
 function awcUrl(endpoint, params = {}) {
   const qs = new URLSearchParams({ path: endpoint, ...params }).toString()
@@ -61,24 +62,33 @@ export async function fetchTaf(icao) {
 //
 // Returns { metar, station, distNm } or null. One request, and only when the
 // field itself has no report.
-export async function nearestMetar(lat, lon, { withinNm = 20 } = {}) {
+// Every station reporting inside the box, nearest first. One request — the
+// callers below all want a different slice of the same answer, and asking
+// AWC three times for three overlapping boxes would be three times the
+// latency for the same data.
+async function stationsNear(lat, lon, withinNm) {
   // A degree of latitude is 60 NM; longitude shrinks with the cosine. The box
   // is a prefilter: the haversine below is what decides.
   const dLat = withinNm / 60
   const dLon = withinNm / (60 * Math.max(0.05, Math.cos(lat * Math.PI / 180)))
+  const data = await awcFetch('metar', {
+    bbox: `${(lat - dLat).toFixed(3)},${(lon - dLon).toFixed(3)},${(lat + dLat).toFixed(3)},${(lon + dLon).toFixed(3)}`,
+    format: 'json',
+  })
+  if (!Array.isArray(data)) return []
+  const out = []
+  for (const m of data) {
+    if (!Number.isFinite(m?.lat) || !Number.isFinite(m?.lon) || !m.rawOb) continue
+    const d = haversineNm(lat, lon, m.lat, m.lon)
+    if (d <= withinNm) out.push({ metar: m, ident: m.icaoId, distNm: d })
+  }
+  return out.sort((a, b) => a.distNm - b.distNm)
+}
+
+export async function nearestMetar(lat, lon, { withinNm = 20 } = {}) {
   try {
-    const data = await awcFetch('metar', {
-      bbox: `${(lat - dLat).toFixed(3)},${(lon - dLon).toFixed(3)},${(lat + dLat).toFixed(3)},${(lon + dLon).toFixed(3)}`,
-      format: 'json',
-    })
-    if (!Array.isArray(data) || !data.length) return null
-    let best = null
-    for (const m of data) {
-      if (!Number.isFinite(m?.lat) || !Number.isFinite(m?.lon) || !m.rawOb) continue
-      const d = haversineNm(lat, lon, m.lat, m.lon)
-      if (d <= withinNm && (!best || d < best.distNm)) best = { metar: m, station: m.icaoId, distNm: d }
-    }
-    return best
+    const [best] = await stationsNear(lat, lon, withinNm)
+    return best ? { metar: best.metar, station: best.ident, distNm: best.distNm } : null
   } catch {
     return null
   }
@@ -120,26 +130,67 @@ export function compassPointFrom(lat1, lon1, lat2, lon2) {
 // nearby, because that is what it is.
 export const ON_FIELD_NM = 3
 
-// The closest station that actually reports, with its TAF and its bearing.
-// Built on nearestMetar rather than replacing it — the route-aerodrome path
-// wants the cheap single-request version and no TAF.
-//
-// Returns { ident, name, lat, lon, distNm, point, onField, metar, taf } or
-// null when nothing reports within the radius.
-export async function nearestStation(lat, lon, { withinNm = 60 } = {}) {
-  const hit = await nearestMetar(lat, lon, { withinNm })
-  if (!hit) return null
-  const { metar, station, distNm } = hit
+function describe(lat, lon, hit, taf) {
   return {
-    ident: station,
-    name: metar?.name ?? null,
-    lat: metar.lat,
-    lon: metar.lon,
-    distNm,
-    point: compassPointFrom(lat, lon, metar.lat, metar.lon),
-    onField: distNm <= ON_FIELD_NM,
-    metar,
-    taf: await fetchTaf(station),
+    ident: hit.ident,
+    name: hit.metar?.name ?? null,
+    lat: hit.metar.lat,
+    lon: hit.metar.lon,
+    distNm: hit.distNm,
+    point: compassPointFrom(lat, lon, hit.metar.lat, hit.metar.lon),
+    onField: hit.distNm <= ON_FIELD_NM,
+    metar: hit.metar,
+    taf,
+  }
+}
+
+// How far to look for each kind of stand-in. The nearest station is only
+// worth offering while it plausibly describes the same weather, so it stays
+// local. A full airport report is worth reaching much further for, because
+// it carries things no bare station does — a visibility, an altimeter, a
+// flight category and a forecast — and a pilot can judge a 90 NM TAF for
+// themselves as long as the distance is stated.
+const STATION_NM = 60
+const AIRPORT_NM = 150
+
+// The two stand-ins for a field that reports nothing, from one bbox query.
+//
+//   station — the closest thing reporting anything at all, whatever it is.
+//     Often not an airport: CYLS's own weather comes from CXBI, an automated
+//     station on the field that publishes no visibility, no altimeter and no
+//     TAF
+//   airport — the closest actual aerodrome publishing a METAR, which is a
+//     different and complementary answer. For CYLS that is CYQA 31 NM out,
+//     with a full observation and a forecast. Suppressed when the nearest
+//     station is already an airport, since the two cards would then be the
+//     same report printed twice
+//
+// Returns { station, airport }, either or both null. Never throws.
+export async function substituteWeather(lat, lon) {
+  let all
+  try {
+    all = await stationsNear(lat, lon, AIRPORT_NM)
+  } catch {
+    return { station: null, airport: null }
+  }
+  if (!all.length) return { station: null, airport: null }
+
+  const nearest = all[0].distNm <= STATION_NM ? all[0] : null
+  const idents = await getAirportIdents().catch(() => null)
+
+  const nearestIsAirport = !!nearest && !!idents?.has(nearest.ident)
+  const airportHit = (!idents || nearestIsAirport)
+    ? null
+    : all.find(s => idents.has(s.ident)) ?? null
+
+  const [stationTaf, airportTaf] = await Promise.all([
+    nearest ? fetchTaf(nearest.ident) : null,
+    airportHit ? fetchTaf(airportHit.ident) : null,
+  ])
+
+  return {
+    station: nearest ? describe(lat, lon, nearest, stationTaf) : null,
+    airport: airportHit ? describe(lat, lon, airportHit, airportTaf) : null,
   }
 }
 
