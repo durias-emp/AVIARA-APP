@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getFollowCounts } from '../../lib/follows'
-import { listUserPosts, deletePost, timeAgo } from '../../lib/posts'
+import { listUserPosts } from '../../lib/posts'
+import { postUrl } from '../../lib/share'
+import PostView from './PostView'
+import ShareSheet from './ShareSheet'
 
 // The pilot's own profile: header counts, and their posts as a grid.
 //
@@ -9,83 +12,11 @@ import { listUserPosts, deletePost, timeAgo } from '../../lib/posts'
 // *yours*, so "add something of mine" belongs next to your own name — and it
 // stays put instead of covering the last row of whatever you're reading.
 
-function PostDetail({ post, onClose, onDeleted }) {
-  const [confirming, setConfirming] = useState(false)
-  const [busy, setBusy] = useState(false)
-
-  async function remove() {
-    setBusy(true)
-    await deletePost(post)
-    setBusy(false)
-    onDeleted(post.id)
-    onClose()
-  }
-
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 650, background: 'rgba(0,0,0,0.75)',
-        backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-      }}>
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          width: '100%', maxWidth: 420, maxHeight: '86vh', overflowY: 'auto',
-          background: 'var(--bg-card)', borderRadius: 18,
-        }}>
-        {post.post_media?.map(m => (
-          <img key={m.url} src={m.url} alt="" style={{ width: '100%', display: 'block' }} />
-        ))}
-        <div style={{ padding: 16 }}>
-          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 6 }}>
-            {timeAgo(post.created_at)}
-          </div>
-          {post.caption && (
-            <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-              {post.caption}
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            {confirming ? (
-              <>
-                <button onClick={remove} disabled={busy} style={{
-                  flex: 1, padding: '11px 0', borderRadius: 12, border: 'none',
-                  background: 'var(--danger)', color: '#fff', fontFamily: 'inherit',
-                  fontSize: 14, fontWeight: 700, cursor: 'pointer',
-                }}>{busy ? 'Deleting…' : 'Delete post'}</button>
-                <button onClick={() => setConfirming(false)} style={{
-                  flex: 1, padding: '11px 0', borderRadius: 12, border: 'none',
-                  background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
-                  fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer',
-                }}>Keep</button>
-              </>
-            ) : (
-              <>
-                <button onClick={onClose} style={{
-                  flex: 1, padding: '11px 0', borderRadius: 12, border: 'none',
-                  background: 'var(--bg-card-2)', color: 'var(--text)', fontFamily: 'inherit',
-                  fontSize: 14, fontWeight: 700, cursor: 'pointer',
-                }}>Close</button>
-                <button onClick={() => setConfirming(true)} style={{
-                  padding: '11px 18px', borderRadius: 12, border: 'none',
-                  background: 'transparent', color: 'var(--danger)', fontFamily: 'inherit',
-                  fontSize: 14, fontWeight: 700, cursor: 'pointer',
-                }}>Delete</button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function ProfileTab({ profile, onCompose, reloadKey }) {
   const [counts, setCounts] = useState(null)
   const [posts, setPosts] = useState(null)
-  const [open, setOpen] = useState(null)
+  const [thread, setThread] = useState(null)
+  const [sharing, setSharing] = useState(null)
 
   const load = useCallback(async () => {
     const [c, { data }] = await Promise.all([
@@ -97,6 +28,32 @@ export default function ProfileTab({ profile, onCompose, reloadKey }) {
   }, [profile.id])
 
   useEffect(() => { load() }, [load, reloadKey])
+
+  // Tapping a tile opens the same thread view the feed's comment button
+  // opens. It replaces the old preview modal outright — that modal could
+  // show a post but not its comments, which is now half of what a post is.
+  if (thread) {
+    return (
+      <>
+        <PostView
+          postId={thread}
+          myId={profile.id}
+          onBack={() => { setThread(null); load() }}
+          onShare={p => setSharing(p)}
+          onPostDeleted={id => setPosts(list => list.filter(p => p.id !== id))}
+        />
+        {sharing && (
+          <ShareSheet
+            url={postUrl(sharing.id)}
+            title={`@${profile.username} on AVIARA`}
+            text={sharing.caption ?? ''}
+            myId={profile.id}
+            onClose={() => setSharing(null)}
+          />
+        )}
+      </>
+    )
+  }
 
   return (
     <div style={{ paddingTop: 20 }}>
@@ -175,7 +132,7 @@ export default function ProfileTab({ profile, onCompose, reloadKey }) {
             return (
               <button
                 key={p.id}
-                onClick={() => setOpen(p)}
+                onClick={() => setThread(p.id)}
                 style={{
                   aspectRatio: '1 / 1', border: 'none', padding: 0, cursor: 'pointer',
                   background: 'var(--bg-card-2)', position: 'relative', overflow: 'hidden',
@@ -205,13 +162,6 @@ export default function ProfileTab({ profile, onCompose, reloadKey }) {
         </div>
       )}
 
-      {open && (
-        <PostDetail
-          post={open}
-          onClose={() => setOpen(null)}
-          onDeleted={id => setPosts(list => list.filter(p => p.id !== id))}
-        />
-      )}
     </div>
   )
 }
