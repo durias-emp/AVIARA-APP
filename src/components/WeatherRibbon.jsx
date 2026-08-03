@@ -119,15 +119,20 @@ export default function WeatherRibbon({ icao, units = {}, style, onChangeAirport
     <div style={{
       background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(14px)',
       borderRadius: 14, boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
-      overflow: 'hidden', maxWidth: 'calc(100vw - 130px)',
+      overflow: 'hidden',
+      // Sized by its contents, not stretched: collapsed this is a state and a
+      // code, and a pill with a stretch of empty space between them reads as
+      // something that failed to load rather than something compact.
+      width: 'fit-content', maxWidth: 'calc(100vw - 130px)',
+      transition: 'width 220ms cubic-bezier(0.4,0,0.2,1)',
       ...style,
     }}>
       {/* Collapsed, this is the whole thing: what the field is doing, and
           which field. That is the glance a pilot takes, and a strip of
           numbers across the top of a chart is furniture the rest of the time. */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 9, width: '100%',
-        padding: '8px 12px 8px 9px',
+        display: 'flex', alignItems: 'center', gap: 7,
+        padding: '6px 9px 6px 7px',
       }}>
         {/* The identity, and the way to change it. Tapping the code is how a
             pilot moves their base: it is the thing on screen that names the
@@ -149,18 +154,15 @@ export default function WeatherRibbon({ icao, units = {}, style, onChangeAirport
           }}>{metar ? cat.label : loading ? '···' : '--'}</span>
 
           <span style={{
-            fontSize: 13, fontWeight: 700, color: '#1c1c1e',
+            fontSize: 13.5, fontWeight: 700, color: '#1c1c1e',
             letterSpacing: '0.4px', flexShrink: 0,
-            // Says it is editable without spending a button on saying so.
-            borderBottom: '1.5px dotted rgba(60,60,67,0.35)',
-            paddingBottom: 1,
           }}>{icao}</span>
         </button>
 
         {/* Everything else on the row opens the detail. */}
         <button onClick={() => setOpen(o => !o)} style={{
-          display: 'flex', alignItems: 'center', gap: 9, flex: 1, minWidth: 0,
-          border: 'none', background: 'none', padding: '2px 0', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 7, minWidth: 0,
+          border: 'none', background: 'none', padding: '2px 0 2px 2px', cursor: 'pointer',
         }}>
 
         {stale && (
@@ -182,7 +184,7 @@ export default function WeatherRibbon({ icao, units = {}, style, onChangeAirport
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(60,60,67,0.45)"
           strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
           style={{
-            marginLeft: 'auto', flexShrink: 0,
+            flexShrink: 0,
             transform: open ? 'rotate(180deg)' : 'none',
             transition: 'transform 240ms cubic-bezier(0.4,0,0.2,1)',
           }}>
@@ -200,7 +202,10 @@ export default function WeatherRibbon({ icao, units = {}, style, onChangeAirport
         transition: 'grid-template-rows 260ms cubic-bezier(0.4,0,0.2,1)',
       }}>
         <div style={{ overflow: 'hidden', minHeight: 0 }}>
-          <div style={{ padding: '2px 12px 11px' }}>
+          {/* The min width belongs to the open state only. Applied always, it
+              set the width of the collapsed pill too, which is why a strip
+              showing two short words still stretched halfway across the map. */}
+          <div style={{ padding: '2px 12px 11px', minWidth: open ? 236 : 0 }}>
             <div style={{ height: 1, background: 'rgba(60,60,67,0.1)', margin: '0 0 9px' }} />
 
             {metar ? (<>

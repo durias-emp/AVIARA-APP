@@ -10,9 +10,10 @@
 // What is deliberately NOT borrowed: anything that ranks pilots by speed or
 // altitude. Competing on those is a flight-safety problem, not engagement.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MapContainer, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet'
+import { MapContainer, Polyline, CircleMarker, Marker, Tooltip, useMap } from 'react-leaflet'
+import L from 'leaflet'
 import ChartLayers, { Basemap } from '../../components/ChartLayers'
 import { CHARTS, EMPTY_LAYERS, resolveOpenaipKey } from '../../components/chartDefs'
 import ActivityCard from '../../components/ActivityCard'
@@ -405,6 +406,29 @@ export default function MapHome() {
     }
   }, [base, baseResolved, pos, mapReady])
 
+  // A Leaflet DivIcon rather than an image marker: the drop shadow and the
+  // ring behind it keep the silhouette readable over a sectional, where a bare
+  // dark icon disappears into terrain and airspace lines.
+  const isHelicopter = ac?.category === 'helicopter'
+  const baseIcon = useMemo(() => L.divIcon({
+    className: 'home-base-icon',
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    html: `<span style="
+      display:flex;align-items:center;justify-content:center;
+      width:34px;height:34px;border-radius:50%;
+      background:rgba(255,255,255,0.95);
+      box-shadow:0 1px 6px rgba(0,0,0,0.28);
+      border:2px solid ${ACCENT};
+    "><img src="${isHelicopter ? '/helicopter.png' : '/avion.png'}" alt=""
+        style="width:19px;height:19px;object-fit:contain;filter:brightness(0)" /></span>`,
+    // The size has to be an inline style, not width/height attributes. Those
+    // are presentational hints that lose to any CSS rule, and leaflet.css
+    // forces max-width:none on images inside the map, so the icon rendered at
+    // its natural 512px and covered half the screen.
+
+  }), [isHelicopter])
+
   const toggleLayer = (k) => setLayers(prev => {
     if (k === 'traffic' && prev.traffic) setSelected(null)
     return { ...prev, [k]: !prev[k] }
@@ -573,15 +597,16 @@ export default function MapHome() {
         {track.length > 1 && (
           <Polyline positions={track} pathOptions={{ color: ACCENT, weight: 5, opacity: 0.9, lineCap: 'round' }} />
         )}
-        {/* Home, marked. Framing the map on an unmarked field just looks like
-            an arbitrary starting position. */}
+        {/* Home, marked with what the pilot flies. A ring says "a place";
+            the aircraft says "your place", and the app already knows whether
+            that is a helicopter or an aeroplane. Same test the planner and the
+            one-pager use, so all three agree. */}
         {base?.lat != null && (
-          <CircleMarker center={[base.lat, base.lon]} radius={7}
-            pathOptions={{ color: ACCENT, weight: 3, fillColor: '#fff', fillOpacity: 1 }}>
-            <Tooltip permanent direction="top" offset={[0, -8]} className="home-base-label">
+          <Marker position={[base.lat, base.lon]} icon={baseIcon} interactive={false}>
+            <Tooltip permanent direction="top" offset={[0, -14]} className="home-base-label">
               {base.ident}
             </Tooltip>
-          </CircleMarker>
+          </Marker>
         )}
         {pos && (
           <CircleMarker center={[pos.lat, pos.lon]} radius={8}
