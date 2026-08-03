@@ -151,6 +151,62 @@ function procedureChartDevProxy() {
   }
 }
 
+// Dev-only middleware mirroring api/notams.js — same reason as awcDevProxy
+// below. Kept as thin as its serverless twin (forward the body, parse
+// nothing) precisely so this duplication stays small, and it reproduces the
+// 501 "credentials not configured" reply rather than inventing a friendlier
+// local-only behaviour that would hide the real setup step.
+function notamsDevProxy() {
+  const UPSTREAM = {
+    navcanada: icao => `https://plan.navcanada.ca/weather/api/alpha/?site=${encodeURIComponent(icao)}&alpha=notam`,
+    faa: icao => `https://external-api.faa.gov/notamapi/v1/notams?icaoLocation=${encodeURIComponent(icao)}&pageSize=50`,
+  }
+  return {
+    name: 'notams-dev-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/notams', async (req, res) => {
+        const { searchParams } = new URL(req.url, 'http://localhost')
+        const icao = (searchParams.get('icao') || '').toUpperCase()
+        const source = searchParams.get('source') || ''
+        const fail = (code, body) => {
+          res.statusCode = code
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(body))
+        }
+
+        if (!/^[A-Z0-9]{3,4}$/.test(icao)) return fail(400, { error: 'icao required' })
+        if (!UPSTREAM[source]) return fail(400, { error: 'source must be navcanada or faa' })
+
+        const headers = { 'User-Agent': 'PQRH-App/1.0', Accept: 'application/json' }
+        if (source === 'faa') {
+          const id = process.env.FAA_NOTAM_CLIENT_ID
+          const secret = process.env.FAA_NOTAM_CLIENT_SECRET
+          if (!id || !secret) {
+            return fail(501, {
+              error: 'US NOTAMs need FAA API credentials. Register free at api.faa.gov, then set FAA_NOTAM_CLIENT_ID and FAA_NOTAM_CLIENT_SECRET.',
+            })
+          }
+          headers.client_id = id
+          headers.client_secret = secret
+        }
+
+        try {
+          const upstream = await fetch(UPSTREAM[source](icao), {
+            headers,
+            signal: AbortSignal.timeout(15000),
+          })
+          const text = await upstream.text()
+          res.statusCode = upstream.status
+          res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
+          res.end(text)
+        } catch (err) {
+          fail(502, { error: 'upstream fetch failed', detail: err.message })
+        }
+      })
+    },
+  }
+}
+
 function awcDevProxy() {
   return {
     name: 'awc-dev-proxy',
@@ -537,6 +593,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       awcDevProxy(),
+      notamsDevProxy(),
       tfrDevProxy(),
       deviceLogSink(),
       tfrDetailDevProxy(),

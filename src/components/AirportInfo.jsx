@@ -21,8 +21,15 @@ import {
   loadAreaWeather, areaTemp, areaDewp, areaWind, areaVis,
   areaCloud, areaPressure, areaCondition,
 } from '../lib/areaWeather'
+import { loadNotams, validity, isActive, SOURCE_NAMES } from '../lib/notams'
 
-const TABS = ['Weather', 'Frequencies', 'Runways', 'Procedures']
+const TABS = ['Weather', 'Frequencies', 'Runways', 'Procedures', 'NOTAMs']
+
+const SEVERITY = {
+  closed:         { label: 'Closed',        color: '#FF3B30', bg: 'rgba(255,59,48,0.12)' },
+  unserviceable:  { label: 'Unserviceable', color: '#FF9F0A', bg: 'rgba(255,159,10,0.14)' },
+  info:           { label: null,            color: 'var(--text-secondary)', bg: 'rgba(120,120,128,0.12)' },
+}
 
 // 'airport' (the official FAA airport diagram) is listed first and hidden
 // when empty, unlike the others: only 886 of 2,976 charted fields publish
@@ -240,6 +247,120 @@ function SubstituteWeather({ icao, sub, loading, units, RawRow }) {
   )
 }
 
+function NotamRow({ n, first }) {
+  const sev = SEVERITY[n.severity] ?? SEVERITY.info
+  const pending = !isActive(n)
+  const when = validity(n)
+  return (
+    <div style={{ padding: '12px 16px', borderTop: first ? 'none' : '0.5px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 5 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+          color: sev.color, background: sev.bg, padding: '2px 6px', borderRadius: 5,
+        }}>{n.category}{sev.label ? ` · ${sev.label}` : ''}</span>
+        {/* A NOTAM that starts on Tuesday is worth reading and worth not
+            mistaking for one in force now. */}
+        {pending && (
+          <span style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+            color: 'var(--text-tertiary)', background: 'rgba(120,120,128,0.12)',
+            padding: '2px 6px', borderRadius: 5,
+          }}>Not yet in effect</span>
+        )}
+        {n.id && (
+          <span style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text-tertiary)', marginLeft: 'auto' }}>
+            {n.id}
+          </span>
+        )}
+      </div>
+      {when && (
+        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 6 }}>{when}</div>
+      )}
+      <p style={{
+        margin: 0, fontSize: 12, fontFamily: 'monospace', lineHeight: 1.5,
+        color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+      }}>{n.body}</p>
+    </div>
+  )
+}
+
+function GroupHeading({ children }) {
+  return (
+    <div style={{
+      fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+      color: 'var(--text-tertiary)', margin: '16px 2px 6px',
+    }}>{children}</div>
+  )
+}
+
+// The NOTAMs tab.
+//
+// Split into what affects this aerodrome and what is merely in force over
+// the region, because the two get returned together and are worth very
+// different amounts of a pilot's attention: every one of CYLS's five is a
+// FIR-wide notice about space weather and sanctions, and listed flat they
+// make an untroubled field look like it has five problems.
+function Notams({ icao, result }) {
+  if (result === undefined) {
+    return <div style={CARD}><EmptyRow>Loading NOTAMs…</EmptyRow></div>
+  }
+  // Never say "no NOTAMs" when the truth is "nowhere to ask" — they look
+  // identical on screen and mean opposite things.
+  if (result.unsupported) {
+    return (
+      <div style={CARD}>
+        <EmptyRow>
+          NOTAMs aren't available for this region yet. AVIARA covers Canadian aerodromes
+          through NAV CANADA and US fields through the FAA.
+        </EmptyRow>
+      </div>
+    )
+  }
+  if (result.error && !result.notams.length) {
+    return (
+      <div style={CARD}>
+        <EmptyRow>{result.error}</EmptyRow>
+      </div>
+    )
+  }
+  if (!result.notams.length) {
+    return <div style={CARD}><EmptyRow>No NOTAMs in effect for {icao}</EmptyRow></div>
+  }
+
+  const local = result.notams.filter(n => n.isLocal)
+  const area = result.notams.filter(n => !n.isLocal)
+  const src = SOURCE_NAMES[result.source] ?? result.source
+
+  return (
+    <>
+      {result.stale && (
+        <div style={{ ...CARD, marginBottom: 12 }}>
+          <EmptyRow>Showing a saved copy — couldn't refresh ({result.error}).</EmptyRow>
+        </div>
+      )}
+      {local.length > 0 && (
+        <>
+          <GroupHeading>{icao} · {local.length} NOTAM{local.length === 1 ? '' : 's'}</GroupHeading>
+          <div style={CARD}>
+            {local.map((n, i) => <NotamRow key={(n.id ?? '') + i} n={n} first={i === 0} />)}
+          </div>
+        </>
+      )}
+      {area.length > 0 && (
+        <>
+          <GroupHeading>Area &amp; FIR-wide · {area.length}</GroupHeading>
+          <div style={CARD}>
+            {area.map((n, i) => <NotamRow key={(n.id ?? '') + i} n={n} first={i === 0} />)}
+          </div>
+        </>
+      )}
+      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', margin: '12px 2px 0', lineHeight: 1.5 }}>
+        Source: {src}, {parseFetchAge(result.fetchedAt) ?? 'just now'}. Not a substitute for an official briefing.
+      </div>
+    </>
+  )
+}
+
 export default function AirportInfo() {
   const { profile } = usePilotProfile()
   const units = profile ?? {}
@@ -254,8 +375,9 @@ export default function AirportInfo() {
   const [proceduresCycle, setProceduresCycle] = useState(null)
   const [openChart, setOpenChart] = useState(null) // null | { chartName, pdfName }
   // Stand-in weather, for fields that publish none of their own only.
-  const [sub, setSub] = useState(null)             // null | { station, area }
+  const [sub, setSub] = useState(null)             // null | { station, airport, area }
   const [subLoading, setSubLoading] = useState(false)
+  const [notams, setNotams] = useState(undefined)  // undefined = loading
 
   // Claims the swipe-back gesture while a chart is open, so it returns to
   // the Procedures list instead of falling through to CardOverlay's own
@@ -347,6 +469,17 @@ export default function AirportInfo() {
     })
     return () => { cancelled = true }
   }, [wx, info, icao])
+
+  // NOTAMs are independent of the weather path — a field with a perfectly
+  // good METAR can still have its only runway shut — so this loads on its
+  // own rather than hanging off the substitute-weather gate.
+  useEffect(() => {
+    if (!icao) return
+    let cancelled = false
+    setNotams(undefined)
+    loadNotams(icao).then(r => { if (!cancelled) setNotams(r) })
+    return () => { cancelled = true }
+  }, [icao])
 
   function selectAirport(id) {
     setIcao(id)
@@ -472,6 +605,12 @@ export default function AirportInfo() {
                     <EmptyRow>{wx?.error ? "Couldn't reach the weather service. Pull down to try again." : 'No weather available for this airport'}</EmptyRow>
                   </div>
                 )}
+              </div>
+            )}
+
+            {tab === 'NOTAMs' && (
+              <div style={{ marginTop: 16 }}>
+                <Notams icao={icao} result={notams} />
               </div>
             )}
 
