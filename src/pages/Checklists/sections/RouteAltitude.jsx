@@ -133,9 +133,27 @@ function MapInvalidator() {
   const map = useMap()
   useEffect(() => {
     const el = map.getContainer()
-    const ro = new ResizeObserver(() => map.invalidateSize())
+    // Re-measure now, after the next paint, and after layout has provably
+    // settled. On the phone a single call can land while the container is
+    // still at its pre-correction size, and Leaflet then paints tiles for a
+    // box 59px shorter than the one it occupies: a full-width strip of bare
+    // container along the bottom edge, exactly at the old viewport line.
+    const kick = () => {
+      map.invalidateSize()
+      requestAnimationFrame(() => map.invalidateSize())
+      setTimeout(() => map.invalidateSize(), 350)
+    }
+    const ro = new ResizeObserver(kick)
     ro.observe(el)
-    return () => { ro.disconnect() }
+    // body carries the viewport correction (see index.css); observing it
+    // catches the correction toggling even if the resize somehow fails to
+    // propagate down the percentage chain to the container.
+    ro.observe(document.body)
+    if (import.meta.env.DEV) window.__fsMap = map
+    return () => {
+      ro.disconnect()
+      if (import.meta.env.DEV && window.__fsMap === map) delete window.__fsMap
+    }
   }, [map])
   return null
 }

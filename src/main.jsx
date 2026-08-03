@@ -109,6 +109,20 @@ if (import.meta.env.DEV) {
       safeBottom: getComputedStyle(doc).getPropertyValue('--safe-bottom').trim(),
       deficit: getComputedStyle(doc).getPropertyValue('--vp-deficit').trim(),
       bodyH: Math.round(document.body.getBoundingClientRect().height),
+      // The fullscreen map, when open: the overlay's real height, the
+      // leaflet container's real height, and the size Leaflet believes it
+      // has. Three numbers that separate "the box is short" from "the box is
+      // right and Leaflet has not noticed".
+      fsH: (() => {
+        const el = [...document.querySelectorAll('div')].find(d =>
+          d.style.position === 'fixed' && d.style.zIndex === '9999')
+        return el ? Math.round(el.getBoundingClientRect().height) : null
+      })(),
+      leafH: (() => {
+        const el = document.querySelector('.leaflet-container')
+        return el ? Math.round(el.getBoundingClientRect().height) : null
+      })(),
+      leafBelieves: window.__fsMap ? Math.round(window.__fsMap.getSize().y) : null,
       icbH: (() => {
         const el = document.createElement('div')
         el.style.cssText = 'position:fixed;top:0;bottom:0;left:0;width:1px;visibility:hidden;pointer-events:none'
