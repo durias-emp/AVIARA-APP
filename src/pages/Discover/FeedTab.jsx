@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { listFeed, likeState, setLiked, timeAgo, deletePost } from '../../lib/posts'
 import { listActiveStories, purgeMyExpiredStories } from '../../lib/stories'
+import { commentCounts } from '../../lib/comments'
+import { postUrl } from '../../lib/share'
 import StoryViewer from './StoryViewer'
+import PostView from './PostView'
+import ShareSheet from './ShareSheet'
 
 // Real posts from people you follow, plus your own.
 //
@@ -58,7 +62,16 @@ function Photos({ media }) {
   )
 }
 
-function Post({ post, myId, liked, count, onToggleLike, onDeleted }) {
+function Bubble() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.3 9.3 0 0 1-3.6-.7L3 21l1.9-5a8.1 8.1 0 0 1-.9-3.6 8.4 8.4 0 0 1 8.4-8.4h.6A8.4 8.4 0 0 1 21 11v.5z" />
+    </svg>
+  )
+}
+
+function Post({ post, myId, liked, count, comments, onToggleLike, onDeleted, onOpen, onShare }) {
   const [confirming, setConfirming] = useState(false)
   const mine = post.author_id === myId
 
@@ -101,7 +114,7 @@ function Post({ post, myId, liked, count, onToggleLike, onDeleted }) {
 
       <Photos media={post.post_media} />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 14px 4px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '10px 14px 4px' }}>
         <button
           onClick={() => onToggleLike(post.id, !liked)}
           aria-label={liked ? 'Unlike' : 'Like'}
@@ -115,12 +128,45 @@ function Post({ post, myId, liked, count, onToggleLike, onDeleted }) {
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>{count}</span>
           )}
         </button>
+        <button
+          onClick={() => onOpen(post.id)}
+          aria-label="Comments"
+          style={{
+            border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
+            color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6,
+            WebkitTapHighlightColor: 'transparent', fontFamily: 'inherit',
+          }}>
+          <Bubble />
+          {comments > 0 && (
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>{comments}</span>
+          )}
+        </button>
+        <button
+          onClick={() => onShare(post)}
+          aria-label="Share"
+          style={{
+            border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
+            color: 'var(--text)', fontSize: 19, lineHeight: 1, fontFamily: 'inherit',
+            WebkitTapHighlightColor: 'transparent',
+          }}>↗</button>
       </div>
 
       {post.caption && (
         <div style={{ padding: '4px 14px 0', fontSize: 14, color: 'var(--text)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
           {post.caption}
         </div>
+      )}
+
+      {comments > 0 && (
+        <button
+          onClick={() => onOpen(post.id)}
+          style={{
+            display: 'block', padding: '6px 14px 0', border: 'none', background: 'transparent',
+            color: 'var(--text-tertiary)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+            textAlign: 'left',
+          }}>
+          View {comments === 1 ? 'the comment' : `all ${comments} comments`}
+        </button>
       )}
     </div>
   )
@@ -201,7 +247,10 @@ export default function FeedTab({ myId, onCompose, reloadKey }) {
   const [posts, setPosts] = useState(null)
   const [stories, setStories] = useState([])
   const [likes, setLikes] = useState({ counts: {}, mine: new Set() })
+  const [comments, setComments] = useState({})
   const [viewing, setViewing] = useState(null)
+  const [openPost, setOpenPost] = useState(null)
+  const [sharing, setSharing] = useState(null)
 
   const load = useCallback(async () => {
     const [{ data: feed }, { data: groups }] = await Promise.all([
@@ -210,7 +259,12 @@ export default function FeedTab({ myId, onCompose, reloadKey }) {
     ])
     setPosts(feed)
     setStories(groups)
-    if (feed.length) setLikes(await likeState(feed.map(p => p.id), myId))
+    if (feed.length) {
+      const ids = feed.map(p => p.id)
+      const [l, c] = await Promise.all([likeState(ids, myId), commentCounts(ids)])
+      setLikes(l)
+      setComments(c)
+    }
   }, [myId])
 
   useEffect(() => { load() }, [load, reloadKey])
@@ -228,6 +282,21 @@ export default function FeedTab({ myId, onCompose, reloadKey }) {
     })
     const { error } = await setLiked(postId, myId, liked)
     if (error) load()
+  }
+
+  // The comment thread takes over the tab rather than opening a modal on top
+  // of it: a thread is somewhere you go, and it needs the keyboard, the whole
+  // width, and a composer pinned to the bottom.
+  if (openPost) {
+    return (
+      <PostView
+        postId={openPost}
+        myId={myId}
+        onBack={() => { setOpenPost(null); load() }}
+        onShare={p => setSharing(p)}
+        onPostDeleted={id => setPosts(list => list.filter(x => x.id !== id))}
+      />
+    )
   }
 
   return (
@@ -270,7 +339,10 @@ export default function FeedTab({ myId, onCompose, reloadKey }) {
           myId={myId}
           liked={likes.mine.has(p.id)}
           count={likes.counts[p.id] ?? 0}
+          comments={comments[p.id] ?? 0}
           onToggleLike={toggleLike}
+          onOpen={setOpenPost}
+          onShare={setSharing}
           onDeleted={id => setPosts(list => list.filter(x => x.id !== id))}
         />
       ))}
@@ -281,6 +353,16 @@ export default function FeedTab({ myId, onCompose, reloadKey }) {
           myId={myId}
           onClose={() => setViewing(null)}
           onChanged={load}
+        />
+      )}
+
+      {sharing && (
+        <ShareSheet
+          url={postUrl(sharing.id)}
+          title={`@${sharing.author?.username ?? 'a pilot'} on AVIARA`}
+          text={sharing.caption ?? ''}
+          myId={myId}
+          onClose={() => setSharing(null)}
         />
       )}
     </div>

@@ -6,6 +6,8 @@ import {
 } from '../../lib/listings'
 import { groupSpecs, specValue } from '../../lib/listingSpecs'
 import { timeAgo } from '../../lib/posts'
+import { listingUrl } from '../../lib/share'
+import ShareSheet from './ShareSheet'
 
 // One listing, in full.
 //
@@ -64,6 +66,7 @@ export default function ListingDetail({ listingId, myId, onBack, onMessageSeller
   const [listing, setListing] = useState(undefined)
   const [busy, setBusy] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [sharing, setSharing] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -121,6 +124,14 @@ export default function ListingDetail({ listingId, myId, onBack, onMessageSeller
         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', flex: 1, minWidth: 0 }}>
           {listingTitle(listing)}
         </div>
+        {/* Sharing a listing is the one share in this app that reaches
+            people who don't have it — the link opens for anyone. */}
+        <button onClick={() => setSharing(true)} aria-label="Share listing" style={{
+          width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--bg-card-2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          cursor: 'pointer', color: 'var(--text)', fontSize: 17, fontFamily: 'inherit',
+          WebkitTapHighlightColor: 'transparent',
+        }}>↗</button>
       </div>
 
       <Gallery media={listing.listing_media} />
@@ -233,6 +244,16 @@ export default function ListingDetail({ listingId, myId, onBack, onMessageSeller
           </button>
         )}
       </div>
+
+      {sharing && (
+        <ShareSheet
+          url={listingUrl(listing.id)}
+          title={`${listingTitle(listing)} — ${priceLabel(listing)}`}
+          text={listing.description ?? ''}
+          myId={myId}
+          onClose={() => setSharing(false)}
+        />
+      )}
     </div>
   )
 }

@@ -22,6 +22,10 @@ const LogbookEntryForm = lazy(() => import('./pages/Pilot/LogbookEntryForm'))
 const LogbookFields    = lazy(() => import('./pages/Pilot/LogbookFields'))
 const LogbookImport    = lazy(() => import('./pages/Pilot/LogbookImport'))
 const LogbookScan      = lazy(() => import('./pages/Pilot/LogbookScan'))
+// Where a shared link lands. Lazy like everything else — a pilot who never
+// opens one never downloads them.
+const SharedPost    = lazy(() => import('./pages/Discover/SharedLink').then(m => ({ default: m.SharedPost })))
+const SharedListing = lazy(() => import('./pages/Discover/SharedLink').then(m => ({ default: m.SharedListing })))
 const Onboarding    = lazy(() => import('./pages/Onboarding/Onboarding'))
 const Profile       = lazy(() => import('./pages/Profile/Profile'))
 const SignIn        = lazy(() => import('./pages/SignIn/SignIn'))
@@ -120,6 +124,11 @@ function AppRoutes({ theme }) {
             <Route path="/logbook/:id" element={<LogbookEntryForm />} />
             <Route path="/reference" element={<Reference />} />
             <Route path="/weather" element={<Weather />} />
+            {/* Shared links. /m/ is reachable signed out on purpose —
+                listings are public in RLS, and an aircraft ad you can't
+                send to a buyer without the app isn't much of an ad. */}
+            <Route path="/p/:postId" element={<SharedPost />} />
+            <Route path="/m/:listingId" element={<SharedListing />} />
             <Route path="/signin" element={<SignIn legacy={profile != null && profile.onboardingComplete} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
