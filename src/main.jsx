@@ -31,31 +31,6 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('focus', checkForUpdate)
 }
 
-// Re-check the shell on the way back in. The launch-time decision lives in
-// index.html's head script, where it runs before this module exists; this
-// only covers the appearance being switched while the app sat in the
-// background. Deliberately not on the media query itself: switching
-// appearance with the app open would reload the page under the pilot
-// mid-task, and the system switch happens outside the app anyway, so
-// returning to it is the moment that matters.
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return
-  const bar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
-  if (!bar) return
-  const standalone = window.matchMedia('(display-mode: standalone)').matches
-    || window.navigator.standalone === true
-  const isIOS = 'standalone' in window.navigator
-    || /iP(hone|ad|od)/.test(window.navigator.userAgent)
-  if (!standalone || !isIOS) return
-  const onDarkShell = bar.getAttribute('content') === 'black'
-  const wantsDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-  if (onDarkShell === wantsDark) { sessionStorage.removeItem('aviara-shell-swaps'); return }
-  const tries = Number(sessionStorage.getItem('aviara-shell-swaps') || 0)
-  if (tries >= 2) return
-  sessionStorage.setItem('aviara-shell-swaps', String(tries + 1))
-  window.location.replace(wantsDark ? '/dark.html' : '/')
-})
-
 // iOS, in standalone mode with a translucent status bar, paints the web view
 // over the whole screen but sizes the CSS viewport as if the status bar were
 // opaque: every length in the app resolves against a box exactly one status

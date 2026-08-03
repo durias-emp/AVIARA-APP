@@ -1,5 +1,3 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -99,46 +97,6 @@ function awcDevProxy() {
   }
 }
 
-// A second copy of the app shell whose only difference is the iOS status bar
-// style. iOS commits that style when it parses the document and never looks
-// again: not at a JS-modified tag (verified on device, the bar stayed white
-// over a black app), not at theme-color, which Apple does not honour for
-// standalone web apps. The only thing that changes the bar is different HTML
-// bytes, so there are two documents and the app picks one at load.
-//
-// Both are precached, which is why this works without a server. The usual
-// answer to this problem is server-side rendering keyed on a cookie, but an
-// offline-first app launches from the service worker with no request to
-// render, and making navigation network-first to reach a server would put a
-// timeout in front of every cold start in the air. Two static shells cost one
-// extra precached file and work with no network at all.
-//
-// writeBundle, not closeBundle: vite-plugin-pwa builds its precache manifest
-// in closeBundle, so the file has to exist before then or it is not cached
-// and dark launches would hit the network.
-function darkShellVariant() {
-  const BAR = 'name="apple-mobile-web-app-status-bar-style" content='
-  return {
-    name: 'dark-shell-variant',
-    apply: 'build',
-    writeBundle(options) {
-      const dir = options.dir || 'dist'
-      const src = path.join(dir, 'index.html')
-      if (!fs.existsSync(src)) return
-      const html = fs.readFileSync(src, 'utf-8')
-      const dark = html
-        .replace(`${BAR}"default"`, `${BAR}"black"`)
-        .replace('name="theme-color" content="#ffffff"', 'name="theme-color" content="#000000"')
-      // Fail the build rather than ship a dark shell that is silently
-      // identical to the light one, which would loop the swap below.
-      if (dark === html) {
-        throw new Error('dark-shell-variant: status bar meta not found in index.html')
-      }
-      fs.writeFileSync(path.join(dir, 'dark.html'), dark)
-    },
-  }
-}
-
 export default defineConfig({
   server: {
     // Vite rejects requests whose Host header it doesn't recognise, which
@@ -151,7 +109,6 @@ export default defineConfig({
     awcDevProxy(),
     tfrDevProxy(),
     deviceLogSink(),
-    darkShellVariant(),
     react(),
     tailwindcss(),
     VitePWA({

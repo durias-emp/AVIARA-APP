@@ -9,19 +9,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <!-- Not black-translucent, and the history matters. Translucent promises
-         the page the whole screen, but this iOS ships a container bug: the
-         view is sized screen-minus-status-bar yet pinned to the top, so a
-         dead OS-owned band sits under the app that no CSS can reach (proven
-         with painted probes; see main.jsx). The non-translucent styles size
-         the view below the bar down to the physical bottom: the band
-         disappears and iOS paints the bar itself.
-         The value here is the LIGHT default. The script below overwrites it
-         before first paint when the system is dark, because iOS samples this
-         tag once at launch: whatever it reads is the bar for the whole
-         session, and a tag that only React can correct is corrected too
-         late. That was the white bar over a black app. -->
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- black, fixed, and the end of a long investigation. Findings, all
+         verified on device: black-translucent triggers a container bug that
+         leaves a dead OS-owned band under the app. The non-translucent bar
+         is painted by iOS and honours neither theme-color nor the manifest.
+         It is re-read on every launch from the FIRST document of the launch
+         navigation, which is always start_url, so serving a dark variant on
+         another path can never affect it. And prefers-color-scheme lies at
+         document-parse time in a web clip (it reports the previous value and
+         corrects itself after parse), so no script in the head can pick a
+         bar to match the system either. There is no adaptive bar for a web
+         clip. Black is the fixed choice: seamless in dark, a deliberate
+         black bar over the white app in light.
+         The comment above main.jsx's viewport correction tells the band
+         story; git tells the rest of this one. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <!-- Browser/PWA chrome colour. Deliberately a single tag with no media
          query: iOS reads media-scoped theme-color tags when the app launches
          and does not re-evaluate them afterwards, so switching the system
@@ -59,78 +61,6 @@
           // loaded, which is what the swap below is for.
           set('theme-color', dark ? '#000000' : '#ffffff')
 
-          // Load the shell whose status bar matches the system.
-          //
-          // iOS reads apple-mobile-web-app-status-bar-style once, when it
-          // parses the document, and honours nothing afterwards: not a tag
-          // JS rewrites, not theme-color, which Apple does not support for
-          // standalone web apps. There is also no value meaning "follow the
-          // system", so one document can only ever have one bar colour. Two
-          // documents can, and dark.html is byte-identical apart from that
-          // tag.
-          //
-          // Here, in the head, rather than in the app's entry module: this
-          // runs while the document is still parsing, so the swap happens
-          // before the module graph, React, or the service worker client
-          // load. That is both the least visible moment to replace the
-          // document and the closest to the launch navigation, which is
-          // what iOS is deciding the bar from.
-          //
-          // Both signals for standalone. navigator.standalone is a legacy
-          // Safari property and cannot be relied on alone; testing it by
-          // itself is what stopped this running at all.
-          var standalone = window.matchMedia('(display-mode: standalone)').matches
-            || window.navigator.standalone === true
-          var isIOS = 'standalone' in window.navigator
-            || /iP(hone|ad|od)/.test(window.navigator.userAgent)
-          var bar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
-          var onDarkShell = bar && bar.getAttribute('content') === 'black'
-          // Never while the URL carries an auth callback: replacing the
-          // document discards the tokens and loses the sign-in that just
-          // completed. The bar can wait; a dropped session cannot.
-          var authInUrl = /[?&#](access_token|refresh_token|code|error|error_description)=/
-            .test(window.location.search + window.location.hash)
-          var KEY = 'aviara-shell-swaps'
-          if (onDarkShell === dark) {
-            sessionStorage.removeItem(KEY)
-          } else if (standalone && isIOS && !authInUrl) {
-            // If a swap does not produce the shell it promised, swapping
-            // again would loop the app forever. Two tries, then live with
-            // the wrong bar rather than an unusable app.
-            var tries = Number(sessionStorage.getItem(KEY) || 0)
-            if (tries < 2) {
-              sessionStorage.setItem(KEY, String(tries + 1))
-              window.location.replace(dark ? '/dark.html' : '/')
-            }
-          }
-          // TEMPORARY, and the only way to tell two hypotheses apart: either
-          // the swap never runs, or it runs and iOS ignores the bar because
-          // it captured the style when the web clip was created. They need
-          // opposite fixes, and neither is observable from a desktop browser,
-          // where these APIs do not mean what they mean on the device.
-          // Removed as soon as one screenshot answers it.
-          window.__shellDiag = {
-            shell: onDarkShell ? 'dark' : 'light',
-            wantsDark: dark ? 1 : 0,
-            standalone: standalone ? 1 : 0,
-            nav: String(window.navigator.standalone),
-            dm: window.matchMedia('(display-mode: standalone)').matches ? 1 : 0,
-            ios: isIOS ? 1 : 0,
-            swaps: Number(sessionStorage.getItem(KEY) || 0),
-            path: window.location.pathname,
-          }
-          window.addEventListener('DOMContentLoaded', function () {
-            var d = window.__shellDiag
-            var el = document.createElement('div')
-            el.textContent = 'DIAG shell=' + d.shell + ' want=' + (d.wantsDark ? 'dark' : 'light')
-              + ' sa=' + d.standalone + '(nav:' + d.nav + ' dm:' + d.dm + ')'
-              + ' ios=' + d.ios + ' swaps=' + d.swaps + ' path=' + d.path
-            el.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483647;'
-              + 'background:#0a84ff;color:#fff;font:600 11px/1.4 monospace;padding:8px 10px;'
-              + 'text-align:center;word-break:break-all'
-            el.addEventListener('click', function () { el.remove() })
-            document.body.appendChild(el)
-          })
         } catch (e) { /* the static tags above stand */ }
       })()
     </script>
