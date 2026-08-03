@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MapContainer, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet'
 import ChartLayers, { Basemap } from '../../components/ChartLayers'
-import { CHARTS, EMPTY_LAYERS } from '../../components/chartDefs'
+import { CHARTS, EMPTY_LAYERS, resolveOpenaipKey } from '../../components/chartDefs'
 import ActivityCard from '../../components/ActivityCard'
 import WeatherRibbon from '../../components/WeatherRibbon'
 import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecorder'
@@ -171,7 +171,10 @@ export default function MapHome() {
   const [chartsOpen, setChartsOpen] = useState(false)
   const [rec, setRec] = useState(null)
   const [pos, setPos] = useState(null)
-  const [openaipKey, setOpenaipKey] = useState(null)
+  // Resolved at first render rather than in an effect: the key is synchronous
+  // (localStorage or the built-in), so fetching it in an effect would just
+  // render once without it and once with.
+  const [openaipKey, setOpenaipKey] = useState(resolveOpenaipKey)
   const [flights, setFlights] = useState([])
   // The pilot's base, and whether we are still looking for it. The map must
   // not settle anywhere until this resolves one way or the other, or a GPS fix
@@ -206,7 +209,11 @@ export default function MapHome() {
   }, [])
 
   useEffect(() => {
-    get('settings', 'openaip').then(r => setOpenaipKey(r?.key ?? null)).catch(() => {})
+    // A key the pilot pasted into the planner lives in the settings store and
+    // may differ from the built-in one resolved above.
+    get('settings', 'openaip_key')
+      .then(r => { if (r?.value) setOpenaipKey(r.value) })
+      .catch(() => {})
     get('aircraft', 'profile').then(p => setAc(p ?? null)).catch(() => {})
     loadFlights()
     resolveBase()
