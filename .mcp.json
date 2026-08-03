@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "noodles": {
+      "command": "noodles-mcp"
+    }
+  }
+}

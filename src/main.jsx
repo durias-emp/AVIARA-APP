@@ -1,5 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+// Leaflet's own stylesheet, at the app entry rather than inside whichever
+// screen happens to own a map. It used to be imported by the route planner,
+// so a map rendered anywhere else came up with no tile sizing or positioning
+// at all: tiles loaded correctly and then drew at the wrong size with gaps
+// between them, which looks like a broken map rather than a missing
+// stylesheet. index.css is imported after it, so the app's own overrides
+// still win.
+import 'leaflet/dist/leaflet.css'
 import './index.css'
 import App from './App.jsx'
 

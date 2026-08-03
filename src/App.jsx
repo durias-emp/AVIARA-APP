@@ -6,7 +6,9 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import BackOverrideProvider from './context/BackOverrideProvider'
 import Shell from './components/Shell'
 
-const Home        = lazy(() => import('./pages/Home/Home'))
+// The redesign's home: a map you fly from. The previous menu-style Home is
+// kept at ./pages/Home/Home for reference while this branch settles.
+const Home        = lazy(() => import('./pages/Home/MapHome'))
 const Calculators = lazy(() => import('./pages/Calculators/Calculators'))
 const Checklists  = lazy(() => import('./pages/Checklists/Checklists'))
 const Aircraft    = lazy(() => import('./pages/Aircraft/Aircraft'))

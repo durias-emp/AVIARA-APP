@@ -1,0 +1,1232 @@
+.atcTrainer {
+  --pqrh-bg: var(--bg, #f2f2f7);
+  --pqrh-card: var(--bg-card, #ffffff);
+  --pqrh-card-2: var(--bg-card-2, #f7f7fa);
+  --pqrh-border: var(--border, rgba(60,60,67,0.13));
+  --pqrh-border-strong: var(--border-strong, rgba(60,60,67,0.29));
+  --pqrh-text: var(--text, #000000);
+  --pqrh-muted: var(--text-secondary, rgba(60,60,67,0.62));
+  --pqrh-faint: var(--text-tertiary, rgba(60,60,67,0.34));
+  --pqrh-accent: var(--accent, #1c1c1e);
+  --pqrh-accent-fg: var(--accent-fg, #ffffff);
+  --pqrh-ok: var(--ok, #34c759);
+  --pqrh-warn: var(--warn, #ff9500);
+  --pqrh-danger: var(--danger, #ff3b30);
+  min-height: 100dvh;
+  background: var(--pqrh-bg);
+  color: var(--pqrh-text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+}
+
+.atcTrainer *,
+.atcTrainer *::before,
+.atcTrainer *::after {
+  box-sizing: border-box;
+}
+
+.atcTrainer button,
+.atcTrainer textarea {
+  font: inherit;
+}
+
+.atcTrainer__wrap {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 22px clamp(16px, 3vw, 34px) 84px;
+}
+
+.atcTrainer__topbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.atcTrainer__eyebrow {
+  color: var(--pqrh-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.atcTrainer__title {
+  color: var(--pqrh-text);
+  font-size: 34px;
+  line-height: 1.04;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin-top: 3px;
+}
+
+.atcTrainer__stack {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.atcTrainer__stack > .uiCard,
+.atcTrainer__actions {
+  grid-column: 1 / -1;
+}
+
+.atcTrainer__hero {
+  overflow: hidden;
+  grid-column: 1 / -1;
+}
+
+.atcTrainer__heroTop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+
+.atcTrainer__scenarioName {
+  color: var(--pqrh-text);
+  font-size: 21px;
+  line-height: 1.14;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.atcTrainer__scenarioSub {
+  color: var(--pqrh-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 4px;
+}
+
+.atcTrainer__freq {
+  min-width: 82px;
+  height: 38px;
+  border-radius: 10px;
+  background: #111317;
+  color: #42d976;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.atcTrainer__metaGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.atcTrainer__meta {
+  min-height: 56px;
+  border-radius: 12px;
+  padding: 9px 10px;
+  background: var(--pqrh-card-2);
+  border: 0.5px solid var(--pqrh-border);
+}
+
+.atcTrainer__metaLabel {
+  color: var(--pqrh-faint);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.atcTrainer__metaValue {
+  color: var(--pqrh-text);
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 750;
+  margin-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.atcTrainer__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.atcTrainer__toolbar .uiButton {
+  margin-left: auto;
+}
+
+.atcTrainer__scenarioList {
+  display: grid;
+  gap: 8px;
+}
+
+.atcTrainer__scenarioButton {
+  width: 100%;
+  text-align: left;
+  border: 0.5px solid var(--pqrh-border);
+  background: var(--pqrh-card);
+  border-radius: 14px;
+  padding: 12px;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.atcTrainer__scenarioButton[aria-pressed="true"] {
+  border-color: rgba(52, 199, 89, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(52, 199, 89, 0.16);
+}
+
+.atcTrainer__buttonTitle {
+  color: var(--pqrh-text);
+  display: block;
+  font-size: 14px;
+  line-height: 1.2;
+  font-weight: 800;
+}
+
+.atcTrainer__buttonSub {
+  color: var(--pqrh-muted);
+  display: block;
+  font-size: 12px;
+  line-height: 1.3;
+  margin-top: 3px;
+}
+
+.atcTrainer__objective {
+  color: var(--pqrh-text);
+  background: var(--pqrh-card-2);
+  border: 0.5px solid var(--pqrh-border);
+  border-radius: 12px;
+  padding: 11px 12px;
+  font-size: 13px;
+  line-height: 1.42;
+  font-weight: 650;
+}
+
+.atcTrainer__briefList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.atcTrainer__briefItem {
+  display: grid;
+  grid-template-columns: 7px 1fr;
+  gap: 9px;
+  align-items: start;
+  color: var(--pqrh-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.atcTrainer__briefDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pqrh-ok);
+  margin-top: 5px;
+}
+
+.atcTrainer__sectionLabel {
+  color: var(--pqrh-faint);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.atcTrainer__phaseRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.atcTrainer__phase {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.atcTrainer__liveDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pqrh-ok);
+  box-shadow: 0 0 0 5px rgba(52, 199, 89, 0.12);
+}
+
+.atcTrainer__phaseText {
+  color: var(--pqrh-text);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.atcTrainer__stepCount {
+  color: var(--pqrh-faint);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.atcTrainer__prompt {
+  margin-top: 12px;
+  border-radius: 14px;
+  background: var(--pqrh-card-2);
+  border: 0.5px solid var(--pqrh-border);
+  padding: 13px;
+}
+
+.atcTrainer__promptText {
+  color: var(--pqrh-text);
+  font-size: 18px;
+  line-height: 1.24;
+  font-weight: 800;
+  margin-top: 4px;
+}
+
+.atcTrainer__transcript {
+  max-height: 260px;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding-right: 2px;
+}
+
+.atcTrainer__emptyLog {
+  min-height: 108px;
+  border-radius: 14px;
+  border: 0.5px dashed var(--pqrh-border-strong);
+  color: var(--pqrh-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.35;
+  padding: 18px;
+}
+
+.atcTrainer__message {
+  display: grid;
+  gap: 4px;
+  border-radius: 14px;
+  padding: 11px 12px;
+  border: 0.5px solid var(--pqrh-border);
+  background: var(--pqrh-card);
+}
+
+.atcTrainer__message--pilot {
+  border-color: rgba(0, 122, 255, 0.18);
+  background: rgba(0, 122, 255, 0.065);
+}
+
+.atcTrainer__message--atc {
+  border-color: rgba(52, 199, 89, 0.2);
+  background: rgba(52, 199, 89, 0.07);
+}
+
+.atcTrainer__messageMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--pqrh-faint);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.atcTrainer__messageText {
+  color: var(--pqrh-text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.atcTrainer__messageMiss {
+  color: var(--pqrh-warn);
+  font-size: 11px;
+  line-height: 1.32;
+}
+
+.atcTrainer__scoreMini,
+.atcTrainer__scoreValue,
+.atcTrainer__debriefScore {
+  color: var(--pqrh-ok);
+  font-variant-numeric: tabular-nums;
+}
+
+.atcTrainer__scoreMini--workable,
+.atcTrainer__scoreValue--workable,
+.atcTrainer__debriefScore--workable {
+  color: var(--pqrh-warn);
+}
+
+.atcTrainer__scoreMini--needs-work,
+.atcTrainer__scoreValue--needs-work,
+.atcTrainer__debriefScore--needs-work {
+  color: var(--pqrh-danger);
+}
+
+.atcTrainer__typing {
+  color: var(--pqrh-ok);
+}
+
+.atcTrainer__wave {
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.atcTrainer__wave span {
+  width: 5px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--pqrh-ok);
+  opacity: 0.45;
+  animation: atcWave 860ms ease-in-out infinite;
+}
+
+.atcTrainer__wave span:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.atcTrainer__wave span:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+.atcTrainer__composerGrid {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.atcTrainer__micWrap {
+  display: grid;
+  grid-template-rows: 62px 18px;
+  align-items: center;
+  justify-items: center;
+  gap: 6px;
+}
+
+.atcTrainer__mic {
+  width: 62px;
+  height: 62px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--pqrh-accent);
+  color: var(--pqrh-accent-fg);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.13);
+}
+
+.atcTrainer__mic[aria-pressed="true"] {
+  background: var(--pqrh-ok);
+  color: #fff;
+  animation: atcPulse 1.1s ease-in-out infinite;
+}
+
+.atcTrainer__mic svg {
+  width: 25px;
+  height: 25px;
+}
+
+.atcTrainer__micStatus {
+  color: var(--pqrh-faint);
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 800;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.atcTrainer__inputStack {
+  display: grid;
+  grid-template-rows: 1fr 34px;
+  gap: 8px;
+}
+
+.atcTrainer__sendRow {
+  display: grid;
+  grid-template-columns: 1fr 88px;
+  gap: 8px;
+}
+
+.atcTrainer__scoreCard {
+  min-height: 116px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+.atcTrainer__scoreValue {
+  font-size: 48px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.atcTrainer__scoreLabel {
+  color: var(--pqrh-faint);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 900;
+  text-transform: uppercase;
+  margin-top: 7px;
+}
+
+.atcTrainer__analysisPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.atcTrainer__analysisPills span {
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 8px;
+  background: var(--pqrh-card-2);
+  color: var(--pqrh-muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.atcTrainer__analysisPills .atcTrainer__analysisPill--warn {
+  color: var(--pqrh-warn);
+  background: rgba(255, 149, 0, 0.1);
+}
+
+.atcTrainer__missing {
+  color: var(--pqrh-warn);
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 7px;
+}
+
+.atcTrainer__ideal {
+  color: var(--pqrh-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 7px;
+}
+
+.atcTrainer__coach {
+  color: var(--pqrh-faint);
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 7px;
+}
+
+.atcTrainer__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.uiButton {
+  border: 0;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  cursor: pointer;
+  font-weight: 800;
+  letter-spacing: 0;
+  transition: opacity 160ms ease, transform 160ms ease, background 160ms ease;
+  white-space: nowrap;
+}
+
+.uiButton:active {
+  transform: scale(0.985);
+}
+
+.uiButton:disabled,
+.uiTextarea:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
+.uiButtonVariant--default {
+  background: var(--pqrh-accent);
+  color: var(--pqrh-accent-fg);
+}
+
+.uiButtonVariant--secondary {
+  background: var(--pqrh-card-2);
+  color: var(--pqrh-text);
+  border: 0.5px solid var(--pqrh-border);
+}
+
+.uiButtonVariant--ghost {
+  background: transparent;
+  color: var(--pqrh-muted);
+}
+
+.uiButtonVariant--outline {
+  background: var(--pqrh-card);
+  color: var(--pqrh-text);
+  border: 0.5px solid var(--pqrh-border);
+}
+
+.uiButtonSize--sm {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.uiButtonSize--default,
+.uiButtonSize--lg {
+  height: 46px;
+  padding: 0 16px;
+  font-size: 14px;
+}
+
+.uiButton--full {
+  width: 100%;
+}
+
+.uiCard {
+  background: var(--pqrh-card);
+  border: 0.5px solid var(--pqrh-border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.uiCardHeader {
+  padding: 14px 14px 8px;
+}
+
+.uiCardTitle {
+  color: var(--pqrh-text);
+  font-size: 15px;
+  line-height: 1.2;
+  font-weight: 800;
+}
+
+.uiCardDescription {
+  color: var(--pqrh-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
+.uiCardContent {
+  padding: 12px 14px 14px;
+}
+
+.uiCardHeader + .uiCardContent {
+  padding-top: 6px;
+}
+
+.uiCardFooter {
+  padding: 0 14px 14px;
+}
+
+.uiBadge {
+  min-height: 26px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 9px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.uiBadge--secondary {
+  color: var(--pqrh-muted);
+  background: var(--pqrh-card-2);
+  border: 0.5px solid var(--pqrh-border);
+}
+
+.uiBadge--success {
+  color: var(--pqrh-ok);
+  background: rgba(52, 199, 89, 0.1);
+}
+
+.uiBadge--warning {
+  color: var(--pqrh-warn);
+  background: rgba(255, 149, 0, 0.1);
+}
+
+.uiTabsList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  background: var(--pqrh-card-2);
+  border-radius: 11px;
+}
+
+.uiTabsTrigger {
+  height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--pqrh-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.uiTabsTrigger--active {
+  background: var(--pqrh-card);
+  color: var(--pqrh-text);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+
+.uiProgress {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--pqrh-card-2);
+  overflow: hidden;
+}
+
+.uiProgress__bar {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--pqrh-accent);
+  transition: width 240ms ease;
+}
+
+.uiTextarea {
+  width: 100%;
+  min-height: 78px;
+  resize: none;
+  border-radius: 12px;
+  border: 0.5px solid var(--pqrh-border);
+  background: var(--pqrh-card-2);
+  color: var(--pqrh-text);
+  padding: 10px 11px;
+  outline: none;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.uiTextarea::placeholder {
+  color: var(--pqrh-faint);
+}
+
+@keyframes atcPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(52, 199, 89, 0.28), 0 10px 24px rgba(52, 199, 89, 0.16); }
+  50% { box-shadow: 0 0 0 10px rgba(52, 199, 89, 0), 0 10px 24px rgba(52, 199, 89, 0.24); }
+}
+
+@keyframes atcWave {
+  0%, 100% { height: 7px; opacity: 0.36; }
+  50% { height: 20px; opacity: 1; }
+}
+
+@media (min-width: 760px) {
+  .atcTrainer__topbar {
+    margin-bottom: 18px;
+  }
+
+  .atcTrainer__title {
+    font-size: 40px;
+  }
+
+  .atcTrainer__stack > .atcTrainer__scenarioPanel {
+    grid-column: span 5;
+  }
+
+  .atcTrainer__stack > .atcTrainer__briefPanel {
+    grid-column: span 7;
+  }
+
+  .atcTrainer__stack > .atcTrainer__promptPanel,
+  .atcTrainer__stack > .atcTrainer__composerPanel {
+    grid-column: span 5;
+  }
+
+  .atcTrainer__stack > .atcTrainer__frequencyPanel {
+    grid-column: span 7;
+    grid-row: span 2;
+  }
+
+  .atcTrainer__transcript {
+    max-height: 490px;
+  }
+
+  .atcTrainer__stack > .atcTrainer__scoreCard {
+    grid-column: span 4;
+    min-height: 178px;
+  }
+
+  .atcTrainer__stack > .atcTrainer__debriefPanel {
+    grid-column: span 4;
+  }
+}
+
+@media (min-width: 1040px) {
+  .atcTrainer__heroTop {
+    grid-template-columns: minmax(0, 1fr) 112px;
+  }
+
+  .atcTrainer__scenarioName {
+    font-size: 26px;
+  }
+
+  .atcTrainer__scenarioSub {
+    font-size: 13px;
+  }
+
+  .atcTrainer__freq {
+    min-width: 112px;
+    height: 48px;
+    font-size: 21px;
+  }
+
+  .atcTrainer__metaGrid {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 390px) {
+  .atcTrainer__wrap {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .atcTrainer__title {
+    font-size: 30px;
+  }
+
+  .atcTrainer__metaGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .atcTrainer__composerGrid {
+    grid-template-columns: 64px 1fr;
+  }
+
+  .atcTrainer__mic {
+    width: 58px;
+    height: 58px;
+  }
+}
+
+/* V2 Radio Flight Sim */
+.atcSim__wrap {
+  max-width: 1360px;
+}
+
+.atcSim__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(380px, 0.65fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.atcSim__mapPanel {
+  min-height: calc(100dvh - 132px);
+}
+
+.atcSim__sidePanel {
+  min-height: calc(100dvh - 132px);
+}
+
+.atcSim__panelTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.atcSim__frequency {
+  min-width: 112px;
+  height: 48px;
+  border-radius: 12px;
+  background: #111317;
+  color: #42d976;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.atcSimMap {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 0.5px solid var(--pqrh-border);
+  background: #dfe8df;
+  min-height: 460px;
+}
+
+.atcSimMap svg {
+  display: block;
+  width: 100%;
+  height: min(58vw, 560px);
+  min-height: 460px;
+}
+
+.atcSimMap__grass {
+  fill: #dfe8df;
+}
+
+.atcSimMap__runway rect {
+  fill: #2f3338;
+}
+
+.atcSimMap__runway line {
+  stroke: rgba(255,255,255,0.74);
+  stroke-width: 5;
+  stroke-dasharray: 42 28;
+}
+
+.atcSimMap__runway text {
+  fill: rgba(255,255,255,0.88);
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.atcSimMap__ramp rect {
+  fill: rgba(255,255,255,0.58);
+  stroke: rgba(60,60,67,0.16);
+  stroke-width: 1;
+}
+
+.atcSimMap__ramp text {
+  fill: rgba(60,60,67,0.62);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.atcSimMap__taxi {
+  fill: none;
+  stroke: #4d5359;
+  stroke-width: 36;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.atcSimMap__taxi--active {
+  stroke: #34c759;
+  filter: drop-shadow(0 0 10px rgba(52,199,89,0.3));
+}
+
+.atcSimMap__taxiLabel {
+  fill: rgba(255,255,255,0.82);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.atcSimMap__holdLine {
+  stroke: #ffcc00;
+  stroke-width: 8;
+  stroke-dasharray: 10 9;
+}
+
+.atcSimMap__traffic path {
+  fill: rgba(255,149,0,0.82);
+  stroke: rgba(255,255,255,0.9);
+  stroke-width: 2;
+}
+
+.atcSimMap__traffic text {
+  fill: rgba(60,60,67,0.76);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.atcSimMap__ownship {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.atcSimMap__ownship circle {
+  fill: rgba(0,0,0,0.16);
+}
+
+.atcSimMap__ownship path {
+  fill: #111317;
+  stroke: #fff;
+  stroke-width: 4;
+}
+
+.atcSimMap__pointLabel rect {
+  fill: rgba(255,255,255,0.76);
+  stroke: rgba(60,60,67,0.12);
+}
+
+.atcSimMap__pointLabel text:first-of-type {
+  fill: rgba(60,60,67,0.46);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.atcSimMap__pointLabel text:last-of-type {
+  fill: #111317;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.atcSim__statusStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.atcSim__statusStrip .uiButton {
+  margin-left: auto;
+}
+
+.atcSim__setupGrid {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.atcSim__fieldLabel {
+  color: var(--pqrh-faint);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.atcSim__pillGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.atcSim__selectPill {
+  min-height: 34px;
+  border-radius: 999px;
+  border: 0.5px solid var(--pqrh-border);
+  background: var(--pqrh-card-2);
+  color: var(--pqrh-muted);
+  padding: 0 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.atcSim__selectPill[aria-pressed="true"] {
+  background: var(--pqrh-accent);
+  color: var(--pqrh-accent-fg);
+  border-color: var(--pqrh-accent);
+}
+
+.atcSim__transcript {
+  display: grid;
+  gap: 9px;
+  max-height: min(48vh, 440px);
+  overflow-y: auto;
+  padding-right: 2px;
+  margin: 14px 0;
+}
+
+.atcSim__message {
+  display: grid;
+  gap: 5px;
+  border-radius: 14px;
+  padding: 11px 12px;
+  border: 0.5px solid var(--pqrh-border);
+  background: var(--pqrh-card);
+}
+
+.atcSim__message--pilot {
+  border-color: rgba(0,122,255,0.18);
+  background: rgba(0,122,255,0.065);
+}
+
+.atcSim__message--atc {
+  border-color: rgba(52,199,89,0.2);
+  background: rgba(52,199,89,0.075);
+}
+
+.atcSim__messageMeta,
+.atcSim__debriefTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--pqrh-faint);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.atcSim__messageText {
+  color: var(--pqrh-text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.atcSim__messageMiss {
+  color: var(--pqrh-warn);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.atcSim__score {
+  color: var(--pqrh-ok);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.atcSim__score--workable,
+.atcSim__finalScore--workable {
+  color: var(--pqrh-warn);
+}
+
+.atcSim__score--needs-work,
+.atcSim__finalScore--needs-work {
+  color: var(--pqrh-danger);
+}
+
+.atcSim__composer {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.atcSim__micColumn {
+  display: grid;
+  grid-template-rows: 62px 18px;
+  align-items: center;
+  justify-items: center;
+  gap: 6px;
+}
+
+.atcSim__inputColumn {
+  display: grid;
+  gap: 8px;
+}
+
+.atcSim__sendRow {
+  display: grid;
+  grid-template-columns: 1fr 92px;
+  gap: 8px;
+}
+
+.atcSim__finalScore {
+  text-align: center;
+  color: var(--pqrh-ok);
+  font-size: 54px;
+  line-height: 1;
+  font-weight: 900;
+  margin: 4px 0 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.atcSim__debriefList {
+  display: grid;
+  gap: 9px;
+  max-height: min(56vh, 520px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.atcSim__debriefItem {
+  border-radius: 14px;
+  border: 0.5px solid var(--pqrh-border);
+  background: var(--pqrh-card-2);
+  padding: 11px 12px;
+}
+
+.atcSim__debriefTop strong {
+  color: var(--pqrh-text);
+  font-size: 13px;
+  text-transform: none;
+}
+
+.atcSim__ideal,
+.atcSim__coach {
+  color: var(--pqrh-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 7px;
+}
+
+.atcSim__coach {
+  color: var(--pqrh-faint);
+}
+
+.atcSim__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+@media (max-width: 960px) {
+  .atcSim__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .atcSim__mapPanel,
+  .atcSim__sidePanel {
+    min-height: auto;
+  }
+
+  .atcSimMap svg {
+    height: 440px;
+  }
+}
+
+@media (max-width: 620px) {
+  .atcSim__panelTop,
+  .atcSim__statusStrip {
+    align-items: flex-start;
+  }
+
+  .atcSim__frequency {
+    min-width: 88px;
+    height: 42px;
+    font-size: 18px;
+  }
+
+  .atcSimMap,
+  .atcSimMap svg {
+    min-height: 330px;
+    height: 330px;
+  }
+
+  .atcSim__composer {
+    grid-template-columns: 64px 1fr;
+  }
+
+  .atcSim__actions {
+    grid-template-columns: 1fr;
+  }
+}

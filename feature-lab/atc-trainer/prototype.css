@@ -1,0 +1,79 @@
+:root {
+  --bg: #f2f2f7;
+  --bg-card: #ffffff;
+  --bg-card-2: #f2f2f7;
+  --border: rgba(60,60,67,0.13);
+  --text: #000000;
+  --text-secondary: rgba(60,60,67,0.62);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100dvh;
+  background: #f2f2f7;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+textarea {
+  font-family: inherit;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+.prototypeStage {
+  min-height: 100dvh;
+  display: block;
+  padding: 0;
+  position: relative;
+}
+
+.prototypeDevice {
+  width: 100%;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: var(--bg);
+  border: 0;
+  box-shadow: none;
+}
+
+.prototypeDevice .atcTrainer {
+  min-height: 100dvh;
+}
+
+.prototypeDevice .atcTrainer__wrap {
+  padding-bottom: 40px;
+}
+
+@media (max-width: 520px) {
+  .prototypeStage {
+    padding: 0;
+    place-items: stretch;
+  }
+
+  .prototypeDevice {
+    width: 100%;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .prototypeDevice .atcTrainer {
+    min-height: 100dvh;
+  }
+
+  .prototypeDevice .atcTrainer__wrap {
+    padding-bottom: 28px;
+  }
+}

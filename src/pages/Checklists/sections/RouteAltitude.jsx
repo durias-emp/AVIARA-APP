@@ -1,4 +1,6 @@
-import 'leaflet/dist/leaflet.css'
+// leaflet.css is imported once in main.jsx, not here: a map on any other
+// screen needs it too, and importing it from this screen meant the stylesheet
+// only existed after the planner had been opened.
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { MapContainer, TileLayer, Marker, Polyline, Polygon, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet'
