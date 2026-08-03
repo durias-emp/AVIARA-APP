@@ -72,8 +72,14 @@
   /* Pure black for the same reason the light theme is pure white: it is
      the one colour the system status bar will actually be. */
   --bg:           #000000;
-  --bg-card:      #272730;
-  --bg-card-2:    #32323c;
+  /* Apple's dark surfaces, sampled from Settings rather than estimated:
+     #1c1c1e is secondarySystemGroupedBackground (a card on black) and
+     #2c2c2e is the tertiary level (a field nested inside a card). The old
+     values were both lighter and slightly blue, which read as a different
+     material next to anything the system draws. Labels and separators below
+     already matched Apple exactly. */
+  --bg-card:      #1c1c1e;
+  --bg-card-2:    #2c2c2e;
   --bg-grouped:   #000000;
 
   --border:       rgba(84,84,88,0.65);
