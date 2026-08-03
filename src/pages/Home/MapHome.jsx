@@ -15,6 +15,7 @@ import { useNavigate } from 'react-router-dom'
 import { MapContainer, Polyline, CircleMarker, useMap } from 'react-leaflet'
 import ChartLayers, { Basemap } from '../../components/ChartLayers'
 import { CHARTS, EMPTY_LAYERS } from '../../components/chartDefs'
+import ActivityCard from '../../components/ActivityCard'
 import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecorder'
 import { put, get, getAll } from '../../lib/db'
 
@@ -22,11 +23,17 @@ const ACCENT = '#FF5A1F'      // the one saturated colour on the screen, so the
                               // action is never ambiguous
 const CTRL = 52
 
-// The sheet's two resting heights. Collapsed shows the handle, the actions and
-// nothing else; expanded is tall enough for the app's other screens while still
-// leaving map visible above it, so it never reads as a full-screen takeover.
+// Three resting heights. Collapsed is the handle and the actions; expanded
+// leaves a strip of map above it so it never reads as a takeover; full is a
+// screen in its own right, for reading the logbook rather than glancing at it.
+//
+// FULL_TRIGGER is where dragging stops being "open the sheet" and becomes
+// "open the screen": past three quarters of the way up, the sheet commits to
+// full and its corners square off against the device's own.
 const SHEET_COLLAPSED_PX = 178
 const SHEET_EXPANDED_VH = 0.82
+const SHEET_FULL_TRIGGER = 0.75
+const SHEET_RADIUS = 22
 
 // Everything else the app does. The map home would otherwise be a dead end:
 // these are the screens the old menu-style home listed, and they keep their
@@ -132,7 +139,11 @@ export default function MapHome() {
   // app can do. Dragging between them is how the rest of the app is reached
   // now that the home screen is a map, so it has to feel like a sheet rather
   // than a button that swaps screens.
-  const [expanded, setExpanded] = useState(false)
+  const [snap, setSnap] = useState('collapsed')   // collapsed | expanded | full
+  // The viewport, measured rather than assumed: reading window.innerHeight
+  // during render is fine once, but it has to be re-read when the phone is
+  // rotated or the browser chrome changes, or every snap point is stale.
+  const [viewportH, setViewportH] = useState(() => window.innerHeight)
   const [dragY, setDragY] = useState(null)      // live offset while a finger is down
   const drag = useRef(null)
   const [chartsOpen, setChartsOpen] = useState(false)
@@ -147,6 +158,17 @@ export default function MapHome() {
   const [recorder] = useState(() => createRecorder({ onUpdate: setRec }))
 
   const activeCount = Object.values(layers).filter(Boolean).length
+  const expanded = snap !== 'collapsed'
+
+  useEffect(() => {
+    const onResize = () => setViewportH(window.innerHeight)
+    window.addEventListener('resize', onResize)
+    window.visualViewport?.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.visualViewport?.removeEventListener('resize', onResize)
+    }
+  }, [])
 
   useEffect(() => {
     get('settings', 'openaip').then(r => setOpenaipKey(r?.key ?? null)).catch(() => {})
@@ -225,13 +247,24 @@ export default function MapHome() {
   const recording = rec != null
   const track = rec?.track?.map(p => [p.lat, p.lon]) ?? []
 
-  // Travel between the two resting heights, in pixels. Measured from the
-  // viewport rather than hardcoded so the sheet is the same proportion of a
-  // small phone and a large one.
-  const travel = Math.max(0, Math.round(window.innerHeight * SHEET_EXPANDED_VH) - SHEET_COLLAPSED_PX)
-  // Where the sheet sits right now: 0 is fully expanded, travel is collapsed.
-  const restY = expanded ? 0 : travel
+  // The sheet is always the full height of the screen and is moved down out of
+  // the way, rather than being resized. Animating transform is cheap and never
+  // reflows its contents; animating height would relayout the whole list on
+  // every frame of a drag.
+  //
+  // y is the distance from the top of the screen to the top of the sheet, so
+  // 0 is full screen and larger numbers are further down.
+  const vh = viewportH
+  const Y_FULL = 0
+  const Y_EXPANDED = Math.round(vh * (1 - SHEET_EXPANDED_VH))
+  const Y_COLLAPSED = Math.max(0, vh - SHEET_COLLAPSED_PX)
+  const restY = snap === 'full' ? Y_FULL : snap === 'expanded' ? Y_EXPANDED : Y_COLLAPSED
   const y = dragY != null ? dragY : restY
+
+  // Corners square off as the sheet approaches the top, rather than snapping
+  // from rounded to square at the end of the animation. Interpolated over the
+  // last stretch only, so it reads as the sheet meeting the screen edge.
+  const radius = Math.round(SHEET_RADIUS * Math.min(1, y / Math.max(1, Y_EXPANDED)))
 
   // Pointer events with capture, not touch or mouse handlers. Pulling the
   // sheet up moves the finger off the header almost immediately, and without
@@ -250,7 +283,8 @@ export default function MapHome() {
     if (Math.abs(dy) > 3) d.moved = true
     // Clamped, with no rubber band past either end: a sheet that can be pulled
     // past its stops feels broken rather than playful on a control surface.
-    const next = Math.min(travel, Math.max(0, d.fromY + dy))
+    // Clamp between full screen and collapsed, the sheet's real extremes.
+    const next = Math.min(Y_COLLAPSED, Math.max(Y_FULL, d.fromY + dy))
     d.lastY = next
     setDragY(next)
   }
@@ -265,11 +299,28 @@ export default function MapHome() {
     // would still be one frame behind.
     const dist = d.lastY - d.fromY
     const ms = Date.now() - d.t0
+    const up = dist < 0
     // A fast flick decides on its own, regardless of how far it got: a short
     // sharp pull up should open the sheet even from the very bottom.
     const flick = ms < 260 && Math.abs(dist) > 24
-    setExpanded(flick ? dist < 0 : d.lastY < travel / 2)
     setDragY(null)
+
+    // Past the trigger the sheet commits to full whatever the gesture was.
+    // Dragging that far is unambiguous, and snapping back from there would
+    // feel like the sheet fighting the hand.
+    if (d.lastY <= vh * (1 - SHEET_FULL_TRIGGER)) { setSnap('full'); return }
+    if (flick) {
+      // Flicks move one stop in the direction of travel, so a hard pull from
+      // collapsed does not skip past the useful middle stop to full screen.
+      setSnap(up
+        ? (snap === 'collapsed' ? 'expanded' : 'full')
+        : (snap === 'full' ? 'expanded' : 'collapsed'))
+      return
+    }
+    // Otherwise the nearest stop wins.
+    const stops = [['full', Y_FULL], ['expanded', Y_EXPANDED], ['collapsed', Y_COLLAPSED]]
+    setSnap(stops.reduce((best, s2) =>
+      Math.abs(d.lastY - s2[1]) < Math.abs(d.lastY - best[1]) ? s2 : best)[0])
   }
 
   const statFont = { fontSize: 11, fontWeight: 600, color: 'rgba(60,60,67,0.6)', letterSpacing: '0.2px' }
@@ -396,17 +447,23 @@ export default function MapHome() {
           control surface that stops wherever the finger left it is a surface
           you have to aim at. */}
       <div style={{
-        position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 600,
-        height: `${Math.round(SHEET_EXPANDED_VH * 100)}vh`,
-        transform: sheetOpen ? `translateY(${y}px)` : 'translateY(100%)',
+        position: 'absolute', left: 0, right: 0, top: 0, zIndex: 600,
+        height: '100%',
+        transform: sheetOpen ? `translateY(${y}px)` : `translateY(${vh}px)`,
         // No transition while a finger is down: the sheet must track the
         // finger exactly, and easing a live drag is what makes one feel laggy.
+        // The radius eases on the same curve so the corners and the movement
+        // arrive together instead of the corners popping at the end.
         transition: dragY != null ? 'none'
-          : 'transform 340ms cubic-bezier(0.32,0.72,0,1)',
+          : 'transform 380ms cubic-bezier(0.32,0.72,0,1), border-radius 380ms cubic-bezier(0.32,0.72,0,1)',
         background: 'rgba(255,255,255,0.98)', backdropFilter: 'blur(20px)',
-        borderRadius: '22px 22px 0 0', boxShadow: '0 -4px 24px rgba(0,0,0,0.10)',
+        borderRadius: `${radius}px ${radius}px 0 0`,
+        boxShadow: '0 -4px 24px rgba(0,0,0,0.10)',
         display: 'flex', flexDirection: 'column',
         pointerEvents: sheetOpen ? 'auto' : 'none',
+        // Squares off against the device's own corners at full screen, and
+        // keeps the rounded corners from clipping the list while it slides.
+        overflow: 'hidden',
       }}>
 
         {/* The grab area: handle and actions. Dragging anywhere on this moves
@@ -415,8 +472,16 @@ export default function MapHome() {
         <div
           onPointerDown={onDragStart} onPointerMove={onDragMove}
           onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
-          style={{ flexShrink: 0, padding: '10px 18px 0', touchAction: 'none', cursor: 'grab' }}>
-          <div onClick={() => setExpanded(e => !e)} style={{
+          style={{
+            flexShrink: 0, touchAction: 'none', cursor: 'grab',
+            // At full screen the sheet is under the status bar, so it has to
+            // clear the notch itself. Below that the map is up there and this
+            // padding would just be a gap.
+            paddingTop: snap === 'full' ? 'calc(var(--safe-top) + 10px)' : 10,
+            paddingLeft: 18, paddingRight: 18,
+            transition: 'padding-top 380ms cubic-bezier(0.32,0.72,0,1)',
+          }}>
+          <div onClick={() => setSnap(s2 => (s2 === 'collapsed' ? 'expanded' : 'collapsed'))} style={{
             width: 40, height: 5, borderRadius: 3, background: 'rgba(60,60,67,0.2)',
             margin: '0 auto 14px', cursor: 'pointer',
           }} />
@@ -456,7 +521,8 @@ export default function MapHome() {
 
           <div style={{ textAlign: 'center', margin: '10px 0 6px', fontSize: 10, color: 'rgba(60,60,67,0.45)' }}>
             {recording ? 'Recording your track · tap the square to end and log it'
-              : expanded ? 'Reference aid only · Always consult current FAR/AIM'
+              : snap === 'full' ? 'Reference aid only · Always consult current FAR/AIM'
+              : snap === 'expanded' ? 'Keep pulling for the full logbook'
               : 'Pull up for everything else'}
           </div>
         </div>
@@ -485,7 +551,9 @@ export default function MapHome() {
           </div>
 
           <div style={{ marginTop: 22, fontSize: 11, fontWeight: 700, letterSpacing: '0.6px',
-            color: 'rgba(60,60,67,0.5)', textTransform: 'uppercase' }}>Recent flights</div>
+            color: 'rgba(60,60,67,0.5)', textTransform: 'uppercase' }}>
+            {snap === 'full' ? `Logbook · ${flights.length}` : 'Recent flights'}
+          </div>
           {flights.length === 0 ? (
             <div style={{ marginTop: 10, padding: '22px 16px', borderRadius: 16,
               background: 'rgba(60,60,67,0.05)', textAlign: 'center' }}>
@@ -495,34 +563,18 @@ export default function MapHome() {
               </div>
             </div>
           ) : (
-            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {flights.slice(0, 8).map(f => (
-                <div key={f.id} style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  gap: 10, padding: '13px 15px', borderRadius: 14, background: 'rgba(60,60,67,0.05)',
-                }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#1c1c1e' }}>
-                      {f.dep && f.dest ? `${f.dep} → ${f.dest}` : (f.source === 'recorded' ? 'Recorded flight' : 'Flight')}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: 'rgba(60,60,67,0.55)', marginTop: 2 }}>
-                      {new Date(f.savedAt ?? f.id).toLocaleDateString()} · {f.registration || f.aircraft || 'No aircraft'}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#1c1c1e', fontVariantNumeric: 'tabular-nums' }}>
-                      {f.distNm != null ? `${Math.round(f.distNm)} NM` : '—'}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: 'rgba(60,60,67,0.55)', fontVariantNumeric: 'tabular-nums' }}>
-                      {f.flightTimeH != null ? `${f.flightTimeH.toFixed(1)} h` : ''}
-                    </div>
-                  </div>
-                </div>
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Collapsed the sheet shows a handful; at full screen it is the
+                  whole logbook, which is the reason for having a full screen
+                  at all. */}
+              {(snap === 'full' ? flights : flights.slice(0, 4)).map(f => (
+                <ActivityCard key={f.id} flight={f} />
               ))}
             </div>
           )}
         </div>
       </div>
+
     </div>
   )
 }
