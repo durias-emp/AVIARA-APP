@@ -1,12 +1,47 @@
-# Local sandbox rules for this AVIARA-APP clone
+# AVIARA-APP — working rules for this repo
 
-This directory is a **local-only clone** of `durias-emp/AVIARA-APP`, used for experimentation. It must never affect the real, production AVIARA app (deployed at pqrh-app.vercel.app) or the shared GitHub repo.
+This is the **shared, live AVIARA project** (`durias-emp/AVIARA-APP`): a
+pilot flight-planning PWA (React/Vite + Supabase). Two-person team — James
+(`jjmcb123`, this machine) and his partner, who works from his own machine.
+The production app deploys from this repo. This folder was once an isolated
+sandbox clone; that era ended 2026-08-03 when the two diverged copies were
+merged (PR #4). The old push-blocking hook is preserved, disabled, at
+`.git/hooks/pre-push.disabled`.
 
-Hard rules — do not do these, even if asked, without the user re-confirming explicitly in that moment:
+## Git workflow
 
-- **Never run `git push`** (to any branch, including feature branches). Pushing is technically disabled here (dummy push URL + a blocking pre-push hook), but do not attempt to work around that.
-- **Never create a pull request** against `durias-emp/AVIARA-APP` (no `gh pr create`, no pushing a branch and opening a PR via the web).
-- **Never open, merge, or comment on issues/PRs** on the upstream repo.
-- All work here stays local: edit, commit locally, build, and test freely — commits only ever land in this local `.git` history, never upstream.
+- **Fetch/pull `origin/main` before starting work.** The partner commits
+  independently; divergence is routine, not exceptional.
+- Commit locally freely. Push work as **feature branches** to `origin`.
+- **Never push directly to `main`. Never force-push.** Merging into `main`
+  happens through pull requests on GitHub, and the merge click belongs to
+  the humans — do not merge, close, or comment on PRs. Create a PR only
+  when explicitly asked; otherwise hand over the compare/PR link.
 
-If the user wants to actually contribute changes back upstream at some point, that requires them explicitly re-authorizing it in that conversation (re-enabling the push remote, removing the hook) — a past approval of this file does not carry forward to that decision.
+## Deployment — two Vercel projects, very different rules
+
+- **Production: `pqrh-app.vercel.app`** — the partner's Vercel project,
+  auto-deploys whenever `main` changes on GitHub. Never deploy to it
+  directly; shipping to production == merging to `main`, nothing else.
+- **James's sandbox: `aviara-sandbox.vercel.app`** (Vercel team `jiegos`) —
+  deployed manually from this folder with `npx vercel --prod`. Fine for
+  demos/experiments; it is NOT git-connected.
+
+## Shared live infrastructure — treat with care
+
+- **One live Supabase project serves both partners and real users.**
+  Migrations in `supabase/migrations/` applied via `npx supabase db push`
+  change the production database for everyone. Get explicit confirmation
+  in the moment before applying any migration, and keep them additive.
+- **Secrets** live in `.env` (`OPENAI_API_KEY`) and `.env.local` (Supabase
+  URL/anon key) — gitignored. Never commit, print, or paste their values.
+  The OpenAI key also powers production (partner's Vercel env), so
+  rotating it means updating: this `.env`, `aviara-sandbox` env, and the
+  partner's `pqrh-app` env.
+
+## Data pipeline
+
+Bundled aeronautical data (`src/data/`) is rebuilt on the FAA's 28-day
+cycle by `.github/workflows/navdata-refresh.yml` (weekly, Thursdays) via
+the Python builders in `scripts/`. Don't hand-edit generated JSON; fix the
+builder and rerun it.
