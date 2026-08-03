@@ -159,18 +159,28 @@ function speedFromKt(kt, unit) {
   return Math.round(kt)
 }
 
-export function parseWind(metar, units = {}) {
-  if (!metar) return '—'
+// Direction and speed as separate strings — for layouts (like the airport
+// diagram card) that stack them on their own lines instead of one run of
+// text. parseWind() below is just this joined back into the original
+// single-string format every other call site already expects.
+export function parseWindParts(metar, units = {}) {
+  if (!metar) return { dir: null, speed: '—' }
   const { wdir, wspd, wgst } = metar
   const unit = units.unitSpeed ?? 'KT'
   const unitLabel = unit === 'KM/H' ? 'km/h' : unit === 'MPH' ? 'mph' : 'kt'
   const spd = speedFromKt(wspd, unit)
   const gst = wgst ? speedFromKt(wgst, unit) : null
-  if (!wspd || wspd === 0) return 'Calm'
+  if (!wspd || wspd === 0) return { dir: null, speed: 'Calm' }
+  const speed = `${spd}${gst ? `G${gst}` : ''} ${unitLabel}`
   // wdir can be a number or the string "VRB"
-  if (!wdir || wdir === 'VRB') return `VRB ${spd}${gst ? `G${gst}` : ''} ${unitLabel}`
-  const dir = String(Math.round(Number(wdir))).padStart(3, '0')
-  return `${dir}° ${spd}${gst ? `G${gst}` : ''} ${unitLabel}`
+  if (!wdir || wdir === 'VRB') return { dir: 'VRB', speed }
+  return { dir: `${String(Math.round(Number(wdir))).padStart(3, '0')}°`, speed }
+}
+
+export function parseWind(metar, units = {}) {
+  if (!metar) return '—'
+  const { dir, speed } = parseWindParts(metar, units)
+  return dir ? `${dir} ${speed}` : speed
 }
 
 export function parseVisib(metar, units = {}) {
@@ -247,17 +257,34 @@ export function parseWx(metar) {
   return metar?.wxString ?? metar?.presentWx ?? null
 }
 
+// ForeFlight-style compact relative age — "9m ago" under an hour, "3h 24m
+// ago" (not just "3h ago") once it isn't, so a report doesn't visibly jump
+// by up to 59 minutes at a time once it crosses the hour mark.
+function formatAge(thenMs) {
+  if (thenMs == null || Number.isNaN(thenMs)) return null
+  const mins = Math.max(0, Math.round((Date.now() - thenMs) / 60000))
+  if (mins < 1) return 'Just now'
+  if (mins < 60) return `${mins}m ago`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m === 0 ? `${h}h ago` : `${h}h ${m}m ago`
+}
+
 export function parseObsAge(metar) {
   if (!metar?.obsTime) return null
-  const mins = Math.round((Date.now() / 1000 - metar.obsTime) / 60)
-  if (mins < 60) return `${mins} min ago`
-  return `${Math.round(mins / 60)}h ago`
+  return formatAge(metar.obsTime * 1000)
+}
+
+// TAF's own issue time (when it was ISSUED, not when it becomes valid from —
+// validTimeFrom is the forecast period's start, a different thing) — an ISO
+// string from AWC, unlike METAR's obsTime (Unix seconds), hence the
+// separate Date.parse here rather than reusing parseObsAge's math directly.
+export function parseTafAge(taf) {
+  if (!taf?.issueTime) return null
+  return formatAge(Date.parse(taf.issueTime))
 }
 
 export function parseFetchAge(fetchedAt) {
   if (!fetchedAt) return null
-  const mins = Math.round((Date.now() - fetchedAt) / 60000)
-  if (mins < 1) return 'Just now'
-  if (mins < 60) return `${mins} min ago`
-  return `${Math.round(mins / 60)}h ago`
+  return formatAge(fetchedAt)
 }

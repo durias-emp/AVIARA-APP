@@ -23,6 +23,8 @@ import AerodromePopup from './AerodromePopup'
 import { fetchBriefing } from '../../../lib/altitudeBrief'
 import { lookupRoutes, classifyRoute } from '../../../lib/preferredRoutes'
 import { expandProcedure } from '../../../lib/procedures'
+import { scopedSettingsKey } from '../../../lib/aircraft'
+import { useActiveAircraft } from '../../../context/ActiveAircraft'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -1674,12 +1676,16 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [brief, setBrief] = useState(null)
   const [briefBusy, setBriefBusy] = useState(false)
 
+  // Multi-aircraft: read the ACTIVE aircraft's record, not the legacy
+  // single-'profile' row (which no longer exists in the hangar data model).
+  const { aircraftId } = useActiveAircraft()
   useEffect(() => {
-    get('aircraft', 'profile').then(profile => {
+    if (!aircraftId) { setAircraft(null); return }
+    get('aircraft', aircraftId).then(profile => {
       setIsHelicopter(profile?.category === 'helicopter')
       setAircraft(profile || null)
     })
-  }, [])
+  }, [aircraftId])
 
   // Route inputs
   const [dep, setDep]              = useState('')
@@ -2198,7 +2204,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // reach the other end, and that question belongs next to the route, not two
   // steps further on where the fuel figures happen to live.
   const [fuelPlan, setFuelPlan] = useState(null)
-  useEffect(() => { get('settings', 'cruise').then(r => r && setFuelPlan(r)) }, [])
+  useEffect(() => { get('settings', scopedSettingsKey('cruise', aircraftId)).then(r => r && setFuelPlan(r)) }, [aircraftId])
 
   const [pickMode, setPickMode] = useState(false)
   // The standalone "where am I going" map, shown before a route exists.

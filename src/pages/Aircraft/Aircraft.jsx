@@ -1,11 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { get, put } from '../../lib/db'
+import { useLogbook } from '../../context/Logbook'
 import { BackButton } from '../../components/Shell'
 import { generateAircraftIcon } from '../../lib/generateIcon'
-import { normalizeUserWBConfig, validateWBConfig } from '../../lib/aircraftWB'
+import { extractPohChart } from '../../lib/extractPohChart'
 import { FAR, calendarMonthExpiry, statusFromExpiry, statusFromHours, fmtDate, fmtDaysLeft } from '../../lib/currency'
+import { SegControl } from '../../components/SegControl'
+import ConfirmModal from '../../components/ConfirmModal'
+import { deleteAircraft } from '../../lib/aircraft'
+import { buildAircraftExport, exportFileName } from '../../lib/aircraftShare'
+import { CHART_TYPES, createEmptyChart, normalizeUserPerfChart, validatePerfChart, pickRandomVerificationCells } from '../../lib/aircraftPerf'
+import WBSetupSection from './WBSetupSection'
+import PerfChartEditor from './PerfChartEditor'
 
-function AircraftPlaceholder() {
+export const FILING_CATEGORIES = ['Airplane', 'Rotorcraft', 'Other']
+
+export function AircraftPlaceholder() {
   return (
     <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg"
       style={{ width: '100%', height: '100%', opacity: 0.18 }}>
@@ -360,15 +371,22 @@ export const TEMPLATES = [
   },
 ]
 
-const CUSTOM_BLANK = {
+export const CUSTOM_BLANK = {
   id: 'custom',
   label: 'Custom',
   fullName: '',
   registration: '',
   pilotName: '',
   category: 'custom',
+  // Flight-plan-filing category — a simple 3-way Airplane/Rotorcraft/Other
+  // classification, separate from `category` above (which is a template
+  // descriptor — trainer/touring/turboprop/helicopter/custom — already
+  // load-bearing elsewhere as a helicopter/not-helicopter switch).
+  filingCategory: 'Airplane',
+  color: '',
+  dimensions: { length: '', height: '', span: '', rotorDiameter: '', cabinWidth: '', extra: [] },
   weights: { bew: '', mtow: '', usefulLoad: '', baggage: '' },
-  vspeeds: { vs: '', vs0: '', vx: '', vy: '', vg: '', va: '', vfe: '', vno: '', vne: '', vref: '', cruise: '' },
+  vspeeds: { vs: '', vs0: '', vr: '', vx: '', vy: '', vg: '', va: '', vfe: '', vno: '', vne: '', vref: '', cruise: '' },
   fuel: { total: '', usable: '', type: '100LL' },
   burnRate: { climb: '', cruise: '' },
   perf: { toRoll: '', to50ft: '', ldgRoll: '', ldg50ft: '', roc: '', ceiling: '', hoverIGE: '', hoverOGE: '' },
@@ -376,7 +394,7 @@ const CUSTOM_BLANK = {
 }
 
 /* ── Helpers ─────────────────────────────────────────────── */
-function deepMerge(base, overrides) {
+export function deepMerge(base, overrides) {
   const out = { ...base }
   for (const k of Object.keys(overrides ?? {})) {
     if (overrides[k] && typeof overrides[k] === 'object' && !Array.isArray(overrides[k])) {
@@ -925,18 +943,315 @@ function InspectionRow({ insp, value, onDateChange, warnDays, currentHobbs }) {
 
 // Strips units/commas from a spec string like "2,580 lb" down to "2580",
 // so it can be shown as a numeric placeholder in the W&B Setup fields.
-function weightNum(str) {
+export function weightNum(str) {
   return str ? str.replace(/[^0-9.]/g, '') : ''
 }
 
+function num(v) {
+  const n = parseFloat(v)
+  return Number.isFinite(n) ? n : null
+}
+
+// Chart-type picker + the editor for whichever one is selected — one row of
+// chips (Takeoff/Landing/Climb/Cruise) rather than four separately-expanded
+// editors, since only one chart's worth of grid fits comfortably on screen
+// at a time.
+//
+// Photo extraction lands in local `draftChart` state, never straight into
+// IndexedDB — PerfChartEditor renders the draft (in verifyMode, with 3
+// random cells highlighted) exactly the same way it renders a committed
+// chart, so all its edit/add-value/remove-value machinery works unchanged
+// on the draft too. The pilot reviews, optionally confirms the 3 spot-check
+// cells (a nudge, never a save-blocker), then explicitly Saves or Discards.
+// Flights the GPS auto-detector (src/hooks/useFlightDetector.js, gated by
+// Settings.jsx's Flight Detection toggle) captured for this aircraft.
+// `pendingReview` entries need the pilot's confirmation before they're a
+// real logbook record — tapping one opens the same LogbookEntryForm used
+// for manual entries, pre-filled from the captured track, never auto-saved
+// silently. Confirmed (source:'auto', pendingReview cleared) entries stay
+// listed below for reference.
+function FlightHistorySection({ aircraftId }) {
+  const { entries } = useLogbook()
+  const autoEntries = (entries ?? []).filter(e => e.source === 'auto' && e.aircraftId === aircraftId)
+  const pending = autoEntries.filter(e => e.pendingReview)
+  const confirmed = autoEntries.filter(e => !e.pendingReview)
+
+  function Row({ entry, first }) {
+    return (
+      <Link to={`/logbook/${entry.id}`} style={{ textDecoration: 'none' }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '11px 14px', borderTop: first ? 'none' : '0.5px solid var(--border)',
+          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+        }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{entry.date || 'Undated flight'}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 1 }}>{entry.totalTime ? `${entry.totalTime} hr` : '—'}</div>
+          </div>
+          {entry.pendingReview && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.2px', color: 'var(--warn)',
+              background: 'var(--warn-light)', padding: '3px 9px', borderRadius: 10,
+            }}>Review</span>
+          )}
+        </div>
+      </Link>
+    )
+  }
+
+  if (!autoEntries.length) {
+    return (
+      <div style={{ fontSize: 13, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+        No auto-detected flights yet. Turn on Auto-detect flights in Settings, then leave the map open during a flight — this can't track in the background, so the app needs to stay on screen.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {pending.length > 0 && (
+        <div style={{ background: 'var(--bg-card-2)', borderRadius: 12, overflow: 'hidden' }}>
+          {pending.map((e, i) => <Row key={e.id} entry={e} first={i === 0} />)}
+        </div>
+      )}
+      {confirmed.length > 0 && (
+        <div style={{ background: 'var(--bg-card-2)', borderRadius: 12, overflow: 'hidden' }}>
+          {confirmed.map((e, i) => <Row key={e.id} entry={e} first={i === 0} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PerformanceChartsSection({ profile, onAddAxisValue, onUpdateAxisValue, onRemoveAxisValue, onSetCell, onSetMeta, onSetChart }) {
+  const [activeType, setActiveType] = useState('takeoff')
+  const [draftChart, setDraftChart] = useState(null)
+  const [highlightCells, setHighlightCells] = useState([])
+  const [confirmedCells, setConfirmedCells] = useState(() => new Set())
+  const [extracting, setExtracting] = useState(false)
+  const [extractError, setExtractError] = useState(null)
+  const fileInputRef = useRef(null)
+
+  // A draft only makes sense for the chart type it was extracted from —
+  // switching tabs abandons any pending review rather than showing it under
+  // the wrong type.
+  useEffect(() => {
+    setDraftChart(null)
+    setHighlightCells([])
+    setConfirmedCells(new Set())
+    setExtractError(null)
+  }, [activeType])
+
+  const committedChart = profile.perfConfig?.[activeType] ?? createEmptyChart(activeType)
+  // `outputs` (label/short/unit per figure) is fixed schema metadata owned
+  // by CHART_TYPES, not a per-chart user value — but a chart's own outputs
+  // array gets snapshotted into IndexedDB the moment it's first created, so
+  // a chart saved before this metadata changes (e.g. a new short label
+  // added) would otherwise be stuck showing the old shape forever. Always
+  // display the current canonical definition instead of whatever happened
+  // to be stored; the actual axis/cell data underneath is untouched.
+  const chart = { ...(draftChart ?? committedChart), outputs: CHART_TYPES[activeType].outputs }
+
+  async function handleFile(file) {
+    setExtracting(true)
+    setExtractError(null)
+    try {
+      const candidate = await extractPohChart(file, activeType)
+      const meta = CHART_TYPES[activeType]
+      const axis1Values = (candidate.axis1?.values ?? []).map(num).filter(v => v != null)
+      const axis2Values = (candidate.axis2?.values ?? []).map(num).filter(v => v != null)
+      const rawCells = candidate.cells ?? []
+      // Pad/truncate every row to a clean axis1.length × axis2.length
+      // rectangle so the grid renders fully editable from the start, and so
+      // pickRandomVerificationCells' {i,j} indices line up with what's
+      // actually rendered.
+      const cells = axis1Values.map((_, i) => {
+        const row = rawCells[i] ?? []
+        return axis2Values.map((_, j) => row[j] ?? null)
+      })
+      const next = {
+        axis1: { ...meta.axis1, values: axis1Values },
+        axis2: { ...meta.axis2, values: axis2Values },
+        outputs: meta.outputs,
+        cells,
+        baselineWeight: null,
+        notes: candidate.notes ?? '',
+        source: '',
+      }
+      setDraftChart(next)
+      setHighlightCells(pickRandomVerificationCells(next, 3))
+      setConfirmedCells(new Set())
+    } catch (e) {
+      setExtractError(e.message)
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  function draftAddAxisValue(axis) {
+    setDraftChart(prev => {
+      const next = { ...prev, [axis]: { ...prev[axis], values: [...prev[axis].values, ''] } }
+      const cells = prev.cells.map(row => [...row])
+      if (axis === 'axis1') cells.push(new Array(prev.axis2.values.length).fill(null))
+      else cells.forEach(row => row.push(null))
+      next.cells = cells
+      return next
+    })
+  }
+  function draftUpdateAxisValue(axis, idx, value) {
+    setDraftChart(prev => {
+      const values = [...prev[axis].values]
+      values[idx] = value
+      return { ...prev, [axis]: { ...prev[axis], values } }
+    })
+  }
+  function draftRemoveAxisValue(axis, idx) {
+    setDraftChart(prev => ({
+      ...prev,
+      [axis]: { ...prev[axis], values: prev[axis].values.filter((_, i) => i !== idx) },
+      cells: axis === 'axis1'
+        ? prev.cells.filter((_, i) => i !== idx)
+        : prev.cells.map(row => row.filter((_, j) => j !== idx)),
+    }))
+  }
+  function draftSetCell(i, j, outputKey, value) {
+    setDraftChart(prev => {
+      const cells = prev.cells.map(row => [...row])
+      if (!cells[i]) cells[i] = new Array(prev.axis2.values.length).fill(null)
+      if (outputKey) {
+        const existing = cells[i][j]
+        cells[i][j] = { ...(typeof existing === 'object' && existing ? existing : {}), [outputKey]: value }
+      } else {
+        cells[i][j] = value
+      }
+      return { ...prev, cells }
+    })
+  }
+  function draftSetMeta(key, value) {
+    setDraftChart(prev => ({ ...prev, [key]: value }))
+  }
+
+  function saveDraft() {
+    onSetChart(activeType, draftChart)
+    setDraftChart(null)
+    setHighlightCells([])
+    setConfirmedCells(new Set())
+  }
+  function discardDraft() {
+    setDraftChart(null)
+    setHighlightCells([])
+    setConfirmedCells(new Set())
+    setExtractError(null)
+  }
+
+  return (<>
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {Object.keys(CHART_TYPES).map(type => {
+        const configured = validatePerfChart(normalizeUserPerfChart(profile.perfConfig?.[type]))
+        const active = activeType === type
+        return (
+          <button key={type} onClick={() => setActiveType(type)} style={{
+            padding: '8px 12px', borderRadius: 9, border: 'none', cursor: 'pointer',
+            fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+            background: active ? 'var(--accent)' : 'var(--bg-card-2)',
+            color: active ? 'var(--accent-fg)' : 'var(--text-secondary)',
+            display: 'flex', alignItems: 'center', gap: 5,
+          }}>
+            {CHART_TYPES[type].label}
+            {configured && (
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: active ? 'var(--accent-fg)' : 'var(--ok)', flexShrink: 0 }} />
+            )}
+          </button>
+        )
+      })}
+    </div>
+
+    {!draftChart && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: 'none' }}
+          onChange={e => {
+            const file = e.target.files?.[0]
+            if (file) handleFile(file)
+            e.target.value = ''
+          }}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={extracting}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.15)',
+            borderRadius: 10, padding: '7px 14px', cursor: extracting ? 'default' : 'pointer',
+            color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500,
+            opacity: extracting ? 0.6 : 1, fontFamily: 'inherit',
+          }}
+        >
+          {extracting ? 'Reading chart…' : 'Extract from Photo'}
+        </button>
+        {extracting && (
+          <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>This takes about 10–15 seconds…</span>
+        )}
+      </div>
+    )}
+    {extractError && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{extractError}</div>}
+
+    <PerfChartEditor
+      chart={chart}
+      verifyMode={!!draftChart}
+      highlightCells={highlightCells}
+      onAddAxisValue={axis => draftChart ? draftAddAxisValue(axis) : onAddAxisValue(activeType, axis)}
+      onUpdateAxisValue={(axis, i, v) => draftChart ? draftUpdateAxisValue(axis, i, v) : onUpdateAxisValue(activeType, axis, i, v)}
+      onRemoveAxisValue={(axis, i) => draftChart ? draftRemoveAxisValue(axis, i) : onRemoveAxisValue(activeType, axis, i)}
+      onSetCell={(i, j, key, v) => draftChart ? draftSetCell(i, j, key, v) : onSetCell(activeType, i, j, key, v)}
+      onSetMeta={(key, v) => draftChart ? draftSetMeta(key, v) : onSetMeta(activeType, key, v)}
+      onConfirmCell={(i, j) => setConfirmedCells(prev => new Set(prev).add(`${i},${j}`))}
+    />
+
+    {draftChart && (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {highlightCells.length > 0 && (
+          <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+            {confirmedCells.size} of {highlightCells.length} spot-checks confirmed against your POH
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={saveDraft} style={{
+            flex: 1, padding: '9px 0', borderRadius: 9, border: 'none',
+            background: 'var(--accent)', color: 'var(--accent-fg)',
+            fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
+          }}>
+            Save Chart
+          </button>
+          <button onClick={discardDraft} style={{
+            padding: '9px 14px', borderRadius: 9, border: 'none',
+            background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
+            fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
+          }}>
+            Discard
+          </button>
+        </div>
+      </div>
+    )}
+  </>)
+}
+
 /* ── Main component ──────────────────────────────────────── */
-export default function Aircraft() {
+export default function Aircraft({ aircraftId, onBack, onDeleted }) {
   const [profile, setProfile] = useState(null)
   const [saving, setSaving] = useState(false)
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [customName, setCustomName] = useState('')
   const [hobbsModalOpen, setHobbsModalOpen] = useState(false)
   const [currencyData, setCurrencyData] = useState(null)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [shareError, setShareError] = useState(null)
   const touchStartX = useRef(null)
   const [showArrows, setShowArrows] = useState(false)
   const arrowTimer = useRef(null)
@@ -952,15 +1267,17 @@ export default function Aircraft() {
   }
 
   useEffect(() => {
-    get('aircraft', 'profile').then(saved => {
-      if (saved) {
-        setProfile(deepMerge(CUSTOM_BLANK, saved))
-      } else {
-        setProfile({ ...TEMPLATES[1], id: 'profile', registration: '', pilotName: '' })
-      }
+    setProfile(null)
+    if (!aircraftId) return
+    // Aircraft is only ever mounted (post-Phase-1) with an id that already
+    // has a row — created by the add-aircraft wizard. No saved row for a
+    // given id is unexpected, not "first run" (that's Hangar's empty
+    // state), so there's no default-template fallback here anymore.
+    get('aircraft', aircraftId).then(saved => {
+      if (saved) setProfile(deepMerge(CUSTOM_BLANK, saved))
     })
     get('currency', 'profile').then(saved => setCurrencyData(saved ?? {}))
-  }, [])
+  }, [aircraftId])
 
   // Airworthiness: patches only the `airworthy` key of the shared currency
   // record, leaving `safe`/`current`/`medical` (owned by the Currency page)
@@ -1014,19 +1331,19 @@ export default function Aircraft() {
 
   const save = useCallback(async (updated) => {
     setSaving(true)
-    await put('aircraft', { ...updated, id: 'profile' })
+    await put('aircraft', { ...updated, id: aircraftId })
     setTimeout(() => setSaving(false), 600)
-  }, [])
+  }, [aircraftId])
 
   function applyTemplate(tpl) {
-    const next = { ...CUSTOM_BLANK, ...tpl, id: 'profile', image: tpl.image ?? null, registration: profile?.registration ?? '', pilotName: profile?.pilotName ?? '' }
+    const next = { ...CUSTOM_BLANK, ...tpl, id: aircraftId, image: tpl.image ?? null, registration: profile?.registration ?? '', pilotName: profile?.pilotName ?? '' }
     setProfile(next)
     save(next)
   }
 
   function confirmCustom() {
     if (!customName.trim()) return
-    const next = { ...CUSTOM_BLANK, fullName: customName.trim(), label: customName.trim(), id: 'profile', registration: profile?.registration ?? '', pilotName: profile?.pilotName ?? '' }
+    const next = { ...CUSTOM_BLANK, fullName: customName.trim(), label: customName.trim(), id: aircraftId, registration: profile?.registration ?? '', pilotName: profile?.pilotName ?? '' }
     setProfile(next)
     save(next)
     setShowCustomModal(false)
@@ -1053,6 +1370,45 @@ export default function Aircraft() {
       save(next)
       return next
     })
+  }
+
+  // Exports the profile as a small JSON file and hands it to the OS Share
+  // sheet (Messages/AirDrop/email/...) when available, so it can travel to
+  // another pilot with no account linking or backend involved. Browsers
+  // without file-sharing support (most desktop browsers) fall back to a
+  // plain download the user can send however they like.
+  async function shareProfile() {
+    setSharing(true)
+    setShareError(null)
+    try {
+      const json = JSON.stringify(buildAircraftExport(profile), null, 2)
+      const filename = exportFileName(profile)
+      const file = new File([json], filename, { type: 'application/json' })
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: displayName, text: `${displayName} — aircraft profile` })
+      } else {
+        const url = URL.createObjectURL(file)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
+      }
+    } catch (e) {
+      if (e?.name !== 'AbortError') setShareError(e.message || 'Could not share this aircraft.')
+    } finally {
+      setSharing(false)
+    }
+  }
+
+  async function confirmDelete() {
+    setDeleting(true)
+    await deleteAircraft(aircraftId)
+    setDeleting(false)
+    setDeleteConfirmOpen(false)
+    onDeleted?.(aircraftId)
   }
 
   function patchHobbs(value) {
@@ -1138,6 +1494,108 @@ export default function Aircraft() {
     })
   }
 
+  // ── Performance chart setup — same "belongs to this aircraft's profile"
+  // rule as W&B above. `ensurePerfChart` returns a fresh perfConfig object
+  // plus that chart type's current-or-blank chart, so every patcher below
+  // can mutate the chart in place without repeating the get-or-create logic. ──
+  function ensurePerfChart(prev, chartType) {
+    const perfConfig = { ...(prev.perfConfig ?? {}) }
+    // Re-stamp `outputs` with the current canonical CHART_TYPES metadata on
+    // every save, not just on display (see the matching comment in
+    // PerformanceChartsSection) — a chart edited after this metadata last
+    // changed self-heals instead of staying stuck on whatever was stored
+    // when it was first created.
+    const chart = perfConfig[chartType]
+      ? { ...perfConfig[chartType], outputs: CHART_TYPES[chartType].outputs }
+      : createEmptyChart(chartType)
+    return { perfConfig, chart }
+  }
+
+  function addPerfAxisValue(chartType, axis) {
+    setProfile(prev => {
+      const { perfConfig, chart } = ensurePerfChart(prev, chartType)
+      chart[axis] = { ...chart[axis], values: [...chart[axis].values, ''] }
+      const cells = chart.cells.map(row => [...row])
+      if (axis === 'axis1') cells.push(new Array(chart.axis2.values.length).fill(null))
+      else cells.forEach(row => row.push(null))
+      chart.cells = cells
+      perfConfig[chartType] = chart
+      const next = { ...prev, perfConfig }
+      save(next)
+      return next
+    })
+  }
+
+  function updatePerfAxisValue(chartType, axis, idx, value) {
+    setProfile(prev => {
+      const { perfConfig, chart } = ensurePerfChart(prev, chartType)
+      const values = [...chart[axis].values]
+      values[idx] = value
+      chart[axis] = { ...chart[axis], values }
+      perfConfig[chartType] = chart
+      const next = { ...prev, perfConfig }
+      save(next)
+      return next
+    })
+  }
+
+  function removePerfAxisValue(chartType, axis, idx) {
+    setProfile(prev => {
+      const { perfConfig, chart } = ensurePerfChart(prev, chartType)
+      chart[axis] = { ...chart[axis], values: chart[axis].values.filter((_, i) => i !== idx) }
+      chart.cells = axis === 'axis1'
+        ? chart.cells.filter((_, i) => i !== idx)
+        : chart.cells.map(row => row.filter((_, j) => j !== idx))
+      perfConfig[chartType] = chart
+      const next = { ...prev, perfConfig }
+      save(next)
+      return next
+    })
+  }
+
+  function setPerfCell(chartType, i, j, outputKey, value) {
+    setProfile(prev => {
+      const { perfConfig, chart } = ensurePerfChart(prev, chartType)
+      const cells = chart.cells.map(row => [...row])
+      if (!cells[i]) cells[i] = new Array(chart.axis2.values.length).fill(null)
+      if (outputKey) {
+        const existing = cells[i][j]
+        cells[i][j] = { ...(typeof existing === 'object' && existing ? existing : {}), [outputKey]: value }
+      } else {
+        cells[i][j] = value
+      }
+      chart.cells = cells
+      perfConfig[chartType] = chart
+      const next = { ...prev, perfConfig }
+      save(next)
+      return next
+    })
+  }
+
+  function setPerfMeta(chartType, key, value) {
+    setProfile(prev => {
+      const { perfConfig, chart } = ensurePerfChart(prev, chartType)
+      chart[key] = value
+      perfConfig[chartType] = chart
+      const next = { ...prev, perfConfig }
+      save(next)
+      return next
+    })
+  }
+
+  // Commits a whole chart in one shot — used by the AI-photo-extraction
+  // review flow, which already builds a complete chart shape locally and
+  // just needs it written through, unlike the per-axis-value/per-cell
+  // patchers above which build one up incrementally from manual entry.
+  function setPerfChart(chartType, chart) {
+    setProfile(prev => {
+      const perfConfig = { ...(prev.perfConfig ?? {}), [chartType]: chart }
+      const next = { ...prev, perfConfig }
+      save(next)
+      return next
+    })
+  }
+
   if (!profile) return null
 
   const activeTemplate = TEMPLATES.find(t => t.fullName === profile.fullName)
@@ -1146,14 +1604,6 @@ export default function Aircraft() {
   const reg = profile.registration?.trim()
   const displayName = profile.fullName || profile.label || '—'
   const isHelicopter = profile.category === 'helicopter'
-  const wbNormalized = normalizeUserWBConfig(profile.wbConfig, profile)
-  const wbConfigured = validateWBConfig(wbNormalized)
-  const wbStations = profile.wbConfig?.stations ?? []
-  const wbLongPoints = profile.wbConfig?.longEnvelopePoints ?? []
-  const wbLatPoints  = profile.wbConfig?.latEnvelopePoints ?? []
-  const wbStationSuggestions = isHelicopter
-    ? ['Pilot', 'Front Pax', 'Rear Pax', 'Baggage']
-    : ['Pilot & Front Pax', 'Rear Pax', 'Baggage']
 
   // Airworthiness: worst status across docs + inspections
   const airworthy = currencyData?.airworthy ?? {}
@@ -1182,7 +1632,7 @@ export default function Aircraft() {
       {/* ── Header ── */}
       <div style={{ padding: '20px 18px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <BackButton />
+          <BackButton onBack={onBack} />
           <span style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--text)', lineHeight: 1 }}>
             Aircraft
           </span>
@@ -1338,6 +1788,13 @@ export default function Aircraft() {
 
         {/* Identity */}
         <Section title="Identity">
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
+              Flight plan category
+            </div>
+            <SegControl options={FILING_CATEGORIES} value={profile.filingCategory ?? 'Airplane'}
+              onChange={v => patch(null, 'filingCategory', v)} />
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <Field label="Pilot name" value={profile.pilotName ?? ''}
               onChange={v => patch(null, 'pilotName', v)} placeholder="e.g. Diego" colSpan />
@@ -1353,6 +1810,39 @@ export default function Aircraft() {
               onChange={v => patch(null, 'model', v)} placeholder="e.g. 172S" />
             <Field label="Year" type="number" value={profile.year ?? ''}
               onChange={v => patch(null, 'year', v)} placeholder="e.g. 2019" />
+          </div>
+        </Section>
+
+        {/* Dimensions */}
+        <Section title="Dimensions">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Field label="Length" value={profile.dimensions?.length ?? ''}
+              onChange={v => patch('dimensions', 'length', v)} placeholder="e.g. 27 ft 2 in" />
+            <Field label="Height" value={profile.dimensions?.height ?? ''}
+              onChange={v => patch('dimensions', 'height', v)} placeholder="e.g. 8 ft 11 in" />
+            {isHelicopter ? (
+              <Field label="Rotor diameter" value={profile.dimensions?.rotorDiameter ?? ''}
+                onChange={v => patch('dimensions', 'rotorDiameter', v)} placeholder="e.g. 36 ft 1 in" />
+            ) : (
+              <Field label="Wingspan" value={profile.dimensions?.span ?? ''}
+                onChange={v => patch('dimensions', 'span', v)} placeholder="e.g. 36 ft 1 in" />
+            )}
+            <Field label="Cabin width" value={profile.dimensions?.cabinWidth ?? ''}
+              onChange={v => patch('dimensions', 'cabinWidth', v)} placeholder="e.g. 40 in" />
+          </div>
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {(profile.dimensions?.extra ?? []).map(d => (
+              <div key={d.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <MiniInput value={d.label} onChange={v => patch('dimensions', 'extra',
+                  (profile.dimensions?.extra ?? []).map(x => x.id === d.id ? { ...x, label: v } : x))} placeholder="Label" />
+                <MiniInput value={d.value} onChange={v => patch('dimensions', 'extra',
+                  (profile.dimensions?.extra ?? []).map(x => x.id === d.id ? { ...x, value: v } : x))} placeholder="Value" />
+                <RemoveButton onClick={() => patch('dimensions', 'extra',
+                  (profile.dimensions?.extra ?? []).filter(x => x.id !== d.id))} />
+              </div>
+            ))}
+            <Chip label="+ Add dimension" onClick={() => patch('dimensions', 'extra',
+              [...(profile.dimensions?.extra ?? []), { id: 'dim-' + Date.now(), label: '', value: '' }])} />
           </div>
         </Section>
 
@@ -1422,146 +1912,39 @@ export default function Aircraft() {
         {/* Weight & Balance Setup */}
         <Section title="Weight & Balance Setup">
           {({ close }) => (<>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: -6 }}>
-            <span style={{
-              fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20,
-              background: wbConfigured ? 'var(--ok-light)' : 'var(--bg-card-2)',
-              color: wbConfigured ? 'var(--ok)' : 'var(--text-tertiary)',
-              border: wbConfigured ? 'none' : '0.5px solid var(--border)',
-            }}>
-              {wbConfigured ? 'Configured' : 'Setup incomplete'}
-            </span>
-          </div>
+          <WBSetupSection
+            profile={profile} isHelicopter={isHelicopter}
+            onPatchWB={patchWB}
+            onAddStation={addWBStation} onUpdateStation={updateWBStation} onRemoveStation={removeWBStation}
+            onAddPoint={addWBPoint} onUpdatePoint={updateWBPoint} onRemovePoint={removeWBPoint}
+          />
+          <button onClick={close} style={{
+            width: '100%', padding: '13px 0', borderRadius: 'var(--r-sm)', border: 'none',
+            background: 'var(--accent)', color: 'var(--accent-fg)',
+            fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+          }}>
+            Done
+          </button>
+          </>)}
+        </Section>
 
-          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5, marginTop: -4 }}>
-            Use <em>this aircraft's</em> actual POH and AFM values, not generic model numbers.
-          </div>
+        {/* Flight History — GPS auto-detected flights for this aircraft */}
+        <Section title="Flight History">
+          <FlightHistorySection aircraftId={profile.id} />
+        </Section>
 
-          {!wbConfigured && (
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-card-2)', borderRadius: 10, padding: '9px 11px', lineHeight: 1.5 }}>
-              Not configured yet. The Weight & Balance checklist item won't compute results until you fill in
-              this aircraft's actual numbers below.
-            </div>
-          )}
-
-          {/* Basic Empty Weight + Max Weight */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <Field label="Basic Empty Weight (lb)" type="number" value={profile.wbConfig?.bew?.weight ?? ''}
-              onChange={v => patchWB(['bew', 'weight'], v)} placeholder={weightNum(profile.weights?.bew) || '1663'} />
-            <Field label="Empty CG and Long Arm (in)" type="number" value={profile.wbConfig?.bew?.longArm ?? ''}
-              onChange={v => patchWB(['bew', 'longArm'], v)} placeholder="39.3" />
-            <Field label="Empty Lateral Arm (in), optional" type="number" value={profile.wbConfig?.bew?.latArm ?? ''}
-              onChange={v => patchWB(['bew', 'latArm'], v)} placeholder="0.0" />
-            <Field label="Max Takeoff and Gross Weight (lb)" type="number" value={profile.wbConfig?.maxTOW ?? ''}
-              onChange={v => patchWB(['maxTOW'], v)} placeholder={weightNum(profile.weights?.mtow) || '2550'} />
-          </div>
-
-          {/* Fuel */}
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Fuel</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-              <Field label="Fuel Capacity (gal)" type="number" value={profile.wbConfig?.fuel?.maxGal ?? ''}
-                onChange={v => patchWB(['fuel', 'maxGal'], v)} placeholder="53" />
-              <Field label="Fuel Arm (in)" type="number" value={profile.wbConfig?.fuel?.longArm ?? ''}
-                onChange={v => patchWB(['fuel', 'longArm'], v)} placeholder="48.0" />
-            </div>
-            <label style={{ display: 'block', fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 500 }}>
-              Fuel Density (lb per gal)
-            </label>
-            <div style={{ position: 'relative' }}>
-              <input type="number" step="0.1" inputMode="decimal"
-                value={profile.wbConfig?.fuel?.lbPerGal ?? ''}
-                onChange={e => patchWB(['fuel', 'lbPerGal'], e.target.value)}
-                placeholder="6.0"
-                style={{
-                  width: '100%', padding: '10px 128px 10px 12px', borderRadius: 'var(--r-sm)',
-                  border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
-                  color: 'var(--text)', fontSize: 15, outline: 'none', boxSizing: 'border-box',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              />
-              <div style={{
-                position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
-                display: 'flex', gap: 4,
-              }}>
-                <FuelDensityTag label="Avgas" active={profile.wbConfig?.fuel?.lbPerGal === '6.0'}
-                  onClick={() => patchWB(['fuel', 'lbPerGal'], '6.0')} />
-                <FuelDensityTag label="Jet A" active={profile.wbConfig?.fuel?.lbPerGal === '6.7'}
-                  onClick={() => patchWB(['fuel', 'lbPerGal'], '6.7')} />
-              </div>
-            </div>
-          </div>
-
-          {/* Loading stations */}
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
-              Loading Stations
-            </div>
-            {wbStations.length === 0 && (
-              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8 }}>
-                Add one for each seat or compartment.
-              </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
-              {wbStations.map(s => (
-                <WBStationRow key={s.id} station={s}
-                  onChange={(key, v) => updateWBStation(s.id, key, v)}
-                  onRemove={() => removeWBStation(s.id)} />
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {wbStationSuggestions.map(label => (
-                <Chip key={label} label={`+ ${label}`} onClick={() => addWBStation(label)} />
-              ))}
-              <Chip label="+ Add Station" onClick={() => addWBStation('')} accent />
-            </div>
-          </div>
-
-          {/* Longitudinal envelope */}
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 2 }}>
-              Longitudinal CG Envelope
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>
-              From the POH CG envelope chart, at least 3 points.
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-              {wbLongPoints.map((p, i) => (
-                <WBPointRow key={i} point={p} fieldA="cg" fieldB="weight" labelA="CG (in)" labelB="Weight (lb)"
-                  onChange={(key, v) => updateWBPoint('longEnvelopePoints', i, key, v)}
-                  onRemove={() => removeWBPoint('longEnvelopePoints', i)} />
-              ))}
-            </div>
-            <Chip label="+ Add Point" onClick={() => addWBPoint('longEnvelopePoints', { cg: '', weight: '' })} accent />
-          </div>
-
-          {/* Lateral envelope: optional */}
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 2 }}>
-              Lateral CG Limits (optional, mainly helicopters)
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>
-              Leave empty if this aircraft doesn't track lateral CG.
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-              {wbLatPoints.map((p, i) => (
-                <WBPointRow key={i} point={p} fieldA="lat" fieldB="longCG" labelA="Lat CG (in)" labelB="Long CG (in)"
-                  onChange={(key, v) => updateWBPoint('latEnvelopePoints', i, key, v)}
-                  onRemove={() => removeWBPoint('latEnvelopePoints', i)} />
-              ))}
-            </div>
-            <Chip label="+ Add Point" onClick={() => addWBPoint('latEnvelopePoints', { lat: '', longCG: '' })} accent />
-          </div>
-
-          {/* Source */}
-          <Field label="Source and W&B Report Date" value={profile.wbConfig?.source ?? ''}
-            onChange={v => patchWB(['source'], v)} placeholder="POH Rev 3, dated May 1 2024" />
-
-          <div style={{ fontSize: 10, color: 'var(--text-tertiary)', lineHeight: 1.6, textAlign: 'center', paddingTop: 4 }}>
-            For planning purposes only. PIC is responsible for verifying W&amp;B against the aircraft's POH, AFM,
-            and latest W&amp;B report. Use actual aircraft values, not generic model values.
-          </div>
-
+        {/* Performance Charts */}
+        <Section title="Performance Charts">
+          {({ close }) => (<>
+          <PerformanceChartsSection
+            profile={profile}
+            onAddAxisValue={addPerfAxisValue}
+            onUpdateAxisValue={updatePerfAxisValue}
+            onRemoveAxisValue={removePerfAxisValue}
+            onSetCell={setPerfCell}
+            onSetMeta={setPerfMeta}
+            onSetChart={setPerfChart}
+          />
           <button onClick={close} style={{
             width: '100%', padding: '13px 0', borderRadius: 'var(--r-sm)', border: 'none',
             background: 'var(--accent)', color: 'var(--accent-fg)',
@@ -1588,6 +1971,7 @@ export default function Aircraft() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <VSpeed label="Vs  Stall clean" value={profile.vspeeds?.vs ?? ''} onChange={v => patch('vspeeds', 'vs', v)} />
               <VSpeed label="Vso Stall flaps" value={profile.vspeeds?.vs0 ?? ''} onChange={v => patch('vspeeds', 'vs0', v)} />
+              <VSpeed label="Vr  Rotation" value={profile.vspeeds?.vr ?? ''} onChange={v => patch('vspeeds', 'vr', v)} />
               <VSpeed label="Vx  Best angle" value={profile.vspeeds?.vx ?? ''} onChange={v => patch('vspeeds', 'vx', v)} />
               <VSpeed label="Vy  Best rate" value={profile.vspeeds?.vy ?? ''} onChange={v => patch('vspeeds', 'vy', v)} />
               <VSpeed label="Vg  Best glide" value={profile.vspeeds?.vg ?? ''} onChange={v => patch('vspeeds', 'vg', v)} />
@@ -1626,18 +2010,8 @@ export default function Aircraft() {
                 onChange={v => patch('perf', 'ldgRoll', v)} placeholder="e.g. 575 ft" />
               <Field label="Ldg over 50 ft" value={profile.perf?.ldg50ft ?? ''}
                 onChange={v => patch('perf', 'ldg50ft', v)} placeholder="e.g. 1,335 ft" />
-              {/* Climb rate and ceiling are what let the altitude advisor work
-                  out whether climbing higher pays for itself on a given leg.
-                  Templates carry the book figures; correct them from your POH
-                  and the recommendation follows your aircraft, not a class. */}
-              <Field label="Rate of climb" value={profile.perf?.roc ?? ''}
-                onChange={v => patch('perf', 'roc', v)} placeholder="e.g. 730 fpm" />
-              <Field label="Service ceiling" value={profile.perf?.ceiling ?? ''}
-                onChange={v => patch('perf', 'ceiling', v)} placeholder="e.g. 14,000 ft" />
-            </div>
-            <div style={{ fontSize: 10.5, color: 'var(--text-tertiary)', marginTop: 8, lineHeight: 1.45 }}>
-              Book figures at sea level and max gross. Used to plan the climb and to cap the
-              altitudes offered on the Route card.
+              <Field label="Rate of climb (best, SL/std day)" value={profile.perf?.roc ?? ''}
+                onChange={v => patch('perf', 'roc', v)} placeholder="e.g. 700 fpm" />
             </div>
           </Section>
         )}
@@ -1677,7 +2051,51 @@ export default function Aircraft() {
           />
         </Section>
 
+        {/* Manage */}
+        <Section title="Manage Aircraft">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <button
+              onClick={shareProfile}
+              disabled={sharing}
+              style={{
+                width: '100%', padding: '11px 13px', borderRadius: 'var(--r-sm)',
+                border: 'none', background: 'var(--accent-light, rgba(10,132,255,0.12))',
+                color: 'var(--accent)', fontSize: 15, fontWeight: 700,
+                cursor: sharing ? 'default' : 'pointer', fontFamily: 'inherit',
+                opacity: sharing ? 0.6 : 1,
+              }}>
+              {sharing ? 'Sharing…' : 'Share Aircraft Profile'}
+            </button>
+            <button
+              onClick={() => setDeleteConfirmOpen(true)}
+              style={{
+                width: '100%', padding: '11px 13px', borderRadius: 'var(--r-sm)',
+                border: 'none', background: 'var(--danger-light, rgba(255,59,48,0.12))',
+                color: 'var(--danger)', fontSize: 15, fontWeight: 700,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+              Delete Aircraft
+            </button>
+          </div>
+          {shareError && (
+            <div style={{ marginTop: 10, fontSize: 12, color: 'var(--danger)' }}>{shareError}</div>
+          )}
+        </Section>
+
       </div>
+
+      {/* Delete-aircraft confirmation */}
+      {deleteConfirmOpen && (
+        <ConfirmModal
+          title="Delete this aircraft?"
+          message={`"${displayName}" will move to Recently Deleted and be permanently removed in 7 days, unless you restore it first.`}
+          confirmLabel="Delete"
+          danger
+          busy={deleting}
+          onCancel={() => setDeleteConfirmOpen(false)}
+          onConfirm={confirmDelete}
+        />
+      )}
 
       {/* Custom aircraft modal */}
       {showCustomModal && (
@@ -1760,7 +2178,7 @@ function HeroBadge({ label, value }) {
   )
 }
 
-function Section({ title, children }) {
+export function Section({ title, children }) {
   const [open, setOpen] = useState(false)
   return (
     <div style={{
@@ -1801,7 +2219,7 @@ function Section({ title, children }) {
   )
 }
 
-function Field({ label, value, onChange, placeholder, type = 'text' }) {
+export function Field({ label, value, onChange, placeholder, type = 'text' }) {
   return (
     <div>
       <label style={{
@@ -1828,7 +2246,7 @@ function Field({ label, value, onChange, placeholder, type = 'text' }) {
   )
 }
 
-function VSpeed({ label, value, onChange }) {
+export function VSpeed({ label, value, onChange }) {
   return (
     <div>
       <label style={{ display: 'block', fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 500 }}>
@@ -1858,7 +2276,7 @@ function VSpeed({ label, value, onChange }) {
 }
 
 /* ── Weight & Balance setup helpers ──────────────────────── */
-function Chip({ label, onClick, accent }) {
+export function Chip({ label, onClick, accent }) {
   return (
     <button onClick={onClick} style={{
       padding: '9px 12px', borderRadius: 9, cursor: 'pointer', whiteSpace: 'nowrap',
@@ -1872,7 +2290,7 @@ function Chip({ label, onClick, accent }) {
   )
 }
 
-function FuelDensityTag({ label, active, onClick }) {
+export function FuelDensityTag({ label, active, onClick }) {
   return (
     <button onClick={onClick} style={{
       padding: '5px 9px', borderRadius: 7, cursor: 'pointer', whiteSpace: 'nowrap',
@@ -1886,7 +2304,7 @@ function FuelDensityTag({ label, active, onClick }) {
   )
 }
 
-function MiniInput({ value, onChange, placeholder }) {
+export function MiniInput({ value, onChange, placeholder }) {
   return (
     <input
       type="number" inputMode="decimal" value={value} onChange={e => onChange(e.target.value)}
@@ -1901,7 +2319,7 @@ function MiniInput({ value, onChange, placeholder }) {
   )
 }
 
-function RemoveButton({ onClick }) {
+export function RemoveButton({ onClick }) {
   return (
     <button onClick={onClick} style={{
       width: 26, height: 26, borderRadius: 7, flexShrink: 0,
@@ -1916,7 +2334,7 @@ function RemoveButton({ onClick }) {
   )
 }
 
-function WBStationRow({ station, onChange, onRemove }) {
+export function WBStationRow({ station, onChange, onRemove }) {
   return (
     <div style={{ background: 'var(--bg-card-2)', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -1958,7 +2376,7 @@ function WBStationRow({ station, onChange, onRemove }) {
   )
 }
 
-function WBPointRow({ point, fieldA, fieldB, labelA, labelB, onChange, onRemove }) {
+export function WBPointRow({ point, fieldA, fieldB, labelA, labelB, onChange, onRemove }) {
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
       <div style={{ flex: 1 }}>

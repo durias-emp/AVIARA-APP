@@ -1,7 +1,7 @@
 import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 import {
   parseFltCat, parseWind, parseVisib, parseCloudLayers,
-  parseTemp, parseAltim, parseWx, parseObsAge, parseFetchAge, parseAirportName,
+  parseTemp, parseAltim, parseWx, parseObsAge, parseFetchAge, parseTafAge, parseAirportName,
   FLTCAT, catFromCeilingVis, colorizeTaf,
 } from '../lib/weather'
 import { getCondition } from './WeatherAnimation'
@@ -172,7 +172,7 @@ function CopiedChip({ show }) {
 // `colorize` splits the text into its forecast groups and colors each line
 // by flight category (same grading as the VFR/MVFR/IFR/LIFR chip), matching
 // how apps like ForeFlight color-code raw TAF text.
-function RawTextRow({ title, text, onCopy, copiedText, last, colorize }) {
+function RawTextRow({ title, text, onCopy, copiedText, last, colorize, age }) {
   if (!text) return null
   const lines = colorize ? colorizeTaf(text) : null
   const copied = copiedText === text
@@ -182,8 +182,11 @@ function RawTextRow({ title, text, onCopy, copiedText, last, colorize }) {
         display: 'flex', justifyContent: 'space-between',
         alignItems: 'center', marginBottom: 10,
       }}>
-        <div style={{ fontSize: 17, fontWeight: 700, color: '#fff' }}>
-          {title}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <span style={{ fontSize: 17, fontWeight: 700, color: '#fff' }}>
+            {title}
+          </span>
+          {age && <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.6)' }}>{age}</span>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <CopiedChip show={copied} />
@@ -194,7 +197,7 @@ function RawTextRow({ title, text, onCopy, copiedText, last, colorize }) {
         <div style={{
           fontSize: 12,
           fontFamily: '"SF Mono", ui-monospace, Menlo, Consolas, monospace',
-          lineHeight: 1.65, wordBreak: 'break-all',
+          lineHeight: 1.65,
         }}>
           {lines.map((l, i) => (
             <div key={i} style={{ color: l.color }}>{l.text}</div>
@@ -205,7 +208,7 @@ function RawTextRow({ title, text, onCopy, copiedText, last, colorize }) {
           margin: 0, fontSize: 12,
           color: 'rgba(255,255,255,0.72)',
           fontFamily: '"SF Mono", ui-monospace, Menlo, Consolas, monospace',
-          lineHeight: 1.55, wordBreak: 'break-all',
+          lineHeight: 1.55,
         }}>
           {text}
         </p>
@@ -215,12 +218,12 @@ function RawTextRow({ title, text, onCopy, copiedText, last, colorize }) {
 }
 
 // ── Combined METAR + TAF card ────────────────────────────────────
-function RawTextCard({ metarText, tafText, onCopy, copiedText }) {
+function RawTextCard({ metarText, tafText, metarAge, tafAge, onCopy, copiedText }) {
   if (!metarText && !tafText) return null
   return (
     <div style={{ ...GLASS, padding: '16px 18px', marginBottom: 12 }}>
-      <RawTextRow title="Raw METAR" text={metarText} onCopy={onCopy} copiedText={copiedText} last={!tafText} />
-      <RawTextRow title="Raw TAF" text={tafText} onCopy={onCopy} copiedText={copiedText} last colorize />
+      <RawTextRow title="Raw METAR" text={metarText} age={metarAge} onCopy={onCopy} copiedText={copiedText} last={!tafText} />
+      <RawTextRow title="Raw TAF" text={tafText} age={tafAge} onCopy={onCopy} copiedText={copiedText} last colorize />
     </div>
   )
 }
@@ -427,8 +430,13 @@ export default function WeatherDetailOverlay({
 
           {metar && (
             <>
-              {/* ── Raw METAR / Raw TAF. First cards below the hero ── */}
-              <RawTextCard metarText={metar.rawOb} tafText={wx?.taf?.rawTAF} onCopy={onCopyMetar} copiedText={copiedText} />
+              {/* ── Raw METAR / Raw TAF — first cards below the hero ── */}
+              <RawTextCard
+                metarText={metar.rawOb} tafText={wx?.taf?.rawTAF}
+                metarAge={parseObsAge(metar)} tafAge={parseTafAge(wx?.taf)}
+                onCopy={onCopyMetar} copiedText={copiedText}
+              />
+
 
               {/* ── Pilot readout ── */}
               {summary && (

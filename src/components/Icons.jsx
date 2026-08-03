@@ -90,10 +90,117 @@ export function IconMarshaller({ size = 24 }) {
   )
 }
 
+export function IconMap({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+      <path d="M9 4v14M15 6v14" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+export function IconWrench({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.83 2.83-2.12-2.12L14.7 6.3z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+export function IconGear({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V19.9a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H4.1a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H10a1.7 1.7 0 0 0 1.04-1.56V4.1a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V10a1.7 1.7 0 0 0 1.56 1.04h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.56 1.04z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+export function IconCompass({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M15.5 8.5L13 13L8.5 15.5L11 11L15.5 8.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+// Two overlapping people — a "friends/people" glyph distinct from
+// IconPerson (a single figure, already used for Discover's own Profile
+// tab), for the Home screen's Friends card.
+export function IconFriends({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="9" cy="8" r="3" stroke="currentColor" strokeWidth="1.6"/>
+      <path d="M3 20c.8-3.5 3-5.5 6-5.5s5.2 2 6 5.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="17" cy="7" r="2.3" stroke="currentColor" strokeWidth="1.6"/>
+      <path d="M14.5 14c2.2.3 3.7 1.8 4.3 4.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+export function IconHome({ size = 24, filled = false }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M4 11L12 4L20 11V20C20 20.5523 19.5523 21 19 21H15V15H9V21H5C4.44772 21 4 20.5523 4 20V11Z"
+        fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+export function IconSearch({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8"/>
+      <path d="M20 20L15.8 15.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+export function IconPerson({ size = 24, filled = false }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="8" r="4" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6"/>
+      <path d="M4.5 20C5.5 16 8.4 14 12 14C15.6 14 18.5 16 19.5 20"
+        fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
 export function IconChevronRight({ size = 16 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
       <path d="M6 4L10 8L6 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+export function IconChevronLeft({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <path d="M10 4L6 8L10 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+// Flying saucer — disc + dome + a couple of beam lines below, for the
+// Tools menu's UAP Report entry.
+export function IconUap({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <ellipse cx="12" cy="11" rx="9" ry="2.6" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M8 10.5C8.3 7 10 5.5 12 5.5C14 5.5 15.7 7 16 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M7 13.5L5.5 17M17 13.5L18.5 17M12 14V18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+// Paper-plane — used both for the Discover chrome's inbox entry button and
+// the per-pilot message button in ExploreTab.
+export function IconSend({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M21 3L3 10.5L11 12.5M21 3L13.5 21L11 12.5M21 3L11 12.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
 }

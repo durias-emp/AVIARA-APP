@@ -21,8 +21,25 @@
 // an empty list.
 
 import { sampleRoute } from './corridor'
+import { get } from './db'
 
 const URL = 'https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/Class_Airspace/FeatureServer/0/query'
+
+// Same default key the Route & Altitude planner's openAIP chart layer
+// already ships with (see RouteAltitude.jsx) — reused here for openAIP's
+// actual data API (api.core.openaip.net), not just its map tiles. Read from
+// settings first so a pilot who's set their own key in that screen gets it
+// here too.
+const OPENAIP_DEFAULT_KEY = 'b640e75c082134fd6f1524246478f301'
+async function openaipKey() {
+  const row = await get('settings', 'openaip_key').catch(() => null)
+  return row?.value || OPENAIP_DEFAULT_KEY
+}
+
+// openAIP's icaoClass is a numeric enum; the letters are all this app cares
+// about. 7 (UNCLASSIFIED) and anything else openAIP might add later just
+// won't match a key here and get skipped.
+const OPENAIP_CLASS_LETTER = { 0: 'A', 1: 'B', 2: 'C', 3: 'D', 4: 'E', 5: 'F', 6: 'G' }
 
 // Where each source has anything to say. A route outside both is reported as
 // not covered.
@@ -185,6 +202,125 @@ async function cenamerAreas(wps) {
       name: a.name, cls: a.cls, lowerFt: a.lowerFt, upperFt: a.upperFt,
       ref: a.ref, approx: a.approx, source: 'CENAMER',
     }))
+}
+
+// Quality-tiered exactly like the airport data pack itself (FAA NASR first,
+// eAIP second, community last — see the airport-data commit history): the
+// FAA's own service is authoritative for US-administered fields; everywhere
+// else falls through to openAIP's community-maintained worldwide airspace
+// database (the same one the Route & Altitude planner's airspace chart layer
+// already uses, here via its actual data API instead of just map tiles); the
+// bundled CENAMER pack is the last-resort fallback if openAIP's request
+// itself fails, since that pack is curated specifically for that region.
+//
+// Unlike the route-crossing check above, Class E and G are included here —
+// excluding E made sense for "does this ROUTE cross something" (Class E is
+// everywhere and would flag every route), but for "what class is THIS
+// AIRPORT in," E and G are exactly the useful answers most fields actually
+// have.
+//
+// Gated by the airport's own ICAO prefix for the FAA branch (K = CONUS,
+// PA/PH = Alaska/Hawaii), not a lat/lon box — the FAA's Class_Airspace layer
+// turns out to carry a sliver of Canadian airspace too (confirmed live: it
+// labels Toronto and Muskoka's Canadian control zones with the FAA's own
+// B/C/D CLASS field, which does not correspond to NAV CANADA's actual
+// classification — Muskoka is Class E there, not the "Class B" this
+// service's attribute implies). A lat/lon box can't tell Ontario from
+// upstate New York; the ident prefix can.
+export async function classAtPoint(lat, lon, icao, timeoutMs = 8000) {
+  const inUS = /^(K|PA|PH)/i.test(icao || '')
+
+  if (inUS) {
+    const pad = 0.35 // covers the largest Class B outer shelf radii
+    const params = new URLSearchParams({
+      where: "CLASS IN ('B','C','D')",
+      geometry: `${lon - pad},${lat - pad},${lon + pad},${lat + pad}`,
+      geometryType: 'esriGeometryEnvelope',
+      inSR: '4326',
+      spatialRel: 'esriSpatialRelIntersects',
+      outFields: 'NAME,CLASS,LOWER_VAL,LOWER_CODE',
+      returnGeometry: 'true',
+      // No maxAllowableOffset here, unlike faaAreas above — asking this
+      // service to generalize geometry for these particular Class B shelves
+      // makes it silently drop the geometry entirely (attributes come back,
+      // `geometry` is just missing), which read as "no B/C/D here" for
+      // airports that are very much inside one. The bbox for a single point
+      // is tiny, so the extra vertices cost nothing.
+      f: 'json',
+    })
+    try {
+      const res = await fetch(`${URL}?${params}`, { signal: AbortSignal.timeout(timeoutMs) })
+      if (res.ok) {
+        const d = await res.json()
+        const features = d.features || []
+        const rank = { B: 0, C: 1, D: 2 }
+        let best = null
+        for (const f of features) {
+          // What actually has jurisdiction on the ground at this field is
+          // whichever shelf reaches the surface here — an airport can sit
+          // laterally under a Class B shelf that only starts at 1,500 ft
+          // while its own pattern is really controlled by a Class D from the
+          // surface (Teterboro, under the NY Class B, is exactly this case).
+          // A shelf that starts above the ground says nothing about who
+          // controls the airport itself, so only surface-floor shelves count.
+          const lowerCode = f.attributes?.LOWER_CODE
+          const lowerVal = f.attributes?.LOWER_VAL
+          const isSurface = lowerCode === 'SFC' || lowerCode === 'GND' || Number(lowerVal) === 0
+          if (!isSurface) continue
+          const rings = f.geometry?.rings || []
+          const hit = rings.some(r => pointInPoly([lat, lon], r.map(([x, y]) => [y, x])))
+          if (!hit) continue
+          const cls = f.attributes?.CLASS
+          if (!best || (rank[cls] ?? 9) < (rank[best] ?? 9)) best = cls
+        }
+        if (best) return { cls: best, source: 'FAA' }
+      }
+    } catch { /* not fatal — fall through to openAIP below */ }
+    return null
+  }
+
+  // Worldwide: openAIP's Core API (bbox query, needs the same rank/surface
+  // handling as the FAA branch above — a field can equally sit under a
+  // foreign Class B/C/TMA shelf that starts well above the ground).
+  try {
+    const key = await openaipKey()
+    const pad = 0.15
+    const url = `https://api.core.openaip.net/api/airspaces?bbox=${lon - pad},${lat - pad},${lon + pad},${lat + pad}`
+    const res = await fetch(url, { headers: { 'x-openaip-api-key': key }, signal: AbortSignal.timeout(timeoutMs) })
+    if (res.ok) {
+      const d = await res.json()
+      const rank = { A: 0, B: 1, C: 2, D: 3, E: 4, F: 5, G: 6 }
+      let best = null
+      for (const item of d.items || []) {
+        const cls = OPENAIP_CLASS_LETTER[item.icaoClass]
+        if (!cls) continue
+        // Same surface-floor requirement as the FAA branch: a lower limit of
+        // 0 means "starts at the ground" (AGL or MSL both use 0 for that),
+        // regardless of unit/reference — anything with a floor above the
+        // ground doesn't govern the airport itself.
+        if (Number(item.lowerLimit?.value) !== 0) continue
+        const rings = item.geometry?.type === 'Polygon' ? [item.geometry.coordinates[0]]
+          : item.geometry?.type === 'MultiPolygon' ? item.geometry.coordinates.map(p => p[0])
+          : []
+        const hit = rings.some(r => pointInPoly([lat, lon], r.map(([x, y]) => [y, x])))
+        if (!hit) continue
+        if (!best || (rank[cls] ?? 9) < (rank[best] ?? 9)) best = cls
+      }
+      if (best) return { cls: best, source: 'openAIP' }
+      return null
+    }
+  } catch { /* fall through to the bundled CENAMER pack */ }
+
+  if (CENAMER_BOX && inBox({ lat, lon }, CENAMER_BOX)) {
+    const areas = await getCenamer()
+    for (const a of areas) {
+      if (['B', 'C', 'D'].includes(a.cls) && pointInPoly([lat, lon], a.poly)) {
+        return { cls: a.cls, source: 'CENAMER' }
+      }
+    }
+  }
+
+  return null
 }
 
 // waypoints: [{lat,lon}, ...]

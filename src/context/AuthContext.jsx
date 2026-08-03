@@ -78,18 +78,22 @@ export function AuthProvider({ children }) {
     supabase.auth.signInWithOAuth({ provider: 'google' })
   ), [])
 
-  const signInWithPassword = useCallback((email, password) => (
-    supabase.auth.signInWithPassword({ email, password })
+  // captchaToken is a no-op extra field until Supabase's project-level
+  // CAPTCHA protection is actually turned on (see Turnstile.jsx) — passing
+  // it now, before that switch flips, costs nothing and means turning it on
+  // later needs no client changes.
+  const signInWithPassword = useCallback((email, password, captchaToken) => (
+    supabase.auth.signInWithPassword({ email, password, options: { captchaToken } })
   ), [])
 
-  const signUp = useCallback((email, password) => (
-    supabase.auth.signUp({ email, password })
+  const signUp = useCallback((email, password, captchaToken) => (
+    supabase.auth.signUp({ email, password, options: { captchaToken } })
   ), [])
 
   const signOut = useCallback(() => supabase.auth.signOut(), [])
 
-  const resetPasswordForEmail = useCallback((email) => (
-    supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin })
+  const resetPasswordForEmail = useCallback((email, captchaToken) => (
+    supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin, captchaToken })
   ), [])
 
   const updatePassword = useCallback(async (password) => {

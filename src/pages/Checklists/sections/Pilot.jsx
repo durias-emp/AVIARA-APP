@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { get, put } from '../../../lib/db'
 import { getCurrencyStatus, fmtDate, fmtDaysLeft, calendarMonthExpiry, statusFromExpiry } from '../../../lib/currency'
+import { scopedSettingsKey } from '../../../lib/aircraft'
+import { useActiveAircraft } from '../../../context/ActiveAircraft'
 import { ExpandableCard, DoneButton } from '../shared/ui'
 
 /* ── IM SAFE / CURRENT / VALID / AIRWORTHY checklist cards ──── */
@@ -421,6 +423,7 @@ function RecapSection({ title }) {
 const PRIOR_PILOT_IDS = ['pilot-imsafe', 'pilot-imcurrent', 'pilot-imvalid', 'pilot-airworthy']
 
 export function RecapItem({ item, isChecked, onToggle, checked, total }) {
+  const { aircraftId } = useActiveAircraft()
   const [open, setOpen]             = useState(false)
   const [route, setRoute]           = useState(null)
   const [perfdist, setPerfdist]     = useState(null)
@@ -434,10 +437,10 @@ export function RecapItem({ item, isChecked, onToggle, checked, total }) {
     if (!open) return
     Promise.all([
       get('settings', 'route'),
-      get('settings', 'perfdist'),
-      get('settings', 'cruise'),
+      get('settings', scopedSettingsKey('perfdist', aircraftId)),
+      get('settings', scopedSettingsKey('cruise', aircraftId)),
       get('settings', 'homeAirport'),
-      get('aircraft', 'profile'),
+      aircraftId ? get('aircraft', aircraftId) : null,
       get('currency', 'profile'),
       get('settings', 'selectedRunway'),
     ]).then(([r, pd, cr, ha, ac, cur, sr]) => {
@@ -445,7 +448,7 @@ export function RecapItem({ item, isChecked, onToggle, checked, total }) {
       setHomeAirport(ha ?? null); setAircraft(ac ?? null); setCurrData(cur ?? null)
       setSelectedRwy(sr ?? null)
     })
-  }, [open])
+  }, [open, aircraftId])
 
   // Auto-complete once every other checklist item is done, still
   // overridable any time via the header checkmark.

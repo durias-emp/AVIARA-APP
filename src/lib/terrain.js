@@ -89,6 +89,14 @@ async function fetchElevations(pts, timeoutMs) {
   return null
 }
 
+// Ground elevation (ft) under a single point — same sources as the route
+// corridor analysis above, for the GPS info bar's Height AGL field. Returns
+// null if neither elevation source answers.
+export async function getGroundElevationFt(lat, lon, timeoutMs = 8000) {
+  const out = await fetchElevations([{ lat, lon }], timeoutMs)
+  return out?.[0] != null ? out[0] * M_TO_FT : null
+}
+
 // waypoints: [{lat, lon}, ...]
 // altFt: planned cruise altitude, for the clearance figure (optional)
 //

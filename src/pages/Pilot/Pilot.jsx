@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
-import { BackButton } from '../../components/Shell'
+import { Link } from 'react-router-dom'
+import { HomeButton } from '../../components/Shell'
+import { IconPerson, IconChevronRight } from '../../components/Icons'
 import { get, put } from '../../lib/db'
 import { usePilotProfile } from '../../context/PilotProfile'
+import { useLogbook } from '../../context/Logbook'
+import { computeTotalHours } from '../../lib/logbookFields'
 import {
   FAR,
   calendarMonthExpiry, statusFromExpiry,
@@ -279,7 +283,8 @@ function CheckRowSimple({ checked, onChange, label, far, padding = '10px 14px' }
 }
 
 // ---------------------------------------------------------------------------
-// Card 1: IM SAFE
+// Card 1 — IM SAFE (defined but not rendered below — kept dormant, matching
+// its state before this page existed; not part of this restructuring pass)
 // ---------------------------------------------------------------------------
 const SAFE_ITEMS = [
   { key: 'illness',    label: 'Illness (no symptoms affecting performance)' },
@@ -325,7 +330,7 @@ function ImSafeCard({ data, onChange }) {
 }
 
 // ---------------------------------------------------------------------------
-// Card 2: IM CURRENT
+// Card 2 — IM CURRENT (flight currency)
 // ---------------------------------------------------------------------------
 const PROFICIENCY_TYPES = ['PPC', 'PCC', 'IPC', 'Flight Test']
 
@@ -568,7 +573,7 @@ function ImCurrentCard({ data, onChange, warnDays }) {
 }
 
 // ---------------------------------------------------------------------------
-// Card 3: MEDICAL VALIDITY
+// Card 3 — MEDICAL VALIDITY (medical currency)
 // ---------------------------------------------------------------------------
 function ImValidCard({ data, onChange, warnDays }) {
   const med = data?.medical ?? {}
@@ -714,13 +719,48 @@ function ImValidCard({ data, onChange, warnDays }) {
 }
 
 // ---------------------------------------------------------------------------
-// Root: Currency page
-// Note: the "IM AIRWORTHY" card (aircraft documents + inspections) now lives
-// on the Aircraft page as the "Airworthiness" section. It still reads/writes
+// Card 4 — Logbook. Links out to the real Logbook section (src/pages/Pilot/
+// LogbookList.jsx and friends) rather than embedding it inline here — same
+// reasoning as Profile Setup living on its own page: this card is a summary/
+// entry point, not where the actual feature lives.
+// ---------------------------------------------------------------------------
+function LogbookCard() {
+  const { entries } = useLogbook()
+  const totalHours = computeTotalHours(entries)
+  return (
+    <Link to="/logbook" style={{ textDecoration: 'none' }}>
+      <div style={{
+        background: 'var(--bg-card)', borderRadius: 14,
+        border: '0.5px solid var(--border)',
+        marginBottom: 10, overflow: 'hidden',
+        padding: '14px 14px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px' }}>Logbook</span>
+          <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+            {entries === undefined ? 'Loading…' : entries.length === 0 ? 'No flights logged yet' : `${totalHours.toFixed(1)} hr · ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`}
+          </span>
+        </div>
+        <span style={{ color: 'var(--text-tertiary)', display: 'flex', flexShrink: 0 }}><IconChevronRight size={16} /></span>
+      </div>
+    </Link>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Root — Pilot page. Focus: medical currency, flight currency, and (soon)
+// a logbook — profile fields (name/certificate/home airport/units/account)
+// moved out to their own "Profile Setup" page (src/pages/Profile/Profile.jsx),
+// reachable via the icon button below or from Settings.
+//
+// Note: the "IM AIRWORTHY" card (aircraft documents + inspections) lives on
+// the Aircraft page as the "Airworthiness" section — it still reads/writes
 // the same currency/profile.airworthy data, so getCurrencyStatus() and the
 // Checklists "IM AIRWORTHY" references keep working unchanged.
 // ---------------------------------------------------------------------------
-export default function Currency() {
+export default function Pilot() {
   const { profile: pilotProfile } = usePilotProfile()
   const [data, setData] = useState({})
   const [warnDays] = useState(WARN_DAYS_DEFAULT)
@@ -729,7 +769,7 @@ export default function Currency() {
   useEffect(() => {
     get('currency', 'profile').then(saved => {
       const base = saved ?? {}
-      // Onboarding stores medClass as "1st"/"2nd"/"3rd"; Currency expects numeric 1/2/3
+      // Onboarding stores medClass as "1st"/"2nd"/"3rd"; this page expects numeric 1/2/3
       const toNumericClass = v => {
         if (v === 1 || v === 2 || v === 3) return v
         return { '1st': 1, '2nd': 2, '3rd': 3 }[v] ?? null
@@ -767,17 +807,28 @@ export default function Currency() {
 
   return (
     <div style={{ paddingBottom: 40 }}>
-      <div style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <BackButton />
-        <h2 style={{
-          fontSize: 28, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)',
-          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
-        }}>Currency</h2>
+      <div style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <HomeButton />
+          <h2 style={{
+            fontSize: 28, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
+          }}>Pilot</h2>
+        </div>
+        <Link to="/profile" aria-label="Profile setup" style={{
+          width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+          background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'var(--text)', WebkitTapHighlightColor: 'transparent',
+        }}>
+          <IconPerson size={19} />
+        </Link>
       </div>
 
       <div style={{ padding: '0 16px' }}>
         <ImCurrentCard   data={data} onChange={handleChange} warnDays={warnDays} />
         <ImValidCard     data={data} onChange={handleChange} warnDays={warnDays} />
+        <LogbookCard />
       </div>
 
       <div style={{ padding: '8px 16px 0', textAlign: 'center' }}>

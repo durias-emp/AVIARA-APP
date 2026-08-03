@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { get } from '../../../lib/db'
+import { useActiveAircraft } from '../../../context/ActiveAircraft'
 import { ExpandableCard, DoneButton, CheckRow as SharedCheckRow } from '../shared/ui'
 
 const DOC_FAR = {
@@ -62,6 +63,7 @@ function GroupRowComp({ title, ids, isCurrencyCompleted: icc, checkedIds, childr
 
 /* ── Aircraft checklist ──────────────────────────────────────── */
 export function AircraftItem({ item, isChecked, onToggle }) {
+  const { aircraftId } = useActiveAircraft()
   const [open, setOpen] = useState(false)
   const [checkedIds, setCheckedIds] = useState(new Set())
   const [aircraftImage, setAircraftImage] = useState('')
@@ -71,11 +73,13 @@ export function AircraftItem({ item, isChecked, onToggle }) {
   const [currencyData, setCurrencyData]   = useState(null)
 
   useEffect(() => {
-    get('aircraft', 'profile').then(p => {
-      if (p?.image)        setAircraftImage(p.image)
-      if (p?.fullName)     setAircraftName(p.fullName)
-      if (p?.registration) setRegistration(p.registration)
-    })
+    if (aircraftId) {
+      get('aircraft', aircraftId).then(p => {
+        if (p?.image)        setAircraftImage(p.image)
+        if (p?.fullName)     setAircraftName(p.fullName)
+        if (p?.registration) setRegistration(p.registration)
+      })
+    }
     get('currency', 'profile').then(c => {
       if (c) setCurrencyData(c)
     })
@@ -83,7 +87,7 @@ export function AircraftItem({ item, isChecked, onToggle }) {
       const saved = localStorage.getItem('cruise_fuel_state')
       if (saved) setFuelState(JSON.parse(saved))
     } catch { /* ignore */ }
-  }, [open])
+  }, [open, aircraftId])
 
   // Map Aircraft checklist row IDs -> currency data fields
   const CURRENCY_DOCS_MAP = {

@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { usePilotProfile } from '../../context/PilotProfile'
+import { useActiveAircraft } from '../../context/ActiveAircraft'
+import { createAircraft } from '../../lib/aircraft'
 import { generateAircraftIcon } from '../../lib/generateIcon'
 import { medicalExpiryRows, ageAt, fmtDate, calendarMonthExpiry, statusFromExpiry } from '../../lib/currency'
 import { TEMPLATES } from '../Aircraft/Aircraft'
@@ -183,35 +185,8 @@ function DateField({ label, value, onChange }) {
   )
 }
 
-export function SegControl({ options, value, onChange }) {
-  const idx = options.indexOf(value)
-  const pct = 100 / options.length
-  return (
-    <div style={{ display: 'flex', background: 'rgba(120,120,128,0.12)', borderRadius: 'var(--r-sm)', padding: 3, position: 'relative' }}>
-      <div style={{
-        position: 'absolute', top: 3, bottom: 3,
-        left: `calc(${Math.max(0, idx) * pct}% + 3px)`,
-        width: `calc(${pct}% - 6px)`,
-        background: 'var(--bg-card)',
-        borderRadius: 6,
-        boxShadow: '0 1px 4px rgba(0,0,0,0.14), 0 0 0 0.5px rgba(0,0,0,0.06)',
-        transition: 'left 0.25s cubic-bezier(0.34, 1.2, 0.64, 1)',
-        pointerEvents: 'none',
-        opacity: idx >= 0 ? 1 : 0,
-      }} />
-      {options.map(opt => (
-        <button key={opt} onClick={() => onChange(opt)} style={{
-          flex: 1, padding: '7px 4px', borderRadius: 6, border: 'none', cursor: 'pointer',
-          fontWeight: 600, fontSize: 13,
-          background: 'transparent',
-          color: value === opt ? 'var(--text)' : 'var(--text-secondary)',
-          fontFamily: 'inherit', position: 'relative', zIndex: 1,
-          transition: 'color 0.18s',
-        }}>{opt}</button>
-      ))}
-    </div>
-  )
-}
+import { SegControl } from '../../components/SegControl'
+export { SegControl }
 
 function TagGrid({ options, selected, onToggle }) {
   return (
@@ -1033,6 +1008,7 @@ function Step6({ draft, onBack, onDone }) {
 
 export default function Onboarding() {
   const { profile, setProfile } = usePilotProfile()
+  const { refreshAircraftList, setActiveAircraftId } = useActiveAircraft()
   const [step, setStep] = useState(1)
   const [dir, setDir] = useState('forward')
   const [draft, setDraft] = useState(() => {
@@ -1054,15 +1030,17 @@ export default function Onboarding() {
       await put('settings', { key: 'homeAirport', value: draft.homeAirport.trim().toUpperCase() })
     }
 
-    // Write selected aircraft template to aircraft store so Aircraft page loads it immediately
+    // Write selected aircraft template as this pilot's first aircraft, so
+    // Hangar loads it immediately instead of showing the empty state.
     const tpl = TEMPLATES.find(t => t.id === draft.aircraftTemplateId)
-    await put('aircraft', {
+    const newAircraft = await createAircraft({
       ...(tpl ?? { category: 'custom', fullName: draft.aircraftModel ?? 'My Aircraft' }),
-      id: 'profile',
       registration: draft.tailNumber ?? '',
       pilotName: draft.name ?? '',
       ...(draft.aircraftImage ? { image: draft.aircraftImage } : {}),
     })
+    await refreshAircraftList()
+    await setActiveAircraftId(newAircraft.id)
 
     // Seed currency store with onboarding data so Currency page shows correct status on first open
     await put('currency', {
