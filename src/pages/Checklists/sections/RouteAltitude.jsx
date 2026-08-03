@@ -1092,9 +1092,36 @@ function MapControlStack({ onClose }) {
   )
 }
 
+// The basemap's paper colour. Named because it has to agree in three places
+// (both full-bleed map surfaces and the status-bar tint below), and a drift
+// between them is exactly what shows up as a seam across the notch.
+const FULLBLEED_MAP_BG = '#e8e0d8'
+
+// iOS paints the status-bar strip with theme-color — that is what the bar
+// investigation in main.jsx and index.html concluded ("the bar was painting
+// theme-color all along"). Everywhere else in the app that strip is invisible
+// because theme-color and --bg are the same value on purpose: #ffffff in
+// light, #000000 in dark. The two maps below are the app's only surfaces that
+// go edge to edge in a colour of their own, so on an iPhone the strip stayed
+// white above a tan map and read as a blank band across the top. Point
+// theme-color at the map while it is open, put it back on the way out.
+//
+// Only the tag content changes: the media-scoped light/dark pair from
+// index.html is preserved and restored, so the normal theming is untouched.
+function useStatusBarTint(active, color) {
+  useEffect(() => {
+    if (!active) return
+    const metas = document.querySelectorAll('meta[name="theme-color"]')
+    if (!metas.length) return
+    const previous = Array.from(metas, m => m.getAttribute('content'))
+    metas.forEach(m => m.setAttribute('content', color))
+    return () => metas.forEach((m, i) => m.setAttribute('content', previous[i]))
+  }, [active, color])
+}
+
 // Choosing where you are flying to, on the map.
 //
-// The route map only exists once a route does, and a route needs two ends. 
+// The route map only exists once a route does, and a route needs two ends.
 // which is exactly the assumption this breaks. Plenty of flying is to places
 // that have no ICAO code to type into the TO field: a ranch strip, a lake, a
 // section corner, a friend's grass runway. Those pilots need to point at it.
@@ -1104,9 +1131,10 @@ function MapControlStack({ onClose }) {
 // full map with all its layers is one Calculate away.
 function PickDestinationMap({ depPos, depIdent, onClose, onPick }) {
   const [pt, setPt] = useState(null)
+  useStatusBarTint(true, FULLBLEED_MAP_BG)
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#e8e0d8' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: FULLBLEED_MAP_BG }}>
       <div style={{ position: 'absolute', inset: 0 }}>
         <MapContainer center={depPos} zoom={8}
           style={{ height: '100%', width: '100%' }}
@@ -1712,6 +1740,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     })
   }, [])
   const [mapFullscreen, setMapFS]   = useState(false)
+  // The fullscreen map is an inline block inside a portal rather than its own
+  // component, so its status-bar tint is driven from here.
+  useStatusBarTint(mapFullscreen, FULLBLEED_MAP_BG)
   const [showRefs, setShowRefs]     = useState(false)
   // Cleared view: the pilot swipes the bottom card down and everything but the
   // close button and the zoom control gets out of the way, so the chart can be
@@ -3553,9 +3584,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                   }
 
                   return (
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#e8e0d8' }}>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: FULLBLEED_MAP_BG }}>
                       {/* Map: full height */}
-                      <div style={{ position: 'absolute', inset: 0, background: '#e8e0d8' }}>
+                      <div style={{ position: 'absolute', inset: 0, background: FULLBLEED_MAP_BG }}>
                         <MapContainer center={mapCenter} zoom={7}
                           ref={setFsMap}
                           style={{ height: '100%', width: '100%' }}
