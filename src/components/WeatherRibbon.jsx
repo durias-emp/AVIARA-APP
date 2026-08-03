@@ -17,18 +17,20 @@ import {
   parseAirportName,
 } from '../lib/weather'
 import WeatherDetailOverlay from './WeatherDetailOverlay'
+import AirportPickerModal from './AirportPickerModal'
 
 // Conditions age. A METAR is issued hourly and a pilot reading a two-hour-old
 // observation as current is exactly the failure this app exists to prevent, so
 // staleness is shown rather than hidden.
 const STALE_MS = 75 * 60 * 1000
 
-export default function WeatherRibbon({ icao, units = {}, style }) {
+export default function WeatherRibbon({ icao, units = {}, style, onChangeAirport }) {
   const [wx, setWx] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [open, setOpen] = useState(false)      // the inline expansion
   const [detail, setDetail] = useState(false)  // the full overlay
+  const [picker, setPicker] = useState(false)  // choosing a different base
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -69,7 +71,32 @@ export default function WeatherRibbon({ icao, units = {}, style }) {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [icao, load])
 
-  if (!icao) return null
+  // No base set yet. The strip becomes the invitation to set one rather than
+  // disappearing: a pilot who has not chosen a home airport is exactly the one
+  // who needs the control to be visible.
+  if (!icao) {
+    return (<>
+      <button onClick={() => setPicker(true)} style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '9px 14px', borderRadius: 14, border: 'none',
+        background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(14px)',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.18)', cursor: 'pointer',
+        fontSize: 12.5, fontWeight: 700, color: '#1c1c1e', ...style,
+      }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="2.2" strokeLinecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        Set home airport
+      </button>
+      {picker && createPortal(
+        <AirportPickerModal
+          onConfirm={(id) => { setPicker(false); onChangeAirport?.(id) }}
+          onClose={() => setPicker(false)} />,
+        document.body,
+      )}
+    </>)
+  }
 
   const metar = wx?.metar
   const cat = parseFltCat(metar)
@@ -98,21 +125,43 @@ export default function WeatherRibbon({ icao, units = {}, style }) {
       {/* Collapsed, this is the whole thing: what the field is doing, and
           which field. That is the glance a pilot takes, and a strip of
           numbers across the top of a chart is furniture the rest of the time. */}
-      <button onClick={() => setOpen(o => !o)} style={{
+      <div style={{
         display: 'flex', alignItems: 'center', gap: 9, width: '100%',
-        padding: '8px 12px 8px 9px', border: 'none', background: 'none',
-        cursor: 'pointer',
+        padding: '8px 12px 8px 9px',
       }}>
-        <span style={{
-          fontSize: 11, fontWeight: 800, letterSpacing: '0.3px',
-          color: cat.color, background: cat.bg, padding: '4px 7px', borderRadius: 7,
-          flexShrink: 0,
-        }}>{metar ? cat.label : loading ? '···' : '--'}</span>
+        {/* The identity, and the way to change it. Tapping the code is how a
+            pilot moves their base: it is the thing on screen that names the
+            base, so it is the thing that should change it. A button in its own
+            right rather than a region of the expander, because nesting one
+            button inside another is invalid and the tap would be ambiguous
+            anyway. */}
+        <button
+          onClick={() => setPicker(true)}
+          title="Change home airport"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+            border: 'none', background: 'none', padding: 0, cursor: 'pointer',
+          }}>
+          <span style={{
+            fontSize: 11, fontWeight: 800, letterSpacing: '0.3px',
+            color: cat.color, background: cat.bg, padding: '4px 7px', borderRadius: 7,
+            flexShrink: 0,
+          }}>{metar ? cat.label : loading ? '···' : '--'}</span>
 
-        <span style={{
-          fontSize: 13, fontWeight: 700, color: '#1c1c1e',
-          letterSpacing: '0.4px', flexShrink: 0,
-        }}>{icao}</span>
+          <span style={{
+            fontSize: 13, fontWeight: 700, color: '#1c1c1e',
+            letterSpacing: '0.4px', flexShrink: 0,
+            // Says it is editable without spending a button on saying so.
+            borderBottom: '1.5px dotted rgba(60,60,67,0.35)',
+            paddingBottom: 1,
+          }}>{icao}</span>
+        </button>
+
+        {/* Everything else on the row opens the detail. */}
+        <button onClick={() => setOpen(o => !o)} style={{
+          display: 'flex', alignItems: 'center', gap: 9, flex: 1, minWidth: 0,
+          border: 'none', background: 'none', padding: '2px 0', cursor: 'pointer',
+        }}>
 
         {stale && (
           <span title="Observation is over an hour old" style={{
@@ -139,7 +188,8 @@ export default function WeatherRibbon({ icao, units = {}, style }) {
           }}>
           <path d="M6 9l6 6 6-6" />
         </svg>
-      </button>
+        </button>
+      </div>
 
       {/* Expands downward. Grid rows rather than max-height so it animates to
           its real height: a guessed max-height either clips the content or
@@ -193,6 +243,14 @@ export default function WeatherRibbon({ icao, units = {}, style }) {
 
     {/* The same overlay the weather card opens, portaled so the map's stacking
         context cannot trap it. */}
+    {picker && createPortal(
+      <AirportPickerModal
+        current={icao}
+        onConfirm={(id) => { setPicker(false); onChangeAirport?.(id) }}
+        onClose={() => setPicker(false)} />,
+      document.body,
+    )}
+
     {detail && createPortal(
       <WeatherDetailOverlay
         wx={wx} icao={icao} loading={loading} error={error} isStale={stale}

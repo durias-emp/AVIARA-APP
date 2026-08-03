@@ -296,6 +296,27 @@ export default function MapHome() {
     resolveBase()
   }, [])
 
+  // Moving base. Writes the same settings row the weather card writes, so the
+  // two screens never disagree about where home is, then re-resolves the
+  // coordinates and takes the map there: changing your base and being left
+  // looking at the old one would be its own small bug.
+  async function changeBase(ident) {
+    const id = (ident || '').trim().toUpperCase()
+    if (!id) return
+    await put('settings', { key: 'homeAirport', value: id }).catch(() => {})
+    const airports = await getAirports()
+    const hit = airports?.find(a => a[0] === id)
+    if (!hit) {
+      // The picker validated it against live weather, so this means the
+      // bundled table does not carry it. Keep the ident, which is what the
+      // weather strip needs, and leave the camera alone.
+      setBase({ ident: id, lat: base?.lat ?? null, lon: base?.lon ?? null })
+      return
+    }
+    setBase({ ident: id, lat: hit[1], lon: hit[2] })
+    mapRef.current?.setView([hit[1], hit[2]], 10, { animate: true })
+  }
+
   // The home airport, from wherever the pilot last set it. The weather card
   // writes settings/homeAirport when they change it there, and onboarding
   // writes the same field onto the pilot profile, so both are read and the
@@ -554,7 +575,7 @@ export default function MapHome() {
         )}
         {/* Home, marked. Framing the map on an unmarked field just looks like
             an arbitrary starting position. */}
-        {base && (
+        {base?.lat != null && (
           <CircleMarker center={[base.lat, base.lon]} radius={7}
             pathOptions={{ color: ACCENT, weight: 3, fillColor: '#fff', fillOpacity: 1 }}>
             <Tooltip permanent direction="top" offset={[0, -8]} className="home-base-label">
@@ -587,11 +608,9 @@ export default function MapHome() {
         zIndex: 500, display: 'flex', justifyContent: 'center',
         padding: '0 74px', pointerEvents: 'none',
       }}>
-        {base && (
-          <div style={{ pointerEvents: 'auto', minWidth: 0 }}>
-            <WeatherRibbon icao={base.ident} units={units} />
-          </div>
-        )}
+        <div style={{ pointerEvents: 'auto', minWidth: 0 }}>
+          <WeatherRibbon icao={base?.ident ?? null} units={units} onChangeAirport={changeBase} />
+        </div>
       </div>
 
       {/* Right stack: charts, then position. Ordered by how often a hand
