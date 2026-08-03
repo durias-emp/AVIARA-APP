@@ -8,13 +8,34 @@ function awcUrl(endpoint, params = {}) {
 async function awcFetch(endpoint, params) {
   const res = await fetch(awcUrl(endpoint, params), { signal: AbortSignal.timeout(12000) })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json()
+  // AWC answers a station it has nothing for with 204 No Content, and the
+  // proxy passes that straight through. That is a successful "nothing here",
+  // not a failure — but res.json() on an empty body throws a parse error
+  // indistinguishable from a genuinely broken response, which is how a field
+  // with no METAR ended up on the same code path as an unreachable server.
+  // Normalising it to an empty list here is what lets fetchMetar tell the two
+  // apart, and that distinction is the gate on substitute weather.
+  if (res.status === 204) return []
+  const text = await res.text()
+  if (!text.trim()) return []
+  return JSON.parse(text)
 }
 
 export async function fetchMetar(icao) {
   const id = icao.toUpperCase()
   const data = await awcFetch('metar', { ids: id, format: 'json', hours: '3' })
-  if (!Array.isArray(data) || !data.length) throw new Error('No METAR data for ' + id)
+  if (!Array.isArray(data) || !data.length) {
+    // AWC answered, and the answer was "nothing here". That is a different
+    // fact from "the request failed", and the difference decides whether the
+    // airport page may show substitute weather from somewhere else: standing
+    // in for a field that genuinely has no station is helpful, while standing
+    // in for one that does — because the network happened to be down — hides
+    // a real observation behind a model estimate. Only this branch is
+    // allowed to trigger substitution; see loadWeather's noReport flag.
+    const err = new Error('No METAR data for ' + id)
+    err.noReport = true
+    throw err
+  }
   return data[0]
 }
 
@@ -72,18 +93,87 @@ function haversineNm(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.sqrt(a))
 }
 
+const POINTS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+                'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+
+// True bearing from the first point to the second, as a compass point. The
+// card says "31 nm NE" rather than "31 nm" because the direction is what
+// makes the distance mean something: a station 31 nm upwind of a front is
+// telling you about weather you are about to get, and one 31 nm downwind is
+// telling you about weather that has already gone past.
+export function compassPointFrom(lat1, lon1, lat2, lon2) {
+  const toRad = d => (d * Math.PI) / 180
+  const dLon = toRad(lon2 - lon1)
+  const y = Math.sin(dLon) * Math.cos(toRad(lat2))
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+            Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon)
+  const deg = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360
+  return POINTS[Math.round(deg / 22.5) % 16]
+}
+
+// A station reporting from this close is on the field itself, whatever it
+// calls itself. Barrie-Lake Simcoe is the worked example: the airport is
+// CYLS, and the automated station sitting on it files under CXBI, 0.4 nm
+// away. Asking AWC for "CYLS" returns nothing, which is how a field with a
+// working AWOS came to display "No weather available". Anything inside this
+// radius is presented as the field's own weather rather than as somewhere
+// nearby, because that is what it is.
+export const ON_FIELD_NM = 3
+
+// The closest station that actually reports, with its TAF and its bearing.
+// Built on nearestMetar rather than replacing it — the route-aerodrome path
+// wants the cheap single-request version and no TAF.
+//
+// Returns { ident, name, lat, lon, distNm, point, onField, metar, taf } or
+// null when nothing reports within the radius.
+export async function nearestStation(lat, lon, { withinNm = 60 } = {}) {
+  const hit = await nearestMetar(lat, lon, { withinNm })
+  if (!hit) return null
+  const { metar, station, distNm } = hit
+  return {
+    ident: station,
+    name: metar?.name ?? null,
+    lat: metar.lat,
+    lon: metar.lon,
+    distNm,
+    point: compassPointFrom(lat, lon, metar.lat, metar.lon),
+    onField: distNm <= ON_FIELD_NM,
+    metar,
+    taf: await fetchTaf(station),
+  }
+}
+
+// { icao, metar, taf, fetchedAt, error, noReport }
+//
+// `noReport` means the field publishes no observation of its own — not that
+// the lookup failed. Settled rather than Promise.all'd because the two
+// products are independent: a field can publish a TAF and have its METAR
+// briefly missing, and the old shape threw that TAF away along with the
+// METAR.
 export async function loadWeather(icao) {
   const id = icao.toUpperCase()
-  try {
-    const [metar, taf] = await Promise.all([fetchMetar(id), fetchTaf(id)])
-    const result = { icao: id, metar, taf, fetchedAt: Date.now(), error: null }
+  const [m, t] = await Promise.allSettled([fetchMetar(id), fetchTaf(id)])
+  const taf = t.status === 'fulfilled' ? t.value : null
+
+  if (m.status === 'fulfilled') {
+    const result = { icao: id, metar: m.value, taf, fetchedAt: Date.now(), error: null, noReport: false }
     await put('weather', result)
     return result
-  } catch (err) {
-    const cached = await get('weather', id)
-    if (cached) return { ...cached, error: err.message }
-    throw err
   }
+
+  if (m.reason?.noReport) {
+    const result = { icao: id, metar: null, taf, fetchedAt: Date.now(), error: null, noReport: true }
+    await put('weather', result)
+    return result
+  }
+
+  // A genuine failure — network, proxy, timeout. Fall back to whatever was
+  // last stored, and carry the reason so the page can say why it is old.
+  // Deliberately does NOT set noReport: an unreachable AWC says nothing
+  // about whether this field has a station.
+  const cached = await get('weather', id)
+  if (cached) return { ...cached, error: m.reason?.message ?? 'weather unavailable' }
+  throw m.reason ?? new Error('weather unavailable')
 }
 
 // ── Parsers ──────────────────────────────────────────────────

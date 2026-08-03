@@ -1,10 +1,23 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { findAirport } from '../lib/aerodromes'
+import { searchAirports, nearbyAirports, placeLabel } from '../lib/airportSearch'
+import { useHomeLocation } from '../context/HomeLocation'
 
-const PLACEHOLDERS = ['KLAX', 'KJFK', 'KORD', 'KATL', 'KDFW', 'KDEN', 'KSFO', 'KMIA', 'KBOS', 'KSEA', 'KLAS', 'KPHX', 'KEWR', 'KIAD', 'KDTW']
+// Examples deliberately mix codes with place names. The input used to accept
+// four characters and nothing else, so a placeholder cycling ICAO codes was
+// honest about what it wanted. It now searches names, cities and IATA codes
+// too, and the placeholder is the only thing that gets to say so before
+// someone has typed anything.
+const PLACEHOLDERS = ['KJFK', 'Toronto', 'YYZ', 'Barrie', 'CYYZ', 'Muskoka', 'LAX', 'Denver', 'EGLL']
 
 const FLIP_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+
+// A short run of characters with no spaces is someone typing an identifier.
+// Worth knowing twice over: it gets the monospace treatment, and it is the
+// only shape worth asking the weather service about when the bundled list
+// has nothing.
+const looksLikeIdent = s => /^[A-Za-z0-9]{2,5}$/.test((s || '').trim())
 
 function usePlaceholderFlip() {
   const [display, setDisplay] = useState(PLACEHOLDERS[0])
@@ -14,7 +27,7 @@ function usePlaceholderFlip() {
   useEffect(() => {
     let cancelled = false
 
-    function flipTo(target, currentDisplay, done) {
+    function flipTo(target, done) {
       const steps = 10
       let step = 0
 
@@ -40,8 +53,7 @@ function usePlaceholderFlip() {
     function cycle() {
       if (cancelled) return
       indexRef.current = (indexRef.current + 1) % PLACEHOLDERS.length
-      const target = PLACEHOLDERS[indexRef.current]
-      flipTo(target, display, () => {
+      flipTo(PLACEHOLDERS[indexRef.current], () => {
         if (!cancelled) frameRef.current = setTimeout(cycle, 2200)
       })
     }
@@ -56,86 +68,163 @@ function usePlaceholderFlip() {
   return display
 }
 
-export default function AirportPickerModal({ onConfirm, onClose, label = 'Home Airport', title = 'Change Airport', confirmLabel = 'Set Airport' }) {
-  const [value, setValue]      = useState('')
-  const [status, setStatus]    = useState('idle') // idle | checking | valid | invalid
-  const [airportName, setName] = useState(null)
-  const inputRef  = useRef(null)
-  const timerRef  = useRef(null)
+function ResultRow({ r, first, onPick }) {
+  const dist = r.distNm == null ? null
+    : `${r.distNm < 10 ? r.distNm.toFixed(1) : Math.round(r.distNm)} nm`
+  const sub = [placeLabel(r), dist].filter(Boolean).join(' · ')
+  return (
+    <div
+      onClick={() => onPick(r.ident)}
+      role="button" tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(r.ident) } }}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '10px 14px',
+        borderTop: first ? 'none' : '0.5px solid var(--border)',
+        cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+      }}>
+      <span style={{
+        fontFamily: 'monospace', fontSize: 14, fontWeight: 700,
+        color: 'var(--text)', minWidth: 46, letterSpacing: '0.03em',
+      }}>{r.ident}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{
+          display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{r.name || r.ident}</span>
+        {sub && (
+          <span style={{
+            display: 'block', fontSize: 11, color: 'var(--text-tertiary)', marginTop: 1,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{sub}</span>
+        )}
+      </span>
+      {r.iata && (
+        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
+          {r.iata}
+        </span>
+      )}
+    </div>
+  )
+}
+
+export default function AirportPickerModal({
+  onConfirm, onClose, current,
+  label = 'Home Airport', title = 'Change Airport', confirmLabel = 'Set Airport',
+}) {
+  const [value, setValue]     = useState('')
+  const [results, setResults] = useState([])
+  const [busy, setBusy]       = useState(false)
+  const [note, setNote]       = useState(null)   // 'nearby' | 'none' | null
+  const inputRef = useRef(null)
+  const timerRef = useRef(null)
+  const reqRef   = useRef(0)                     // guards against out-of-order async results
   const placeholder = usePlaceholderFlip()
+
+  // Both optional: the provider may not be mounted, and location may be
+  // denied. Either way it costs only the distances and the nearby list.
+  const coords = useHomeLocation()?.coords ?? null
+  const near = coords ? { lat: coords.lat, lon: coords.lon } : null
 
   useEffect(() => {
     const id = setTimeout(() => inputRef.current?.focus(), 80)
     return () => clearTimeout(id)
   }, [])
 
+  // An empty box offers what is close by rather than a blank panel. This is
+  // also the diversion case: the pilot who cannot name the field they want is
+  // usually the one who most needs to find it.
+  useEffect(() => {
+    if (value.trim() || !near) return
+    let cancelled = false
+    nearbyAirports(near.lat, near.lon, { limit: 8 }).then(r => {
+      if (cancelled) return
+      setResults(r)
+      setNote(r.length ? 'nearby' : null)
+    })
+    return () => { cancelled = true }
+  }, [value, coords])
+
   function handleChange(e) {
-    const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4)
+    // Free text: letters, digits, spaces and the punctuation real airport
+    // names carry. The old input stripped everything but A-Z0-9 and cut at
+    // four characters, which is precisely what made "Barrie" impossible.
+    const v = e.target.value.replace(/[^\p{L}\p{N}\s'\-./]/gu, '').slice(0, 40)
     setValue(v)
-    setStatus('idle')
-    setName(null)
     clearTimeout(timerRef.current)
-    if (v.length >= 3) {
-      setStatus('checking')
-      timerRef.current = setTimeout(() => validate(v), 650)
-    }
+    const q = v.trim()
+    if (!q) { setResults([]); setNote(null); setBusy(false); return }
+    setBusy(true)
+    timerRef.current = setTimeout(() => runSearch(q), 160)
   }
 
-  async function validate(icao) {
-    try {
-      // Use our Vercel proxy. No CORS issues, no third-party rate limits
-      const res  = await fetch(`/api/awc?path=airport&ids=${icao}&format=json`, { signal: AbortSignal.timeout(8000) })
-      const data = await res.json()
-      if (Array.isArray(data) && data.length > 0) {
-        const raw  = data[0]
-        const name = raw.name ?? raw.site ?? raw.icaoId
-        setName(name)
-        setStatus('valid')
+  async function runSearch(q) {
+    const req = ++reqRef.current
+    const hits = await searchAirports(q, { limit: 20, near })
+    if (req !== reqRef.current) return
+
+    if (hits.length) {
+      setResults(hits)
+      setNote(null)
+      setBusy(false)
+      return
+    }
+
+    // Nothing bundled. A code-shaped query may still name a real reporting
+    // station that is not an airport in OurAirports — CYLS's own automated
+    // station files as CXBI — so it earns one online lookup before the app
+    // calls the field unknown. Longer queries are place names, and the
+    // bundled list is already the complete answer for those.
+    if (looksLikeIdent(q)) {
+      const id = q.toUpperCase()
+      try {
+        const res = await fetch(`/api/awc?path=metar&ids=${id}&format=json&hours=3`, { signal: AbortSignal.timeout(8000) })
+        const data = await res.json()
+        if (req !== reqRef.current) return
+        if (Array.isArray(data) && data.length && data[0]?.icaoId) {
+          const m = data[0]
+          setResults([{
+            ident: m.icaoId, name: m.name ?? m.icaoId, city: '', iata: '',
+            country: '', countryName: '', cls: 0,
+            lat: m.lat, lon: m.lon, distNm: null,
+          }])
+          setNote(null); setBusy(false)
+          return
+        }
+      } catch { /* offline, or the proxy is unreachable — fall through */ }
+
+      const known = await findAirport(id)
+      if (req !== reqRef.current) return
+      if (known) {
+        setResults([{
+          ident: known.icaoId, name: known.name, city: '', iata: '',
+          country: '', countryName: '', cls: 0,
+          lat: known.lat, lon: known.lon, distNm: null,
+        }])
+        setNote(null); setBusy(false)
         return
       }
-      // Fall back to METAR check (covers stations without airport record)
-      const res2  = await fetch(`/api/awc?path=metar&ids=${icao}&format=json&hours=3`, { signal: AbortSignal.timeout(8000) })
-      const data2 = await res2.json()
-      if (Array.isArray(data2) && data2.length > 0 && data2[0]?.icaoId) {
-        const raw  = data2[0]
-        const name = raw.name ?? raw.site ?? raw.stationName ?? raw.icaoId
-        setName(name)
-        setStatus('valid')
-        return
-      }
-    } catch { /* fall through to the bundled list */ }
-
-    // Both AWC paths above answer "does this field report weather", not "does
-    // it exist" — see findAirport(). The bundled list is the last word, and
-    // also the only one that works offline.
-    const known = await findAirport(icao)
-    if (known) {
-      setName(known.name)
-      setStatus('valid')
-    } else {
-      setStatus('invalid')
     }
+
+    if (req !== reqRef.current) return
+    setResults([])
+    setNote('none')
+    setBusy(false)
   }
 
-  function confirm() {
-    if (status === 'valid') onConfirm(value)
+  function pick(ident) {
+    if (ident) onConfirm(ident)
   }
 
-  const dotColor =
-    status === 'valid'   ? '#4ade80' :
-    status === 'invalid' ? '#f87171' :
-    status === 'checking' ? '#facc15' :
-    'var(--text-tertiary)'
+  // Enter and the confirm button both take the top result, so typing
+  // "Toronto" and pressing go does the obvious thing.
+  const top = results[0] ?? null
+  const identish = looksLikeIdent(value)
 
   return createPortal(
     <>
       <style>{`
-        @keyframes apt-ping {
-          75%, 100% { transform: scale(2); opacity: 0; }
-        }
-        @keyframes apt-spin {
-          to { transform: rotate(360deg); }
-        }
+        @keyframes apt-spin { to { transform: rotate(360deg); } }
       `}</style>
       <div
         onClick={onClose}
@@ -151,7 +240,7 @@ export default function AirportPickerModal({ onConfirm, onClose, label = 'Home A
         <div
           onClick={e => e.stopPropagation()}
           style={{
-            width: '100%', maxWidth: 320,
+            width: '100%', maxWidth: 380,
             background: 'var(--bg-card)',
             border: '0.5px solid var(--border)',
             borderRadius: 22,
@@ -159,7 +248,6 @@ export default function AirportPickerModal({ onConfirm, onClose, label = 'Home A
             boxShadow: 'var(--shadow-md)',
           }}
         >
-          {/* Header */}
           <div style={{
             fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
             textTransform: 'uppercase', color: 'var(--text-tertiary)',
@@ -169,53 +257,45 @@ export default function AirportPickerModal({ onConfirm, onClose, label = 'Home A
           </div>
           <div style={{
             fontSize: 19, fontWeight: 700, color: 'var(--text)',
-            letterSpacing: '-0.3px', marginBottom: 16,
+            letterSpacing: '-0.3px', marginBottom: 4,
           }}>
             {title}
           </div>
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 14 }}>
+            Search by code, airport name, city or IATA
+          </div>
 
-          {/* Input row with dot indicator */}
           <div style={{ position: 'relative' }}>
-            {/* Dot indicator */}
-            <div style={{
-              position: 'absolute', left: 14, top: '50%',
-              transform: 'translateY(-50%)',
-              zIndex: 2,
-            }}>
-              <span style={{ position: 'relative', display: 'flex', width: 7, height: 7 }}>
-                {status === 'valid' && (
-                  <span style={{
-                    position: 'absolute', inset: 0, borderRadius: '50%',
-                    background: dotColor, opacity: 0.75,
-                    animation: 'apt-ping 1.2s cubic-bezier(0,0,0.2,1) infinite',
-                  }} />
-                )}
-                <span style={{
-                  position: 'relative', width: 7, height: 7, borderRadius: '50%',
-                  background: dotColor,
-                  transition: 'background 0.3s',
-                  animation: status === 'checking' ? 'apt-spin 0.9s linear infinite' : 'none',
-                  display: 'block',
-                }} />
-              </span>
-            </div>
-
+            {busy && (
+              <span style={{
+                position: 'absolute', right: 14, top: '50%', marginTop: -6,
+                width: 12, height: 12, borderRadius: '50%', boxSizing: 'border-box',
+                border: '2px solid var(--border)', borderTopColor: 'var(--accent)',
+                animation: 'apt-spin 0.9s linear infinite', zIndex: 2,
+              }} />
+            )}
             <input
               ref={inputRef}
               value={value}
               onChange={handleChange}
-              onKeyDown={e => e.key === 'Enter' && confirm()}
+              onKeyDown={e => { if (e.key === 'Enter' && top) { e.preventDefault(); pick(top.ident) } }}
               placeholder={placeholder}
-              maxLength={4}
-              autoCapitalize="characters"
+              autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
               style={{
                 width: '100%', boxSizing: 'border-box',
-                padding: '13px 14px 13px 30px',
-                fontSize: 28, fontWeight: 700, letterSpacing: '0.12em',
-                textTransform: 'uppercase',
-                fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
+                padding: '13px 34px 13px 14px',
+                // Codes keep the monospace treatment the old picker had. A
+                // place name gets normal text — "Barrie-Lake Simcoe" in
+                // wide-tracked monospace neither fits nor reads.
+                fontSize: identish ? 24 : 17,
+                fontWeight: 700,
+                letterSpacing: identish ? '0.1em' : '0',
+                textTransform: identish ? 'uppercase' : 'none',
+                fontFamily: identish
+                  ? 'monospace'
+                  : '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
                 background: 'var(--bg-card-2)',
                 border: '0.5px solid var(--border)',
                 borderRadius: 12,
@@ -226,26 +306,38 @@ export default function AirportPickerModal({ onConfirm, onClose, label = 'Home A
             />
           </div>
 
-          {/* Status line */}
-          <div style={{ minHeight: 22, display: 'flex', alignItems: 'center', marginTop: 8, paddingLeft: 2 }}>
-            {status === 'checking' && (
-              <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                Looking up airport…
-              </span>
-            )}
-            {status === 'valid' && (
-              <span style={{ fontSize: 12, color: 'var(--ok)', fontWeight: 600 }}>
-                {airportName ?? value}
-              </span>
-            )}
-            {status === 'invalid' && (
-              <span style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600 }}>
-                Airport not found. Check the ICAO code
-              </span>
-            )}
-          </div>
+          {note === 'nearby' && (
+            <div style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
+              textTransform: 'uppercase', color: 'var(--text-tertiary)',
+              margin: '14px 2px 6px',
+            }}>
+              Nearest to you
+            </div>
+          )}
 
-          {/* Buttons */}
+          {results.length > 0 && (
+            <div style={{
+              marginTop: note === 'nearby' ? 0 : 12,
+              background: 'var(--bg-card-2)',
+              border: '0.5px solid var(--border)',
+              borderRadius: 12,
+              overflow: 'hidden',
+              maxHeight: 264, overflowY: 'auto',
+              WebkitOverflowScrolling: 'touch',
+            }}>
+              {results.map((r, i) => (
+                <ResultRow key={r.ident + i} r={r} first={i === 0} onPick={pick} />
+              ))}
+            </div>
+          )}
+
+          {note === 'none' && !busy && (
+            <div style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600, margin: '12px 2px 0' }}>
+              No airport matches “{value.trim()}”
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
             <button
               onClick={onClose}
@@ -260,15 +352,15 @@ export default function AirportPickerModal({ onConfirm, onClose, label = 'Home A
               Cancel
             </button>
             <button
-              onClick={confirm}
-              disabled={status !== 'valid'}
+              onClick={() => top && pick(top.ident)}
+              disabled={!top}
               style={{
                 flex: 1, padding: '12px 0', borderRadius: 12,
-                background: status === 'valid' ? 'var(--accent)' : 'var(--accent-light)',
+                background: top ? 'var(--accent)' : 'var(--accent-light)',
                 border: 'none',
-                color: status === 'valid' ? 'var(--accent-fg)' : 'var(--text-tertiary)',
+                color: top ? 'var(--accent-fg)' : 'var(--text-tertiary)',
                 fontSize: 14, fontWeight: 700,
-                cursor: status === 'valid' ? 'pointer' : 'default',
+                cursor: top ? 'pointer' : 'default',
                 transition: 'all 0.25s',
               }}
             >

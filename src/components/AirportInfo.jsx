@@ -13,9 +13,14 @@ import { getProcedures, getProceduresCycle } from '../lib/procedureCharts'
 import { useBackOverride } from '../context/BackOverride'
 import airportDetails from '../data/geo/airport_details.json'
 import {
-  loadWeather, parseFltCat, parseWindParts, parseVisib, parseCeiling,
-  parseTemp, parseAltim, parseAirportName, colorizeTaf, parseObsAge, parseTafAge,
+  loadWeather, nearestStation, parseFltCat, parseWindParts, parseWind, parseVisib, parseCeiling,
+  parseTemp, parseDewp, parseAltim, parseAirportName, colorizeTaf,
+  parseObsAge, parseTafAge, parseFetchAge,
 } from '../lib/weather'
+import {
+  loadAreaWeather, areaTemp, areaDewp, areaWind, areaVis,
+  areaCloud, areaPressure, areaCondition,
+} from '../lib/areaWeather'
 
 const TABS = ['Weather', 'Frequencies', 'Runways', 'Procedures']
 
@@ -90,6 +95,117 @@ function RawTextRow({ title, text, first, colorize, color, age }) {
 }
 
 
+const CARD = { background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }
+
+// The banner that has to be impossible to miss.
+//
+// Everything below it came from somewhere other than the airport the pilot
+// typed, and a weather card that doesn't say so is worse than no card at all
+// — it reads as the field's own report. Hence a tinted strip rather than a
+// footnote, and hence the airport's own ident in the sentence.
+function NotFromHere({ children }) {
+  return (
+    <div style={{
+      padding: '10px 14px', background: 'rgba(255,159,10,0.12)',
+      borderBottom: '0.5px solid var(--border)',
+      fontSize: 12, fontWeight: 600, color: '#B26B00', lineHeight: 1.45,
+    }}>
+      {children}
+    </div>
+  )
+}
+
+function AreaRow({ label, value, first }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '10px 16px', borderTop: first ? 'none' : '0.5px solid var(--border)',
+    }}>
+      <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', fontFamily: 'monospace' }}>{value}</span>
+    </div>
+  )
+}
+
+// Shown only for a field that publishes no observation of its own — the
+// noReport gate in loadWeather, never a failed fetch. Two independent
+// stand-ins, each labelled with where it actually came from:
+//
+//   * the nearest station that does report. Within ON_FIELD_NM this is the
+//     field's own automated station under a different identifier (CYLS's is
+//     CXBI), so it is introduced as this airport's weather; further out it
+//     is introduced as somewhere else's, with distance and bearing
+//   * a model estimate for the airport's own coordinates, which fills the
+//     gaps a partial AUTO station leaves — CXBI publishes no visibility, no
+//     altimeter and no cloud at all
+//
+// No flight category is derived from either one. See areaWeather.js.
+function SubstituteWeather({ icao, sub, loading, units, RawRow }) {
+  if (!sub && loading) {
+    return <div style={CARD}><EmptyRow>Looking for nearby weather…</EmptyRow></div>
+  }
+  const station = sub?.station
+  const area = sub?.area
+  if (!station && !area) {
+    return (
+      <div style={CARD}>
+        <EmptyRow>{icao} publishes no weather report, and no station or forecast could be reached nearby.</EmptyRow>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {station && (
+        <div style={{ ...CARD, marginBottom: 12 }}>
+          <NotFromHere>
+            {station.onField
+              ? <>{icao} files no METAR under its own identifier. This is its on-field automated station, <b>{station.ident}</b>, {station.distNm < 1 ? 'on the airport' : `${station.distNm.toFixed(1)} nm away`}.</>
+              : <>{icao} publishes no weather. This is <b>{station.ident}</b> — the nearest reporting station, {Math.round(station.distNm)} nm {station.point}. It is not {icao} weather.</>}
+          </NotFromHere>
+          <div style={{ padding: '12px 16px 4px' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{station.name || station.ident}</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 0' }}>
+            <AreaRow first label="Wind" value={parseWind(station.metar, units)} />
+            <AreaRow first label="Temp" value={parseTemp(station.metar, units)} />
+            <AreaRow label="Visibility" value={parseVisib(station.metar, units)} />
+            <AreaRow label="Dewpoint" value={parseDewp(station.metar, units)} />
+          </div>
+          <RawRow title={`Raw METAR · ${station.ident}`} text={station.metar?.rawOb} age={parseObsAge(station.metar)} />
+          <RawRow title={`Raw TAF · ${station.ident}`} text={station.taf?.rawTAF} colorize age={parseTafAge(station.taf)} />
+        </div>
+      )}
+
+      {area && (
+        <div style={CARD}>
+          <NotFromHere>
+            Area conditions computed for {icao}'s coordinates by a weather model — not observed at the airport, and not a substitute for a briefing. No flight category.
+          </NotFromHere>
+          {areaCondition(area) && (
+            <div style={{ padding: '12px 16px 4px' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{areaCondition(area)}</div>
+            </div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 0' }}>
+            <AreaRow first label="Wind" value={areaWind(area, units)} />
+            <AreaRow first label="Temp" value={areaTemp(area, units)} />
+            <AreaRow label="Visibility" value={areaVis(area, units)} />
+            <AreaRow label="Dewpoint" value={areaDewp(area, units)} />
+            <AreaRow label="Cloud cover" value={areaCloud(area)} />
+            <AreaRow label="Pressure" value={areaPressure(area, units)} />
+          </div>
+          {parseFetchAge(area.observedAt) && (
+            <div style={{ padding: '10px 16px', borderTop: '0.5px solid var(--border)', fontSize: 12, color: 'var(--text-tertiary)' }}>
+              Model valid {parseFetchAge(area.observedAt)}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
 export default function AirportInfo() {
   const { profile } = usePilotProfile()
   const units = profile ?? {}
@@ -103,6 +219,9 @@ export default function AirportInfo() {
   const [procedures, setProcedures] = useState(undefined) // undefined=loading, object=data, null=none published
   const [proceduresCycle, setProceduresCycle] = useState(null)
   const [openChart, setOpenChart] = useState(null) // null | { chartName, pdfName }
+  // Stand-in weather, for fields that publish none of their own only.
+  const [sub, setSub] = useState(null)             // null | { station, area }
+  const [subLoading, setSubLoading] = useState(false)
 
   // Claims the swipe-back gesture while a chart is open, so it returns to
   // the Procedures list instead of falling through to CardOverlay's own
@@ -173,6 +292,28 @@ export default function AirportInfo() {
     return () => { cancelled = true }
   }, [info, icao])
 
+  // Stand-in weather, and only for a field that publishes none of its own.
+  //
+  // The gate is wx.noReport — AWC answered and had nothing — rather than a
+  // simple "no metar object". A failed fetch also leaves wx.metar empty, and
+  // covering that case with a model estimate would quietly replace a real
+  // observation with a computed one every time the network hiccuped.
+  useEffect(() => {
+    setSub(null)
+    if (!wx?.noReport || !info || info.lat == null || info.lon == null) return
+    let cancelled = false
+    setSubLoading(true)
+    Promise.all([
+      nearestStation(info.lat, info.lon, { withinNm: 60 }).catch(() => null),
+      loadAreaWeather(icao, info.lat, info.lon).catch(() => null),
+    ]).then(([station, area]) => {
+      if (cancelled) return
+      setSub({ station, area })
+      setSubLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [wx, info, icao])
+
   function selectAirport(id) {
     setIcao(id)
     setPickerOpen(false)
@@ -181,7 +322,21 @@ export default function AirportInfo() {
   }
 
   const details = icao ? airportDetails[icao] : null
-  const cat = wx?.metar ? parseFltCat(wx.metar) : null
+
+  // A station on the field under a different identifier is this airport's
+  // weather, so it feeds the header exactly as the field's own report would
+  // — CYLS's automated station files as CXBI, 0.4 nm away. A station further
+  // out is somewhere else's weather and must never reach the header, where
+  // nothing marks it as borrowed; it stays confined to the labelled cards in
+  // the Weather tab.
+  const ownMetar = wx?.metar ?? (sub?.station?.onField ? sub.station.metar : null)
+
+  // Only ever show a flight category that was actually published. parseFltCat
+  // falls back to VFR when the field is absent, and asserting VFR on the
+  // strength of a station reporting neither visibility nor ceiling — which is
+  // precisely what a partial AUTO station like CXBI does — would be a green
+  // light with no evidence behind it.
+  const cat = ownMetar?.fltCat ? parseFltCat(ownMetar) : null
   const displayName = info?.name?.trim() || (wx?.metar ? parseAirportName(wx.metar) : null)
 
   if (openChart) {
@@ -236,10 +391,10 @@ export default function AirportInfo() {
                 runways={details?.r}
                 cat={cat}
                 loading={loading && !wx}
-                temp={wx?.metar ? parseTemp(wx.metar, units) : '—'}
-                windDir={wx?.metar ? parseWindParts(wx.metar, units).dir : null}
-                windSpeed={wx?.metar ? parseWindParts(wx.metar, units).speed : '—'}
-                vis={wx?.metar ? parseVisib(wx.metar, units) : '—'}
+                temp={ownMetar ? parseTemp(ownMetar, units) : '—'}
+                windDir={ownMetar ? parseWindParts(ownMetar, units).dir : null}
+                windSpeed={ownMetar ? parseWindParts(ownMetar, units).speed : '—'}
+                vis={ownMetar ? parseVisib(ownMetar, units) : '—'}
                 officialChart={procedures?.airport?.[0] ?? null}
                 onOpenOfficial={() => {
                   const [chartName, pdfName] = procedures.airport[0]
@@ -264,13 +419,23 @@ export default function AirportInfo() {
                   </div>
                 )}
                 {(wx?.metar?.rawOb || wx?.taf?.rawTAF) ? (
-                  <div style={{ background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+                  <div style={CARD}>
                     <RawTextRow title="Raw METAR" text={wx.metar?.rawOb} color={cat?.color} age={parseObsAge(wx.metar)} first />
                     <RawTextRow title="Raw TAF" text={wx.taf?.rawTAF} colorize age={parseTafAge(wx.taf)} first={!wx.metar?.rawOb} />
                   </div>
+                ) : loading ? (
+                  <div style={CARD}><EmptyRow>Loading weather…</EmptyRow></div>
+                ) : wx?.noReport ? (
+                  <SubstituteWeather
+                    icao={icao} sub={sub} loading={subLoading} units={units}
+                    RawRow={RawTextRow}
+                  />
                 ) : (
-                  <div style={{ background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-                    <EmptyRow>{loading ? 'Loading weather…' : 'No weather available for this airport'}</EmptyRow>
+                  // Not "no weather at this airport" — the lookup itself
+                  // failed, and saying otherwise would blame the field for
+                  // the network.
+                  <div style={CARD}>
+                    <EmptyRow>{wx?.error ? "Couldn't reach the weather service. Pull down to try again." : 'No weather available for this airport'}</EmptyRow>
                   </div>
                 )}
               </div>
