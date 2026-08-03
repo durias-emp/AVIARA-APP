@@ -10,7 +10,7 @@
 // What is deliberately NOT borrowed: anything that ranks pilots by speed or
 // altitude. Competing on those is a flight-safety problem, not engagement.
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MapContainer, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet'
 import ChartLayers, { Basemap } from '../../components/ChartLayers'
@@ -90,10 +90,15 @@ const IconLocate = () => (
     <path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" strokeLinecap="round" />
   </svg>
 )
-const IconChevron = ({ up }) => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-    style={{ transform: up ? 'rotate(180deg)' : 'none', transition: 'transform 200ms' }}>
-    <path d="M6 9l6 6 6-6" />
+// An arrow with a shaft, not a bare chevron. A chevron is a hint that
+// something continues; this button moves the panel, and an arrow says which
+// way it is going.
+const IconArrow = ({ up }) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+    style={{ transform: up ? 'rotate(180deg)' : 'none', transition: 'transform 220ms cubic-bezier(0.4,0,0.2,1)' }}>
+    <path d="M12 4v15" />
+    <path d="M6 13.5l6 6 6-6" />
   </svg>
 )
 const IconRoute = () => (
@@ -116,10 +121,11 @@ const IconRoute = () => (
 // invalidateSize also has to be told not to animate. The default is a
 // pan-animated resize, and animating a resize that happens while the map is
 // still settling is what produces the stuck transform in the first place.
-function SizeWatcher({ mapRef }) {
+function SizeWatcher({ mapRef, onReady }) {
   const map = useMap()
   useEffect(() => {
     mapRef.current = map
+    onReady?.()
     const el = map.getContainer()
     const kick = () => map.invalidateSize({ animate: false, pan: false })
     // Once after layout settles, then only when the element actually changes
@@ -128,7 +134,7 @@ function SizeWatcher({ mapRef }) {
     const ro = new ResizeObserver(kick)
     ro.observe(el)
     return () => { cancelAnimationFrame(raf); ro.disconnect() }
-  }, [map, mapRef])
+  }, [map, mapRef, onReady])
   return null
 }
 
@@ -165,6 +171,10 @@ export default function MapHome() {
   // Units come from the pilot profile, so the ribbon reads in the same units
   // as the rest of the app rather than inventing its own.
   const [units, setUnits] = useState({})
+  // Flipped once Leaflet exists, purely so the framing effect below re-runs
+  // when it does.
+  const [mapReady, setMapReady] = useState(false)
+  const onMapReady = useCallback(() => setMapReady(true), [])
   const mapRef = useRef(null)
   // Created once, via lazy initial state rather than a ref written during
   // render: a recording must outlive re-renders, and reading or writing a ref
@@ -258,6 +268,12 @@ export default function MapHome() {
   // A ref, not state: this is a latch that guards an imperative camera move,
   // and flipping state inside the same effect that reads it is the cascading
   // render the compiler rightly rejects. Nothing renders from it.
+  // mapReady is in the dependency list for a reason. The base can resolve
+  // before Leaflet has built the map, and the old guard just returned when
+  // mapRef was empty: nothing re-ran afterwards, so the map kept the default
+  // centre while the ribbon showed the base airport. The two disagreed on
+  // screen, which is exactly the kind of thing a pilot should never have to
+  // reconcile.
   const framed = useRef(false)
   useEffect(() => {
     if (framed.current || !mapRef.current) return
@@ -271,7 +287,7 @@ export default function MapHome() {
       framed.current = true
       mapRef.current.setView([pos.lat, pos.lon], 11, { animate: false })
     }
-  }, [base, baseResolved, pos])
+  }, [base, baseResolved, pos, mapReady])
 
   const toggleLayer = (k) => setLayers(prev => ({ ...prev, [k]: !prev[k] }))
 
@@ -414,7 +430,7 @@ export default function MapHome() {
     <div style={{ position: 'fixed', inset: 0, background: '#e8e0d8', overflow: 'hidden' }}>
       <MapContainer center={INITIAL_CENTER} zoom={10} zoomControl={false} attributionControl={false}
         style={{ height: '100%', width: '100%' }}>
-        <SizeWatcher mapRef={mapRef} />
+        <SizeWatcher mapRef={mapRef} onReady={onMapReady} />
         <Basemap />
         <ChartLayers layers={layers} openaipKey={openaipKey} />
         {track.length > 1 && (
@@ -440,14 +456,26 @@ export default function MapHome() {
           opens the app for. The menu home showed conditions on arrival and the
           map home has to keep doing that, or weather becomes something you go
           looking for rather than something you are told. */}
-      <div style={{
-        position: 'absolute', top: 'calc(var(--safe-top) + 10px)', left: 14, right: 14,
-        zIndex: 500, display: 'flex', alignItems: 'center', gap: 10,
-      }}>
+      <div style={{ position: 'absolute', top: 'calc(var(--safe-top) + 10px)', left: 14, zIndex: 501 }}>
         <Ctrl onClick={() => setSheetOpen(o => !o)} title={sheetOpen ? 'Hide panel' : 'Show panel'} size={46}>
-          <IconChevron up={!sheetOpen} />
+          <IconArrow up={!sheetOpen} />
         </Ctrl>
-        {base && <WeatherRibbon icao={base.ident} units={units} />}
+      </div>
+
+      {/* Centred on the screen rather than laid out beside the arrow, so the
+          conditions sit where the eye lands instead of being pushed off centre
+          by whatever happens to be to their left. The margins keep it clear of
+          the arrow on a narrow phone; past that the text ellipses. */}
+      <div style={{
+        position: 'absolute', top: 'calc(var(--safe-top) + 10px)', left: 0, right: 0,
+        zIndex: 500, display: 'flex', justifyContent: 'center',
+        padding: '0 74px', pointerEvents: 'none',
+      }}>
+        {base && (
+          <div style={{ pointerEvents: 'auto', minWidth: 0 }}>
+            <WeatherRibbon icao={base.ident} units={units} />
+          </div>
+        )}
       </div>
 
       {/* Right stack: charts, then position. Ordered by how often a hand
