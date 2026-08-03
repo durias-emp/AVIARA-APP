@@ -72,6 +72,61 @@ function tfrDetailDevProxy() {
   }
 }
 
+// Dev-only middleware mirroring api/procedure-chart.js — same reasoning as
+// tfrDevProxy above. Binary-safe on purpose (Buffer, not text()) — see that
+// file's header comment for why a naive text-proxy template would corrupt
+// the PDF bytes.
+function procedureChartDevProxy() {
+  const CYCLE_RE = /^\d{3,4}$/
+  const PDF_RE = /^[A-Za-z0-9_.-]+\.PDF$/i
+  const MAX_BYTES = 4.5 * 1024 * 1024
+
+  return {
+    name: 'procedure-chart-dev-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/procedure-chart', async (req, res) => {
+        const { searchParams } = new URL(req.url, 'http://localhost')
+        const cycle = searchParams.get('cycle')
+        const pdf = searchParams.get('pdf')
+
+        if (!CYCLE_RE.test(cycle ?? '') || !PDF_RE.test(pdf ?? '')) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: "cycle and pdf must match the FAA d-TPP metadata feed's own values" }))
+          return
+        }
+
+        try {
+          const upstream = await fetch(`https://aeronav.faa.gov/d-tpp/${cycle}/${pdf}`, {
+            headers: { 'User-Agent': 'AVIARA-App/1.0' },
+            signal: AbortSignal.timeout(20000),
+          })
+          if (!upstream.ok) {
+            res.statusCode = upstream.status
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: `FAA server returned ${upstream.status}` }))
+            return
+          }
+          const buffer = Buffer.from(await upstream.arrayBuffer())
+          if (buffer.length > MAX_BYTES) {
+            res.statusCode = 502
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Chart PDF is too large to proxy' }))
+            return
+          }
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'application/pdf')
+          res.end(buffer)
+        } catch (err) {
+          res.statusCode = 502
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'upstream fetch failed', detail: err.message }))
+        }
+      })
+    },
+  }
+}
+
 function awcDevProxy() {
   return {
     name: 'awc-dev-proxy',
@@ -328,6 +383,111 @@ Each row in "cells" must have one entry per axis2 value, in the same order as "a
   }
 }
 
+// Same AI-photo-extraction pattern as pohDevProxy() above — dev-server
+// mirror of api/extract-logbook-page.js, prompt/logic hand-duplicated for
+// the same "separate bundling contexts" reason (see that file's own header
+// comment).
+function logbookPageDevProxy() {
+  const PROMPT = `You are reading a page photographed from a pilot's paper flight logbook. It has one row per flight, with column headers at the top — these vary between logbooks and pilots, so read whatever headers this specific page actually uses.
+
+For each row, extract as many of these fields as the page has columns for (map the page's own column headers to these — e.g. a column labeled "A/C" or "Tail #" maps to aircraftReg; a column labeled "Total" or "Total Time" maps to totalTime):
+- date (YYYY-MM-DD if the year is legible on the page, otherwise MM-DD)
+- aircraftReg (tail number, e.g. N12345)
+- from, to (departure/destination airport identifiers)
+- route
+- totalTime, pic, sic, night, solo, crossCountry (decimal hours or nm, exactly as printed)
+- dayTakeoffs, nightTakeoffs, dayLandings, nightLandings (integer counts)
+- actualInstrument, simulatedInstrument, holds, dualGiven, dualReceived, groundTraining (decimal hours or counts, exactly as printed)
+- comments (any remarks column)
+
+Read only what's actually legible and printed on the page — never invent or guess a value you can't clearly read, and never fill in a zero for a blank cell. If a cell is blank, illegible, or the page has no column for a field, omit that field from that row entirely.
+
+Respond with strict JSON in exactly this shape, and nothing else:
+{ "entries": [ { "date": "...", "aircraftReg": "...", "from": "...", ... }, ... ] }
+Every entry in the array is one row/flight from the page, in the order they appear top to bottom.`
+
+  return {
+    name: 'logbook-page-dev-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/extract-logbook-page', async (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'Method not allowed' }))
+          return
+        }
+
+        let body = ''
+        for await (const chunk of req) body += chunk
+        let imageDataUrl
+        try { ({ imageDataUrl } = JSON.parse(body || '{}')) } catch { imageDataUrl = null }
+
+        if (!imageDataUrl?.startsWith('data:image/')) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'imageDataUrl is required' }))
+          return
+        }
+
+        const apiKey = process.env.OPENAI_API_KEY
+        if (!apiKey) {
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'OPENAI_API_KEY not configured' }))
+          return
+        }
+
+        try {
+          const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'gpt-4o',
+              response_format: { type: 'json_object' },
+              max_tokens: 4000,
+              messages: [{
+                role: 'user',
+                content: [
+                  { type: 'text', text: PROMPT },
+                  { type: 'image_url', image_url: { url: imageDataUrl } },
+                ],
+              }],
+            }),
+          })
+
+          if (!openaiRes.ok) {
+            const err = await openaiRes.json().catch(() => ({}))
+            res.statusCode = openaiRes.status
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: err.error?.message ?? 'OpenAI request failed' }))
+            return
+          }
+
+          const data = await openaiRes.json()
+          const content = data.choices?.[0]?.message?.content
+          let parsed
+          try {
+            parsed = JSON.parse(content)
+          } catch {
+            res.statusCode = 502
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'AI response was not valid JSON — try again' }))
+            return
+          }
+
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ entries: Array.isArray(parsed.entries) ? parsed.entries : [] }))
+        } catch (err) {
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: err.message }))
+        }
+      })
+    },
+  }
+}
+
 // Phone testing needs HTTPS + a network-visible host, since phone browsers
 // block location access on a plain http:// LAN address. That's off by
 // default (`npm run dev`) so the regular local workflow is untouched, and
@@ -350,6 +510,8 @@ export default defineConfig(({ mode }) => {
       tfrDetailDevProxy(),
       iconDevProxy(),
       pohDevProxy(),
+      logbookPageDevProxy(),
+      procedureChartDevProxy(),
       react(),
       tailwindcss(),
       ...(phoneTest ? [basicSsl()] : []),

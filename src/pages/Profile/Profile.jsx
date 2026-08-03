@@ -1,49 +1,10 @@
-import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { usePilotProfile } from '../../context/PilotProfile'
 import { useAuth } from '../../context/AuthContext'
 import { BackButton } from '../../components/Shell'
 import { SegControl, UNIT_ROWS } from '../Onboarding/Onboarding'
-import { get } from '../../lib/db'
 import { pushAllToCloud, clearLocalData } from '../../lib/sync'
-import { getCurrencyStatus, fmtDate } from '../../lib/currency'
-
-const STATUS_COLOR = {
-  valid:      { color: 'var(--ok)',     bg: 'var(--ok-light)' },
-  expiring:   { color: 'var(--warn)',   bg: 'var(--warn-light)' },
-  expired:    { color: 'var(--danger)', bg: 'var(--danger-light)' },
-  incomplete: { color: 'var(--text-tertiary)', bg: 'var(--bg-card-2)' },
-}
-
-const STATUS_LABEL = {
-  valid: 'Valid',
-  expiring: 'Expiring soon',
-  expired: 'Expired',
-  incomplete: 'Not set',
-}
-
-function StatusRow({ label, status, expiresOn }) {
-  const c = STATUS_COLOR[status.status] ?? STATUS_COLOR.incomplete
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px' }}>
-      <div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{label}</div>
-        {expiresOn && (
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-            Expires {fmtDate(expiresOn)}
-          </div>
-        )}
-      </div>
-      <span style={{
-        fontSize: 11, fontWeight: 700, letterSpacing: '0.2px',
-        color: c.color, background: c.bg,
-        padding: '3px 9px', borderRadius: 10,
-      }}>
-        {STATUS_LABEL[status.status] ?? 'Not set'}
-      </span>
-    </div>
-  )
-}
 
 function Field({ label, children }) {
   return (
@@ -74,13 +35,9 @@ function TextInput({ value, onChange, placeholder, type = 'text' }) {
 export default function Profile() {
   const { profile, setProfile } = usePilotProfile()
   const { user, signOut } = useAuth()
-  const [currencyData, setCurrencyData] = useState(null)
+  const navigate = useNavigate()
   const [confirmSignOut, setConfirmSignOut] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
-
-  useEffect(() => {
-    get('currency', 'profile').then(saved => setCurrencyData(saved ?? {}))
-  }, [])
 
   async function handleSignOut() {
     setSigningOut(true)
@@ -99,31 +56,11 @@ export default function Profile() {
     setProfile(patch)
   }
 
-  let medicalStatus = { status: 'incomplete' }
-  let currentStatus = { status: 'incomplete' }
-  if (currencyData) {
-    const toNumericClass = v => {
-      if (v === 1 || v === 2 || v === 3) return v
-      return { '1st': 1, '2nd': 2, '3rd': 3 }[v] ?? null
-    }
-    const medical = {
-      examDate: currencyData.medical?.examDate || profile.medDate || '',
-      dob:      currencyData.medical?.dob      || profile.dob || '',
-      medClass: toNumericClass(currencyData.medical?.medClass ?? profile.medClass),
-    }
-    const current = {
-      flightReviewDate: currencyData.current?.flightReviewDate || profile.flightReview?.completionDate || '',
-    }
-    const result = getCurrencyStatus({ medical, current })
-    medicalStatus = result.valid
-    currentStatus = result.current
-  }
-
   return (
     <div style={{ padding: '0 0 32px' }}>
       <div style={{ padding: '18px 18px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <BackButton />
-        <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.4px' }}>Pilot Profile</div>
+        <BackButton onBack={() => navigate(-1)} />
+        <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.4px' }}>Profile Setup</div>
       </div>
 
       <div style={{ padding: '0 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -144,17 +81,6 @@ export default function Profile() {
             <TextInput value={profile.homeAirport} onChange={v => update({ homeAirport: v.toUpperCase() })} placeholder="CYQB" />
           </Field>
         </div>
-
-        <Link to="/currency" style={{ textDecoration: 'none' }}>
-          <div style={{ background: 'var(--bg-card)', border: '0.5px solid var(--border)', borderRadius: 16, overflow: 'hidden', cursor: 'pointer' }}>
-            <div style={{ padding: '14px 16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Currency</span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)' }}>Edit</span>
-            </div>
-            <StatusRow label="Medical validity" status={medicalStatus} expiresOn={medicalStatus.expiresOn} />
-            <StatusRow label="Pilot currency" status={currentStatus} expiresOn={currentStatus.expiresOn} />
-          </div>
-        </Link>
 
         <div style={{ background: 'var(--bg-card)', border: '0.5px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
           <div style={{ padding: '14px 16px 4px' }}>
@@ -177,23 +103,45 @@ export default function Profile() {
           <div style={{ padding: '14px 16px 4px' }}>
             <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Account</span>
           </div>
-          {user?.email && (
-            <div style={{ padding: '4px 16px 12px', fontSize: 13, color: 'var(--text-secondary)' }}>
-              Signed in as <span style={{ color: 'var(--text)', fontWeight: 600 }}>{user.email}</span>
-            </div>
+          {user ? (
+            <>
+              {user.email && (
+                <div style={{ padding: '4px 16px 12px', fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Signed in as <span style={{ color: 'var(--text)', fontWeight: 600 }}>{user.email}</span>
+                </div>
+              )}
+              <div style={{ padding: '0 16px 16px' }}>
+                <button
+                  onClick={() => setConfirmSignOut(true)}
+                  style={{
+                    width: '100%', padding: '12px', borderRadius: 'var(--r-sm)', border: 'none',
+                    background: 'var(--danger-light)', color: 'var(--danger)',
+                    fontSize: 15, fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  Sign Out
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ padding: '4px 16px 12px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                Not signed in — your data stays on this device only until you back it up.
+              </div>
+              <div style={{ padding: '0 16px 16px' }}>
+                <button
+                  onClick={() => navigate('/signin')}
+                  style={{
+                    width: '100%', padding: '12px', borderRadius: 'var(--r-sm)', border: 'none',
+                    background: 'var(--accent)', color: 'var(--accent-fg)',
+                    fontSize: 15, fontWeight: 700, cursor: 'pointer',
+                  }}
+                >
+                  Sign In / Back Up Data
+                </button>
+              </div>
+            </>
           )}
-          <div style={{ padding: '0 16px 16px' }}>
-            <button
-              onClick={() => setConfirmSignOut(true)}
-              style={{
-                width: '100%', padding: '12px', borderRadius: 'var(--r-sm)', border: 'none',
-                background: 'var(--danger-light)', color: 'var(--danger)',
-                fontSize: 15, fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              Sign Out
-            </button>
-          </div>
         </div>
       </div>
 

@@ -3,10 +3,13 @@ import { MapContainer, TileLayer, CircleMarker, Marker, Polyline, Polygon, Popup
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { HomeButton } from './Shell'
-import { useCurrentLocation } from '../hooks/useCurrentLocation'
-import { useLiveLocation } from '../hooks/useLiveLocation'
+import { useHomeLocation } from '../context/HomeLocation'
 import { useMapLayer } from '../hooks/useMapLayer'
 import { useMapOverlays } from '../hooks/useMapOverlays'
+import { useFlightDetector, DEFAULT_AUTO_DETECT_CONFIG } from '../hooks/useFlightDetector'
+import { useLogbook } from '../context/Logbook'
+import { useActiveAircraft } from '../context/ActiveAircraft'
+import { get } from '../lib/db'
 import { FLTCAT } from '../lib/weather'
 import { getAirports, getAirportDetails, getAuxAerodromes } from '../lib/aerodromes'
 import MapLayersMenu from './MapLayersMenu'
@@ -96,15 +99,23 @@ export function MapLayers({ layer }) {
 // double-mount tearing down and recreating the underlying Leaflet map out
 // from under an in-flight `setView`). Shared by the full map and the
 // home-screen preview so both behave identically.
-export function LiveMap({ position, zoom, layer, markerRadius = 8, interactive = true, zoomControlPosition, children }) {
+export function LiveMap({ position, zoom, initialCenter, initialZoom, layer, markerRadius = 8, interactive = true, zoomControlPosition, children }) {
   const interactionProps = interactive ? {} : {
     zoomControl: false, dragging: false, scrollWheelZoom: false,
     doubleClickZoom: false, touchZoom: false, keyboard: false, boxZoom: false,
   }
+  // `position` drives the blue "you are here" dot and is the default
+  // mount view — but `initialCenter`/`initialZoom` (a remembered last view,
+  // if one exists) take priority for where the map actually opens, since
+  // that can legitimately be somewhere other than the pilot's own position
+  // (they may have panned off to look at something else). The dot still
+  // marks real position regardless of what the viewport is showing.
+  const mountCenter = initialCenter ?? position ?? FALLBACK_CENTER
+  const mountZoom = initialCenter ? initialZoom : (position ? zoom : 4)
   return (
     <MapContainer
-      center={position ?? FALLBACK_CENTER}
-      zoom={position ? zoom : 4}
+      center={mountCenter}
+      zoom={mountZoom}
       style={{ width: '100%', height: '100%' }}
       attributionControl={false}
       zoomControl={false}
@@ -409,17 +420,72 @@ function LocateRecenter({ request }) {
   const map = useMap()
   useEffect(() => {
     if (!request) return
-    // Pans only (setView at the map's own current zoom) — whatever zoom the
+    // Pans at the map's own current zoom by default — whatever zoom the
     // pilot already had (in close on an airport diagram, way out planning a
-    // route) is deliberate, and a recenter tap shouldn't undo that.
+    // route) is deliberate, and a recenter tap shouldn't undo that. The one
+    // exception is the automatic first-fix jump when the map opens (see
+    // MapView), which passes an explicit `zoom` to land on the usual
+    // close-in view instead of staying at the wide fallback zoom.
     //
     // animate:false, deliberately — an animated pan depends on
     // requestAnimationFrame actually running, which a backgrounded or
     // power-saving tab can stall indefinitely, silently leaving the map
     // wherever it was. This button exists because "recenter" needs to be
     // certain, not smooth.
-    map.setView([request.lat, request.lon], map.getZoom(), { animate: false })
+    map.setView([request.lat, request.lon], request.zoom ?? map.getZoom(), { animate: false })
   }, [request, map])
+  return null
+}
+
+// Imperatively syncs an already-mounted map onto a given {center, zoom} —
+// same setView/animate:false approach as LocateRecenter above, generalized
+// to any view rather than just "my current position." Used by Home's map
+// preview (a separate, always-mounted LiveMap instance) to mirror whatever
+// view the pilot last left the real map at, via `view` fed down from Home —
+// see ViewReporter below, which is what actually produces that value.
+export function MapViewSync({ view }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!view) return
+    map.setView(view.center, view.zoom, { animate: false })
+  }, [view, map])
+  return null
+}
+
+// Reports the map's current center/zoom up to Home (via the `onViewChange`
+// prop MapView is given) whenever the pilot finishes a pan or zoom, so the
+// Home preview thumbnail (see MapViewSync above) can mirror it instead of
+// resetting to a default view every time this screen closes — without this,
+// returning to Home always looked like a step backward instead of the app
+// remembering where you'd been. moveend covers zooms too — Leaflet fires it
+// once a zoom change has settled, not just after a plain pan.
+//
+// Deliberately plain map.on/map.off (matching LocateRecenter/RoutePreview/
+// MapViewSync above) instead of react-leaflet's useMapEvents convenience
+// hook: useMapEvents re-subscribes its listener whenever the handlers
+// object passed to it changes identity, and an inline object literal is a
+// new reference on every render. MapView re-renders on every Locate tap
+// (it updates recenterRequest), and LocateRecenter's resulting
+// map.setView() fires 'moveend' SYNCHRONOUSLY within that very same
+// render's effects — which landed, with useMapEvents, exactly in the gap
+// between the old listener being torn down and the new one being
+// re-attached, silently swallowing the event. A manual drag never
+// triggered this (it doesn't touch React state mid-gesture, so nothing
+// forces a re-subscribe), which is why panning worked here but tapping
+// Locate never actually reported anything — the Home preview just kept
+// showing whatever view HAD last been successfully reported. A stable
+// map.on subscription that's set up once and never torn down mid-session
+// doesn't have this gap.
+function ViewReporter({ onChange }) {
+  const map = useMap()
+  useEffect(() => {
+    function handleMoveEnd() {
+      const c = map.getCenter()
+      onChange({ center: [c.lat, c.lng], zoom: map.getZoom() })
+    }
+    map.on('moveend', handleMoveEnd)
+    return () => map.off('moveend', handleMoveEnd)
+  }, [map, onChange])
   return null
 }
 
@@ -446,105 +512,167 @@ function RoutePreview({ route }) {
   )
 }
 
-export default function MapView() {
-  const { position, error, status, refreshing, locate } = useCurrentLocation()
-  // Lifted up from GpsInfoBar (which used to call this itself) so there's
-  // only ever one continuous GPS watch running on this screen, not two
-  // competing for the same hardware. Also gives the Locate button a second,
-  // much faster source of a fix: this watch has been running since the
-  // screen opened, so it likely already has a recent reading, where a fresh
-  // one-shot request has to pay a "cold start" cost all over again — the
-  // real cause of the button taking 15-30+ seconds (and sometimes timing
-  // out entirely with weak/obstructed sky view) when it always started
-  // from scratch.
-  const { coords: liveCoords, derived: liveDerived, status: liveStatus } = useLiveLocation()
+export default function MapView({ onViewChange, lastView } = {}) {
+  // Shared with Home's own map preview via HomeLocationProvider (mounted
+  // once around Home, which never unmounts while this screen — an overlay
+  // on top of Home — is open) rather than starting a separate watch here.
+  // A fresh watch per mount used to mean this screen always opened cold, no
+  // matter how recently it had a real fix; now it usually already knows
+  // the position by the time it opens.
+  const { coords: liveCoords, derived: liveDerived, status: liveStatus, error: liveError } = useHomeLocation()
   const { layer, setLayer } = useMapLayer()
   const { overlays, toggleOverlay } = useMapOverlays()
   const [route, setRoute] = useState(null)
   const [recenterRequest, setRecenterRequest] = useState(null)
-  const waitingForFallback = useRef(false)
+  // [lat,lon] once a fix exists, else null — feeds ONLY the blue "you are
+  // here" dot (see LiveMap), never the viewport itself. Lazily seeded from
+  // whatever the shared watch already knows at mount time.
+  const [centerPosition, setCenterPosition] = useState(() => liveCoords ? [liveCoords.lat, liveCoords.lon] : null)
+  // Whether this screen even needs to auto-jump the viewport onto a GPS fix
+  // at all: not if we're opening onto a remembered view (lastView), and not
+  // if we already had a fix at mount (nothing to jump onto — already there).
+  const autoCenteredRef = useRef(!!liveCoords || !!lastView)
 
-  // Only relevant on the fallback path (no live fix yet) — feeds the
-  // one-shot fetch's result into the same recenter mechanism the fast path
-  // uses, once it actually lands.
+  // Jump the viewport onto the pilot's real position once, the moment the
+  // shared watch produces its first fix — but ONLY on a genuine cold start
+  // with no remembered view to reopen onto instead. Reopening onto
+  // `lastView` (passed straight into LiveMap's initialCenter/initialZoom
+  // below) must NOT be immediately overridden by this GPS-based jump, or
+  // "resume where you left off" would never actually stick — every reopen
+  // would just snap back to wherever the pilot currently is instead. The
+  // map is already visible and interactive at this point (fallback-
+  // centered, wide zoom) — this just pans/zooms it into place, reusing the
+  // same setView mechanism as a manual Locate tap, so there's no separate
+  // "is it stuck" loading screen for a slow or cold GPS fix to get stuck
+  // behind.
   useEffect(() => {
-    if (waitingForFallback.current && position) {
-      waitingForFallback.current = false
-      setRecenterRequest({ lat: position[0], lon: position[1] })
+    if (autoCenteredRef.current || !liveCoords) return
+    autoCenteredRef.current = true
+    setCenterPosition([liveCoords.lat, liveCoords.lon])
+    if (!lastView) {
+      setRecenterRequest({ lat: liveCoords.lat, lon: liveCoords.lon, zoom: LOCATION_ZOOM })
     }
-  }, [position])
+  }, [liveCoords, lastView])
 
   function handleLocate() {
-    if (liveCoords) {
-      setRecenterRequest({ lat: liveCoords.lat, lon: liveCoords.lon })
-    } else {
-      waitingForFallback.current = true
-      locate()
-    }
+    if (!liveCoords) return
+    setRecenterRequest({ lat: liveCoords.lat, lon: liveCoords.lon })
   }
+
+  // Foreground flight auto-detection — settings-gated, per Settings.jsx's
+  // Flight Detection section. Reuses this screen's own liveCoords (never a
+  // second geolocation watch — see useFlightDetector's own header comment
+  // for why that matters).
+  const [autoDetectEnabled, setAutoDetectEnabled] = useState(false)
+  const [autoDetectConfig, setAutoDetectConfig] = useState(DEFAULT_AUTO_DETECT_CONFIG)
+  useEffect(() => {
+    get('settings', 'autoDetectEnabled').then(row => setAutoDetectEnabled(!!row?.value))
+    get('settings', 'autoDetectConfig').then(row => setAutoDetectConfig({ ...DEFAULT_AUTO_DETECT_CONFIG, ...(row?.value ?? {}) }))
+  }, [])
+  const { state: detectState, draft: detectedDraft, reset: resetDetector } = useFlightDetector({
+    enabled: autoDetectEnabled, config: autoDetectConfig, coords: liveCoords,
+  })
+  const { addEntry } = useLogbook()
+  const { aircraftId: activeAircraftId } = useActiveAircraft()
+  const [flightSavedBanner, setFlightSavedBanner] = useState(false)
+  useEffect(() => {
+    if (detectState !== 'done' || !detectedDraft) return
+    // Never silently commits a finished entry — it lands tagged pendingReview
+    // so the Hangar's Flight History (sub-phase 3) surfaces it for the pilot
+    // to confirm/edit before it's a real logbook record.
+    addEntry({ ...detectedDraft, aircraftId: activeAircraftId ?? null, source: 'auto', pendingReview: true })
+      .then(() => {
+        setFlightSavedBanner(true)
+        setTimeout(() => setFlightSavedBanner(false), 6000)
+      })
+    resetDetector()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detectState, detectedDraft])
+
+  const noFixYet = !liveCoords
+  // Reacts to the *current* live status, not a frozen one-time result — if
+  // the watch recovers after an earlier error (it keeps trying on its own,
+  // it's a continuous watch), this clears itself automatically next render.
+  const locationUnavailable = noFixYet && (liveStatus === 'error' || liveStatus === 'unsupported')
 
   return (
     <div style={{ height: '100%', position: 'relative', isolation: 'isolate' }}>
-      {status === 'pending' ? (
-        <div style={{
-          height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'var(--text-secondary)', fontSize: 14,
-        }}>
-          Finding your location…
-        </div>
-      ) : (
-        <LiveMap position={position} zoom={LOCATION_ZOOM} layer={layer} zoomControlPosition="bottomright">
-          {overlays.radar && <RadarLayer />}
-          {overlays.flightCategory && <FlightCategoryLayer />}
-          {overlays.tfr && <TfrLayer />}
-          {overlays.airports && <AirportLayer />}
-          {overlays.heliports && <HeliportLayer />}
-          {overlays.seaplaneBases && <SeaplaneBaseLayer />}
-          <LocateRecenter request={recenterRequest} />
-          <RoutePreview route={route} />
-        </LiveMap>
-      )}
+      <LiveMap
+        position={centerPosition} zoom={LOCATION_ZOOM}
+        initialCenter={lastView?.center} initialZoom={lastView?.zoom}
+        layer={layer} zoomControlPosition="bottomright"
+      >
+        {overlays.radar && <RadarLayer />}
+        {overlays.flightCategory && <FlightCategoryLayer />}
+        {overlays.tfr && <TfrLayer />}
+        {overlays.airports && <AirportLayer />}
+        {overlays.heliports && <HeliportLayer />}
+        {overlays.seaplaneBases && <SeaplaneBaseLayer />}
+        <LocateRecenter request={recenterRequest} />
+        <RoutePreview route={route} />
+        {onViewChange && <ViewReporter onChange={onViewChange} />}
+      </LiveMap>
 
       <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 600 }}>
         <HomeButton />
       </div>
 
-      {status !== 'pending' && (
-        <button
-          onClick={handleLocate}
-          disabled={refreshing}
-          aria-label="Locate me"
-          style={{
-            position: 'absolute', right: 12, bottom: 136, zIndex: 500,
-            width: 40, height: 40, borderRadius: '50%', border: 'none',
-            background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: refreshing ? 'default' : 'pointer', WebkitTapHighlightColor: 'transparent',
-            opacity: refreshing ? 0.55 : 1,
-          }}>
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round">
-            <circle cx="12" cy="12" r="3.5" />
-            <line x1="12" y1="1" x2="12" y2="4.5" />
-            <line x1="12" y1="19.5" x2="12" y2="23" />
-            <line x1="1" y1="12" x2="4.5" y2="12" />
-            <line x1="19.5" y1="12" x2="23" y2="12" />
-          </svg>
-        </button>
-      )}
+      <button
+        onClick={handleLocate}
+        disabled={noFixYet}
+        aria-label="Locate me"
+        style={{
+          position: 'absolute', right: 12, bottom: 136, zIndex: 500,
+          width: 40, height: 40, borderRadius: '50%', border: 'none',
+          background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: noFixYet ? 'default' : 'pointer', WebkitTapHighlightColor: 'transparent',
+          opacity: noFixYet ? 0.55 : 1,
+        }}>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round">
+          <circle cx="12" cy="12" r="3.5" />
+          <line x1="12" y1="1" x2="12" y2="4.5" />
+          <line x1="12" y1="19.5" x2="12" y2="23" />
+          <line x1="1" y1="12" x2="4.5" y2="12" />
+          <line x1="19.5" y1="12" x2="23" y2="12" />
+        </svg>
+      </button>
 
-      {(status === 'error' || status === 'unsupported') && (
+      {locationUnavailable && (
         <div style={{
           position: 'absolute', top: 68, left: 12, right: 12, zIndex: 500,
           background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
           fontSize: 13, color: 'var(--text-secondary)', boxShadow: 'var(--shadow-sm)',
         }}>
-          {error}
+          {liveError}
         </div>
       )}
 
-      {status !== 'pending' && <FlightPlanBar onRouteChange={setRoute} />}
+      {detectState === 'recording' && (
+        <div style={{
+          position: 'absolute', top: 68, left: 12, right: 12, zIndex: 500,
+          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
+          fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--danger)', flexShrink: 0 }} />
+          Flight detected — recording
+        </div>
+      )}
+
+      {flightSavedBanner && (
+        <div style={{
+          position: 'absolute', top: 68, left: 12, right: 12, zIndex: 500,
+          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
+          fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
+        }}>
+          Flight saved — review it in the Hangar's Flight History
+        </div>
+      )}
+
+      <FlightPlanBar onRouteChange={setRoute} />
       <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={toggleOverlay} />
-      {status !== 'pending' && <GpsInfoBar route={route} coords={liveCoords} derived={liveDerived} status={liveStatus} />}
+      <GpsInfoBar route={route} coords={liveCoords} derived={liveDerived} status={liveStatus} />
     </div>
   )
 }

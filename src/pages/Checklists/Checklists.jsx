@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { BackButton } from '../../components/Shell'
+import { HomeButton } from '../../components/Shell'
 import { get, put, del } from '../../lib/db'
 import { trackEvent } from '../../lib/analytics'
 import { scopedSettingsKey } from '../../lib/aircraft'
@@ -245,7 +245,7 @@ function ChecklistDetail({ checklist, onBack }) {
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       {/* Header */}
       <div style={{ padding: '20px 16px 12px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-        <BackButton onBack={onBack} />
+        <HomeButton onBack={onBack} />
         <h2 style={{ flex: 1, fontSize: 22, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)', margin: 0 }}>
           <SplitFlapTitle text={headerTitle} />
         </h2>

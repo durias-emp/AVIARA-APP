@@ -1,19 +1,44 @@
 import { useState, useEffect } from 'react'
-import { BackButton } from './Shell'
+import { HomeButton } from './Shell'
 import { SegControl } from './SegControl'
 import AirportPickerModal from './AirportPickerModal'
 import AirportDiagram from './AirportDiagram'
+import ProcedureChartViewer from './ProcedureChartViewer'
 import { get, put } from '../lib/db'
 import { usePilotProfile } from '../context/PilotProfile'
 import { getAirports } from '../lib/aerodromes'
 import { classAtPoint } from '../lib/airspace'
+import { isUSIdent } from '../lib/faaAirportGeometry'
+import { getProcedures, getProceduresCycle } from '../lib/procedureCharts'
+import { useBackOverride } from '../context/BackOverride'
 import airportDetails from '../data/geo/airport_details.json'
 import {
   loadWeather, parseFltCat, parseWindParts, parseVisib, parseCeiling,
-  parseTemp, parseAltim, parseAirportName, colorizeTaf,
+  parseTemp, parseAltim, parseAirportName, colorizeTaf, parseObsAge, parseTafAge,
 } from '../lib/weather'
 
-const TABS = ['Weather', 'Frequencies', 'Runways']
+const TABS = ['Weather', 'Frequencies', 'Runways', 'Procedures']
+
+const PROCEDURE_SECTIONS = [
+  { key: 'approach', label: 'Approach' },
+  { key: 'departure', label: 'Departure' },
+  { key: 'visual', label: 'Visual' },
+]
+
+function ProcedureRow({ chartName, first, onOpen }) {
+  return (
+    <div
+      onClick={onOpen} role="button" tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen() } }}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '11px 16px', borderTop: first ? 'none' : '0.5px solid var(--border)',
+        cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+      }}>
+      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{chartName}</span>
+    </div>
+  )
+}
 
 function ListRow({ left, right, first }) {
   return (
@@ -36,13 +61,14 @@ function EmptyRow({ children }) {
 // Raw METAR/TAF text, light-card version of WeatherDetailOverlay's own
 // (dark-glass) raw text display — same colorized-by-flight-category TAF
 // grading, adapted to sit on this page's white cards instead of a photo.
-function RawTextRow({ title, text, first, colorize, color }) {
+function RawTextRow({ title, text, first, colorize, color, age }) {
   if (!text) return null
   const lines = colorize ? colorizeTaf(text) : null
   return (
     <div style={{ padding: '14px 16px', borderTop: first ? 'none' : '0.5px solid var(--border)' }}>
-      <div style={{ marginBottom: 8 }}>
+      <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{title}</span>
+        {age && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>{age}</span>}
       </div>
       {lines ? (
         <div style={{ fontSize: 12, fontFamily: 'monospace', lineHeight: 1.6 }}>
@@ -68,6 +94,15 @@ export default function AirportInfo() {
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState('Weather')
   const [airspaceClass, setAirspaceClass] = useState(null)
+  const [procedures, setProcedures] = useState(undefined) // undefined=loading, object=data, null=none published
+  const [proceduresCycle, setProceduresCycle] = useState(null)
+  const [openChart, setOpenChart] = useState(null) // null | { chartName, pdfName }
+
+  // Claims the swipe-back gesture while a chart is open, so it returns to
+  // the Procedures list instead of falling through to CardOverlay's own
+  // close — same pattern ToolsMenu/Hangar already use for their own nested
+  // sub-views.
+  useBackOverride(openChart ? () => setOpenChart(null) : null)
 
   useEffect(() => {
     get('settings', 'lastAirportLookup').then(row => {
@@ -75,6 +110,17 @@ export default function AirportInfo() {
       else setPickerOpen(true)
     })
   }, [])
+
+  useEffect(() => {
+    if (!icao) return
+    setOpenChart(null)
+    if (!isUSIdent(icao)) { setProcedures(null); return }
+    setProcedures(undefined)
+    Promise.all([getProcedures(icao), getProceduresCycle()]).then(([data, cycle]) => {
+      setProcedures(data)
+      setProceduresCycle(cycle)
+    })
+  }, [icao])
 
   useEffect(() => {
     if (!icao) return
@@ -132,10 +178,22 @@ export default function AirportInfo() {
   const cat = wx?.metar ? parseFltCat(wx.metar) : null
   const displayName = info?.name?.trim() || (wx?.metar ? parseAirportName(wx.metar) : null)
 
+  if (openChart) {
+    return (
+      <ProcedureChartViewer
+        icao={icao}
+        cycle={proceduresCycle}
+        chartName={openChart.chartName}
+        pdfName={openChart.pdfName}
+        onBack={() => setOpenChart(null)}
+      />
+    )
+  }
+
   return (
     <div>
       <div style={{ padding: '20px 20px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <BackButton />
+        <HomeButton />
         <div
           onClick={() => setPickerOpen(true)}
           style={{
@@ -196,8 +254,8 @@ export default function AirportInfo() {
                 )}
                 {(wx?.metar?.rawOb || wx?.taf?.rawTAF) ? (
                   <div style={{ background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-                    <RawTextRow title="Raw METAR" text={wx.metar?.rawOb} color={cat?.color} first />
-                    <RawTextRow title="Raw TAF" text={wx.taf?.rawTAF} colorize first={!wx.metar?.rawOb} />
+                    <RawTextRow title="Raw METAR" text={wx.metar?.rawOb} color={cat?.color} age={parseObsAge(wx.metar)} first />
+                    <RawTextRow title="Raw TAF" text={wx.taf?.rawTAF} colorize age={parseTafAge(wx.taf)} first={!wx.metar?.rawOb} />
                   </div>
                 ) : (
                   <div style={{ background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
@@ -224,6 +282,42 @@ export default function AirportInfo() {
                     <ListRow key={i} first={i === 0} left={`${id1}/${id2}`} right={`${lengthFt} ft · ${surface}`} />
                   ))
                   : <EmptyRow>No runway data</EmptyRow>}
+              </div>
+            )}
+
+            {tab === 'Procedures' && (
+              <div style={{ marginTop: 16 }}>
+                {!isUSIdent(icao) ? (
+                  <div style={{ background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+                    <EmptyRow>Procedure charts aren't available for this airport yet</EmptyRow>
+                  </div>
+                ) : procedures === undefined ? (
+                  <div style={{ background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+                    <EmptyRow>Loading procedures…</EmptyRow>
+                  </div>
+                ) : (
+                  PROCEDURE_SECTIONS.map(({ key, label }) => {
+                    const charts = procedures?.[key] ?? []
+                    return (
+                      <div key={key} style={{ marginBottom: 16 }}>
+                        <div style={{
+                          margin: '0 2px 8px', fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
+                          textTransform: 'uppercase', color: 'var(--text-tertiary)',
+                        }}>{label}</div>
+                        <div style={{ background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+                          {charts.length
+                            ? charts.map(([chartName, pdfName], i) => (
+                              <ProcedureRow
+                                key={pdfName} first={i === 0} chartName={chartName}
+                                onOpen={() => setOpenChart({ chartName, pdfName })}
+                              />
+                            ))
+                            : <EmptyRow>No {label.toLowerCase()} procedures published</EmptyRow>}
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
               </div>
             )}
           </>

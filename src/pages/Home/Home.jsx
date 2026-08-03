@@ -8,14 +8,14 @@ import { usePilotProfile } from '../../context/PilotProfile'
 import { useActiveAircraft } from '../../context/ActiveAircraft'
 import AirportPickerModal from '../../components/AirportPickerModal'
 import CardOverlay   from '../../components/CardOverlay'
-import MapView, { LiveMap } from '../../components/MapView'
+import MapView, { LiveMap, MapViewSync } from '../../components/MapView'
 import AirportInfo from '../../components/AirportInfo'
 import ToolsMenu from '../../components/ToolsMenu'
 import { AirportScene, PilotArt, HangarArt, FlightPlanArt } from '../../components/HomeHeroArt'
 import HeroLabel, { HERO_LABEL_WIDTH } from '../../components/HeroLabel'
-import { useCurrentLocation } from '../../hooks/useCurrentLocation'
+import { HomeLocationProvider, useHomeLocation } from '../../context/HomeLocation'
 import { useMapLayer } from '../../hooks/useMapLayer'
-import { IconWrench, IconGear, IconCompass } from '../../components/Icons'
+import { IconWrench, IconGear, IconFriends } from '../../components/Icons'
 import Checklists from '../Checklists/Checklists'
 import Hangar     from '../Aircraft/Hangar'
 import Settings   from '../Settings/Settings'
@@ -138,9 +138,10 @@ const PREVIEW_ZOOM = 12
 // screen size, this is automatically "however much is missing" on any
 // device. `minHeight` keeps it from disappearing if the rest of the stack
 // ever grows taller than the viewport.
-function MapCard({ onOpen }) {
+function MapCard({ onOpen, lastView }) {
   const ref = useRef(null)
-  const { position, status } = useCurrentLocation()
+  const { coords: liveCoords, status } = useHomeLocation()
+  const position = liveCoords ? [liveCoords.lat, liveCoords.lon] : null
   const { layer } = useMapLayer()
 
   function handleClick() {
@@ -166,7 +167,24 @@ function MapCard({ onOpen }) {
         }}>
         {status !== 'pending' && (
           <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-            <LiveMap position={position} zoom={PREVIEW_ZOOM} layer={layer} markerRadius={6} interactive={false} />
+            {/* This preview mounts once and (per LiveMap's own design) never
+                moves itself after that, same as the real map — lastView,
+                fed down from Home and kept in sync with whatever the real
+                map screen was last panned/zoomed to (see MapView's
+                ViewReporter), is what lets this thumbnail catch up to a
+                view that already existed before this component mounted, or
+                change again on a later visit. Without it, this preview
+                always showed a fixed default zoom on your live position,
+                even right after leaving the real map panned somewhere else
+                entirely — the app should feel like one continuous map, not
+                a full map and a separate, independent preview. */}
+            <LiveMap
+              position={position} zoom={PREVIEW_ZOOM}
+              initialCenter={lastView?.center} initialZoom={lastView?.zoom}
+              layer={layer} markerRadius={6} interactive={false}
+            >
+              <MapViewSync view={lastView} />
+            </LiveMap>
           </div>
         )}
         <HeroLabel>Map</HeroLabel>
@@ -216,6 +234,16 @@ function AirportsHeroCard({ onOpen }) {
     setPicker(false)
   }
 
+  // The picker modal is rendered once, below, outside both branches — it
+  // needs to be reachable regardless of whether `icao` happens to be set,
+  // since pickerOpen can be true with an empty icao (no home airport ever
+  // chosen yet). It used to live only inside this branch's own JSX, gated
+  // on `pickerOpen` — but that branch's own guard requires `!pickerOpen` to
+  // even be entered, so the modal could never actually render: the very
+  // first time this card mounted with no home airport set, pickerOpen went
+  // true, the guard then excluded this branch, and the component fell
+  // through to the "confirmed" view below with a blank icao and no way to
+  // ever open the picker again.
   if (!icao && !pickerOpen) {
     return (
       <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
@@ -231,9 +259,12 @@ function AirportsHeroCard({ onOpen }) {
             <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Tap to look one up</div>
           </div>
         </div>
-        {pickerOpen && <AirportPickerModal current={icao} onConfirm={confirmAirport} onClose={() => setPicker(false)} />}
       </div>
     )
+  }
+
+  if (pickerOpen) {
+    return <AirportPickerModal current={icao} onConfirm={confirmAirport} onClose={() => setPicker(false)} />
   }
 
   const cat = wx?.metar ? parseFltCat(wx.metar) : null
@@ -322,11 +353,17 @@ function FlightPlanCard({ onOpen }) {
   )
 }
 
-/* ── Discover card — social/marketplace, working name (see roadmap
-   conversation). Plain gradient rather than an illustrated scene like the
+/* ── Friends card — social/marketplace, still branded "Discover"
+   internally (Discover.jsx, its routes, its own copy) since this is a
+   user-facing label change, not a restructuring; only what's actually
+   shown to the pilot changed. Vibrant gradient (rather than the earlier
+   gold/amber, which read as more "hangar/pilot" than "social") so the
+   card itself signals what kind of feature this is before you even tap
+   it — deliberately its own blue/violet/pink palette, not another app's
+   brand colors. Plain gradient rather than an illustrated scene like the
    other cards: the feature itself is still a placeholder (Discover.jsx),
-   so a quick painted background beats investing in custom art for a name
-   and a shape that are both still expected to change. ── */
+   so a quick painted background beats investing in custom art for a
+   shape that's still expected to change. ── */
 function DiscoverCard({ onOpen }) {
   const ref = useRef(null)
 
@@ -339,31 +376,35 @@ function DiscoverCard({ onOpen }) {
 
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label="Open discover"
+      <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label="Open friends"
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
         style={{
         position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
         boxShadow: 'var(--shadow-sm)',
         height: HERO_HEIGHT, boxSizing: 'border-box',
-        background: 'linear-gradient(108deg, #b8862f 0%, #d9a441 55%, #e8bd63 100%)',
+        background: 'linear-gradient(108deg, #2563eb 0%, #7c3aed 55%, #ec4899 100%)',
         cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
       }}>
-        <span style={{ position: 'absolute', top: 12, right: 14, zIndex: 1, color: 'rgba(255,255,255,0.85)' }}>
-          <IconCompass size={22} />
+        <span style={{
+          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+          zIndex: 1, color: 'rgba(255,255,255,0.9)', display: 'flex',
+        }}>
+          <IconFriends size={30} />
         </span>
-        <HeroLabel>Discover</HeroLabel>
+        <HeroLabel>Friends</HeroLabel>
       </div>
     </div>
   )
 }
 
-/* ── Pilot row — small dot reflects currency status, since currency
-   lives inside the Pilot Profile page now rather than its own Home
-   button. ── */
+/* ── Pilot row — small dot reflects currency status. Goes straight to
+   /pilot, whose own main screen IS the currency view now (medical +
+   flight currency, with a logbook slotted in next); profile-editing
+   fields live one level deeper at /profile ("Profile Setup"). ── */
 function PilotRow({ currencyDotColor }) {
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <Link to="/profile" style={{ textDecoration: 'none' }}>
+      <Link to="/pilot" style={{ textDecoration: 'none' }}>
         <div style={{
           position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
           boxShadow: 'var(--shadow-sm)',
@@ -396,10 +437,10 @@ function PilotRow({ currencyDotColor }) {
    for the reorder list's display names). ── */
 
 /* ── Section content map ──────────────────────────────────── */
-function SectionContent({ section, order, onMoveRow }) {
+function SectionContent({ section, order, onMoveRow, onMapViewChange, mapView }) {
   if (section === 'checklists') return <Checklists />
   if (section === 'aircraft')   return <Hangar />
-  if (section === 'map')        return <MapView />
+  if (section === 'map')        return <MapView onViewChange={onMapViewChange} lastView={mapView} />
   if (section === 'airports')   return <AirportInfo />
   if (section === 'tools')      return <ToolsMenu />
   if (section === 'settings')   return <Settings order={order} onMoveRow={onMoveRow} />
@@ -424,6 +465,12 @@ export default function Home() {
   const [sectionRect, setSectionRect]     = useState(null)
   const [currencyStatus, setCurrencyStatus] = useState('valid')
   const [order, setOrder] = useState(DEFAULT_ORDER)
+  // Last {center, zoom} the pilot left the real map screen at — null until
+  // they've opened it at least once this session. Lifted up here (rather
+  // than living inside MapView, which fully unmounts every time its overlay
+  // closes) purely so it survives between an open/close cycle for
+  // MapCard's preview to pick up; see MapView's ViewReporter/MapViewSync.
+  const [mapView, setMapView] = useState(null)
   const activeAircraft = aircraftList?.find(a => a.id === aircraftId)
   const aircraftImage = activeAircraft?.image ?? ''
   function loadCurrencyStatus() {
@@ -492,7 +539,7 @@ export default function Home() {
 
   function renderRow(key) {
     if (key === 'airports') return <AirportsHeroCard key={key} onOpen={openCard} />
-    if (key === 'map')      return <MapCard key={key} onOpen={openCard} />
+    if (key === 'map')      return <MapCard key={key} onOpen={openCard} lastView={mapView} />
     if (key === 'hangar')   return <HangarCard key={key} aircraftImage={aircraftImage} aircraftCount={aircraftList?.length ?? 0} onOpen={openCard} />
     if (key === 'pilot')    return <PilotRow key={key} currencyDotColor={currencyDotColor} />
     if (key === 'flight')   return <FlightPlanCard key={key} onOpen={openCard} />
@@ -501,7 +548,7 @@ export default function Home() {
   }
 
   return (
-    <>
+    <HomeLocationProvider>
       <div style={{
         height: '100dvh', overflow: 'hidden', boxSizing: 'border-box',
         display: 'flex', flexDirection: 'column',
@@ -517,20 +564,13 @@ export default function Home() {
             <ModuleCard section="settings" onOpen={openCard} Icon={IconGear}   label="Settings" />
           </div>
         </div>
-
-        <p style={{
-          fontSize: 10, color: 'var(--text-tertiary)', textAlign: 'center',
-          padding: '10px 24px 0', lineHeight: 1.4, flexShrink: 0,
-        }}>
-          Reference aid only · Always consult current FAR/AIM
-        </p>
       </div>
 
       {openSection && sectionRect && (
         <CardOverlay cardRect={sectionRect} onClose={closeCard}>
-          <SectionContent section={openSection} order={order} onMoveRow={moveRow} />
+          <SectionContent section={openSection} order={order} onMoveRow={moveRow} onMapViewChange={setMapView} mapView={mapView} />
         </CardOverlay>
       )}
-    </>
+    </HomeLocationProvider>
   )
 }

@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { BackButton } from '../../components/Shell'
+import { HomeButton } from '../../components/Shell'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const RETENTION_DAYS = 7
@@ -13,7 +13,7 @@ export function HangarEmptyState({ onAdd, onBack, onImport, importError }) {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '20px 18px 0' }}>
-        <BackButton onBack={onBack} />
+        <HomeButton onBack={onBack} />
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 32px', gap: 16 }}>
         <div style={{ fontSize: 40 }}>✈️</div>
@@ -176,7 +176,7 @@ export function HangarListView({ aircraftList, activeId, onSelect, onAdd, onBack
   return (
     <div style={{ paddingBottom: 40 }}>
       <div style={{ padding: '20px 18px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <BackButton onBack={onBack} />
+        <HomeButton onBack={onBack} />
         <h2 style={{
           fontSize: 28, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)',
           fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',

@@ -214,17 +214,34 @@ export function parseWx(metar) {
   return metar?.wxString ?? metar?.presentWx ?? null
 }
 
+// ForeFlight-style compact relative age — "9m ago" under an hour, "3h 24m
+// ago" (not just "3h ago") once it isn't, so a report doesn't visibly jump
+// by up to 59 minutes at a time once it crosses the hour mark.
+function formatAge(thenMs) {
+  if (thenMs == null || Number.isNaN(thenMs)) return null
+  const mins = Math.max(0, Math.round((Date.now() - thenMs) / 60000))
+  if (mins < 1) return 'Just now'
+  if (mins < 60) return `${mins}m ago`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m === 0 ? `${h}h ago` : `${h}h ${m}m ago`
+}
+
 export function parseObsAge(metar) {
   if (!metar?.obsTime) return null
-  const mins = Math.round((Date.now() / 1000 - metar.obsTime) / 60)
-  if (mins < 60) return `${mins} min ago`
-  return `${Math.round(mins / 60)}h ago`
+  return formatAge(metar.obsTime * 1000)
+}
+
+// TAF's own issue time (when it was ISSUED, not when it becomes valid from —
+// validTimeFrom is the forecast period's start, a different thing) — an ISO
+// string from AWC, unlike METAR's obsTime (Unix seconds), hence the
+// separate Date.parse here rather than reusing parseObsAge's math directly.
+export function parseTafAge(taf) {
+  if (!taf?.issueTime) return null
+  return formatAge(Date.parse(taf.issueTime))
 }
 
 export function parseFetchAge(fetchedAt) {
   if (!fetchedAt) return null
-  const mins = Math.round((Date.now() - fetchedAt) / 60000)
-  if (mins < 1) return 'Just now'
-  if (mins < 60) return `${mins} min ago`
-  return `${Math.round(mins / 60)}h ago`
+  return formatAge(fetchedAt)
 }

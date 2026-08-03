@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
+import { HomeButton } from '../../components/Shell'
+import Turnstile from '../../components/Turnstile'
 
 const INPUT_STYLE = {
   width: '100%', maxWidth: '100%', boxSizing: 'border-box',
@@ -27,6 +29,11 @@ export default function SignIn({ legacy = false }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(null)
+  // Wired up ahead of Supabase's project-level CAPTCHA protection actually
+  // being turned on — see Turnstile.jsx. Not required to submit yet (the
+  // server ignores it today), so a slow/failed widget load never blocks
+  // sign-in in the meantime.
+  const [captchaToken, setCaptchaToken] = useState(null)
 
   async function handleGoogle() {
     setError(null)
@@ -44,7 +51,7 @@ export default function SignIn({ legacy = false }) {
     if (mode === 'reset') {
       if (!email.trim()) return
       setBusy(true)
-      const { error: err } = await resetPasswordForEmail(email.trim())
+      const { error: err } = await resetPasswordForEmail(email.trim(), captchaToken)
       setBusy(false)
       if (err) { setError(err.message); return }
       setNotice('If an account exists for that email, a password-reset link is on its way.')
@@ -54,19 +61,28 @@ export default function SignIn({ legacy = false }) {
     if (!email.trim() || !password) return
     setBusy(true)
     const { error: err } = mode === 'signin'
-      ? await signInWithPassword(email.trim(), password)
-      : await signUp(email.trim(), password)
+      ? await signInWithPassword(email.trim(), password, captchaToken)
+      : await signUp(email.trim(), password, captchaToken)
     setBusy(false)
+    // Turnstile tokens are single-use — clear it either way so a retry
+    // doesn't resend an already-spent (or now-stale) token.
+    setCaptchaToken(null)
     if (err) { setError(err.message); return }
     if (mode === 'signup') setNotice('Check your email to confirm your account, then sign in.')
   }
 
   return (
     <div style={{
-      flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center',
+      position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center',
       padding: '24px 24px calc(24px + env(safe-area-inset-bottom))', gap: 28,
       minHeight: '100dvh', boxSizing: 'border-box',
     }}>
+      {/* Reached voluntarily now (Profile > Account), never as an
+          inescapable gate — always dismissable. */}
+      <div style={{ position: 'fixed', top: 20, left: 20, zIndex: 500 }}>
+        <HomeButton />
+      </div>
+
       <div>
         <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.5px' }}>
           {mode === 'reset' ? 'Reset password' : legacy ? 'Back up your data' : 'Welcome to AVIARA'}
@@ -132,6 +148,8 @@ export default function SignIn({ legacy = false }) {
             Forgot password?
           </button>
         )}
+
+        <Turnstile key={mode} onVerify={setCaptchaToken} />
 
         {error && (
           <div style={{ fontSize: 12, color: 'var(--danger)', lineHeight: 1.4 }}>{error}</div>

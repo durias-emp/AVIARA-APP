@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { get, put } from '../../lib/db'
+import { useLogbook } from '../../context/Logbook'
 import { BackButton } from '../../components/Shell'
 import { generateAircraftIcon } from '../../lib/generateIcon'
 import { extractPohChart } from '../../lib/extractPohChart'
@@ -961,6 +963,66 @@ function num(v) {
 // chart, so all its edit/add-value/remove-value machinery works unchanged
 // on the draft too. The pilot reviews, optionally confirms the 3 spot-check
 // cells (a nudge, never a save-blocker), then explicitly Saves or Discards.
+// Flights the GPS auto-detector (src/hooks/useFlightDetector.js, gated by
+// Settings.jsx's Flight Detection toggle) captured for this aircraft.
+// `pendingReview` entries need the pilot's confirmation before they're a
+// real logbook record — tapping one opens the same LogbookEntryForm used
+// for manual entries, pre-filled from the captured track, never auto-saved
+// silently. Confirmed (source:'auto', pendingReview cleared) entries stay
+// listed below for reference.
+function FlightHistorySection({ aircraftId }) {
+  const { entries } = useLogbook()
+  const autoEntries = (entries ?? []).filter(e => e.source === 'auto' && e.aircraftId === aircraftId)
+  const pending = autoEntries.filter(e => e.pendingReview)
+  const confirmed = autoEntries.filter(e => !e.pendingReview)
+
+  function Row({ entry, first }) {
+    return (
+      <Link to={`/logbook/${entry.id}`} style={{ textDecoration: 'none' }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '11px 14px', borderTop: first ? 'none' : '0.5px solid var(--border)',
+          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+        }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{entry.date || 'Undated flight'}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 1 }}>{entry.totalTime ? `${entry.totalTime} hr` : '—'}</div>
+          </div>
+          {entry.pendingReview && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.2px', color: 'var(--warn)',
+              background: 'var(--warn-light)', padding: '3px 9px', borderRadius: 10,
+            }}>Review</span>
+          )}
+        </div>
+      </Link>
+    )
+  }
+
+  if (!autoEntries.length) {
+    return (
+      <div style={{ fontSize: 13, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+        No auto-detected flights yet. Turn on Auto-detect flights in Settings, then leave the map open during a flight — this can't track in the background, so the app needs to stay on screen.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {pending.length > 0 && (
+        <div style={{ background: 'var(--bg-card-2)', borderRadius: 12, overflow: 'hidden' }}>
+          {pending.map((e, i) => <Row key={e.id} entry={e} first={i === 0} />)}
+        </div>
+      )}
+      {confirmed.length > 0 && (
+        <div style={{ background: 'var(--bg-card-2)', borderRadius: 12, overflow: 'hidden' }}>
+          {confirmed.map((e, i) => <Row key={e.id} entry={e} first={i === 0} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PerformanceChartsSection({ profile, onAddAxisValue, onUpdateAxisValue, onRemoveAxisValue, onSetCell, onSetMeta, onSetChart }) {
   const [activeType, setActiveType] = useState('takeoff')
   const [draftChart, setDraftChart] = useState(null)
@@ -1864,6 +1926,11 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
             Done
           </button>
           </>)}
+        </Section>
+
+        {/* Flight History — GPS auto-detected flights for this aircraft */}
+        <Section title="Flight History">
+          <FlightHistorySection aircraftId={profile.id} />
         </Section>
 
         {/* Performance Charts */}

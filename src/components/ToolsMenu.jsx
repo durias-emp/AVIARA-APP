@@ -1,13 +1,15 @@
 import { useCallback, useState } from 'react'
-import { BackButton } from './Shell'
+import { HomeButton } from './Shell'
 import { useBackOverride } from '../context/BackOverride'
 import Calculators from '../pages/Calculators/Calculators'
 import Reference from '../pages/Reference/Reference'
-import { IconBook } from './Icons'
+import UAPReport from '../pages/UAP/UAPReport'
+import { IconBook, IconUap } from './Icons'
 
 const TOOLS = [
   { key: 'calc', label: 'Calculators', sub: 'Conversions, performance', icon: '/E6B CALC.svg' },
   { key: 'reference', label: 'Quick Reference', sub: 'Lost comms, light gun, air law', Icon: IconBook },
+  { key: 'uap', label: 'UAP Report', sub: 'Log a sighting', Icon: IconUap },
 ]
 
 export default function ToolsMenu() {
@@ -21,11 +23,12 @@ export default function ToolsMenu() {
 
   if (active === 'calc') return <Calculators onBack={closeTool} />
   if (active === 'reference') return <Reference onBack={closeTool} />
+  if (active === 'uap') return <UAPReport onBack={closeTool} />
 
   return (
     <div>
       <div style={{ padding: '20px 20px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <BackButton />
+        <HomeButton />
         <h2 style={{
           fontSize: 28, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)',
           fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',

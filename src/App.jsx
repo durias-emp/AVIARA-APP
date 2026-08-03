@@ -1,10 +1,12 @@
 import { Suspense, lazy, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useTheme } from './hooks/useTheme'
 import { PilotProfileProvider, usePilotProfile } from './context/PilotProfile'
 import { ActiveAircraftProvider } from './context/ActiveAircraft'
+import { LogbookProvider } from './context/Logbook'
 import { RegionProvider } from './context/Region'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { SocialProfileProvider } from './context/SocialProfile'
 import BackOverrideProvider from './context/BackOverrideProvider'
 import Shell from './components/Shell'
 
@@ -12,9 +14,14 @@ const Home        = lazy(() => import('./pages/Home/Home'))
 const Calculators = lazy(() => import('./pages/Calculators/Calculators'))
 const Checklists  = lazy(() => import('./pages/Checklists/Checklists'))
 const Hangar      = lazy(() => import('./pages/Aircraft/Hangar'))
-const Currency    = lazy(() => import('./pages/Currency/Currency'))
+const Pilot       = lazy(() => import('./pages/Pilot/Pilot'))
 const Reference   = lazy(() => import('./pages/Reference/Reference'))
 const Weather     = lazy(() => import('./pages/Weather/Weather'))
+const LogbookList      = lazy(() => import('./pages/Pilot/LogbookList'))
+const LogbookEntryForm = lazy(() => import('./pages/Pilot/LogbookEntryForm'))
+const LogbookFields    = lazy(() => import('./pages/Pilot/LogbookFields'))
+const LogbookImport    = lazy(() => import('./pages/Pilot/LogbookImport'))
+const LogbookScan      = lazy(() => import('./pages/Pilot/LogbookScan'))
 const Onboarding    = lazy(() => import('./pages/Onboarding/Onboarding'))
 const Profile       = lazy(() => import('./pages/Profile/Profile'))
 const SignIn        = lazy(() => import('./pages/SignIn/SignIn'))
@@ -23,7 +30,6 @@ const ResetPassword = lazy(() => import('./pages/SignIn/ResetPassword'))
 function AppRoutes({ theme }) {
   const { session, loading: authLoading, hydrated, recovery } = useAuth()
   const { profile, setProfile } = usePilotProfile()
-  const navigate = useNavigate()
 
   // Seed the profile's contact email from the signed-in account (Google/
   // Apple/email all expose user.email) so it's pre-filled without the pilot
@@ -53,20 +59,14 @@ function AppRoutes({ theme }) {
     </Suspense>
   )
 
-  // Sign-in is required before anything else — no bypass. A pre-existing
-  // install (real local data, onboarding already done, no account yet)
-  // gets reassuring "back up your data" copy instead of the generic
-  // sign-in screen; the actual sign-in flow is identical either way.
-  // TEMP LOCAL-ONLY BYPASS (do not commit/push): skip the sign-in gate so
-  // the app UI can be viewed without Supabase configured.
-  if (!session && false) {
-    const legacy = profile != null && profile.onboardingComplete
-    return (
-      <Suspense fallback={null}>
-        <SignIn legacy={legacy} />
-      </Suspense>
-    )
-  }
+  // Sign-in is NOT required to use the app — everything here is local-first
+  // (IndexedDB) by design, and forcing an account before a first-time
+  // visitor (or someone trying it out on someone else's recommendation) can
+  // even see the app was pure friction with no corresponding benefit. An
+  // account only matters once a pilot wants cross-device backup or a social
+  // feature (Friends/DMs, UAP report submission) — those are gated
+  // individually, at the point of use, not app-wide. Reachable any time from
+  // Profile > Account.
 
   // Signed in but the cloud restore is still running — showing the gate now
   // would read an empty local profile and bounce a returning user into
@@ -91,9 +91,15 @@ function AppRoutes({ theme }) {
             <Route path="/checklists" element={<Checklists />} />
             <Route path="/aircraft" element={<Hangar />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/currency" element={<Currency onBack={() => navigate('/profile')} />} />
+            <Route path="/pilot" element={<Pilot />} />
+            <Route path="/logbook" element={<LogbookList />} />
+            <Route path="/logbook/fields" element={<LogbookFields />} />
+            <Route path="/logbook/import" element={<LogbookImport />} />
+            <Route path="/logbook/scan" element={<LogbookScan />} />
+            <Route path="/logbook/:id" element={<LogbookEntryForm />} />
             <Route path="/reference" element={<Reference />} />
             <Route path="/weather" element={<Weather />} />
+            <Route path="/signin" element={<SignIn legacy={profile != null && profile.onboardingComplete} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
@@ -107,15 +113,19 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <PilotProfileProvider>
-        <ActiveAircraftProvider>
-          <RegionProvider>
-            <BrowserRouter>
-              <AppRoutes theme={theme} />
-            </BrowserRouter>
-          </RegionProvider>
-        </ActiveAircraftProvider>
-      </PilotProfileProvider>
+      <SocialProfileProvider>
+        <PilotProfileProvider>
+          <ActiveAircraftProvider>
+            <LogbookProvider>
+              <RegionProvider>
+                <BrowserRouter>
+                  <AppRoutes theme={theme} />
+                </BrowserRouter>
+              </RegionProvider>
+            </LogbookProvider>
+          </ActiveAircraftProvider>
+        </PilotProfileProvider>
+      </SocialProfileProvider>
     </AuthProvider>
   )
 }

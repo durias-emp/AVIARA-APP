@@ -54,6 +54,10 @@ jobs:
           # Airspace and airport details.
           python3 scripts/build_cenamer_airspace.py
           python3 scripts/build_airport_details.py
+          # FAA procedure charts (approach/departure/visual) — a separate FAA
+          # feed (d-TPP, not NASR) but the same 28-day cadence, so it's rebuilt
+          # alongside everything else here rather than on its own schedule.
+          python3 scripts/build_procedure_index.py
 
       - name: Sanity-check the result before committing
         # A partial download or a changed FAA layout would show up here as a
