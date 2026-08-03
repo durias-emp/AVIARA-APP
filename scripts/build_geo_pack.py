@@ -34,9 +34,9 @@ pack), in three files: the airport position list used for route proximity,
 a heliport/seaplane-base position list (kept separate — see below), and a
 details file (runways and frequencies) that replaces scraping a third-party
 site for the same information — worldwide, offline, and with no CORS proxy
-in the path. Large and medium fields carry their name; small fields are
-ident-only, which halves the file — a strip you would look up by ident
-anyway. Balloonports and closed fields are excluded: neither changes how you
+in the path. Every field carries its full name, small strips included (see
+the Aerodromes section for what that costs and why it is worth it).
+Balloonports and closed fields are excluded: neither changes how you
 cross an airport's traffic, and a closed field's coordinates are actively
 misleading to plot.
 
@@ -45,9 +45,7 @@ Heliports and seaplane bases are real landing options a pilot plans around
 they are kept out of airports.json entirely rather than folded into its
 `cls` field, since that field mixed into "biggest field first" sorting
 elsewhere (analyzeAerodromes) is a size tier, and a heliport isn't a bigger
-or smaller airport, it's not an airport. Every entry keeps its name (unlike
-small airports) since there's no runway-number shorthand a pilot would use
-to look one up by ident instead.
+or smaller airport, it's not an airport.
 
 Output: src/data/geo/land.json
   {"polys": [[lat,lon], ...],         # flat vertex store
@@ -184,9 +182,20 @@ print(f'-> {os.path.getsize(path)/1e6:.2f} MB')
 
 
 # ── Aerodromes ────────────────────────────────────────────────────
-# [ident, lat, lon, class, name?] where class is 2 large / 1 medium / 0 small.
-# Names are carried for 2 and 1 only; including them for all 43k small fields
-# adds a megabyte for strips that are identified by code in practice.
+# [ident, lat, lon, class, name] where class is 2 large / 1 medium / 0 small.
+#
+# Every field carries its full name. The previous rule — names for large and
+# medium only, truncated to 30 characters — was measured rather than assumed
+# and both halves of it were wrong. The truncation saved 533 bytes gzipped
+# while showing pilots "Barrie-Lake Simcoe Regional Ai", and naming all 34k
+# fields costs 228 KB gzipped, not the megabyte claimed here. That is a real
+# cost but the right one: airports.json is in vite.config.js's globIgnores
+# and runtime-cached, so it never touches PWA install or update, which is
+# that list's entire purpose. And "identified by code in practice" was the
+# assumption behind leaving small strips nameless — but findAirport() and
+# the airport picker both show a name back to the pilot to confirm they
+# typed the right code, and for 28,885 small fields there was nothing to
+# show.
 CLASS = {'large_airport': 2, 'medium_airport': 1, 'small_airport': 0}
 
 ap_path = os.path.join(SCRATCH, 'airports.csv')
@@ -208,10 +217,7 @@ for row in csv.DictReader(open(ap_path, encoding='utf-8')):
     # They are not identifiers a pilot can use, so they are not worth listing.
     if not ident or re.fullmatch(r'[A-Z]{2}-\d+', ident):
         continue
-    entry = [ident, la, lo, cls]
-    if cls:
-        entry.append(row['name'][:30])
-    airports.append(entry)
+    airports.append([ident, la, lo, cls, row['name']])
 
 ap_out = f'{OUT}/airports.json'
 json.dump({'airports': airports,
@@ -242,7 +248,7 @@ for row in csv.DictReader(open(ap_path, encoding='utf-8')):
     ident = row['icao_code'] or row['gps_code'] or row['ident']
     if not ident or re.fullmatch(r'[A-Z]{2}-\d+', ident):
         continue
-    aux[key].append([ident, la, lo, row['name'][:40]])
+    aux[key].append([ident, la, lo, row['name']])
 
 aux_out = f'{OUT}/aux_aerodromes.json'
 json.dump({**aux,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchAirportGeometry, isFBO } from '../lib/airportDiagram'
 import { runwayEnds } from '../lib/faaAirportGeometry'
+import { haversineNm } from '../lib/corridor'
 import { useLiveLocation } from '../hooks/useLiveLocation'
 import { useBackOverride } from '../context/BackOverride'
 
@@ -12,7 +13,11 @@ const W = 300, H = 170
 function groupRunwaysByHeading(runways) {
   const groups = []
   for (const rwy of runways) {
-    const hdg = rwy[4] ?? 90
+    // Skip rather than guess. A runway whose heading can't be established
+    // (neither surveyed nor derivable from its ident) drew as due-east
+    // before, which is a confident-looking lie about which way to line up.
+    const hdg = runwayHeading(rwy)
+    if (hdg == null) continue
     const norm = ((hdg % 180) + 180) % 180
     let g = groups.find(g => Math.abs(g.norm - norm) < 5 || Math.abs(g.norm - norm) > 175)
     if (!g) { g = { norm, items: [] }; groups.push(g) }
@@ -76,6 +81,58 @@ function angleDiff(a, b) {
 }
 function normalizeIdent(id) {
   return (id ?? '').toString().trim().toUpperCase()
+}
+
+// Runway idents, compared by what they actually mean rather than by string.
+//
+// The two sides never agree on spelling. OurAirports writes water lanes and
+// some gravel strips with a trailing letter the charts don't use ("10W/28W"
+// at CYLS, also U/T/G/H across 195 fields), and pads to two digits ("05")
+// where OSM writes "5". Exact string matching therefore threw away the real
+// runway and left the diagram showing taxiways and nothing else — which is
+// the bug this parser exists to fix, not a cosmetic tidy-up.
+//
+// Kept separate from normalizeIdent() on purpose: runwayKey() below groups
+// label pairs with it, and collapsing 10W into 10 there would change which
+// ways get grouped together.
+function parseRunwayIdent(raw) {
+  const s = normalizeIdent(raw).replace(/^RWY?\s*/, '')
+  const m = /^(\d{1,2})([A-Z]*)$/.exec(s)
+  if (!m) return null                       // H1, ALL, N/S, 176 — not a runway number
+  const n = parseInt(m[1], 10)
+  if (!(n >= 1 && n <= 36)) return null
+  // Only L/R/C distinguish parallel runways. Every other suffix is a surface
+  // or usage note (W water, T turf, G gravel), which the same strip may or
+  // may not carry depending on the source, so it must not affect identity.
+  const first = m[2].charAt(0)
+  return { n, side: (first === 'L' || first === 'R' || first === 'C') ? first : '' }
+}
+
+// Same number, and same side only when BOTH sides declare one: 10W↔10 and
+// 10↔10L match (one source simply didn't record the designator), while
+// 10L↔10R must not — those are genuinely different pavement.
+function identsMatch(a, b) {
+  if (!a || !b) return false
+  if (a.n !== b.n) return false
+  return (!a.side || !b.side) || a.side === b.side
+}
+
+// "10/28", "10-28", "RWY 10/28" — separators vary by mapper.
+function splitRef(ref) {
+  return (ref ?? '').toString().split(/[^A-Z0-9]+/i).filter(Boolean)
+}
+
+// The bundled heading (r[4]) is null for 18,315 of 31,357 runway rows, and
+// the old code defaulted those to 90° — drawing an east-west bar for most
+// runways the abstract diagram ever rendered. The ident already encodes the
+// heading to within 5°, so use it rather than inventing one.
+function runwayHeading(rwy) {
+  if (Number.isFinite(rwy?.[4])) return rwy[4]
+  const a = parseRunwayIdent(rwy?.[0])
+  if (a) return a.n * 10
+  const b = parseRunwayIdent(rwy?.[1])
+  if (b) return (b.n * 10 + 180) % 360
+  return null
 }
 
 // Taxiway/apron names are sometimes just a placeholder ("UNK", empty) —
@@ -185,16 +242,37 @@ function resolveLabelCollisions(items, minDist = 22) {
 // whose ref doesn't match one of its idents gets dropped rather than drawn.
 // When there's no bundled list to check against, OSM's data is kept as-is —
 // better than nothing, same as before this fix existed.
-function validateRunways(osmRunways, officialRunways) {
-  if (!officialRunways?.length) return osmRunways
-  const official = new Set()
-  for (const r of officialRunways) {
-    if (r[0]) official.add(normalizeIdent(r[0]))
-    if (r[1]) official.add(normalizeIdent(r[1]))
+function validateRunways(osmRunways, officialRunways, center) {
+  const official = []
+  for (const r of officialRunways ?? []) {
+    for (const id of [r[0], r[1]]) {
+      const p = parseRunwayIdent(id)
+      if (p) official.push(p)
+    }
   }
+  // 775 fields describe their runways as N/S, E/W or H1 — nothing numeric to
+  // check against. No ground truth means no licence to filter, so keep what
+  // OSM gave us rather than blanking the diagram.
+  if (!official.length) return osmRunways
+
   return osmRunways.filter(rwy => {
-    const [a, b] = (rwy.tags?.ref || '').split('/').map(normalizeIdent)
-    return official.has(a) || official.has(b)
+    // Not runway pavement at all — these ride along on the same aeroway tag
+    // and are the usual reason a way carries no ref.
+    const kind = rwy.tags?.runway
+    if (kind === 'displaced_threshold' || kind === 'blast_pad' || kind === 'stopway') return false
+
+    const parts = splitRef(rwy.tags?.ref).map(parseRunwayIdent).filter(Boolean)
+    if (parts.length) return parts.some(p => official.some(o => identsMatch(p, o)))
+
+    // No usable ref. At a single-runway field OSM often just doesn't tag one,
+    // and dropping it leaves the field with no runway drawn at all — but the
+    // Overpass box is ~2.1 NM, wide enough to sweep in a neighbouring strip,
+    // so accept it only if it's genuinely at this airport.
+    if (!center || !Number.isFinite(center.lat) || !Number.isFinite(center.lon)) return false
+    const pts = rwy.points ?? []
+    if (!pts.length) return false
+    const mid = pts[Math.floor(pts.length / 2)]
+    return haversineNm(center.lat, center.lon, mid.lat, mid.lon) <= 1.5
   })
 }
 
@@ -348,15 +426,24 @@ function DiagramBody({ geo, project, fontSize = 9, runwayStroke = 7, taxiwayStro
           <polygon key={`tw-${i}`} points={t.points.map(project).map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke="#c9a227" strokeWidth={taxiwayStroke} />
         ))}
       </g>
+      {/* A taxilane is a service path across a ramp, not a movement-area
+          taxiway. Drawn lighter so a GA apron reads as an apron rather than
+          as a taxiway complex. */}
       {geo.taxiways.filter(t => t.shape !== 'polygon').map((t, i) => (
         <polyline key={`tw-line-${i}`} points={t.points.map(project).map(p => `${p.x},${p.y}`).join(' ')}
-          fill="none" stroke="#c9a227" strokeWidth={taxiwayStroke} strokeLinecap="round" strokeLinejoin="round" opacity="0.6" />
+          fill="none" stroke="#c9a227"
+          strokeWidth={t.kind === 'taxilane' ? taxiwayStroke * 0.7 : taxiwayStroke}
+          strokeLinecap="round" strokeLinejoin="round"
+          opacity={t.kind === 'taxilane' ? 0.4 : 0.6} />
       ))}
       <RealRunways geo={geo} project={project} strokeWidth={runwayStroke} />
       <RunwayLabels geo={geo} project={project} fontSize={fontSize} strokeWidth={runwayStroke} />
       {showLabels && resolveLabelCollisions([
         ...labelPositions(geo.aprons, project, 6, viewport).map(l => ({ ...l, kind: 'apron' })),
-        ...labelPositions(geo.taxiways, project, 14, viewport).map(l => ({ ...l, kind: 'taxiway' })),
+        // Taxilanes are excluded: they are usually unnamed, and the few that
+        // aren't would spend the 14-label budget on ramp paths instead of
+        // the taxiways a pilot is actually given by ground.
+        ...labelPositions(geo.taxiways.filter(t => t.kind !== 'taxilane'), project, 14, viewport).map(l => ({ ...l, kind: 'taxiway' })),
       ]).map((l, i) => l.kind === 'apron' ? (
         <text key={`apl-${i}`} x={l.point.x} y={l.point.y} fontSize={fontSize * 0.85} fontWeight="600"
           fill="var(--text-secondary)" textAnchor="middle" dominantBaseline="middle" opacity="0.85"
@@ -428,7 +515,7 @@ function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)) }
 // vector content — the browser re-renders it crisp at whatever scale,
 // never a blown-up bitmap. Only mounted while the user has the view open,
 // so location isn't polled otherwise.
-function AirportDiagramFullscreen({ icao, geo, runways, cat, officialChart, onOpenOfficial, onClose }) {
+function AirportDiagramFullscreen({ icao, geo, runways, cat, mode, officialChart, onOpenOfficial, onClose }) {
   useBackOverride(onClose)
   const { coords, status } = useLiveLocation()
   const containerRef = useRef(null)
@@ -646,7 +733,7 @@ function AirportDiagramFullscreen({ icao, geo, runways, cat, officialChart, onOp
       >
         <div style={{ width: '100%', height: '100%', transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`, transformOrigin: '0 0' }}>
           <svg viewBox={`0 0 ${FW} ${FH}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-            {geo && project ? (
+            {mode === 'real' && project ? (
               <DiagramBody geo={geo} project={project} fontSize={13} runwayStroke={10} taxiwayStroke={1.6} labels zoom={view.scale} viewport={viewport} />
             ) : (
               <AbstractRunways runways={runways} w={FW} h={FH} />
@@ -697,8 +784,8 @@ export default function AirportDiagram({ icao, lat, lon, runways, cat, temp, win
   // see validateRunways() for why this matters.
   const validatedGeo = useMemo(() => {
     if (!geo) return geo
-    return { ...geo, runways: validateRunways(geo.runways, runways) }
-  }, [geo, runways])
+    return { ...geo, runways: validateRunways(geo.runways, runways, { lat, lon }) }
+  }, [geo, runways, lat, lon])
 
   // Symmetric padding — keeps the diagram genuinely centered in the card
   // regardless of the airport's shape. The temp/wind/vis text corner is
@@ -708,6 +795,19 @@ export default function AirportDiagram({ icao, lat, lon, runways, cat, temp, win
     () => computeProjection(validatedGeo, W, H, { top: 40, left: 40, right: 40, bottom: 40 }),
     [validatedGeo]
   )
+
+  // One decision, shared by the card and the fullscreen view so the two can
+  // never disagree. The subtle case is the last one: taxiways alone satisfy
+  // computeProjection, so a field whose runways all failed validation used to
+  // render a confident-looking diagram with no runway in it. A drawing of an
+  // airport that omits its runway is worse than an honest schematic, so when
+  // there IS a trusted runway list to fall back on, fall back.
+  const mode = useMemo(() => {
+    if (geo === undefined) return 'loading'
+    if (!validatedGeo || !project) return 'abstract'
+    if (validatedGeo.runways.length > 0) return 'real'
+    return runways?.length ? 'abstract' : 'real'
+  }, [geo, validatedGeo, project, runways])
 
   return (
     <>
@@ -723,7 +823,7 @@ export default function AirportDiagram({ icao, lat, lon, runways, cat, temp, win
           cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
         }}>
         <svg viewBox={`0 0 ${W} ${H}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-          {geo === undefined ? null : validatedGeo && project ? (
+          {mode === 'loading' ? null : mode === 'real' ? (
             <DiagramBody geo={validatedGeo} project={project} />
           ) : (
             <AbstractRunways runways={runways} />
@@ -797,6 +897,7 @@ export default function AirportDiagram({ icao, lat, lon, runways, cat, temp, win
           geo={validatedGeo}
           runways={runways}
           cat={cat}
+          mode={mode}
           officialChart={officialChart}
           onOpenOfficial={onOpenOfficial}
           onClose={() => setExpanded(false)}
