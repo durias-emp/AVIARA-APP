@@ -14,16 +14,27 @@ function currentTheme() {
 // system between light and dark left the bar stuck on whichever colour the app
 // started with until it was force-quit and reopened. Rewriting the tag's
 // content is picked up live.
+function setMeta(name, content) {
+  let meta = document.querySelector(`meta[name="${name}"]`)
+  if (!meta) {
+    meta = document.createElement('meta')
+    meta.setAttribute('name', name)
+    document.head.appendChild(meta)
+  }
+  meta.setAttribute('content', content)
+}
+
 function paintChrome() {
   const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
   if (!bg) return
-  let meta = document.querySelector('meta[name="theme-color"]')
-  if (!meta) {
-    meta = document.createElement('meta')
-    meta.setAttribute('name', 'theme-color')
-    document.head.appendChild(meta)
-  }
-  meta.setAttribute('content', bg)
+  setMeta('theme-color', bg)
+  // Kept in step with theme-color for the same reason the inline script in
+  // index.html sets it: whichever of the two a given iOS honours, both say
+  // the same thing. iOS is unlikely to re-read this mid-session, so the
+  // launch value is what shows; this keeps the document honest for the next
+  // launch and for any engine that does re-read.
+  const dark = document.documentElement.getAttribute('data-theme') !== 'light'
+  setMeta('apple-mobile-web-app-status-bar-style', dark ? 'black' : 'default')
   // color-scheme stays in the stylesheet, where it is keyed to data-theme. 
   // setting it here as well would override the red palette's dark scheme with
   // whatever the system happens to be.

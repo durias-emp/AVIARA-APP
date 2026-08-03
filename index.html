@@ -9,14 +9,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <!-- default, not black-translucent, and the history matters. Translucent
-         promises the page the whole screen, but this iOS ships a container
-         bug: the view is sized screen-minus-status-bar yet pinned to the top,
-         so a dead OS-owned band sits under the app that no CSS can reach
-         (proven with painted probes; see main.jsx). default sizes the view
-         below the bar down to the physical bottom: the band disappears and
-         the bar area is painted by iOS, tinted via theme-color, which
-         useTheme already keeps in sync with the app background. -->
+    <!-- Not black-translucent, and the history matters. Translucent promises
+         the page the whole screen, but this iOS ships a container bug: the
+         view is sized screen-minus-status-bar yet pinned to the top, so a
+         dead OS-owned band sits under the app that no CSS can reach (proven
+         with painted probes; see main.jsx). The non-translucent styles size
+         the view below the bar down to the physical bottom: the band
+         disappears and iOS paints the bar itself.
+         The value here is the LIGHT default. The script below overwrites it
+         before first paint when the system is dark, because iOS samples this
+         tag once at launch: whatever it reads is the bar for the whole
+         session, and a tag that only React can correct is corrected too
+         late. That was the white bar over a black app. -->
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <!-- Browser/PWA chrome colour. Deliberately a single tag with no media
          query: iOS reads media-scoped theme-color tags when the app launches
@@ -29,6 +33,34 @@
          painting the standalone status bar. See the :root color-scheme note
          in index.css. -->
     <meta name="color-scheme" content="light dark" />
+    <!-- Runs before first paint, and deliberately inline: everything that
+         decides the status bar's colour is sampled by iOS at launch, so the
+         correct values have to be in the document by then. A module script,
+         React, or anything else that lands a frame later cannot undo the
+         bar iOS has already committed to.
+         Two tags, because which one iOS honours varies by version: 'black'
+         paints the bar black outright, and theme-color covers the versions
+         that tint from it instead. Both point at the same colour, so the
+         result is the same either way. Neither is translucent, so the view
+         still stops below the bar and reaches the physical bottom. -->
+    <script>
+      (function () {
+        try {
+          var dark = window.matchMedia('(prefers-color-scheme: dark)').matches
+          var set = function (name, content) {
+            var m = document.querySelector('meta[name="' + name + '"]')
+            if (!m) {
+              m = document.createElement('meta')
+              m.setAttribute('name', name)
+              document.head.appendChild(m)
+            }
+            m.setAttribute('content', content)
+          }
+          set('apple-mobile-web-app-status-bar-style', dark ? 'black' : 'default')
+          set('theme-color', dark ? '#000000' : '#ffffff')
+        } catch (e) { /* the static tags above stand */ }
+      })()
+    </script>
     <title>AVIARA</title>
   </head>
   <body>
