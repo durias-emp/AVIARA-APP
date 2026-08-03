@@ -515,7 +515,7 @@ function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)) }
 // vector content — the browser re-renders it crisp at whatever scale,
 // never a blown-up bitmap. Only mounted while the user has the view open,
 // so location isn't polled otherwise.
-function AirportDiagramFullscreen({ icao, geo, runways, cat, mode, onClose }) {
+function AirportDiagramFullscreen({ icao, geo, runways, cat, mode, officialChart, onOpenOfficial, onClose }) {
   useBackOverride(onClose)
   const { coords, status } = useLiveLocation()
   const containerRef = useRef(null)
@@ -704,6 +704,16 @@ function AirportDiagramFullscreen({ icao, geo, runways, cat, mode, onClose }) {
               background: cat.color, padding: '4px 10px', borderRadius: 20,
             }}>{cat.label}</span>
           )}
+          {officialChart && (
+            <button onClick={() => { onClose(); onOpenOfficial?.() }} style={{
+              padding: '7px 12px', borderRadius: 20, border: '0.5px solid var(--border)',
+              background: 'var(--bg-card)', boxShadow: 'var(--shadow-md)',
+              fontSize: 11, fontWeight: 700, color: 'var(--text)',
+              cursor: 'pointer', flexShrink: 0, WebkitTapHighlightColor: 'transparent',
+            }}>
+              Official chart
+            </button>
+          )}
           <button onClick={onClose} style={{
             width: 36, height: 36, borderRadius: '50%', border: '0.5px solid var(--border)',
             background: 'var(--bg-card)', boxShadow: 'var(--shadow-md)',
@@ -756,7 +766,7 @@ function AirportDiagramFullscreen({ icao, geo, runways, cat, mode, onClose }) {
   )
 }
 
-export default function AirportDiagram({ icao, lat, lon, runways, cat, temp, windDir, windSpeed, vis, loading }) {
+export default function AirportDiagram({ icao, lat, lon, runways, cat, temp, windDir, windSpeed, vis, loading, officialChart, onOpenOfficial }) {
   const [geo, setGeo] = useState(undefined) // undefined = loading, null = nothing usable
   const [expanded, setExpanded] = useState(false)
 
@@ -850,6 +860,29 @@ export default function AirportDiagram({ icao, lat, lon, runways, cat, temp, win
           }}>{cat.label}</span>
         )}
 
+        {/* The official FAA diagram, where the field publishes one (886 of the
+            2,976 charted US fields). Deliberately an offer rather than a
+            replacement: this card draws instantly, works offline once its
+            geometry is cached, and is the only view carrying the own-ship
+            marker, all of which matter most in exactly the situation the
+            official chart is wanted — taxiing, on a weak connection. The pill
+            is absolutely positioned so arriving late (it waits on the
+            procedures index) shifts nothing, and it stops propagation because
+            the whole card is a tap-to-expand button. */}
+        {officialChart && (
+          <button
+            onClick={e => { e.stopPropagation(); onOpenOfficial?.() }}
+            style={{
+              position: 'absolute', bottom: 10, left: 12,
+              padding: '4px 10px', borderRadius: 20, border: '0.5px solid var(--border)',
+              background: 'var(--bg-card)', color: 'var(--text)',
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.02em',
+              cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+            }}>
+            Official chart
+          </button>
+        )}
+
         <span style={{
           position: 'absolute', bottom: 10, right: 12, color: 'var(--text-tertiary)',
           opacity: 0.7, display: 'flex',
@@ -865,6 +898,8 @@ export default function AirportDiagram({ icao, lat, lon, runways, cat, temp, win
           runways={runways}
           cat={cat}
           mode={mode}
+          officialChart={officialChart}
+          onOpenOfficial={onOpenOfficial}
           onClose={() => setExpanded(false)}
         />
       )}
