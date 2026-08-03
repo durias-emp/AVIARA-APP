@@ -101,6 +101,17 @@ const IconArrow = ({ up }) => (
     <path d="M6 13.5l6 6 6-6" />
   </svg>
 )
+// Sun behind cloud, in the same line weight as the route icon so the two
+// flanking buttons read as a pair rather than as two different toolkits.
+const IconWeather = () => (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="8" cy="8" r="3.1" />
+    <path d="M8 1.9v1.4M8 12.7v1.4M2.2 8H3.6M12.4 8h1.4M4.1 4.1l1 1M11 11l.9.9M11.9 4.1l-1 1M5.1 11l-1 .9" />
+    <path d="M17.5 20.5H10a3.6 3.6 0 0 1-.5-7.2 5 5 0 0 1 9.4 1.3 3 3 0 0 1-1.4 5.9z" />
+  </svg>
+)
+
 const IconRoute = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="5.5" cy="18.5" r="2.5" /><circle cx="18.5" cy="5.5" r="2.5" />
@@ -606,16 +617,16 @@ export default function MapHome() {
           }} />
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', gap: 10 }}>
-            <button onClick={() => navigate('/aircraft')} style={tileBtn}>
-              <span style={{ ...tileCircle, background: 'rgba(255,90,31,0.14)' }}>
-                {ac?.image
-                  ? <img src={ac.image} width={40} height={40} alt="" style={{ objectFit: 'contain' }} />
-                  : <img src="/modo-avion.png" width={26} height={26} alt=""
-                      style={{ objectFit: 'contain', transform: 'rotate(45deg)' }} />}
+            {/* Weather, opposite the route planner. These are the two things a
+                pilot does before a flight, so they flank the one thing they do
+                during it. The aircraft keeps its place in the tools grid
+                below; it is set once and rarely changed, which is not what a
+                slot on the main surface is for. */}
+            <button onClick={() => navigate('/weather')} style={tileBtn}>
+              <span style={{ ...tileCircle, background: 'rgba(60,60,67,0.09)', color: '#1c1c1e' }}>
+                <IconWeather />
               </span>
-              <span style={{ ...tileLabel, maxWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {ac?.registration || ac?.fullName || 'Aircraft'}
-              </span>
+              <span style={tileLabel}>Weather</span>
             </button>
 
             <button onClick={recording ? stopFlight : startFlight} style={{
