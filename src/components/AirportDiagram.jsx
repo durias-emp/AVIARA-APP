@@ -426,15 +426,24 @@ function DiagramBody({ geo, project, fontSize = 9, runwayStroke = 7, taxiwayStro
           <polygon key={`tw-${i}`} points={t.points.map(project).map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke="#c9a227" strokeWidth={taxiwayStroke} />
         ))}
       </g>
+      {/* A taxilane is a service path across a ramp, not a movement-area
+          taxiway. Drawn lighter so a GA apron reads as an apron rather than
+          as a taxiway complex. */}
       {geo.taxiways.filter(t => t.shape !== 'polygon').map((t, i) => (
         <polyline key={`tw-line-${i}`} points={t.points.map(project).map(p => `${p.x},${p.y}`).join(' ')}
-          fill="none" stroke="#c9a227" strokeWidth={taxiwayStroke} strokeLinecap="round" strokeLinejoin="round" opacity="0.6" />
+          fill="none" stroke="#c9a227"
+          strokeWidth={t.kind === 'taxilane' ? taxiwayStroke * 0.7 : taxiwayStroke}
+          strokeLinecap="round" strokeLinejoin="round"
+          opacity={t.kind === 'taxilane' ? 0.4 : 0.6} />
       ))}
       <RealRunways geo={geo} project={project} strokeWidth={runwayStroke} />
       <RunwayLabels geo={geo} project={project} fontSize={fontSize} strokeWidth={runwayStroke} />
       {showLabels && resolveLabelCollisions([
         ...labelPositions(geo.aprons, project, 6, viewport).map(l => ({ ...l, kind: 'apron' })),
-        ...labelPositions(geo.taxiways, project, 14, viewport).map(l => ({ ...l, kind: 'taxiway' })),
+        // Taxilanes are excluded: they are usually unnamed, and the few that
+        // aren't would spend the 14-label budget on ramp paths instead of
+        // the taxiways a pilot is actually given by ground.
+        ...labelPositions(geo.taxiways.filter(t => t.kind !== 'taxilane'), project, 14, viewport).map(l => ({ ...l, kind: 'taxiway' })),
       ]).map((l, i) => l.kind === 'apron' ? (
         <text key={`apl-${i}`} x={l.point.x} y={l.point.y} fontSize={fontSize * 0.85} fontWeight="600"
           fill="var(--text-secondary)" textAnchor="middle" dominantBaseline="middle" opacity="0.85"
