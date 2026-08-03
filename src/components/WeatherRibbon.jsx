@@ -135,40 +135,27 @@ export default function WeatherRibbon({
       {/* Collapsed, this is the whole thing: what the field is doing, and
           which field. That is the glance a pilot takes, and a strip of
           numbers across the top of a chart is furniture the rest of the time. */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 7,
-        padding: '6px 9px 6px 7px',
+      {/* The whole strip expands. Changing the base used to live on the code
+          itself, which turned out to be most of the pill: tapping what looks
+          like a weather readout opened an airport picker, and the weather was
+          almost unreachable. Reading conditions is the frequent act and moving
+          base is the rare one, so the frequent one gets the whole target and
+          the rare one gets a labelled control inside. */}
+      <button onClick={() => setOpen(o => !o)} style={{
+        display: 'flex', alignItems: 'center', gap: 7, width: '100%',
+        padding: '6px 9px 6px 7px', border: 'none', background: 'none',
+        cursor: 'pointer',
       }}>
-        {/* The identity, and the way to change it. Tapping the code is how a
-            pilot moves their base: it is the thing on screen that names the
-            base, so it is the thing that should change it. A button in its own
-            right rather than a region of the expander, because nesting one
-            button inside another is invalid and the tap would be ambiguous
-            anyway. */}
-        <button
-          onClick={() => setPicker(true)}
-          title="Change home airport"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-            border: 'none', background: 'none', padding: 0, cursor: 'pointer',
-          }}>
-          <span style={{
-            fontSize: 11, fontWeight: 800, letterSpacing: '0.3px',
-            color: cat.color, background: cat.bg, padding: '4px 7px', borderRadius: 7,
-            flexShrink: 0,
-          }}>{metar ? cat.label : loading ? '···' : '--'}</span>
+        <span style={{
+          fontSize: 11, fontWeight: 800, letterSpacing: '0.3px',
+          color: cat.color, background: cat.bg, padding: '4px 7px', borderRadius: 7,
+          flexShrink: 0,
+        }}>{metar ? cat.label : loading ? '···' : '--'}</span>
 
-          <span style={{
-            fontSize: 13.5, fontWeight: 700, color: '#1c1c1e',
-            letterSpacing: '0.4px', flexShrink: 0,
-          }}>{icao}</span>
-        </button>
-
-        {/* Everything else on the row opens the detail. */}
-        <button onClick={() => setOpen(o => !o)} style={{
-          display: 'flex', alignItems: 'center', gap: 7, minWidth: 0,
-          border: 'none', background: 'none', padding: '2px 0 2px 2px', cursor: 'pointer',
-        }}>
+        <span style={{
+          fontSize: 13.5, fontWeight: 700, color: '#1c1c1e',
+          letterSpacing: '0.4px', flexShrink: 0,
+        }}>{icao}</span>
 
         {stale && (
           <span title="Observation is over an hour old" style={{
@@ -184,8 +171,6 @@ export default function WeatherRibbon({
           </span>
         )}
 
-        {/* The affordance. Without it a strip showing two things looks like a
-            label rather than something that opens. */}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(60,60,67,0.45)"
           strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
           style={{
@@ -195,8 +180,7 @@ export default function WeatherRibbon({
           }}>
           <path d="M6 9l6 6 6-6" />
         </svg>
-        </button>
-      </div>
+      </button>
 
       {/* Expands downward. Grid rows rather than max-height so it animates to
           its real height: a guessed max-height either clips the content or
@@ -227,6 +211,22 @@ export default function WeatherRibbon({
                   {parseAirportName(metar) || ''}
                 </span>
               </div>
+
+              {/* Named, not implied. A dotted underline on a code is a hint
+                  that has to be guessed at; a word cannot be misread. */}
+              <button onClick={() => setPicker(true)} style={{
+                marginBottom: 9, border: 'none', cursor: 'pointer',
+                background: 'rgba(60,60,67,0.07)', borderRadius: 8,
+                padding: '5px 9px', fontSize: 11, fontWeight: 700,
+                color: 'rgba(60,60,67,0.75)', display: 'flex', alignItems: 'center', gap: 5,
+              }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 21s7-6.5 7-11a7 7 0 1 0-14 0c0 4.5 7 11 7 11z" />
+                  <circle cx="12" cy="10" r="2.4" />
+                </svg>
+                Change home airport
+              </button>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px 14px' }}>
                 {metrics.map(m => (
