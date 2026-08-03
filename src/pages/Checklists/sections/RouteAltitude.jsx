@@ -12,7 +12,7 @@ import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expan
 import { sampleRoute } from '../../../lib/corridor'
 import { analyzeTerrain, MOUNTAIN_FT } from '../../../lib/terrain'
 import { analyzeWater } from '../../../lib/water'
-import { analyzeAerodromes, getAirports } from '../../../lib/aerodromes'
+import { analyzeAerodromes, findAirport } from '../../../lib/aerodromes'
 import { analyzeAirspace } from '../../../lib/airspace'
 import { recommendCruise, fmtAlt } from '../../../lib/cruiseAdvisor'
 import { parseAircraftPerf } from '../../../lib/climbPerf'
@@ -1829,21 +1829,17 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   }, [])
 
   // AWC answers "does this field report weather", which is not the same
-  // question as "does this field exist". Its airport endpoint returns nothing
-  // at all for Canada, and its METAR fallback only covers fields with a
-  // station, so validating against it alone rejected real aerodromes as
-  // nonexistent: CYLS (Barrie-Lake Simcoe) is in the bundled database with
-  // coordinates, has no METAR, and came back "Airport not found". That fails
-  // hardest at exactly the small fields this app sets out to serve as well as
-  // the majors. AWC still goes first, since when it does answer it carries
-  // elevation and runway detail the bundled list has no room for; the 34,000
-  // airport database — the same one the Airports section trusts — is the
-  // fallback rather than the last word.
+  // question as "does this field exist", and validating against it alone
+  // rejected real aerodromes as nonexistent. CYLS (Barrie-Lake Simcoe) has
+  // no AWC record and no METAR, yet sits in the bundled database with
+  // coordinates and a 5,000 ft runway, and came back "Airport not found" —
+  // while neighbouring CYQA and CYYZ both answer from AWC, so the gap is
+  // per-field, not regional, and it falls on exactly the small fields this
+  // app sets out to serve as well as the majors. AWC still goes first: when
+  // it does answer it carries elevation and runway detail the bundled list
+  // has no room for. See findAirport() for the shared fallback.
   async function resolveEndpoint(id) {
-    const awc = await fetchAWC(id)
-    if (awc) return awc
-    const hit = (await getAirports())?.find(a => a[0] === id)
-    return hit ? { icaoId: hit[0], name: hit[4], lat: hit[1], lon: hit[2] } : null
+    return (await fetchAWC(id)) ?? (await findAirport(id))
   }
 
   async function validateDep() {

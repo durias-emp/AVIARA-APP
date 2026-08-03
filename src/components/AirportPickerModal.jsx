@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { findAirport } from '../lib/aerodromes'
 
 const PLACEHOLDERS = ['KLAX', 'KJFK', 'KORD', 'KATL', 'KDFW', 'KDEN', 'KSFO', 'KMIA', 'KBOS', 'KSEA', 'KLAS', 'KPHX', 'KEWR', 'KIAD', 'KDTW']
 
@@ -100,10 +101,18 @@ export default function AirportPickerModal({ onConfirm, onClose, label = 'Home A
         const name = raw.name ?? raw.site ?? raw.stationName ?? raw.icaoId
         setName(name)
         setStatus('valid')
-      } else {
-        setStatus('invalid')
+        return
       }
-    } catch {
+    } catch { /* fall through to the bundled list */ }
+
+    // Both AWC paths above answer "does this field report weather", not "does
+    // it exist" — see findAirport(). The bundled list is the last word, and
+    // also the only one that works offline.
+    const known = await findAirport(icao)
+    if (known) {
+      setName(known.name)
+      setStatus('valid')
+    } else {
       setStatus('invalid')
     }
   }
