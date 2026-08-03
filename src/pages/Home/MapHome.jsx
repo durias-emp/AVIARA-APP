@@ -56,7 +56,9 @@ const DRAG_SLOP = 6
 // these are the screens the old menu-style home listed, and they keep their
 // icons so nothing has to be relearned.
 const TOOLS = [
-  { to: '/checklists', icon: '/clipboard.png',  label: 'Flight Planning' },
+  // No Flight Planning entry: Plan Route in the sheet header goes to the same
+  // screen, and listing it twice makes the grid look fuller than it is while
+  // teaching two routes to one place.
   { to: '/calc',       icon: '/E6B CALC.svg',   label: 'Calculators' },
   { to: '/currency',   icon: '/cheque.png',     label: 'Currency' },
   { to: '/reference',  icon: '/libros.png',     label: 'Quick Reference' },

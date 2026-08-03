@@ -51,7 +51,11 @@ export default function ActivityCard({ flight, onOpen }) {
   return (
     <button onClick={() => onOpen?.(flight)} style={{
       display: 'block', width: '100%', textAlign: 'left', padding: 0,
-      background: 'var(--bg-card, #fff)', border: 'none', borderRadius: 18,
+      // A fixed light surface, not the theme token. This card lives inside
+      // the map home's sheet, which is glass over a chart and always light;
+      // in dark mode the token made the card black inside a white sheet, with
+      // its own dark labels then unreadable on top of it.
+      background: '#fff', border: 'none', borderRadius: 18,
       boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 6px 18px rgba(0,0,0,0.05)',
       overflow: 'hidden', cursor: onOpen ? 'pointer' : 'default',
     }}>
