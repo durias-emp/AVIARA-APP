@@ -44,10 +44,47 @@ if ('serviceWorker' in navigator) {
 // screen by amounts that never happen to equal the top inset, Safari-in-
 // browser is not standalone, and an iOS that measures honestly reports a
 // deficit of zero, which turns the whole correction off.
+function measureICB() {
+  const doc = document.documentElement
+  const probe = document.createElement('div')
+  probe.style.cssText = 'position:fixed;top:0;bottom:0;left:0;width:1px;visibility:hidden;pointer-events:none'
+  doc.appendChild(probe)
+  const h = probe.getBoundingClientRect().height
+  probe.remove()
+  return h
+}
+
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true
+}
+
+// The nuclear option, from the community fix for the sibling bug (the
+// keyboard-shrunk viewport): hiding a genuinely full-height element for one
+// synchronous reflow makes WebKit re-derive the viewport. Every workaround
+// downstream of the lie only moves boxes; the compositor still clips painting
+// at the short viewport, which no CSS can cross (proven with a painted probe:
+// the backdrop stops dead at the old line). If iOS can be argued out of the
+// lie itself, the deficit measures zero and the clip zone ceases to exist.
+let healAttempts = 0
+function healViewport() {
+  if (!isStandalone() || healAttempts >= 3) return
+  const target = window.screen?.height ?? 0
+  if (target - measureICB() <= 2) return          // already honest
+  healAttempts++
+  const root = document.getElementById('root')
+  if (!root) return
+  const scrollTop = root.scrollTop
+  root.style.display = 'none'
+  void root.offsetHeight                          // synchronous reflow
+  root.style.display = ''
+  root.scrollTop = scrollTop
+  correctViewportDeficit()
+}
+
 function correctViewportDeficit() {
   const doc = document.documentElement
-  const standalone = window.matchMedia('(display-mode: standalone)').matches
-    || window.navigator.standalone === true
+  const standalone = isStandalone()
   const safeTop = parseFloat(getComputedStyle(doc).getPropertyValue('--safe-top')) || 0
   // Measure the fixed-positioning box directly instead of trusting
   // innerHeight. The keyboard collapses innerHeight (617 with visualViewport
@@ -58,11 +95,7 @@ function correctViewportDeficit() {
   // a resize. The probe hangs off <html>, not body: body carries a transform
   // precisely so it captures fixed descendants, and a captured probe would
   // measure the corrected box, feeding the correction its own output.
-  const probe = document.createElement('div')
-  probe.style.cssText = 'position:fixed;top:0;bottom:0;left:0;width:1px;visibility:hidden;pointer-events:none'
-  doc.appendChild(probe)
-  const icb = probe.getBoundingClientRect().height
-  probe.remove()
+  const icb = measureICB()
   const deficit = Math.round((window.screen?.height ?? 0) - icb)
   const lying = standalone && safeTop > 0 && deficit > 0 && Math.abs(deficit - safeTop) <= 2
   doc.style.setProperty('--vp-deficit', lying ? deficit + 'px' : '0px')
@@ -85,13 +118,20 @@ function chaseLaunchRace() {
   let ticks = 0
   const t = setInterval(() => {
     correctViewportDeficit()
+    // Twice during the launch window, try to heal the viewport outright.
+    // Not on the first ticks: the insets are still settling and a heal
+    // before they exist re-measures the same lie.
+    if (ticks === 6 || ticks === 15) healViewport()
     if (++ticks >= 30) clearInterval(t)   // 3 seconds, then the listeners own it
   }, 100)
 }
 chaseLaunchRace()
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') chaseLaunchRace()
+  if (document.visibilityState === 'visible') { healAttempts = 0; chaseLaunchRace() }
 })
+// The keyboard leaves the same stuck state; heal shortly after any field
+// blurs, per the community fix (140ms lets the keyboard finish retreating).
+document.addEventListener('focusout', () => { healAttempts = 0; setTimeout(healViewport, 140) })
 
 // Dev builds report the readings to the dev server's terminal (see
 // deviceLogSink in vite.config.js). Only when they change: resize events fire
