@@ -771,3 +771,9 @@ input[type="number"]::-webkit-outer-spin-button {
 html.debug-strip body::before {
   background: #ff2d90;
 }
+/* Part two of the probe: the canvas itself goes lime. Elements stop painting
+   at the short line; whether the CANVAS reaches below it decides if the band
+   is ours to colour or Apple's window, untouchable from CSS. */
+html.debug-strip {
+  background: #32ff32;
+}

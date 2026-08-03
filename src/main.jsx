@@ -98,7 +98,16 @@ function correctViewportDeficit() {
   const icb = measureICB()
   const deficit = Math.round((window.screen?.height ?? 0) - icb)
   const lying = standalone && safeTop > 0 && deficit > 0 && Math.abs(deficit - safeTop) <= 2
-  doc.style.setProperty('--vp-deficit', lying ? deficit + 'px' : '0px')
+  // Stood down. The painted probe showed elements stop at the short line and
+  // the heal proved WebKit re-measures to the same 793: the view itself is
+  // 793 tall and the band below it belongs to the OS window. Extending the
+  // layout past a view's real edge does not paint the band, it sinks the
+  // bottom UI below the visible surface. The honest layout is correct;
+  // removing the band is an install-time configuration question, not a
+  // layout one. The machinery stays for one release in case a future iOS
+  // resurrects the other failure mode.
+  void lying
+  doc.style.setProperty('--vp-deficit', '0px')
 }
 correctViewportDeficit()
 window.addEventListener('resize', correctViewportDeficit)

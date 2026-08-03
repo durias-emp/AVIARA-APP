@@ -9,11 +9,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <!-- Without this iOS draws its own opaque near-white (#fdfdfd) strip above
-         the web view in standalone mode, which never matches --bg. translucent
-         hands the status bar region to the page instead, so the body's
-         safe-area padding paints it the same colour as everything below. -->
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- default, not black-translucent, and the history matters. Translucent
+         promises the page the whole screen, but this iOS ships a container
+         bug: the view is sized screen-minus-status-bar yet pinned to the top,
+         so a dead OS-owned band sits under the app that no CSS can reach
+         (proven with painted probes; see main.jsx). default sizes the view
+         below the bar down to the physical bottom: the band disappears and
+         the bar area is painted by iOS, tinted via theme-color, which
+         useTheme already keeps in sync with the app background. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <!-- Browser/PWA chrome colour. Deliberately a single tag with no media
          query: iOS reads media-scoped theme-color tags when the app launches
          and does not re-evaluate them afterwards, so switching the system
