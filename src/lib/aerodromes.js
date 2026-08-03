@@ -41,6 +41,25 @@ export async function getAirports() {
   }
 }
 
+// Does this ident name a real aerodrome? Deliberately separate from "does it
+// report weather", because the two got conflated: several screens validated a
+// typed ident against AWC alone. AWC's station list is good but not complete,
+// and it thins out exactly where this app claims to be strongest — the small
+// fields. CYLS (Barrie-Lake Simcoe) is the case that surfaced it: no AWC
+// record, no METAR, yet it sits in this list with coordinates, a 5,000 ft
+// runway and a UNICOM, and the app called it "Airport not found". Nearby
+// CYQA and CYYZ both answer from AWC, so this is a per-field gap rather than
+// a regional one. Anything validating an ident should fall back to here.
+//
+// Shaped like an AWC record (icaoId/name/lat/lon) so callers can use either
+// answer without caring which one they got.
+export async function findAirport(ident) {
+  const id = (ident ?? '').trim().toUpperCase()
+  if (!id) return null
+  const hit = (await getAirports())?.find(a => a[0] === id)
+  return hit ? { icaoId: hit[0], name: hit[4], lat: hit[1], lon: hit[2] } : null
+}
+
 // Frequencies/runways, keyed by ident — no lat/lon of its own, always used
 // alongside getAirports(). Dynamic import so the map's airport layer (and
 // anything else that doesn't need this) never pays for the ~2MB chunk.
