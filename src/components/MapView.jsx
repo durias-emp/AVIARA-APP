@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Marker, Polyline, Polygon, Popup, ZoomControl, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -6,6 +6,7 @@ import { HomeButton } from './Shell'
 import { useHomeLocation } from '../context/HomeLocation'
 import { useMapLayer } from '../hooks/useMapLayer'
 import { useMapOverlays } from '../hooks/useMapOverlays'
+import { useBreadcrumbTrail } from '../hooks/useBreadcrumbTrail'
 import { useFlightDetector, DEFAULT_AUTO_DETECT_CONFIG, autoDetectEnabledFrom } from '../hooks/useFlightDetector'
 import { useLogbook } from '../context/Logbook'
 import { useActiveAircraft } from '../context/ActiveAircraft'
@@ -132,6 +133,21 @@ export function LiveMap({ position, zoom, initialCenter, initialZoom, layer, mar
       )}
       {children}
     </MapContainer>
+  )
+}
+
+// The pilot's own track, drawn behind them for as long as the overlay is on.
+// Two strokes: a wide translucent casing under a solid core, so the line stays
+// legible over both a dark satellite image and a pale sectional without
+// needing to know which is underneath.
+function BreadcrumbLayer({ trail }) {
+  if (trail.length < 2) return null
+  const path = trail.map(p => [p.lat, p.lon])
+  return (
+    <>
+      <Polyline positions={path} pathOptions={{ color: '#000', weight: 7, opacity: 0.28, lineCap: 'round', lineJoin: 'round' }} />
+      <Polyline positions={path} pathOptions={{ color: '#ff6b35', weight: 3, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }} />
+    </>
   )
 }
 
@@ -577,6 +593,16 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   const { coords: liveCoords, derived: liveDerived, status: liveStatus, error: liveError } = useHomeLocation()
   const { layer, setLayer } = useMapLayer()
   const { overlays, toggleOverlay } = useMapOverlays()
+  const { trail: breadcrumbTrail, reset: resetBreadcrumbs } = useBreadcrumbTrail({
+    enabled: overlays.breadcrumbs, coords: liveCoords,
+  })
+  // Turning the trail on starts a new one. Doing this here, on the actual
+  // toggle, is what makes it a deliberate reset rather than something the app
+  // does to itself whenever overlay state finishes loading.
+  const handleToggleOverlay = useCallback(key => {
+    if (key === 'breadcrumbs' && !overlays.breadcrumbs) resetBreadcrumbs()
+    toggleOverlay(key)
+  }, [overlays.breadcrumbs, toggleOverlay, resetBreadcrumbs])
   const [route, setRoute] = useState(null)
   const [recenterRequest, setRecenterRequest] = useState(null)
   // [lat,lon] once a fix exists, else null — feeds ONLY the blue "you are
@@ -667,6 +693,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         initialCenter={lastView?.center} initialZoom={lastView?.zoom}
         layer={layer} zoomControlPosition="bottomleft"
       >
+        {overlays.breadcrumbs && <BreadcrumbLayer trail={breadcrumbTrail} />}
         {overlays.radar && <RadarLayer />}
         {overlays.flightCategory && <FlightCategoryLayer />}
         {overlays.tfr && <TfrLayer />}
@@ -740,7 +767,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
       )}
 
       <FlightPlanBar onRouteChange={setRoute} />
-      <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={toggleOverlay} />
+      <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={handleToggleOverlay} />
       <GpsInfoBar route={route} coords={liveCoords} derived={liveDerived} status={liveStatus} />
     </div>
   )
