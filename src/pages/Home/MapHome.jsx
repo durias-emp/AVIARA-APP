@@ -245,6 +245,9 @@ export default function MapHome() {
   const [viewportH, setViewportH] = useState(() => window.innerHeight)
   const [dragY, setDragY] = useState(null)      // live offset while a finger is down
   const drag = useRef(null)
+  // The scrolling contents, so a drag starting there can ask whether the list
+  // is already at its top before deciding who owns the gesture.
+  const bodyRef = useRef(null)
   const [chartsOpen, setChartsOpen] = useState(false)
   // Nothing renders until the layers button is tapped once. Without this the
   // closing animation would play on first paint and the chips would flash in
@@ -355,7 +358,10 @@ export default function MapHome() {
     // is always the string 'profile'.
     get('aircraft', 'profile').then(p => {
       if (!p) return setAc(null)
-      const tpl = TEMPLATES.find(t => t.fullName === p.fullName)
+      // Forgiving match: a pilot who corrected the spacing or the case of
+      // their aircraft's name should not lose its photograph over it.
+      const norm = (v) => (v ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+      const tpl = TEMPLATES.find(t => norm(t.fullName) === norm(p.fullName))
       // Saved values win: a pilot who edited a figure meant it.
       setAc(tpl ? { ...tpl, ...p } : p)
     }).catch(() => {})
@@ -575,18 +581,33 @@ export default function MapHome() {
   // start and route buttons inside this header: they pressed and did nothing.
   // Waiting for movement means a tap stays a tap, and a drag still keeps
   // receiving events after the finger leaves the header.
-  function onDragStart(e) {
+  // fromBody marks a gesture that began over the drawer's contents rather than
+  // its header. Those have to decide between moving the sheet and scrolling
+  // the list, which the header never does.
+  function onDragStart(e, fromBody = false) {
     drag.current = {
       startY: e.clientY, fromY: restY, moved: false,
       t0: Date.now(), lastY: restY, captured: false,
+      fromBody, atTop: (bodyRef.current?.scrollTop ?? 0) <= 0,
     }
   }
+  const onBodyDragStart = (e) => onDragStart(e, true)
   function onDragMove(e) {
     const d = drag.current
     if (!d) return
     const dy = e.clientY - d.startY
     if (!d.moved) {
       if (Math.abs(dy) < DRAG_SLOP) return       // still a tap
+      // A drag that began over the contents only takes the sheet when there
+      // is nothing to scroll in the direction it is going: at full height the
+      // list scrolls, and only a pull down from the very top hands the gesture
+      // back to the sheet. Below full height there is no scrolling to lose,
+      // so the whole drawer moves as one object, which is what a sheet that
+      // shows a photograph should do.
+      if (d.fromBody && snap === 'full' && !(d.atTop && dy > 0)) {
+        drag.current = null
+        return
+      }
       d.moved = true
       d.captured = true
       e.currentTarget.setPointerCapture?.(e.pointerId)
@@ -926,8 +947,17 @@ export default function MapHome() {
 
         {/* Everything else. Scrolls inside the sheet once expanded; inert while
             collapsed so a swipe there moves the sheet instead of the list. */}
-        <div style={{
-          flex: 1, minHeight: 0, overflowY: expanded ? 'auto' : 'hidden',
+        <div
+          ref={bodyRef}
+          onPointerDown={onBodyDragStart} onPointerMove={onDragMove}
+          onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
+          style={{
+          flex: 1, minHeight: 0,
+          // Scrolls only once the sheet is at full height. Below that there is
+          // more sheet to open than list to read, so the gesture belongs to
+          // the sheet and a scroller here would swallow it.
+          overflowY: snap === 'full' ? 'auto' : 'hidden',
+          touchAction: snap === 'full' ? 'pan-y' : 'none',
           WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
           padding: '6px 18px calc(var(--safe-bottom) + 24px)',
           opacity: expanded ? 1 : 0,
@@ -947,11 +977,28 @@ export default function MapHome() {
             display: 'block', width: '100%', textAlign: 'left', padding: 0,
             marginBottom: 20, border: 'none', background: 'none', cursor: 'pointer',
           }}>
-            {ac?.image && (
+            {ac?.image ? (
               <img src={ac.image} alt="" style={{
                 display: 'block', width: '100%', maxHeight: 210,
                 objectFit: 'contain', marginBottom: 10,
               }} />
+            ) : (
+              // A custom aircraft is saved with no photograph, and its name is
+              // whatever the pilot typed, so it matches no template. That is a
+              // legitimate aircraft, not a broken one: it gets a silhouette of
+              // the right kind rather than a gap where the picture should be.
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                height: 150, marginBottom: 10,
+              }}>
+                <img
+                  src={isHelicopter ? '/helicopter.png' : '/modo-avion.png'}
+                  alt=""
+                  style={{
+                    width: 96, height: 96, objectFit: 'contain', opacity: 0.22,
+                    filter: 'var(--icon-filter)',
+                  }} />
+              </div>
             )}
             <div style={{
               fontSize: 26, fontWeight: 800, color: 'var(--map-ink)',
