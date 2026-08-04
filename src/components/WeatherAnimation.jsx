@@ -348,9 +348,15 @@ function Lightning() {
 }
 
 // ── Main exported component ───────────────────────────────────
-export default function WeatherAnimation({ metar }) {
-  const { type, isNight } = getCondition(metar)
-  const bg = gradient(type, isNight)
+// `condition` overrides the METAR-derived one, for fields that publish no
+// METAR and get their sky from the weather model instead.
+//
+// `elementsOnly` drops the opaque sky and keeps just the weather — sun, moon,
+// stars, cloud, rain, snow, fog, lightning — so the home screen can lay those
+// over its own tint rather than over a second, competing gradient.
+export default function WeatherAnimation({ metar, condition, elementsOnly = false }) {
+  const { type, isNight } = condition ?? getCondition(metar)
+  const bg = elementsOnly ? 'transparent' : gradient(type, isNight)
 
   const showSun      = !isNight && (type === 'clear' || type === 'few')
   const showMoon     = isNight  && (type === 'clear' || type === 'few' || type === 'scattered')

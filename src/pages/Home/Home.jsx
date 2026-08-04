@@ -6,8 +6,8 @@ import { useChromeColor } from '../../hooks/useChromeColor'
 import { skyBackdrop, skyChromeColor } from '../../lib/skyTint'
 import { getGlobalCurrencyStatus } from '../../lib/currency'
 import { loadWeather, parseFltCat, parseWind, parseVisib, parseTemp } from '../../lib/weather'
-import { getCondition } from '../../components/WeatherAnimation'
-import { loadAreaWeather, conditionFromArea } from '../../lib/areaWeather'
+import WeatherAnimation, { getCondition } from '../../components/WeatherAnimation'
+import { loadAreaWeather, conditionFromArea, areaTemp, areaWind, areaVis } from '../../lib/areaWeather'
 import { findAirport } from '../../lib/aerodromes'
 import { usePilotProfile } from '../../context/PilotProfile'
 import { useActiveAircraft } from '../../context/ActiveAircraft'
@@ -234,18 +234,19 @@ function AirportsHeroCard({ onOpen, onCondition }) {
   // Only fetched when AWC has actually answered "nothing here" (noReport),
   // never on a failed lookup, and never for a field that does report: the
   // same gate the Airports page uses.
-  const [areaSky, setAreaSky] = useState(null)
+  const [area, setArea] = useState(null)
   useEffect(() => {
-    setAreaSky(null)
+    setArea(null)
     if (!icao || !wx?.noReport) return
     let cancelled = false
     findAirport(icao).then(hit => {
       if (cancelled || !hit) return
       return loadAreaWeather(icao, hit.lat, hit.lon)
-        .then(area => { if (!cancelled) setAreaSky(conditionFromArea(area)) })
+        .then(a => { if (!cancelled) setArea(a) })
     }).catch(() => {})
     return () => { cancelled = true }
   }, [icao, wx?.noReport])
+  const areaSky = area ? conditionFromArea(area) : null
 
   // This card owns the home airport's weather, and the home screen tints its
   // background from it. Reported upward rather than fetched a second time, and
@@ -354,6 +355,17 @@ function AirportsHeroCard({ onOpen, onCondition }) {
               <>
                 <div>{parseTemp(wx.metar, units)} · {parseWind(wx.metar, units)}</div>
                 <div style={{ color: 'rgba(255,255,255,0.65)' }}>{parseVisib(wx.metar, units)} vis</div>
+              </>
+            ) : area ? (
+              // A field with no station still gets numbers, from the model at
+              // its own coordinates. There is no flight-category pill on this
+              // path — `cat` stays null without a published one — so the card
+              // never asserts VFR on the strength of a forecast. The Airports
+              // page carries the full "not observed here" labelling; this is
+              // the summary that sends you there.
+              <>
+                <div>{areaTemp(area, units)} · {areaWind(area, units)}</div>
+                <div style={{ color: 'rgba(255,255,255,0.55)' }}>{areaVis(area, units)} · forecast</div>
               </>
             ) : (
               <span style={{ color: 'rgba(255,255,255,0.65)' }}>{loading ? 'Loading…' : '—'}</span>
@@ -639,6 +651,24 @@ export default function Home() {
             animation: 'sky-fade 700ms ease',
           }}
         />
+      )}
+      {/* The weather itself, over the tint: cloud when it's cloudy, rain when
+          it's raining, snow, fog, lightning. The same components the airport
+          card paints with, so the two can never show different weather.
+          Held well back — this is behind every button on the screen, and it
+          has to read as atmosphere rather than as content competing with the
+          photographs on top of it. */}
+      {sky && (
+        <div
+          aria-hidden
+          style={{
+            position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
+            opacity: 0.5,
+            animation: 'sky-fade 1200ms ease',
+          }}
+        >
+          <WeatherAnimation condition={sky} elementsOnly />
+        </div>
       )}
       <style>{'@keyframes sky-fade { from { opacity: 0 } to { opacity: 1 } }'}</style>
       <div style={{
