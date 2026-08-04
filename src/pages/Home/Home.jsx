@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo, useCallback, useContext } from 'react'
-import { Link } from 'react-router-dom'
 import { get, put } from '../../lib/db'
 import { getCurrencyStatus } from '../../lib/currency'
 import { computeTotalHours } from '../../lib/logbookFields'
@@ -25,6 +24,7 @@ import Checklists from '../Checklists/Checklists'
 import Hangar     from '../Aircraft/Hangar'
 import Settings   from '../Settings/Settings'
 import Discover   from '../Discover/Discover'
+import Pilot      from '../Pilot/Pilot'
 
 // Uniform size for every hero button (Weather, Map, Airports, Hangar,
 // Pilot, Flight Planning) and the Tools/Settings row — small enough that
@@ -302,6 +302,14 @@ function HomeDrawer({ stop, onStopChange, sectionOpen, onHeightChange, children 
         : 'none',
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
       touchAction: 'none',
+      // Sections pin their own chrome with position:fixed — Discover's Home
+      // button and tab bar, the Checklists pane's inset:0. Against the
+      // viewport that chrome escapes the drawer and lands on the map. A
+      // transform makes this element their containing block instead, so
+      // "fixed" means fixed to the drawer, which is what a section rendered
+      // inside one should mean. Cheaper and far less brittle than rewriting
+      // the positioning in every section.
+      transform: 'translateZ(0)',
       // Only at full height does the drawer reach the notch.
       paddingTop: atFull ? 'var(--safe-top)' : 0,
     }}>
@@ -598,13 +606,19 @@ function StatusLine({ label, status }) {
   )
 }
 
-function PilotRow({ currencyCards }) {
+function PilotRow({ currencyCards, onOpen }) {
   const { entries } = useLogbook()
   const totalHours = computeTotalHours(entries)
 
+  function handleClick() {
+    onOpen('pilot')
+  }
+
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <Link to="/pilot" style={{ textDecoration: 'none' }}>
+      <div onClick={handleClick} role="button" tabIndex={0} aria-label="Open pilot"
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
+        style={{ textDecoration: 'none' }}>
         <div style={{
           position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
           boxShadow: 'var(--shadow-sm)',
@@ -631,7 +645,7 @@ function PilotRow({ currencyCards }) {
             </div>
           </div>
         </div>
-      </Link>
+      </div>
     </div>
   )
 }
@@ -652,6 +666,7 @@ function SectionContent({ section, order, onMoveRow }) {
   if (section === 'tools')      return <ToolsMenu />
   if (section === 'settings')   return <Settings order={order} onMoveRow={onMoveRow} />
   if (section === 'discover')   return <Discover />
+  if (section === 'pilot')      return <Pilot />
   return null
 }
 
@@ -772,7 +787,7 @@ export default function Home() {
   function renderRow(key) {
     if (key === 'airports') return <AirportsHeroCard key={key} onOpen={openCard} />
     if (key === 'hangar')   return <HangarCard key={key} aircraftImage={aircraftImage} aircraftCount={aircraftList?.length ?? 0} onOpen={openCard} />
-    if (key === 'pilot')    return <PilotRow key={key} currencyCards={currencyCards} />
+    if (key === 'pilot')    return <PilotRow key={key} currencyCards={currencyCards} onOpen={openCard} />
     if (key === 'flight')   return <FlightPlanCard key={key} onOpen={openCard} />
     if (key === 'discover') return <DiscoverCard key={key} onOpen={openCard} />
     return null
