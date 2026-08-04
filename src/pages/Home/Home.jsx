@@ -189,27 +189,42 @@ function HomeDrawer({ open, onOpenChange, onHeightChange, children }) {
   useEffect(() => { onHeightChange(settledHeight) }, [settledHeight, onHeightChange])
 
   function handlePointerDown(e) {
-    e.currentTarget.setPointerCapture(e.pointerId)
+    // The element is captured into a local, NOT read off the event later.
+    // React sets currentTarget back to null once the handler returns, so a
+    // listener that reaches for e.currentTarget throws the moment it fires.
+    // That is not a crash you see: the drawer stays wherever the drag left it
+    // because setDrag(null) never runs, while `open` never changes — so the
+    // map goes on reserving room for a drawer that looks closed.
+    const el = e.currentTarget
+    // Capture is an optimisation — it keeps the drag alive if the finger
+    // leaves the handle — not a requirement. It throws for a pointer id the
+    // browser doesn't recognise, and letting that escape would abort this
+    // handler before it binds anything, which loses the drag completely.
+    try { el.setPointerCapture(e.pointerId) } catch { /* drag still works */ }
     const startY = e.clientY
     const startH = settledHeight
     let moved = false
 
     const move = ev => {
-      const next = startH + (startY - ev.clientY)
       if (Math.abs(startY - ev.clientY) > 4) moved = true
+      const next = startH + (startY - ev.clientY)
       setDrag(Math.max(DRAWER_PEEK, Math.min(openHeight, next)))
     }
-    const up = ev => {
-      e.currentTarget.releasePointerCapture?.(ev.pointerId)
-      e.currentTarget.removeEventListener('pointermove', move)
-      e.currentTarget.removeEventListener('pointerup', up)
+    const finish = ev => {
+      try { el.releasePointerCapture(ev.pointerId) } catch { /* never captured */ }
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerup', finish)
+      el.removeEventListener('pointercancel', finish)
       const finalH = startH + (startY - ev.clientY)
       // A tap toggles; a drag snaps to whichever stop it ended up nearer.
       onOpenChange(moved ? finalH > (openHeight + DRAWER_PEEK) / 2 : !open)
       setDrag(null)
     }
-    e.currentTarget.addEventListener('pointermove', move)
-    e.currentTarget.addEventListener('pointerup', up)
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', finish)
+    // A cancelled pointer (a system gesture taking over, say) has to settle the
+    // drawer too, or it is left stuck exactly as above.
+    el.addEventListener('pointercancel', finish)
   }
 
   return (
