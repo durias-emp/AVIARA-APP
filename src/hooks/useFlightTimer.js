@@ -1,0 +1,102 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { get, put, del } from '../lib/db'
+import { formatClock, decimalHours } from '../lib/flightTime'
+import { isUsableFix, shouldKeepFix, trackDistanceNm } from '../lib/track'
+
+const STORE = 'settings'
+const KEY = 'manualFlightTimer'
+
+// The manual flight timer: the pilot's own clock, started and stopped by hand.
+//
+// It exists because the automatic detector measures AIR time — it can only see
+// the aircraft moving — and air time is not flight time. Flight time runs from
+// the moment the aircraft moves under its own power for the purpose of flight
+// until it comes to rest after landing, which includes the taxi the detector
+// cannot see. For a helicopter the gap is worse still: a machine that hovers
+// defeats a speed threshold and an altitude threshold at the same time, so for
+// those this is not a supplement to detection, it is the only honest source.
+//
+// The elapsed time is derived from a stored start timestamp rather than
+// counted in memory. A counter is wrong the moment anything interrupts it —
+// the screen locking, the tab being evicted, the app being closed on a long
+// leg — and it fails by under-reporting, which in a logbook is the direction
+// that matters. A timestamp survives all of that: whenever the app comes back,
+// the elapsed time is simply now minus then.
+export function useFlightTimer({ coords } = {}) {
+  const [startedAt, setStartedAt] = useState(null)
+  const trackRef = useRef([])
+  const [now, setNow] = useState(() => Date.now())
+  const [loaded, setLoaded] = useState(false)
+  const tickRef = useRef(null)
+
+  // A timer already running when the app opens is the whole point: the pilot
+  // started it, put the phone down, and flew.
+  useEffect(() => {
+    let cancelled = false
+    get(STORE, KEY).then(row => {
+      if (cancelled) return
+      if (row?.value?.startedAt) setStartedAt(row.value.startedAt)
+      setLoaded(true)
+    }).catch(() => { if (!cancelled) setLoaded(true) })
+    return () => { cancelled = true }
+  }, [])
+
+  // Ticks only while running, and only to redraw — the number itself is
+  // computed from the timestamps, so a missed tick costs nothing and the
+  // first one need not be immediate. start() seeds the clock for the case
+  // that matters; resuming a running timer is at most a second stale.
+  useEffect(() => {
+    if (!startedAt) { clearInterval(tickRef.current); return }
+    tickRef.current = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(tickRef.current)
+  }, [startedAt])
+
+  // The track is buffered in a ref, not state: it changes on every usable fix
+  // and nothing renders it while the timer runs, so putting it in state would
+  // re-render the whole map screen for a line nobody is looking at yet.
+  useEffect(() => {
+    if (!startedAt || !isUsableFix(coords)) return
+    const point = { lat: coords.lat, lon: coords.lon, altFt: coords.altFt ?? null, t: Date.now() }
+    if (!shouldKeepFix(trackRef.current[trackRef.current.length - 1], point)) return
+    trackRef.current = [...trackRef.current, point]
+  }, [startedAt, coords])
+
+  const start = useCallback(() => {
+    const at = Date.now()
+    trackRef.current = []
+    setStartedAt(at)
+    setNow(at)
+    put(STORE, { key: KEY, value: { startedAt: at } }).catch(() => {})
+  }, [])
+
+  // Returns the finished flight for the caller to log, and clears itself. It
+  // deliberately does not write the logbook entry: what a flight is worth
+  // recording as belongs to the screen that knows which aircraft is active.
+  const stop = useCallback(() => {
+    if (!startedAt) return null
+    const endedAt = Date.now()
+    const elapsedMs = endedAt - startedAt
+    const track = trackRef.current
+    setStartedAt(null)
+    trackRef.current = []
+    del(STORE, KEY).catch(() => {})
+    return {
+      startedAt,
+      endedAt,
+      elapsedMs,
+      track,
+      distanceNm: trackDistanceNm(track),
+      clock: formatClock(elapsedMs),
+      hours: decimalHours(elapsedMs),
+    }
+  }, [startedAt])
+
+  return {
+    running: !!startedAt,
+    loaded,
+    startedAt,
+    elapsedMs: startedAt ? Math.max(0, now - startedAt) : 0,
+    start,
+    stop,
+  }
+}

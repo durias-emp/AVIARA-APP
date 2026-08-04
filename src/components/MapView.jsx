@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Marker, Polyline, Polygon, Popup, ZoomControl, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -6,7 +6,10 @@ import { HomeButton } from './Shell'
 import { useHomeLocation } from '../context/HomeLocation'
 import { useMapLayer } from '../hooks/useMapLayer'
 import { useMapOverlays } from '../hooks/useMapOverlays'
-import { useFlightDetector, DEFAULT_AUTO_DETECT_CONFIG } from '../hooks/useFlightDetector'
+import { useBreadcrumbTrail } from '../hooks/useBreadcrumbTrail'
+import { useFlightTimer } from '../hooks/useFlightTimer'
+import { formatClock } from '../lib/flightTime'
+import { useFlightDetector, DEFAULT_AUTO_DETECT_CONFIG, autoDetectEnabledFrom } from '../hooks/useFlightDetector'
 import { useLogbook } from '../context/Logbook'
 import { useActiveAircraft } from '../context/ActiveAircraft'
 import { get } from '../lib/db'
@@ -132,6 +135,21 @@ export function LiveMap({ position, zoom, initialCenter, initialZoom, layer, mar
       )}
       {children}
     </MapContainer>
+  )
+}
+
+// The pilot's own track, drawn behind them for as long as the overlay is on.
+// Two strokes: a wide translucent casing under a solid core, so the line stays
+// legible over both a dark satellite image and a pale sectional without
+// needing to know which is underneath.
+function BreadcrumbLayer({ trail }) {
+  if (trail.length < 2) return null
+  const path = trail.map(p => [p.lat, p.lon])
+  return (
+    <>
+      <Polyline positions={path} pathOptions={{ color: '#000', weight: 7, opacity: 0.28, lineCap: 'round', lineJoin: 'round' }} />
+      <Polyline positions={path} pathOptions={{ color: '#ff6b35', weight: 3, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }} />
+    </>
   )
 }
 
@@ -577,6 +595,16 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   const { coords: liveCoords, derived: liveDerived, status: liveStatus, error: liveError } = useHomeLocation()
   const { layer, setLayer } = useMapLayer()
   const { overlays, toggleOverlay } = useMapOverlays()
+  const { trail: breadcrumbTrail, reset: resetBreadcrumbs } = useBreadcrumbTrail({
+    enabled: overlays.breadcrumbs, coords: liveCoords,
+  })
+  // Turning the trail on starts a new one. Doing this here, on the actual
+  // toggle, is what makes it a deliberate reset rather than something the app
+  // does to itself whenever overlay state finishes loading.
+  const handleToggleOverlay = useCallback(key => {
+    if (key === 'breadcrumbs' && !overlays.breadcrumbs) resetBreadcrumbs()
+    toggleOverlay(key)
+  }, [overlays.breadcrumbs, toggleOverlay, resetBreadcrumbs])
   const [route, setRoute] = useState(null)
   const [recenterRequest, setRecenterRequest] = useState(null)
   // [lat,lon] once a fix exists, else null — feeds ONLY the blue "you are
@@ -618,10 +646,10 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   // Flight Detection section. Reuses this screen's own liveCoords (never a
   // second geolocation watch — see useFlightDetector's own header comment
   // for why that matters).
-  const [autoDetectEnabled, setAutoDetectEnabled] = useState(false)
+  const [autoDetectEnabled, setAutoDetectEnabled] = useState(true)
   const [autoDetectConfig, setAutoDetectConfig] = useState(DEFAULT_AUTO_DETECT_CONFIG)
   useEffect(() => {
-    get('settings', 'autoDetectEnabled').then(row => setAutoDetectEnabled(!!row?.value))
+    get('settings', 'autoDetectEnabled').then(row => setAutoDetectEnabled(autoDetectEnabledFrom(row)))
     get('settings', 'autoDetectConfig').then(row => setAutoDetectConfig({ ...DEFAULT_AUTO_DETECT_CONFIG, ...(row?.value ?? {}) }))
   }, [])
   const { state: detectState, draft: detectedDraft, reset: resetDetector } = useFlightDetector({
@@ -630,6 +658,34 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   const { addEntry } = useLogbook()
   const { aircraftId: activeAircraftId } = useActiveAircraft()
   const [flightSavedBanner, setFlightSavedBanner] = useState(false)
+
+  // The pilot's own clock. Stopping it hands back a finished flight, which is
+  // logged here rather than in the hook because this is the screen that knows
+  // which aircraft is active. Tagged pendingReview like a detected flight, so
+  // both land in the same place for the pilot to confirm rather than being
+  // committed behind their back.
+  const flightTimer = useFlightTimer({ coords: liveCoords })
+  const [timedFlightBanner, setTimedFlightBanner] = useState(null)
+  function toggleFlightTimer() {
+    if (!flightTimer.running) { flightTimer.start(); return }
+    const flight = flightTimer.stop()
+    if (!flight) return
+    addEntry({
+      date: new Date(flight.startedAt).toISOString().slice(0, 10),
+      totalTime: flight.hours.toFixed(1),
+      startedAt: flight.startedAt,
+      endedAt: flight.endedAt,
+      durationMs: flight.elapsedMs,
+      track: flight.track,
+      distanceNm: flight.distanceNm,
+      aircraftId: activeAircraftId ?? null,
+      source: 'timer',
+      pendingReview: true,
+    }).then(() => {
+      setTimedFlightBanner(flight)
+      setTimeout(() => setTimedFlightBanner(null), 8000)
+    }).catch(() => {})
+  }
   useEffect(() => {
     if (detectState !== 'done' || !detectedDraft) return
     // Never silently commits a finished entry — it lands tagged pendingReview
@@ -667,6 +723,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         initialCenter={lastView?.center} initialZoom={lastView?.zoom}
         layer={layer} zoomControlPosition="bottomleft"
       >
+        {overlays.breadcrumbs && <BreadcrumbLayer trail={breadcrumbTrail} />}
         {overlays.radar && <RadarLayer />}
         {overlays.flightCategory && <FlightCategoryLayer />}
         {overlays.tfr && <TfrLayer />}
@@ -684,6 +741,37 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
           <HomeButton />
         </div>
       )}
+
+      {/* The flight timer. Idle it is a button; running it is the clock,
+          because a timer you cannot read is not doing its job. Sits opposite
+          locate, on the same rail as everything else pegged to the drawer. */}
+      <button
+        onClick={toggleFlightTimer}
+        aria-label={flightTimer.running ? 'Stop flight timer' : 'Start flight timer'}
+        style={{
+          position: 'absolute', left: 12, bottom: 'calc(150px + var(--map-bottom-inset, 0px))', zIndex: 500,
+          transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
+          height: 32, minWidth: 32, padding: flightTimer.running ? '0 10px' : 0,
+          borderRadius: 16, border: 'none',
+          background: flightTimer.running ? 'var(--danger)' : 'var(--bg-card)',
+          boxShadow: 'var(--shadow-sm)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+        }}>
+        {flightTimer.running ? (
+          <>
+            <span style={{ width: 9, height: 9, borderRadius: 2, background: '#fff', flexShrink: 0 }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
+              {formatClock(flightTimer.elapsedMs)}
+            </span>
+          </>
+        ) : (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="13" r="8" />
+            <path d="M12 9v4l2.5 2M9 2h6" />
+          </svg>
+        )}
+      </button>
 
       <button
         onClick={handleLocate}
@@ -729,6 +817,16 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         </div>
       )}
 
+      {timedFlightBanner && (
+        <div style={{
+          position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
+          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
+          fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
+        }}>
+          Flight timed — {timedFlightBanner.clock} ({timedFlightBanner.hours.toFixed(1)} h). Review it in the logbook.
+        </div>
+      )}
+
       {flightSavedBanner && (
         <div style={{
           position: 'absolute', top: 68, left: 12, right: 12, zIndex: 500,
@@ -740,7 +838,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
       )}
 
       <FlightPlanBar onRouteChange={setRoute} />
-      <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={toggleOverlay} />
+      <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={handleToggleOverlay} />
       <GpsInfoBar route={route} coords={liveCoords} derived={liveDerived} status={liveStatus} />
     </div>
   )

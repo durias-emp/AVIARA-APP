@@ -2,6 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 
 export const DEFAULT_AUTO_DETECT_CONFIG = { mode: 'both', speedKt: 30, altAglFt: 200 }
 
+// On by default. A pilot who never opens Settings should still come back from
+// a flight and find it waiting for them — a recorder that has to be switched
+// on before it is useful gets discovered after the flight worth recording.
+//
+// Read through this rather than `!!row?.value`, which cannot tell "never
+// answered" from "answered no". Only an explicit stored false turns it off,
+// so a pilot who deliberately disabled it stays disabled.
+export const AUTO_DETECT_DEFAULT_ENABLED = true
+export function autoDetectEnabledFrom(row) {
+  return row?.value == null ? AUTO_DETECT_DEFAULT_ENABLED : !!row.value
+}
+
 // Consecutive above/below-threshold GPS fixes required before starting or
 // ending a detected flight — guards against a single noisy fix (a bad
 // multipath reading, a momentary speed spike) triggering a false start/stop.
