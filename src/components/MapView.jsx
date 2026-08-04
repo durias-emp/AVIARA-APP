@@ -231,6 +231,10 @@ function FlightCategoryLayer() {
 // real EFB; medium and then small fields join in as the pilot zooms closer,
 // which is what keeps the in-view count (and the cap below) sane rather than
 // a hard cutoff that makes the whole layer vanish at once.
+// The map is the home screen now, mounted for as long as the app is open, so
+// marker counts are a standing cost rather than one the pilot opted into.
+const AIRPORT_MIN_ZOOM = 7
+
 function AirportLayer() {
   const map = useMap()
   const [airports, setAirports] = useState(null)
@@ -250,8 +254,14 @@ function AirportLayer() {
     if (!airports) return
     function load() {
       const z = map.getZoom()
-      const minCls = z >= 9 ? 0 : z >= 6 ? 1 : 2
-      const cap = minCls === 2 ? 2000 : minCls === 1 ? 800 : 500
+      // Below this there is nothing to read: 2000 markers at world zoom is an
+      // unreadable smear, and it is now the home screen's resting state rather
+      // than something the pilot opened on purpose. The caps that follow were
+      // sized for a map you had to go and open; as a permanently mounted
+      // background they have to be far smaller.
+      if (z < AIRPORT_MIN_ZOOM) { setVisible([]); return }
+      const minCls = z >= 9 ? 0 : 1
+      const cap = z >= 9 ? 500 : 300
       const b = map.getBounds()
       const south = b.getSouth(), north = b.getNorth(), west = b.getWest(), east = b.getEast()
       const hits = []
@@ -326,7 +336,11 @@ const SEAPLANE_ICON = L.divIcon({
 // inventing a criterion the source data doesn't have.
 const AUX_CAP = 400
 
-function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 0 }) {
+// minZoom defaults to a real floor, not 0. At 0 the guard below reads
+// `zoom < 0`, which is false forever — so the default silently turned the
+// limit off entirely. Seaplane bases were declared without the prop and drew
+// 400 markers across the whole country at world zoom.
+function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 8 }) {
   const map = useMap()
   const [list, setList] = useState(null)
   const [visible, setVisible] = useState([])
@@ -380,7 +394,7 @@ function HeliportLayer() {
   return <AuxAerodromeLayer dataKey="heliports" icon={HELIPORT_ICON} kindLabel="Heliport" minZoom={8} />
 }
 function SeaplaneBaseLayer() {
-  return <AuxAerodromeLayer dataKey="seaplaneBases" icon={SEAPLANE_ICON} kindLabel="Seaplane base" />
+  return <AuxAerodromeLayer dataKey="seaplaneBases" icon={SEAPLANE_ICON} kindLabel="Seaplane base" minZoom={8} />
 }
 
 // TFRs — FAA GeoServer WFS via our /api/tfr proxy (same source and parsing
