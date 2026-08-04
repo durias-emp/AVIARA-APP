@@ -13,14 +13,40 @@ import { haversineNm, trackDistanceNm } from './track'
 // Anything claiming more than that from these inputs would be invented, and an
 // invented debrief is worse than none — a pilot might believe it.
 
+// Phase colours, and they are not decoration — they are the identity encoding
+// on the timeline, so they were run through the palette validator rather than
+// chosen by eye.
+//
+// The five flight phases are the categorical set. `ground` is deliberately a
+// neutral grey and sits outside it: it is the absence of flight, not a
+// category being compared, and giving it a hue would have it competing with
+// the phases that matter. (It fails the chroma floor on purpose.)
+//
+// Dark has its own steps rather than a flip of the light ones — the validator
+// enforces a different lightness band per surface (light 0.43-0.77, dark
+// 0.48-0.67), and the light set sits above the dark band entirely. Both sets
+// pass lightness, chroma, CVD separation and normal-vision separation.
+//
+// Light carries a sub-3:1 contrast warning on green/orange/amber, which is not
+// dismissable: the timeline must therefore label its phases in text and never
+// rely on colour alone. It does.
 export const PHASES = {
-  ground:  { label: 'Ground',  color: '#8b93a5' },
-  takeoff: { label: 'Takeoff', color: '#34c759' },
-  climb:   { label: 'Climb',   color: '#0a84ff' },
-  cruise:  { label: 'Cruise',  color: '#ff6b35' },
-  descent: { label: 'Descent', color: '#af52de' },
-  landing: { label: 'Landing', color: '#ff9500' },
+  ground:  { label: 'Ground',  color: '#8b93a5', dark: '#6b7280' },
+  takeoff: { label: 'Takeoff', color: '#34c759', dark: '#219653' },
+  climb:   { label: 'Climb',   color: '#0a84ff', dark: '#1a73e8' },
+  cruise:  { label: 'Cruise',  color: '#ff6b35', dark: '#d4541c' },
+  descent: { label: 'Descent', color: '#af52de', dark: '#9a44c8' },
+  landing: { label: 'Landing', color: '#ff9500', dark: '#b87400' },
 }
+
+// Emitted once into the debrief so SVG marks can reference the same tokens the
+// rest of the app themes with, instead of each chart branching on the theme.
+export const PHASE_CSS = `
+  ${Object.entries(PHASES).map(([k, v]) => `--phase-${k}: ${v.color};`).join('\n  ')}
+`
+export const PHASE_CSS_DARK = `
+  ${Object.entries(PHASES).map(([k, v]) => `--phase-${k}: ${v.dark};`).join('\n  ')}
+`
 
 // Ground is decided on groundspeed rather than altitude: GPS altitude is the
 // least trustworthy thing a phone reports, routinely tens of metres out and
