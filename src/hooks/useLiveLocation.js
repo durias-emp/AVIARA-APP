@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 // Continuous GPS watch — the low-level primitive behind both
 // HomeLocationProvider (src/context/HomeLocation.jsx, shared by Home's map
@@ -12,12 +12,21 @@ import { useEffect, useRef, useState } from 'react'
 // fail). Exposes the full coords object (altitude, heading, speed,
 // accuracy) plus a smoothed rate of turn and vertical speed derived from
 // consecutive readings.
+// How long to wait before starting the whole acquisition sequence over. Long
+// enough not to hammer a chip that is genuinely struggling, short enough that
+// walking out to the aircraft is noticed without the pilot doing anything.
+const RETRY_AFTER_MS = 10000
+
 export function useLiveLocation() {
   const [coords, setCoords] = useState(null) // { lat, lon, altFt, accuracyM, headingDeg, speedKt, timestamp }
   const [derived, setDerived] = useState({ rotDegSec: null, vsFpm: null })
   const [status, setStatus] = useState('pending')
   const [error, setError] = useState(null)
   const prev = useRef(null)
+  // Bumping this tears the watch down and starts the whole sequence again
+  // from scratch. It is what a manual retry drives, and what the automatic
+  // one uses too.
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -30,6 +39,7 @@ export function useLiveLocation() {
     // dropped down to relaxed accuracy — both survive across watchPosition
     // restarts below, so a restart doesn't just retry the same request.
     let watchId
+    let retryTimer = null
     let everGotFix = false
     let relaxed = false
 
@@ -81,20 +91,46 @@ export function useLiveLocation() {
       // location, longer window, willing to accept a cached fix) by tearing
       // down this watch and starting a new one — PERMISSION_DENIED is the
       // one code that's genuinely terminal and not worth retrying at all.
-      if (!everGotFix && !relaxed && err.code !== err.PERMISSION_DENIED) {
+      if (err.code === err.PERMISSION_DENIED) return   // genuinely terminal
+
+      if (!everGotFix && !relaxed) {
         relaxed = true
         navigator.geolocation.clearWatch(watchId)
         watchId = navigator.geolocation.watchPosition(handleSuccess, handleError, {
           enableHighAccuracy: false, maximumAge: 30000, timeout: 20000,
         })
+        return
       }
+
+      // Both attempts have now failed, and this used to be where the hook gave
+      // up permanently: `relaxed` stayed true, nothing else was ever tried,
+      // and the app sat on "No GPS" until it was fully reloaded. That is
+      // exactly wrong for the case it matters most — a cold start indoors, or
+      // a phone that has not seen sky yet. The pilot walks out to the aircraft
+      // and the app never notices.
+      //
+      // So keep trying, on a slow cycle. It is cheap next to the alternative,
+      // which is a pilot believing the app cannot see GPS at all.
+      if (retryTimer) return
+      retryTimer = setTimeout(() => {
+        retryTimer = null
+        setAttempt(a => a + 1)
+      }, RETRY_AFTER_MS)
     }
 
     watchId = navigator.geolocation.watchPosition(handleSuccess, handleError, {
       enableHighAccuracy: true, maximumAge: 1000, timeout: 15000,
     })
-    return () => navigator.geolocation.clearWatch(watchId)
-  }, [])
+    return () => {
+      clearTimeout(retryTimer)
+      navigator.geolocation.clearWatch(watchId)
+    }
+  }, [attempt])
 
-  return { coords, derived, status, error }
+  // Offered so the UI can put a retry in front of the pilot rather than making
+  // them relaunch the app. Also resets the cycle, so a manual tap goes straight
+  // back to a high-accuracy attempt instead of waiting out the timer.
+  const retry = useCallback(() => setAttempt(a => a + 1), [])
+
+  return { coords, derived, status, error, retry }
 }
