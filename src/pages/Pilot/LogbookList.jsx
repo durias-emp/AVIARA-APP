@@ -7,6 +7,7 @@ import { useLogbook } from '../../context/Logbook'
 import { useActiveAircraft } from '../../context/ActiveAircraft'
 import { computeTotalHours } from '../../lib/logbookFields'
 import { formatClock, decimalHours, entryDurationMs, recordingKind, isPending } from '../../lib/flightTime'
+import FlightShareSheet from '../../components/FlightShareSheet'
 
 function fmtDate(iso) {
   if (!iso) return 'No date'
@@ -20,9 +21,10 @@ function fmtDate(iso) {
 // than what they actually are. Falls back to showing simulator hours
 // instead, with a small label so it's clearly not being counted as flight
 // time.
-function EntryRow({ entry, aircraftLabel, first }) {
+function EntryRow({ entry, aircraftLabel, first, onShare }) {
   const route = [entry.from, entry.to].filter(Boolean).join(' → ')
   const isSimOnly = !entry.totalTime && entry.simulatedFlight
+  const hasTrack = (entry.track?.length ?? 0) >= 2
   return (
     <Link to={`/logbook/${entry.id}`} style={{ textDecoration: 'none' }}>
       <div style={{
@@ -46,6 +48,21 @@ function EntryRow({ entry, aircraftLabel, first }) {
               {entry.totalTime ? `${entry.totalTime} hr` : '—'}
             </span>
           )}
+          {hasTrack && (
+            <button
+              onClick={e => { e.preventDefault(); e.stopPropagation(); onShare(entry) }}
+              aria-label="Share flight"
+              style={{
+                width: 28, height: 28, borderRadius: '50%', border: 'none', padding: 0,
+                background: 'var(--bg-card-2)', color: 'var(--text)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+              }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M12 15V3M8 7l4-4 4 4" />
+              </svg>
+            </button>
+          )}
           <span style={{ color: 'var(--text-tertiary)', display: 'flex' }}><IconChevronRight size={14} /></span>
         </div>
       </div>
@@ -62,9 +79,10 @@ function EntryRow({ entry, aircraftLabel, first }) {
 // It also says what was measured. A detected flight is air time and a timed
 // one can be flight time; presenting them identically would quietly mix two
 // different quantities in the same column.
-function RecordedRow({ entry, aircraftLabel, first, onAdd, onDiscard, busy }) {
+function RecordedRow({ entry, aircraftLabel, first, onAdd, onDiscard, onShare, busy }) {
   const ms = entryDurationMs(entry)
   const kind = recordingKind(entry)
+  const hasTrack = (entry.track?.length ?? 0) >= 2
 
   return (
     <div style={{ padding: '14px 16px', borderTop: first ? 'none' : '0.5px solid var(--border)' }}>
@@ -95,6 +113,21 @@ function RecordedRow({ entry, aircraftLabel, first, onAdd, onDiscard, busy }) {
             fontSize: 13, fontWeight: 700, cursor: busy ? 'default' : 'pointer',
             opacity: busy ? 0.6 : 1, WebkitTapHighlightColor: 'transparent',
           }}>Add to Logbook</button>
+        {/* Only offered when there is a line to draw. A flight with no track
+            — a timer stopped before any fix arrived — has nothing to show, and
+            a button that always fails is worse than no button. */}
+        {hasTrack && (
+          <button
+            onClick={() => onShare(entry)}
+            disabled={busy}
+            aria-label="Share flight"
+            style={{
+              padding: '9px 14px', borderRadius: 'var(--r-sm)',
+              border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+              color: 'var(--text)', fontSize: 13, fontWeight: 600,
+              cursor: busy ? 'default' : 'pointer', WebkitTapHighlightColor: 'transparent',
+            }}>Share</button>
+        )}
         <button
           onClick={() => onDiscard(entry)}
           disabled={busy}
@@ -117,6 +150,7 @@ export default function LogbookList() {
   const { aircraftList } = useActiveAircraft()
   const [tab, setTab] = useState('Logbook')
   const [busyId, setBusyId] = useState(null)
+  const [sharing, setSharing] = useState(null)
 
   // Recorded flights are kept out of the logbook proper until accepted, which
   // is what makes accepting them mean anything.
@@ -150,6 +184,7 @@ export default function LogbookList() {
 
   return (
     <div style={{ paddingBottom: 40 }}>
+      {sharing && <FlightShareSheet entry={sharing} onClose={() => setSharing(null)} />}
       <div style={{ padding: '20px 20px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <BackButton onBack={() => navigate(-1)} />
@@ -238,7 +273,7 @@ export default function LogbookList() {
           ) : (
             <div style={{ background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
               {logged.map((e, i) => (
-                <EntryRow key={e.id} entry={e} aircraftLabel={aircraftById[e.aircraftId]} first={i === 0} />
+                <EntryRow key={e.id} entry={e} aircraftLabel={aircraftById[e.aircraftId]} first={i === 0} onShare={setSharing} />
               ))}
             </div>
           )
@@ -261,6 +296,7 @@ export default function LogbookList() {
                   first={i === 0}
                   onAdd={acceptRecorded}
                   onDiscard={discardRecorded}
+                  onShare={setSharing}
                   busy={busyId === e.id}
                 />
               ))}

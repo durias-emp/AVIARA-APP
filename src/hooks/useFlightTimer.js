@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { get, put, del } from '../lib/db'
 import { formatClock, decimalHours } from '../lib/flightTime'
+import { isUsableFix, shouldKeepFix, trackDistanceNm } from '../lib/track'
 
 const STORE = 'settings'
 const KEY = 'manualFlightTimer'
@@ -21,8 +22,9 @@ const KEY = 'manualFlightTimer'
 // leg — and it fails by under-reporting, which in a logbook is the direction
 // that matters. A timestamp survives all of that: whenever the app comes back,
 // the elapsed time is simply now minus then.
-export function useFlightTimer() {
+export function useFlightTimer({ coords } = {}) {
   const [startedAt, setStartedAt] = useState(null)
+  const trackRef = useRef([])
   const [now, setNow] = useState(() => Date.now())
   const [loaded, setLoaded] = useState(false)
   const tickRef = useRef(null)
@@ -49,8 +51,19 @@ export function useFlightTimer() {
     return () => clearInterval(tickRef.current)
   }, [startedAt])
 
+  // The track is buffered in a ref, not state: it changes on every usable fix
+  // and nothing renders it while the timer runs, so putting it in state would
+  // re-render the whole map screen for a line nobody is looking at yet.
+  useEffect(() => {
+    if (!startedAt || !isUsableFix(coords)) return
+    const point = { lat: coords.lat, lon: coords.lon, altFt: coords.altFt ?? null, t: Date.now() }
+    if (!shouldKeepFix(trackRef.current[trackRef.current.length - 1], point)) return
+    trackRef.current = [...trackRef.current, point]
+  }, [startedAt, coords])
+
   const start = useCallback(() => {
     const at = Date.now()
+    trackRef.current = []
     setStartedAt(at)
     setNow(at)
     put(STORE, { key: KEY, value: { startedAt: at } }).catch(() => {})
@@ -63,12 +76,16 @@ export function useFlightTimer() {
     if (!startedAt) return null
     const endedAt = Date.now()
     const elapsedMs = endedAt - startedAt
+    const track = trackRef.current
     setStartedAt(null)
+    trackRef.current = []
     del(STORE, KEY).catch(() => {})
     return {
       startedAt,
       endedAt,
       elapsedMs,
+      track,
+      distanceNm: trackDistanceNm(track),
       clock: formatClock(elapsedMs),
       hours: decimalHours(elapsedMs),
     }

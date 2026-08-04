@@ -664,7 +664,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   // which aircraft is active. Tagged pendingReview like a detected flight, so
   // both land in the same place for the pilot to confirm rather than being
   // committed behind their back.
-  const flightTimer = useFlightTimer()
+  const flightTimer = useFlightTimer({ coords: liveCoords })
   const [timedFlightBanner, setTimedFlightBanner] = useState(null)
   function toggleFlightTimer() {
     if (!flightTimer.running) { flightTimer.start(); return }
@@ -676,6 +676,8 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
       startedAt: flight.startedAt,
       endedAt: flight.endedAt,
       durationMs: flight.elapsedMs,
+      track: flight.track,
+      distanceNm: flight.distanceNm,
       aircraftId: activeAircraftId ?? null,
       source: 'timer',
       pendingReview: true,
