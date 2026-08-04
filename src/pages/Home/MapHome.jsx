@@ -292,6 +292,17 @@ export default function MapHome() {
   const [recorder] = useState(() => createRecorder({ onUpdate: setRec }))
 
   const activeCount = Object.values(layers).filter(Boolean).length
+
+  // Whether anything is drawn ON the basemap. The FAA rasters and the openAIP
+  // airspace are semi-transparent and were drawn for paper: over dark tiles
+  // their greens and blues turn to mud and the altitude figures stop being
+  // readable, which defeats the point of turning them on. So the dark basemap
+  // is for the bare map only, and yields the moment a chart needs it.
+  //
+  // Traffic and TFRs are not in this list: they are opaque vector overlays and
+  // read as well over dark tiles as over light ones.
+  const chartOverBasemap = ['sectional', 'terrain', 'ifrlo', 'ifrhi', 'airspace']
+    .some(k => layers[k])
   const expanded = snap !== 'collapsed'
 
   useEffect(() => {
@@ -632,7 +643,7 @@ export default function MapHome() {
         {layers.traffic && (
           <TrafficLayer snapshot={traffic.snapshot} onSelect={setSelected} filter={tfcFilter} />
         )}
-        <Basemap dark={isDark} />
+        <Basemap dark={isDark && !chartOverBasemap} />
         <ChartLayers layers={layers} openaipKey={openaipKey} tfrData={tfrData} />
         {track.length > 1 && (
           <Polyline positions={track} pathOptions={{ color: ACCENT, weight: 5, opacity: 0.9, lineCap: 'round' }} />
