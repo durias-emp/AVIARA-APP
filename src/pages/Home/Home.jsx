@@ -228,8 +228,10 @@ function HomeDrawer({ stop, onStopChange, sectionOpen, onHeightChange, children 
   const openHeight = Math.min(cardsHeight + DRAWER_PEEK, viewportHeight * DRAWER_MAX_FRACTION)
   const heights = { peek: DRAWER_PEEK, open: openHeight, full: viewportHeight }
   // `full` is off the menu unless a section is open, so an ordinary drag can
-  // never strand the card list against the top of the screen.
-  const reachable = sectionOpen ? ['open', 'full'] : ['peek', 'open']
+  // never strand the card list against the top of the screen. Everything else
+  // stays available either way — a section can be peeked past to see the map,
+  // the same as the cards can.
+  const reachable = sectionOpen ? ['peek', 'open', 'full'] : ['peek', 'open']
 
   const settledHeight = heights[stop] ?? openHeight
   const height = drag == null ? settledHeight : drag
@@ -238,6 +240,15 @@ function HomeDrawer({ stop, onStopChange, sectionOpen, onHeightChange, children 
   useEffect(() => {
     onHeightChange({ live: height, settled: settledHeight, dragging: drag != null, openHeight })
   }, [height, settledHeight, drag, openHeight, onHeightChange])
+
+  // Where a tap (as opposed to a drag) goes. With three stops a plain toggle
+  // is ambiguous, so it steps up until there is nowhere left to go and then
+  // comes back down — peek -> open -> full -> open.
+  function tapTarget() {
+    if (stop === 'peek') return 'open'
+    if (stop === 'open') return sectionOpen ? 'full' : 'peek'
+    return 'open'
+  }
 
   function nearestStop(h) {
     return reachable.reduce((best, k) =>
@@ -269,7 +280,7 @@ function HomeDrawer({ stop, onStopChange, sectionOpen, onHeightChange, children 
       el.removeEventListener('pointercancel', finish)
       const finalH = Math.max(lo, Math.min(hi, startH + (startY - ev.clientY)))
       // A drag snaps to the nearest reachable stop; a tap steps one along.
-      onStopChange(moved ? nearestStop(finalH) : (stop === 'peek' ? 'open' : reachable[0]))
+      onStopChange(moved ? nearestStop(finalH) : tapTarget())
       setDrag(null)
     }
     el.addEventListener('pointermove', move)
@@ -301,7 +312,7 @@ function HomeDrawer({ stop, onStopChange, sectionOpen, onHeightChange, children 
         role="button"
         tabIndex={0}
         aria-label={stop === 'peek' ? 'Expand drawer' : 'Collapse drawer'}
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onStopChange(stop === 'peek' ? 'open' : reachable[0]) } }}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onStopChange(tapTarget()) } }}
         style={{
           height: DRAWER_PEEK, flexShrink: 0, cursor: 'grab',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -702,9 +713,14 @@ export default function Home() {
     })
   }, [])
 
+  // Opening a section does NOT raise the drawer. The whole point of putting
+  // sections in here is that you can read one — airports, say — with the map
+  // still in view above it. Going full screen is the pilot's choice, not a
+  // consequence of tapping a card. The only nudge is out of 'peek', where the
+  // section would be behind the handle you just tapped through.
   function openCard(section) {
     setOpenSection(section)
-    setDrawerStop('full')
+    setDrawerStop(stop => (stop === 'peek' ? 'open' : stop))
   }
 
   function closeCard() {
@@ -723,14 +739,16 @@ export default function Home() {
       loadCurrencyStatus()
     }
     setOpenSection(null)
-    setDrawerStop('open')
+    // 'full' is not a legal height for the card list, so drop back to the
+    // standard one; any other height the pilot chose is left alone.
+    setDrawerStop(stop => (stop === 'full' ? 'open' : stop))
   }
 
-  // The drawer and the open section are one thing: leaving full height means
-  // leaving the section, so dragging down is as much a way out as the Home
-  // button is. Only 'full' can hold a section open.
+  // Height and section are independent. Dragging the drawer down out of full
+  // leaves the section open at the standard height with the map back in view;
+  // only the Home button closes a section. The single rule is that 'full'
+  // needs a section to be showing, since it exists to give one room.
   function handleStopChange(next) {
-    if (next !== 'full' && openSection) { closeCard(); return }
     if (next === 'full' && !openSection) return
     setDrawerStop(next)
   }
