@@ -139,7 +139,30 @@ function HangarCard({ aircraftImage, aircraftCount = 0, onOpen }) {
 // move rather than on every frame of a drag. The drag flag zeroes the
 // controls' transition so they track a finger exactly, and restores it so they
 // ease alongside the drawer when it snaps instead of arriving first.
+// ?nomap=1 renders the home screen with no map at all.
+//
+// A bisect handle, not a feature. The app crashes outright on iOS for at
+// least one pilot, and a crash cannot be debugged from a screenshot: it takes
+// the console with it. This splits the screen in half — if it loads with the
+// flag and dies without it, the map and everything it mounts is the cause; if
+// it dies either way, the map is exonerated and the fault is in the drawer or
+// the data layer. One reload, one bit of information, no guessing.
 function HomeMap({ metrics }) {
+  const noMap = typeof location !== 'undefined'
+    && new URLSearchParams(location.search).get('nomap') === '1'
+
+  if (noMap) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 0, background: 'var(--bg-card-2)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: 'var(--text-secondary)', fontSize: 13, textAlign: 'center', padding: 24,
+      }}>
+        Map disabled (?nomap=1) — diagnostic mode
+      </div>
+    )
+  }
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'var(--bg)' }}>
       <MapView
