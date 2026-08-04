@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, useContext } from 'react'
 import { Link } from 'react-router-dom'
 import { get, put } from '../../lib/db'
 import { getCurrencyStatus } from '../../lib/currency'
@@ -11,7 +11,9 @@ import { findAirport } from '../../lib/aerodromes'
 import { usePilotProfile } from '../../context/PilotProfile'
 import { useActiveAircraft } from '../../context/ActiveAircraft'
 import AirportPickerModal from '../../components/AirportPickerModal'
-import CardOverlay   from '../../components/CardOverlay'
+import { OverlayCloseContext } from '../../context/OverlayClose'
+import { BackOverrideContext } from '../../context/BackOverride'
+import { useSwipeBack } from '../../hooks/useSwipeBack'
 import MapView from '../../components/MapView'
 import AirportInfo from '../../components/AirportInfo'
 import ToolsMenu from '../../components/ToolsMenu'
@@ -34,17 +36,13 @@ const ROW_GAP = 8
 /* ── Module card — compact horizontal row, matches the hero buttons'
    height so the bottom row lines up with everything above it. ── */
 function ModuleCard({ section, onOpen, Icon, label }) {
-  const ref = useRef(null)
 
   function handleClick() {
-    if (ref.current) {
-      const r = ref.current.getBoundingClientRect()
-      onOpen(section, { top: r.top, left: r.left, width: r.width, height: r.height })
-    }
+    onOpen(section)
   }
 
   return (
-    <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label={`Open ${label}`}
+    <div onClick={handleClick} role="button" tabIndex={0} aria-label={`Open ${label}`}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
       style={{
       cursor: 'pointer',
@@ -75,19 +73,15 @@ function ModuleCard({ section, onOpen, Icon, label }) {
 
 /* ── Hangar card ──────────────────────────────────────────── */
 function HangarCard({ aircraftImage, aircraftCount = 0, onOpen }) {
-  const ref = useRef(null)
   const empty = aircraftCount === 0
 
   function handleClick() {
-    if (ref.current) {
-      const r = ref.current.getBoundingClientRect()
-      onOpen('aircraft', { top: r.top, left: r.left, width: r.width, height: r.height })
-    }
+    onOpen('aircraft')
   }
 
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label={empty ? 'Add aircraft' : 'Open hangar'}
+      <div onClick={handleClick} role="button" tabIndex={0} aria-label={empty ? 'Add aircraft' : 'Open hangar'}
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
         style={{
         position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
@@ -150,7 +144,10 @@ function HomeMap({ metrics }) {
     <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'var(--bg)' }}>
       <MapView
         bottomInset={metrics.live}
-        focusInset={metrics.settled}
+        // Capped at the drawer's open height. Past that the map is completely
+        // covered, so panning it further buys nothing and only means a longer
+        // trip back when the section closes.
+        focusInset={Math.min(metrics.settled, metrics.openHeight || metrics.settled)}
         insetDuration={metrics.dragging ? '0ms' : '260ms'}
         topInset="var(--safe-top)"
         showHomeButton={false}
@@ -159,81 +156,124 @@ function HomeMap({ metrics }) {
   )
 }
 
+/* ── A section, hosted inside the drawer ──────────────────── */
+// What CardOverlay used to provide, minus the full-screen portal: the close
+// callback every section's Home button reaches for through context, and the
+// edge-swipe that means "back".
+//
+// The swipe defers to BackOverride first, so a section with its own internal
+// steps — the Hangar's detail and wizard views — steps back one level instead
+// of dropping the whole thing.
+function DrawerSection({ onClose, children }) {
+  const backOverride = useContext(BackOverrideContext)
+  const handleSwipeBack = useCallback(() => {
+    const override = backOverride?.peek?.()
+    if (override) { override(); return }
+    onClose()
+  }, [backOverride, onClose])
+  const swipeRef = useSwipeBack(handleSwipeBack)
+
+  return (
+    <OverlayCloseContext.Provider value={onClose}>
+      <div ref={swipeRef}>{children}</div>
+    </OverlayCloseContext.Provider>
+  )
+}
+
 /* ── The drawer ───────────────────────────────────────────── */
-// Two stops. Open is the height its own content needs — which is what puts
-// the cards exactly where they used to sit, without pinning the drawer to a
-// percentage that would drift the moment a row is added or removed. Peek is a
-// handle and nothing else.
+// Three stops, and the third is not always available.
+//
+//   peek  — the handle alone, map uncovered
+//   open  — the height the card list needs, measured rather than declared,
+//           which is what puts the cards where they have always sat without
+//           pinning the drawer to a fraction that drifts when a row changes
+//   full  — the whole viewport, reachable ONLY while a section is open,
+//           because it exists to give that section room rather than to show
+//           more of a card list that has already finished
+//
+// Sections live in here rather than in an overlay over the top. An overlay
+// left the drawer and the map sitting behind whatever you had opened, which
+// read as two screens stacked; a section that expands the drawer it was
+// launched from reads as one.
 const DRAWER_PEEK = 30
 const DRAWER_MAX_FRACTION = 0.85
 
-function HomeDrawer({ open, onOpenChange, onHeightChange, children }) {
+function HomeDrawer({ stop, onStopChange, sectionOpen, onHeightChange, children }) {
   const contentRef = useRef(null)
-  const [contentHeight, setContentHeight] = useState(0)
+  const [cardsHeight, setCardsHeight] = useState(0)
   const [drag, setDrag] = useState(null)
+  const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight)
 
-  // The content measures itself, so the open height follows whatever is in
-  // the drawer rather than a number that has to be kept in step by hand.
+  // Measured, but only while the cards are what is in there. A section is far
+  // taller, and letting it set this would make `open` mean something
+  // different every time you came back from one.
+  const sectionOpenRef = useRef(sectionOpen)
+  useEffect(() => { sectionOpenRef.current = sectionOpen }, [sectionOpen])
   useEffect(() => {
     const el = contentRef.current
     if (!el) return
-    const ro = new ResizeObserver(([entry]) => setContentHeight(entry.contentRect.height))
+    const read = h => { if (!sectionOpenRef.current) setCardsHeight(h) }
+    const ro = new ResizeObserver(([entry]) => read(entry.contentRect.height))
     ro.observe(el)
-    setContentHeight(el.getBoundingClientRect().height)
+    read(el.getBoundingClientRect().height)
     return () => ro.disconnect()
   }, [])
 
-  // contentHeight measures the rows alone; the handle strip sits above them.
-  const openHeight = Math.min(contentHeight + DRAWER_PEEK, window.innerHeight * DRAWER_MAX_FRACTION)
-  const settledHeight = open ? openHeight : DRAWER_PEEK
-  const height = drag == null ? settledHeight : drag
-
-  // Reports the live height, the settled height, and whether a drag is in
-  // progress. The chrome on the map rides the live one so it stays pegged to
-  // the drawer's edge frame by frame; the map's own recentring uses the
-  // settled one, because that should happen once per move rather than on
-  // every frame; and the drag flag is what lets the chrome ease with the
-  // drawer when it snaps but track the finger exactly when it does not.
   useEffect(() => {
-    onHeightChange({ live: height, settled: settledHeight, dragging: drag != null })
-  }, [height, settledHeight, drag, onHeightChange])
+    const onResize = () => setViewportHeight(window.innerHeight)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const openHeight = Math.min(cardsHeight + DRAWER_PEEK, viewportHeight * DRAWER_MAX_FRACTION)
+  const heights = { peek: DRAWER_PEEK, open: openHeight, full: viewportHeight }
+  // `full` is off the menu unless a section is open, so an ordinary drag can
+  // never strand the card list against the top of the screen.
+  const reachable = sectionOpen ? ['open', 'full'] : ['peek', 'open']
+
+  const settledHeight = heights[stop] ?? openHeight
+  const height = drag == null ? settledHeight : drag
+  const atFull = stop === 'full'
+
+  useEffect(() => {
+    onHeightChange({ live: height, settled: settledHeight, dragging: drag != null, openHeight })
+  }, [height, settledHeight, drag, openHeight, onHeightChange])
+
+  function nearestStop(h) {
+    return reachable.reduce((best, k) =>
+      Math.abs(heights[k] - h) < Math.abs(heights[best] - h) ? k : best, reachable[0])
+  }
 
   function handlePointerDown(e) {
     // The element is captured into a local, NOT read off the event later.
     // React sets currentTarget back to null once the handler returns, so a
-    // listener that reaches for e.currentTarget throws the moment it fires.
-    // That is not a crash you see: the drawer stays wherever the drag left it
-    // because setDrag(null) never runs, while `open` never changes — so the
-    // map goes on reserving room for a drawer that looks closed.
+    // listener that reaches for e.currentTarget throws the moment it fires,
+    // which loses the drag silently.
     const el = e.currentTarget
-    // Capture is an optimisation — it keeps the drag alive if the finger
-    // leaves the handle — not a requirement. It throws for a pointer id the
-    // browser doesn't recognise, and letting that escape would abort this
-    // handler before it binds anything, which loses the drag completely.
     try { el.setPointerCapture(e.pointerId) } catch { /* drag still works */ }
     const startY = e.clientY
     const startH = settledHeight
     let moved = false
 
+    const lo = Math.min(...reachable.map(k => heights[k]))
+    const hi = Math.max(...reachable.map(k => heights[k]))
+
     const move = ev => {
       if (Math.abs(startY - ev.clientY) > 4) moved = true
-      const next = startH + (startY - ev.clientY)
-      setDrag(Math.max(DRAWER_PEEK, Math.min(openHeight, next)))
+      setDrag(Math.max(lo, Math.min(hi, startH + (startY - ev.clientY))))
     }
     const finish = ev => {
       try { el.releasePointerCapture(ev.pointerId) } catch { /* never captured */ }
       el.removeEventListener('pointermove', move)
       el.removeEventListener('pointerup', finish)
       el.removeEventListener('pointercancel', finish)
-      const finalH = startH + (startY - ev.clientY)
-      // A tap toggles; a drag snaps to whichever stop it ended up nearer.
-      onOpenChange(moved ? finalH > (openHeight + DRAWER_PEEK) / 2 : !open)
+      const finalH = Math.max(lo, Math.min(hi, startH + (startY - ev.clientY)))
+      // A drag snaps to the nearest reachable stop; a tap steps one along.
+      onStopChange(moved ? nearestStop(finalH) : (stop === 'peek' ? 'open' : reachable[0]))
       setDrag(null)
     }
     el.addEventListener('pointermove', move)
     el.addEventListener('pointerup', finish)
-    // A cancelled pointer (a system gesture taking over, say) has to settle the
-    // drawer too, or it is left stuck exactly as above.
     el.addEventListener('pointercancel', finish)
   }
 
@@ -242,11 +282,17 @@ function HomeDrawer({ open, onOpenChange, onHeightChange, children }) {
       position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 400,
       height, boxSizing: 'border-box',
       background: 'var(--bg)',
-      borderTopLeftRadius: 22, borderTopRightRadius: 22,
-      boxShadow: '0 -6px 24px rgba(0,0,0,0.22)',
-      transition: drag == null ? 'height 260ms cubic-bezier(0.32, 0.72, 0, 1)' : 'none',
+      // Square at full height: rounded corners against the top of the screen
+      // read as an unfinished sheet rather than as a page.
+      borderTopLeftRadius: atFull ? 0 : 22, borderTopRightRadius: atFull ? 0 : 22,
+      boxShadow: atFull ? 'none' : '0 -6px 24px rgba(0,0,0,0.22)',
+      transition: drag == null
+        ? 'height 260ms cubic-bezier(0.32, 0.72, 0, 1), border-radius 200ms ease'
+        : 'none',
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
       touchAction: 'none',
+      // Only at full height does the drawer reach the notch.
+      paddingTop: atFull ? 'var(--safe-top)' : 0,
     }}>
       {/* The grab handle is the whole strip, not just the pill — a 4px target
           on a moving drawer is not a target. */}
@@ -254,9 +300,8 @@ function HomeDrawer({ open, onOpenChange, onHeightChange, children }) {
         onPointerDown={handlePointerDown}
         role="button"
         tabIndex={0}
-        aria-expanded={open}
-        aria-label={open ? 'Collapse drawer' : 'Expand drawer'}
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenChange(!open) } }}
+        aria-label={stop === 'peek' ? 'Expand drawer' : 'Collapse drawer'}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onStopChange(stop === 'peek' ? 'open' : reachable[0]) } }}
         style={{
           height: DRAWER_PEEK, flexShrink: 0, cursor: 'grab',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -268,7 +313,7 @@ function HomeDrawer({ open, onOpenChange, onHeightChange, children }) {
       <div style={{ flex: '1 1 auto', overflowY: 'auto', overscrollBehavior: 'contain' }}>
         <div ref={contentRef}>
           {children}
-          <div style={{ height: `calc(var(--safe-bottom) + 12px)` }} />
+          <div style={{ height: 'calc(var(--safe-bottom) + 12px)' }} />
         </div>
       </div>
     </div>
@@ -287,7 +332,6 @@ function AirportsHeroCard({ onOpen }) {
   const [pickerOpen, setPicker] = useState(false)
   const [wx, setWx] = useState(null)
   const [loading, setLoading] = useState(false)
-  const ref = useRef(null)
 
   useEffect(() => {
     get('settings', 'homeAirport').then(row => {
@@ -332,10 +376,7 @@ function AirportsHeroCard({ onOpen }) {
   const resolved = wx?.metar ? sky : areaSky
 
   function handleClick() {
-    if (ref.current) {
-      const r = ref.current.getBoundingClientRect()
-      onOpen('airports', { top: r.top, left: r.left, width: r.width, height: r.height })
-    }
+    onOpen('airports')
   }
 
   function confirmAirport(id) {
@@ -384,7 +425,7 @@ function AirportsHeroCard({ onOpen }) {
 
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label="Open airports"
+      <div onClick={handleClick} role="button" tabIndex={0} aria-label="Open airports"
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
         style={{
         position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
@@ -446,18 +487,14 @@ function AirportsHeroCard({ onOpen }) {
 
 /* ── Flight Planning card ─────────────────────────────────── */
 function FlightPlanCard({ onOpen }) {
-  const ref = useRef(null)
 
   function handleClick() {
-    if (ref.current) {
-      const r = ref.current.getBoundingClientRect()
-      onOpen('checklists', { top: r.top, left: r.left, width: r.width, height: r.height })
-    }
+    onOpen('checklists')
   }
 
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label="Open flight planning"
+      <div onClick={handleClick} role="button" tabIndex={0} aria-label="Open flight planning"
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
         style={{
         position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
@@ -488,18 +525,14 @@ function FlightPlanCard({ onOpen }) {
    so a quick painted background beats investing in custom art for a
    shape that's still expected to change. ── */
 function DiscoverCard({ onOpen }) {
-  const ref = useRef(null)
 
   function handleClick() {
-    if (ref.current) {
-      const r = ref.current.getBoundingClientRect()
-      onOpen('discover', { top: r.top, left: r.left, width: r.width, height: r.height })
-    }
+    onOpen('discover')
   }
 
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label="Open friends"
+      <div onClick={handleClick} role="button" tabIndex={0} aria-label="Open friends"
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
         style={{
         position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
@@ -629,7 +662,6 @@ const PRE_MAP_TOP_DEFAULT_ORDER = ['airports', 'map', 'hangar', 'pilot', 'flight
 export default function Home() {
   const { aircraftId, aircraftList, refreshAircraftList } = useActiveAircraft()
   const [openSection, setOpenSection]     = useState(null)
-  const [sectionRect, setSectionRect]     = useState(null)
   // Raw currency/profile record rather than a rolled-up status: the Pilot
   // card reports flight currency and medical separately now, so it needs both
   // of getCurrencyStatus()'s cards, not the worst of the two.
@@ -637,8 +669,9 @@ export default function Home() {
   const [order, setOrder] = useState(DEFAULT_ORDER)
   // The drawer, and how much of the map it is covering. Open on launch, at
   // the height its own content needs.
-  const [drawerOpen, setDrawerOpen] = useState(true)
-  const [drawerMetrics, setDrawerMetrics] = useState({ live: 0, settled: 0, dragging: false })
+  // 'peek' | 'open' | 'full'. Only opening a section ever reaches 'full'.
+  const [drawerStop, setDrawerStop] = useState('open')
+  const [drawerMetrics, setDrawerMetrics] = useState({ live: 0, settled: 0, dragging: false, openHeight: 0 })
   const handleDrawerHeight = useCallback(m => setDrawerMetrics(m), [])
 
   const activeAircraft = aircraftList?.find(a => a.id === aircraftId)
@@ -669,9 +702,9 @@ export default function Home() {
     })
   }, [])
 
-  function openCard(section, rect) {
-    setSectionRect(rect)
+  function openCard(section) {
     setOpenSection(section)
+    setDrawerStop('full')
   }
 
   function closeCard() {
@@ -690,7 +723,16 @@ export default function Home() {
       loadCurrencyStatus()
     }
     setOpenSection(null)
-    setSectionRect(null)
+    setDrawerStop('open')
+  }
+
+  // The drawer and the open section are one thing: leaving full height means
+  // leaving the section, so dragging down is as much a way out as the Home
+  // button is. Only 'full' can hold a section open.
+  function handleStopChange(next) {
+    if (next !== 'full' && openSection) { closeCard(); return }
+    if (next === 'full' && !openSection) return
+    setDrawerStop(next)
   }
 
   function moveRow(index, dir) {
@@ -722,23 +764,30 @@ export default function Home() {
     <HomeLocationProvider>
       <HomeMap metrics={drawerMetrics} />
 
-      <HomeDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onHeightChange={handleDrawerHeight}>
-        {order.map(renderRow)}
+      <HomeDrawer
+        stop={drawerStop}
+        onStopChange={handleStopChange}
+        sectionOpen={!!openSection}
+        onHeightChange={handleDrawerHeight}
+      >
+        {openSection ? (
+          <DrawerSection onClose={closeCard}>
+            <SectionContent section={openSection} order={order} onMoveRow={moveRow} />
+          </DrawerSection>
+        ) : (
+          <>
+            {order.map(renderRow)}
 
-        {/* ── Tools / Settings ── */}
-        <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <ModuleCard section="tools"    onOpen={openCard} Icon={IconWrench} label="Tools" />
-            <ModuleCard section="settings" onOpen={openCard} Icon={IconGear}   label="Settings" />
-          </div>
-        </div>
+            {/* ── Tools / Settings ── */}
+            <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <ModuleCard section="tools"    onOpen={openCard} Icon={IconWrench} label="Tools" />
+                <ModuleCard section="settings" onOpen={openCard} Icon={IconGear}   label="Settings" />
+              </div>
+            </div>
+          </>
+        )}
       </HomeDrawer>
-
-      {openSection && sectionRect && (
-        <CardOverlay cardRect={sectionRect} onClose={closeCard}>
-          <SectionContent section={openSection} order={order} onMoveRow={moveRow} />
-        </CardOverlay>
-      )}
     </HomeLocationProvider>
   )
 }
