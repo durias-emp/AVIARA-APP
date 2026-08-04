@@ -71,7 +71,7 @@ export default function FlightPlanBar({ onRouteChange }) {
 
   return (
     <div style={{
-      position: 'absolute', top: 12, left: 64, right: 12, zIndex: 600,
+      position: 'absolute', top: 'calc(12px + var(--map-top-inset, 0px))', left: 'calc(12px + var(--map-left-inset, 52px))', right: 12, zIndex: 600,
       background: 'var(--bg-card)', borderRadius: 14, boxShadow: 'var(--shadow-sm)',
       padding: '4px 6px 4px 14px', display: 'flex', alignItems: 'center', gap: 8,
     }}>

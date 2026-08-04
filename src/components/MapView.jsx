@@ -476,7 +476,7 @@ export function MapViewSync({ view }) {
 // showing whatever view HAD last been successfully reported. A stable
 // map.on subscription that's set up once and never torn down mid-session
 // doesn't have this gap.
-function ViewReporter({ onChange }) {
+export function ViewReporter({ onChange }) {
   const map = useMap()
   useEffect(() => {
     function handleMoveEnd() {
@@ -486,6 +486,35 @@ function ViewReporter({ onChange }) {
     map.on('moveend', handleMoveEnd)
     return () => map.off('moveend', handleMoveEnd)
   }, [map, onChange])
+  return null
+}
+
+// Keeps whatever the pilot is looking at centred in the part of the map that
+// is actually visible, when something else covers the bottom of the screen —
+// on Home, the drawer.
+//
+// The map container stays the full height of the window; only the exposed
+// strip above the drawer changes. A point sitting at the container's centre
+// is therefore too low to see properly once the drawer is up, so the view is
+// panned up by half the covered height, which puts it back in the middle of
+// what's left. Shrinking the container instead would work, but Leaflet would
+// have to re-lay-out and re-fetch tiles on every drawer movement.
+//
+// Panned by the DELTA rather than set absolutely: the pilot may have panned
+// the map themselves since the last change, and jumping to an absolute offset
+// would throw that away. `animate: false` because this runs alongside the
+// drawer's own transition, and two easing curves on the same movement read as
+// the map lagging behind the drawer.
+export function MapFocusOffset({ coveredHeight }) {
+  const map = useMap()
+  const applied = useRef(0)
+  useEffect(() => {
+    const want = coveredHeight / 2
+    const delta = want - applied.current
+    if (Math.abs(delta) < 0.5) return
+    applied.current = want
+    map.panBy([0, delta], { animate: false })
+  }, [coveredHeight, map])
   return null
 }
 
@@ -512,7 +541,33 @@ function RoutePreview({ route }) {
   )
 }
 
-export default function MapView({ onViewChange, lastView } = {}) {
+// `bottomInset` is how much of the bottom of the map something else is
+// covering — on Home, the drawer. It does two things: lifts every
+// bottom-anchored control clear of the cover (via --map-bottom-inset, which
+// the layers menu, the GPS bar and Leaflet's own control rail all read), and
+// pans the view up by half of it so what you are looking at stays in the
+// middle of the strip you can still see.
+//
+// `showHomeButton` is false when this map IS the home screen, where a button
+// that navigates home is meaningless. It also drives --map-left-inset: the
+// route bar leaves room on the left for that button, and with no button there
+// the room is a hole that pushes the bar off centre.
+//
+// Every bottom-anchored control rides on --map-bottom-inset, so the whole
+// stack stays pegged to the top of the drawer and moves with it. Nothing is
+// mounted or unmounted as the drawer moves: a control that vanishes and
+// reappears reads as a glitch, and its position is the thing that should
+// change, not its existence.
+//
+// `insetDuration` is how long that movement takes. It is 0ms while a drag is
+// in progress, so the controls track the finger exactly, and matches the
+// drawer's own transition when it snaps, so the two ease together instead of
+// the controls jumping to the destination the drawer is still travelling to.
+//
+// `focusInset` is the settled height rather than the live one. The map's
+// recentring should happen once per drawer move, not on every frame of a
+// drag.
+export default function MapView({ onViewChange, lastView, bottomInset = 0, focusInset = null, insetDuration = '0ms', topInset = '0px', showHomeButton = true } = {}) {
   // Shared with Home's own map preview via HomeLocationProvider (mounted
   // once around Home, which never unmounts while this screen — an overlay
   // on top of Home — is open) rather than starting a separate watch here.
@@ -596,11 +651,21 @@ export default function MapView({ onViewChange, lastView } = {}) {
   const locationUnavailable = noFixYet && (liveStatus === 'error' || liveStatus === 'unsupported')
 
   return (
-    <div style={{ height: '100%', position: 'relative', isolation: 'isolate' }}>
+    <div
+      className="map-root"
+      style={{ height: '100%', position: 'relative', isolation: 'isolate', '--map-bottom-inset': `${bottomInset}px`, '--map-top-inset': topInset, '--map-left-inset': showHomeButton ? '52px' : '0px', '--map-inset-duration': insetDuration }}>
+      {/* Leaflet's own control rail is inside the map container, so it can't
+          read a wrapper's padding — it gets the inset directly. */}
+      <style>{`
+        .map-root .leaflet-bottom { bottom: calc(var(--map-bottom-inset, 0px) + 74px); transition: bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1); }
+        .map-root .leaflet-top { top: var(--map-top-inset, 0px); }
+        .map-root .leaflet-control-zoom a { width: 24px; height: 24px; line-height: 24px; font-size: 16px; }
+        .map-root .leaflet-control-zoom { border-radius: 8px; }
+      `}</style>
       <LiveMap
         position={centerPosition} zoom={LOCATION_ZOOM}
         initialCenter={lastView?.center} initialZoom={lastView?.zoom}
-        layer={layer} zoomControlPosition="bottomright"
+        layer={layer} zoomControlPosition="bottomleft"
       >
         {overlays.radar && <RadarLayer />}
         {overlays.flightCategory && <FlightCategoryLayer />}
@@ -610,26 +675,30 @@ export default function MapView({ onViewChange, lastView } = {}) {
         {overlays.seaplaneBases && <SeaplaneBaseLayer />}
         <LocateRecenter request={recenterRequest} />
         <RoutePreview route={route} />
+        <MapFocusOffset coveredHeight={focusInset ?? bottomInset} />
         {onViewChange && <ViewReporter onChange={onViewChange} />}
       </LiveMap>
 
-      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 600 }}>
-        <HomeButton />
-      </div>
+      {showHomeButton && (
+        <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 600 }}>
+          <HomeButton />
+        </div>
+      )}
 
       <button
         onClick={handleLocate}
         disabled={noFixYet}
         aria-label="Locate me"
         style={{
-          position: 'absolute', right: 12, bottom: 136, zIndex: 500,
-          width: 40, height: 40, borderRadius: '50%', border: 'none',
+          position: 'absolute', right: 12, bottom: 'calc(122px + var(--map-bottom-inset, 0px))', zIndex: 500,
+          transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
+          width: 32, height: 32, borderRadius: '50%', border: 'none',
           background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: noFixYet ? 'default' : 'pointer', WebkitTapHighlightColor: 'transparent',
           opacity: noFixYet ? 0.55 : 1,
         }}>
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2.2" strokeLinecap="round">
           <circle cx="12" cy="12" r="3.5" />
           <line x1="12" y1="1" x2="12" y2="4.5" />
           <line x1="12" y1="19.5" x2="12" y2="23" />

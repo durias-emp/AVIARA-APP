@@ -1,30 +1,30 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect, useRef, useMemo, useCallback, useContext } from 'react'
 import { get, put } from '../../lib/db'
-import { useThemeName } from '../../hooks/useTheme'
-import { useChromeColor } from '../../hooks/useChromeColor'
-import { skyBackdrop, skyChromeColor } from '../../lib/skyTint'
-import { getGlobalCurrencyStatus } from '../../lib/currency'
+import { getCurrencyStatus } from '../../lib/currency'
+import { computeTotalHours } from '../../lib/logbookFields'
+import { useLogbook } from '../../context/Logbook'
 import { loadWeather, parseFltCat, parseWind, parseVisib, parseTemp } from '../../lib/weather'
-import WeatherAnimation, { getCondition } from '../../components/WeatherAnimation'
+import { getCondition } from '../../components/WeatherAnimation'
 import { loadAreaWeather, conditionFromArea, areaTemp, areaWind, areaVis } from '../../lib/areaWeather'
 import { findAirport } from '../../lib/aerodromes'
 import { usePilotProfile } from '../../context/PilotProfile'
 import { useActiveAircraft } from '../../context/ActiveAircraft'
 import AirportPickerModal from '../../components/AirportPickerModal'
-import CardOverlay   from '../../components/CardOverlay'
-import MapView, { LiveMap, MapViewSync } from '../../components/MapView'
+import { OverlayCloseContext } from '../../context/OverlayClose'
+import { BackOverrideContext } from '../../context/BackOverride'
+import { useSwipeBack } from '../../hooks/useSwipeBack'
+import MapView from '../../components/MapView'
 import AirportInfo from '../../components/AirportInfo'
 import ToolsMenu from '../../components/ToolsMenu'
 import { AirportScene, PilotArt, HangarArt, FlightPlanArt } from '../../components/HomeHeroArt'
 import HeroLabel, { HERO_LABEL_WIDTH } from '../../components/HeroLabel'
-import { HomeLocationProvider, useHomeLocation } from '../../context/HomeLocation'
-import { useMapLayer } from '../../hooks/useMapLayer'
+import { HomeLocationProvider } from '../../context/HomeLocation'
 import { IconWrench, IconGear, IconFriends } from '../../components/Icons'
 import Checklists from '../Checklists/Checklists'
 import Hangar     from '../Aircraft/Hangar'
 import Settings   from '../Settings/Settings'
 import Discover   from '../Discover/Discover'
+import Pilot      from '../Pilot/Pilot'
 
 // Uniform size for every hero button (Weather, Map, Airports, Hangar,
 // Pilot, Flight Planning) and the Tools/Settings row — small enough that
@@ -36,17 +36,13 @@ const ROW_GAP = 8
 /* ── Module card — compact horizontal row, matches the hero buttons'
    height so the bottom row lines up with everything above it. ── */
 function ModuleCard({ section, onOpen, Icon, label }) {
-  const ref = useRef(null)
 
   function handleClick() {
-    if (ref.current) {
-      const r = ref.current.getBoundingClientRect()
-      onOpen(section, { top: r.top, left: r.left, width: r.width, height: r.height })
-    }
+    onOpen(section)
   }
 
   return (
-    <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label={`Open ${label}`}
+    <div onClick={handleClick} role="button" tabIndex={0} aria-label={`Open ${label}`}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
       style={{
       cursor: 'pointer',
@@ -77,19 +73,15 @@ function ModuleCard({ section, onOpen, Icon, label }) {
 
 /* ── Hangar card ──────────────────────────────────────────── */
 function HangarCard({ aircraftImage, aircraftCount = 0, onOpen }) {
-  const ref = useRef(null)
   const empty = aircraftCount === 0
 
   function handleClick() {
-    if (ref.current) {
-      const r = ref.current.getBoundingClientRect()
-      onOpen('aircraft', { top: r.top, left: r.left, width: r.width, height: r.height })
-    }
+    onOpen('aircraft')
   }
 
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label={empty ? 'Add aircraft' : 'Open hangar'}
+      <div onClick={handleClick} role="button" tabIndex={0} aria-label={empty ? 'Add aircraft' : 'Open hangar'}
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
         style={{
         position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
@@ -130,69 +122,218 @@ function HangarCard({ aircraftImage, aircraftCount = 0, onOpen }) {
   )
 }
 
-/* ── Map card — a live, non-interactive preview of the real map. The
-   preview map ignores taps/drags/pinches itself (all interaction props
-   below are off) so any tap anywhere on the card always opens the real,
-   fully interactive map instead of panning this little thumbnail. ── */
-const PREVIEW_ZOOM = 12
+/* ── The map, filling the screen behind the drawer ────────── */
+// The real map, not a copy of it. An earlier pass mounted a bare LiveMap
+// here, which gave a basemap and a position dot and silently dropped
+// everything else the map screen has: radar, flight category, TFRs, the
+// airport/heliport/seaplane layers, the layers menu, locate, the flight plan
+// bar and the GPS readout. Rendering MapView itself means there is one map in
+// the app rather than two that have to be kept in step.
+//
+// It mounts once with Home and stays mounted, so a pan, a zoom, a chosen
+// layer or a typed route all survive opening and closing a card over the top.
+//
+// The drawer reports three numbers and they are not interchangeable. The live
+// height pegs the map's bottom controls to the drawer's edge frame by frame.
+// The settled height drives the map's recentring, which should happen once per
+// move rather than on every frame of a drag. The drag flag zeroes the
+// controls' transition so they track a finger exactly, and restores it so they
+// ease alongside the drawer when it snaps instead of arriving first.
+function HomeMap({ metrics }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'var(--bg)' }}>
+      <MapView
+        bottomInset={metrics.live}
+        // Capped at the drawer's open height. Past that the map is completely
+        // covered, so panning it further buys nothing and only means a longer
+        // trip back when the section closes.
+        focusInset={Math.min(metrics.settled, metrics.openHeight || metrics.settled)}
+        insetDuration={metrics.dragging ? '0ms' : '260ms'}
+        topInset="var(--safe-top)"
+        showHomeButton={false}
+      />
+    </div>
+  )
+}
 
-// The Map card is the one hero button that grows: `flex: 1` lets it claim
-// whatever vertical space is left over after every other (fixed-height)
-// row, the tools/settings row, and the disclaimer text are laid out —
-// rather than hardcoding a pixel value that would only be correct on one
-// screen size, this is automatically "however much is missing" on any
-// device. `minHeight` keeps it from disappearing if the rest of the stack
-// ever grows taller than the viewport.
-function MapCard({ onOpen, lastView }) {
-  const ref = useRef(null)
-  const { coords: liveCoords, status } = useHomeLocation()
-  const position = liveCoords ? [liveCoords.lat, liveCoords.lon] : null
-  const { layer } = useMapLayer()
+/* ── A section, hosted inside the drawer ──────────────────── */
+// What CardOverlay used to provide, minus the full-screen portal: the close
+// callback every section's Home button reaches for through context, and the
+// edge-swipe that means "back".
+//
+// The swipe defers to BackOverride first, so a section with its own internal
+// steps — the Hangar's detail and wizard views — steps back one level instead
+// of dropping the whole thing.
+function DrawerSection({ onClose, children }) {
+  const backOverride = useContext(BackOverrideContext)
+  const handleSwipeBack = useCallback(() => {
+    const override = backOverride?.peek?.()
+    if (override) { override(); return }
+    onClose()
+  }, [backOverride, onClose])
+  const swipeRef = useSwipeBack(handleSwipeBack)
 
-  function handleClick() {
-    if (ref.current) {
-      const r = ref.current.getBoundingClientRect()
-      onOpen('map', { top: r.top, left: r.left, width: r.width, height: r.height })
+  return (
+    <OverlayCloseContext.Provider value={onClose}>
+      <div ref={swipeRef}>{children}</div>
+    </OverlayCloseContext.Provider>
+  )
+}
+
+/* ── The drawer ───────────────────────────────────────────── */
+// Three stops, and the third is not always available.
+//
+//   peek  — the handle alone, map uncovered
+//   open  — the height the card list needs, measured rather than declared,
+//           which is what puts the cards where they have always sat without
+//           pinning the drawer to a fraction that drifts when a row changes
+//   full  — the whole viewport, reachable ONLY while a section is open,
+//           because it exists to give that section room rather than to show
+//           more of a card list that has already finished
+//
+// Sections live in here rather than in an overlay over the top. An overlay
+// left the drawer and the map sitting behind whatever you had opened, which
+// read as two screens stacked; a section that expands the drawer it was
+// launched from reads as one.
+const DRAWER_PEEK = 30
+const DRAWER_MAX_FRACTION = 0.85
+
+function HomeDrawer({ stop, onStopChange, sectionOpen, onHeightChange, children }) {
+  const contentRef = useRef(null)
+  const [cardsHeight, setCardsHeight] = useState(0)
+  const [drag, setDrag] = useState(null)
+  const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight)
+
+  // Measured, but only while the cards are what is in there. A section is far
+  // taller, and letting it set this would make `open` mean something
+  // different every time you came back from one.
+  const sectionOpenRef = useRef(sectionOpen)
+  useEffect(() => { sectionOpenRef.current = sectionOpen }, [sectionOpen])
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el) return
+    const read = h => { if (!sectionOpenRef.current) setCardsHeight(h) }
+    const ro = new ResizeObserver(([entry]) => read(entry.contentRect.height))
+    ro.observe(el)
+    read(el.getBoundingClientRect().height)
+    return () => ro.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const onResize = () => setViewportHeight(window.innerHeight)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const openHeight = Math.min(cardsHeight + DRAWER_PEEK, viewportHeight * DRAWER_MAX_FRACTION)
+  const heights = { peek: DRAWER_PEEK, open: openHeight, full: viewportHeight }
+  // `full` is off the menu unless a section is open, so an ordinary drag can
+  // never strand the card list against the top of the screen. Everything else
+  // stays available either way — a section can be peeked past to see the map,
+  // the same as the cards can.
+  const reachable = sectionOpen ? ['peek', 'open', 'full'] : ['peek', 'open']
+
+  const settledHeight = heights[stop] ?? openHeight
+  const height = drag == null ? settledHeight : drag
+  const atFull = stop === 'full'
+
+  useEffect(() => {
+    onHeightChange({ live: height, settled: settledHeight, dragging: drag != null, openHeight })
+  }, [height, settledHeight, drag, openHeight, onHeightChange])
+
+  // Where a tap (as opposed to a drag) goes. With three stops a plain toggle
+  // is ambiguous, so it steps up until there is nowhere left to go and then
+  // comes back down — peek -> open -> full -> open.
+  function tapTarget() {
+    if (stop === 'peek') return 'open'
+    if (stop === 'open') return sectionOpen ? 'full' : 'peek'
+    return 'open'
+  }
+
+  function nearestStop(h) {
+    return reachable.reduce((best, k) =>
+      Math.abs(heights[k] - h) < Math.abs(heights[best] - h) ? k : best, reachable[0])
+  }
+
+  function handlePointerDown(e) {
+    // The element is captured into a local, NOT read off the event later.
+    // React sets currentTarget back to null once the handler returns, so a
+    // listener that reaches for e.currentTarget throws the moment it fires,
+    // which loses the drag silently.
+    const el = e.currentTarget
+    try { el.setPointerCapture(e.pointerId) } catch { /* drag still works */ }
+    const startY = e.clientY
+    const startH = settledHeight
+    let moved = false
+
+    const lo = Math.min(...reachable.map(k => heights[k]))
+    const hi = Math.max(...reachable.map(k => heights[k]))
+
+    const move = ev => {
+      if (Math.abs(startY - ev.clientY) > 4) moved = true
+      setDrag(Math.max(lo, Math.min(hi, startH + (startY - ev.clientY))))
     }
+    const finish = ev => {
+      try { el.releasePointerCapture(ev.pointerId) } catch { /* never captured */ }
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerup', finish)
+      el.removeEventListener('pointercancel', finish)
+      const finalH = Math.max(lo, Math.min(hi, startH + (startY - ev.clientY)))
+      // A drag snaps to the nearest reachable stop; a tap steps one along.
+      onStopChange(moved ? nearestStop(finalH) : tapTarget())
+      setDrag(null)
+    }
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', finish)
+    el.addEventListener('pointercancel', finish)
   }
 
   return (
-    <div style={{ padding: `${ROW_GAP}px 18px 0`, flex: '1 1 auto', minHeight: HERO_HEIGHT, display: 'flex' }}>
+    <div style={{
+      position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 400,
+      height, boxSizing: 'border-box',
+      background: 'var(--bg)',
+      // Square at full height: rounded corners against the top of the screen
+      // read as an unfinished sheet rather than as a page.
+      borderTopLeftRadius: atFull ? 0 : 22, borderTopRightRadius: atFull ? 0 : 22,
+      boxShadow: atFull ? 'none' : '0 -6px 24px rgba(0,0,0,0.22)',
+      transition: drag == null
+        ? 'height 260ms cubic-bezier(0.32, 0.72, 0, 1), border-radius 200ms ease'
+        : 'none',
+      display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      touchAction: 'none',
+      // Sections pin their own chrome with position:fixed — Discover's Home
+      // button and tab bar, the Checklists pane's inset:0. Against the
+      // viewport that chrome escapes the drawer and lands on the map. A
+      // transform makes this element their containing block instead, so
+      // "fixed" means fixed to the drawer, which is what a section rendered
+      // inside one should mean. Cheaper and far less brittle than rewriting
+      // the positioning in every section.
+      transform: 'translateZ(0)',
+      // Only at full height does the drawer reach the notch.
+      paddingTop: atFull ? 'var(--safe-top)' : 0,
+    }}>
+      {/* The grab handle is the whole strip, not just the pill — a 4px target
+          on a moving drawer is not a target. */}
       <div
-        ref={ref}
-        onClick={handleClick}
+        onPointerDown={handlePointerDown}
         role="button"
-        aria-label="Open map"
+        tabIndex={0}
+        aria-label={stop === 'peek' ? 'Expand drawer' : 'Collapse drawer'}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onStopChange(tapTarget()) } }}
         style={{
-          background: 'var(--bg-card)', borderRadius: 20,
-          boxShadow: 'var(--shadow-sm)',
-          overflow: 'hidden', position: 'relative', isolation: 'isolate',
-          flex: '1 1 auto', width: '100%',
-          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+          height: DRAWER_PEEK, flexShrink: 0, cursor: 'grab',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          WebkitTapHighlightColor: 'transparent',
         }}>
-        {status !== 'pending' && (
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-            {/* This preview mounts once and (per LiveMap's own design) never
-                moves itself after that, same as the real map — lastView,
-                fed down from Home and kept in sync with whatever the real
-                map screen was last panned/zoomed to (see MapView's
-                ViewReporter), is what lets this thumbnail catch up to a
-                view that already existed before this component mounted, or
-                change again on a later visit. Without it, this preview
-                always showed a fixed default zoom on your live position,
-                even right after leaving the real map panned somewhere else
-                entirely — the app should feel like one continuous map, not
-                a full map and a separate, independent preview. */}
-            <LiveMap
-              position={position} zoom={PREVIEW_ZOOM}
-              initialCenter={lastView?.center} initialZoom={lastView?.zoom}
-              layer={layer} markerRadius={6} interactive={false}
-            >
-              <MapViewSync view={lastView} />
-            </LiveMap>
-          </div>
-        )}
-        <HeroLabel>Map</HeroLabel>
+        <div style={{ width: 38, height: 4, borderRadius: 2, background: 'var(--text-secondary)', opacity: 0.4 }} />
+      </div>
+
+      <div style={{ flex: '1 1 auto', overflowY: 'auto', overscrollBehavior: 'contain' }}>
+        <div ref={contentRef}>
+          {children}
+          <div style={{ height: 'calc(var(--safe-bottom) + 12px)' }} />
+        </div>
       </div>
     </div>
   )
@@ -203,14 +344,13 @@ function MapCard({ onOpen, lastView }) {
    small flourish layered on top of it, not the main picture. ICAO + VFR/
    MVFR/IFR/LIFR pill sit together on the left; temp/wind/vis stay small
    and off to the right so nothing overlaps. ── */
-function AirportsHeroCard({ onOpen, onCondition }) {
+function AirportsHeroCard({ onOpen }) {
   const { profile } = usePilotProfile()
   const units = profile ?? {}
   const [icao, setIcao] = useState('')
   const [pickerOpen, setPicker] = useState(false)
   const [wx, setWx] = useState(null)
   const [loading, setLoading] = useState(false)
-  const ref = useRef(null)
 
   useEffect(() => {
     get('settings', 'homeAirport').then(row => {
@@ -248,26 +388,14 @@ function AirportsHeroCard({ onOpen, onCondition }) {
   }, [icao, wx?.noReport])
   const areaSky = area ? conditionFromArea(area) : null
 
-  // This card owns the home airport's weather, and the home screen tints its
-  // background from it. Reported upward rather than fetched a second time, and
-  // reported as null until something real arrives — an unknown sky should
-  // leave the page alone.
-  //
-  // Computed here, above the early returns below, because the effect that
-  // publishes it cannot live after one.
+  // This card's own weather art. It used to also publish the sky upward so the
+  // whole home screen could be tinted from it; the map is the background now,
+  // so nothing is listening and the card keeps its weather to itself.
   const sky = getCondition(wx?.metar ?? null)
   const resolved = wx?.metar ? sky : areaSky
-  const skyType = resolved?.type ?? null
-  const skyNight = resolved?.isNight ?? false
-  useEffect(() => {
-    onCondition?.(skyType ? { type: skyType, isNight: skyNight } : null)
-  }, [skyType, skyNight, onCondition])
 
   function handleClick() {
-    if (ref.current) {
-      const r = ref.current.getBoundingClientRect()
-      onOpen('airports', { top: r.top, left: r.left, width: r.width, height: r.height })
-    }
+    onOpen('airports')
   }
 
   function confirmAirport(id) {
@@ -310,14 +438,13 @@ function AirportsHeroCard({ onOpen, onCondition }) {
   }
 
   const cat = wx?.metar ? parseFltCat(wx.metar) : null
-  // The scene on the card and the wash behind the page come from the same
-  // answer, so a station-less field doesn't get a sunny illustration over a
-  // stormy background.
+  // A field with no station of its own still gets the right illustration: the
+  // model estimate stands in, so it doesn't show a sunny scene in a storm.
   const condition = resolved?.type ?? sky.type
 
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label="Open airports"
+      <div onClick={handleClick} role="button" tabIndex={0} aria-label="Open airports"
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
         style={{
         position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
@@ -379,18 +506,14 @@ function AirportsHeroCard({ onOpen, onCondition }) {
 
 /* ── Flight Planning card ─────────────────────────────────── */
 function FlightPlanCard({ onOpen }) {
-  const ref = useRef(null)
 
   function handleClick() {
-    if (ref.current) {
-      const r = ref.current.getBoundingClientRect()
-      onOpen('checklists', { top: r.top, left: r.left, width: r.width, height: r.height })
-    }
+    onOpen('checklists')
   }
 
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label="Open flight planning"
+      <div onClick={handleClick} role="button" tabIndex={0} aria-label="Open flight planning"
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
         style={{
         position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
@@ -421,18 +544,14 @@ function FlightPlanCard({ onOpen }) {
    so a quick painted background beats investing in custom art for a
    shape that's still expected to change. ── */
 function DiscoverCard({ onOpen }) {
-  const ref = useRef(null)
 
   function handleClick() {
-    if (ref.current) {
-      const r = ref.current.getBoundingClientRect()
-      onOpen('discover', { top: r.top, left: r.left, width: r.width, height: r.height })
-    }
+    onOpen('discover')
   }
 
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div ref={ref} onClick={handleClick} role="button" tabIndex={0} aria-label="Open friends"
+      <div onClick={handleClick} role="button" tabIndex={0} aria-label="Open friends"
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
         style={{
         position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
@@ -453,14 +572,53 @@ function DiscoverCard({ onOpen }) {
   )
 }
 
-/* ── Pilot row — small dot reflects currency status. Goes straight to
-   /pilot, whose own main screen IS the currency view now (medical +
-   flight currency, with a logbook slotted in next); profile-editing
-   fields live one level deeper at /profile ("Profile Setup"). ── */
-function PilotRow({ currencyDotColor }) {
+/* ── Pilot row — the uniformed figure sits on the left of the art, and the
+   right-hand side carries the readout: flight currency and medical, each
+   with its own status dot, and total logged time under them. Goes straight
+   to /pilot, whose own main screen IS the currency view (medical + flight
+   currency, with the logbook alongside); profile-editing fields live one
+   level deeper at /profile ("Profile Setup"). ── */
+
+// Grey, deliberately, for 'incomplete'/'unknown'. The rolled-up Home dot used
+// to treat "not entered yet" as valid so it wouldn't nag, which is defensible
+// for a single anonymous dot but not here: a dot sitting next to the word
+// "Medical" is a claim about the medical, and showing green for one nobody
+// has entered would be the app asserting something it does not know.
+const STATUS_DOT = {
+  expired:  'var(--danger)',
+  expiring: 'var(--warn)',
+  valid:    'var(--ok)',
+}
+function statusDotColor(status) {
+  return STATUS_DOT[status] ?? 'rgba(255,255,255,0.35)'
+}
+
+function StatusLine({ label, status }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+      <span>{label}</span>
+      <span style={{
+        width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+        background: statusDotColor(status),
+        boxShadow: '0 0 0 1.5px rgba(255,255,255,0.55)',
+      }} />
+    </div>
+  )
+}
+
+function PilotRow({ currencyCards, onOpen }) {
+  const { entries } = useLogbook()
+  const totalHours = computeTotalHours(entries)
+
+  function handleClick() {
+    onOpen('pilot')
+  }
+
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <Link to="/pilot" style={{ textDecoration: 'none' }}>
+      <div onClick={handleClick} role="button" tabIndex={0} aria-label="Open pilot"
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
+        style={{ textDecoration: 'none' }}>
         <div style={{
           position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
           boxShadow: 'var(--shadow-sm)',
@@ -473,13 +631,21 @@ function PilotRow({ currencyDotColor }) {
             background: 'linear-gradient(108deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.2) 55%, rgba(0,0,0,0.04) 100%)',
           }} />
           <HeroLabel>Pilot</HeroLabel>
-          <span style={{
-            position: 'absolute', top: 10, right: 14, zIndex: 1,
-            width: 9, height: 9, borderRadius: '50%',
-            background: currencyDotColor, boxShadow: '0 0 0 2px rgba(255,255,255,0.7)',
-          }} />
+
+          <div style={{
+            position: 'absolute', top: 0, bottom: 0, right: 14, zIndex: 1,
+            display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3,
+            fontSize: 11, fontWeight: 700, color: '#fff', lineHeight: 1,
+            textShadow: '0 1px 2px rgba(0,0,0,0.45)',
+          }}>
+            <StatusLine label="Currency" status={currencyCards?.current.status} />
+            <StatusLine label="Medical"  status={currencyCards?.valid.status} />
+            <div style={{ textAlign: 'right', fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontVariantNumeric: 'tabular-nums' }}>
+              TT: {totalHours.toFixed(1)}
+            </div>
+          </div>
         </div>
-      </Link>
+      </div>
     </div>
   )
 }
@@ -493,18 +659,22 @@ function PilotRow({ currencyDotColor }) {
    for the reorder list's display names). ── */
 
 /* ── Section content map ──────────────────────────────────── */
-function SectionContent({ section, order, onMoveRow, onMapViewChange, mapView }) {
+function SectionContent({ section, order, onMoveRow }) {
   if (section === 'checklists') return <Checklists />
   if (section === 'aircraft')   return <Hangar />
-  if (section === 'map')        return <MapView onViewChange={onMapViewChange} lastView={mapView} />
   if (section === 'airports')   return <AirportInfo />
   if (section === 'tools')      return <ToolsMenu />
   if (section === 'settings')   return <Settings order={order} onMoveRow={onMoveRow} />
   if (section === 'discover')   return <Discover />
+  if (section === 'pilot')      return <Pilot />
   return null
 }
 
-const DEFAULT_ORDER = ['map', 'airports', 'hangar', 'pilot', 'flight', 'discover']
+// No 'map' row: the map is the screen the drawer sits on, not a card in it.
+// Saved orders from before that change still carry 'map', and it is filtered
+// out on load rather than migrated away, so a pilot who reordered their rows
+// keeps the order they chose either way.
+const DEFAULT_ORDER = ['airports', 'hangar', 'pilot', 'flight', 'discover']
 
 // The order shipped before Map moved to the top — a saved homeOrder that
 // still matches this exactly means the pilot never actually touched the
@@ -518,49 +688,22 @@ const PRE_MAP_TOP_DEFAULT_ORDER = ['airports', 'map', 'hangar', 'pilot', 'flight
 export default function Home() {
   const { aircraftId, aircraftList, refreshAircraftList } = useActiveAircraft()
   const [openSection, setOpenSection]     = useState(null)
-  const [sectionRect, setSectionRect]     = useState(null)
-  const [currencyStatus, setCurrencyStatus] = useState('valid')
+  // Raw currency/profile record rather than a rolled-up status: the Pilot
+  // card reports flight currency and medical separately now, so it needs both
+  // of getCurrencyStatus()'s cards, not the worst of the two.
+  const [currencyData, setCurrencyData] = useState(null)
   const [order, setOrder] = useState(DEFAULT_ORDER)
-  // Last {center, zoom} the pilot left the real map screen at — null until
-  // they've opened it at least once this session. Lifted up here (rather
-  // than living inside MapView, which fully unmounts every time its overlay
-  // closes) purely so it survives between an open/close cycle for
-  // MapCard's preview to pick up; see MapView's ViewReporter/MapViewSync.
-  const [mapView, setMapView] = useState(null)
-
-  // The sky at the home airport, published by AirportsHeroCard — the only
-  // card that has any weather. null until a real observation arrives, which
-  // is what keeps the page from flashing a confident blue at launch.
-  //
-  // setSky is passed down as a prop, so it has to be stable: useState's
-  // setter already is, but wrapping the comparison here means an unchanged
-  // condition doesn't re-render the whole home screen every time the weather
-  // is refetched.
-  const [sky, setSky] = useState(null)
-  const publishSky = useCallback(next => {
-    setSky(prev =>
-      prev?.type === next?.type && prev?.isNight === next?.isNight ? prev : next)
-  }, [])
-
-  const theme = useThemeName()
-  // --bg is read live rather than assumed, because the tint has to know what
-  // it is sitting on: the same sky is lifted against a black background and
-  // darkened against a white one, and the status bar has to be flattened
-  // against it to avoid a band across the top of the phone.
-  const { backdrop, chrome } = useMemo(() => {
-    if (!sky) return { backdrop: null, chrome: null }
-    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
-    return {
-      backdrop: skyBackdrop(sky.type, sky.isNight, theme, bg),
-      chrome: skyChromeColor(sky.type, sky.isNight, theme, bg),
-    }
-  }, [sky, theme])
-  useChromeColor(chrome)
+  // The drawer, and how much of the map it is covering. Open on launch, at
+  // the height its own content needs.
+  // 'peek' | 'open' | 'full'. Only opening a section ever reaches 'full'.
+  const [drawerStop, setDrawerStop] = useState('open')
+  const [drawerMetrics, setDrawerMetrics] = useState({ live: 0, settled: 0, dragging: false, openHeight: 0 })
+  const handleDrawerHeight = useCallback(m => setDrawerMetrics(m), [])
 
   const activeAircraft = aircraftList?.find(a => a.id === aircraftId)
   const aircraftImage = activeAircraft?.image ?? ''
   function loadCurrencyStatus() {
-    get('currency', 'profile').then(d => setCurrencyStatus(getGlobalCurrencyStatus(d ?? {})))
+    get('currency', 'profile').then(d => setCurrencyData(d ?? {}))
   }
 
   useEffect(() => {
@@ -585,9 +728,14 @@ export default function Home() {
     })
   }, [])
 
-  function openCard(section, rect) {
-    setSectionRect(rect)
+  // Opening a section does NOT raise the drawer. The whole point of putting
+  // sections in here is that you can read one — airports, say — with the map
+  // still in view above it. Going full screen is the pilot's choice, not a
+  // consequence of tapping a card. The only nudge is out of 'peek', where the
+  // section would be behind the handle you just tapped through.
+  function openCard(section) {
     setOpenSection(section)
+    setDrawerStop(stop => (stop === 'peek' ? 'open' : stop))
   }
 
   function closeCard() {
@@ -606,7 +754,18 @@ export default function Home() {
       loadCurrencyStatus()
     }
     setOpenSection(null)
-    setSectionRect(null)
+    // 'full' is not a legal height for the card list, so drop back to the
+    // standard one; any other height the pilot chose is left alone.
+    setDrawerStop(stop => (stop === 'full' ? 'open' : stop))
+  }
+
+  // Height and section are independent. Dragging the drawer down out of full
+  // leaves the section open at the standard height with the map back in view;
+  // only the Home button closes a section. The single rule is that 'full'
+  // needs a section to be showing, since it exists to give one room.
+  function handleStopChange(next) {
+    if (next === 'full' && !openSection) return
+    setDrawerStop(next)
   }
 
   function moveRow(index, dir) {
@@ -618,16 +777,17 @@ export default function Home() {
     put('settings', { key: 'homeOrder', value: next }).catch(() => {})
   }
 
-  const currencyDotColor =
-    currencyStatus === 'expired'  ? 'var(--danger)' :
-    currencyStatus === 'expiring' ? 'var(--warn)' :
-    'var(--ok)'
+  // Both cards come from one pass over the same record. Until it has loaded
+  // there is nothing to report, so the dots stay grey rather than flashing a
+  // confident green on the way in.
+  const currencyCards = useMemo(
+    () => (currencyData ? getCurrencyStatus(currencyData) : null),
+    [currencyData])
 
   function renderRow(key) {
-    if (key === 'airports') return <AirportsHeroCard key={key} onOpen={openCard} onCondition={publishSky} />
-    if (key === 'map')      return <MapCard key={key} onOpen={openCard} lastView={mapView} />
+    if (key === 'airports') return <AirportsHeroCard key={key} onOpen={openCard} />
     if (key === 'hangar')   return <HangarCard key={key} aircraftImage={aircraftImage} aircraftCount={aircraftList?.length ?? 0} onOpen={openCard} />
-    if (key === 'pilot')    return <PilotRow key={key} currencyDotColor={currencyDotColor} />
+    if (key === 'pilot')    return <PilotRow key={key} currencyCards={currencyCards} onOpen={openCard} />
     if (key === 'flight')   return <FlightPlanCard key={key} onOpen={openCard} />
     if (key === 'discover') return <DiscoverCard key={key} onOpen={openCard} />
     return null
@@ -635,65 +795,32 @@ export default function Home() {
 
   return (
     <HomeLocationProvider>
-      {/* The weather at the home airport, spilling into the page behind the
-          buttons. Fixed rather than in flow so it covers the safe-area inset
-          at the top of the phone — a gradient that started below the notch
-          would produce the very band this is careful to avoid. Fades in
-          because the weather arrives a moment after the page does, and a
-          sudden wash would read as a glitch. */}
-      {backdrop && (
-        <div
-          aria-hidden
-          style={{
-            position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
-            background: backdrop,
-            opacity: 1,
-            animation: 'sky-fade 700ms ease',
-          }}
-        />
-      )}
-      {/* The weather itself, over the tint: cloud when it's cloudy, rain when
-          it's raining, snow, fog, lightning. The same components the airport
-          card paints with, so the two can never show different weather.
-          Held well back — this is behind every button on the screen, and it
-          has to read as atmosphere rather than as content competing with the
-          photographs on top of it. */}
-      {sky && (
-        <div
-          aria-hidden
-          style={{
-            position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
-            opacity: 0.5,
-            animation: 'sky-fade 1200ms ease',
-          }}
-        >
-          <WeatherAnimation condition={sky} elementsOnly />
-        </div>
-      )}
-      <style>{'@keyframes sky-fade { from { opacity: 0 } to { opacity: 1 } }'}</style>
-      <div style={{
-        height: '100dvh', overflow: 'hidden', boxSizing: 'border-box',
-        display: 'flex', flexDirection: 'column',
-        padding: '14px 0 10px',
-        position: 'relative', zIndex: 1,
-      }}>
+      <HomeMap metrics={drawerMetrics} />
 
-        {order.map(renderRow)}
+      <HomeDrawer
+        stop={drawerStop}
+        onStopChange={handleStopChange}
+        sectionOpen={!!openSection}
+        onHeightChange={handleDrawerHeight}
+      >
+        {openSection ? (
+          <DrawerSection onClose={closeCard}>
+            <SectionContent section={openSection} order={order} onMoveRow={moveRow} />
+          </DrawerSection>
+        ) : (
+          <>
+            {order.map(renderRow)}
 
-        {/* ── Tools / Settings ── */}
-        <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <ModuleCard section="tools"    onOpen={openCard} Icon={IconWrench} label="Tools" />
-            <ModuleCard section="settings" onOpen={openCard} Icon={IconGear}   label="Settings" />
-          </div>
-        </div>
-      </div>
-
-      {openSection && sectionRect && (
-        <CardOverlay cardRect={sectionRect} onClose={closeCard}>
-          <SectionContent section={openSection} order={order} onMoveRow={moveRow} onMapViewChange={setMapView} mapView={mapView} />
-        </CardOverlay>
-      )}
+            {/* ── Tools / Settings ── */}
+            <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <ModuleCard section="tools"    onOpen={openCard} Icon={IconWrench} label="Tools" />
+                <ModuleCard section="settings" onOpen={openCard} Icon={IconGear}   label="Settings" />
+              </div>
+            </div>
+          </>
+        )}
+      </HomeDrawer>
     </HomeLocationProvider>
   )
 }
