@@ -12,10 +12,20 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // fail). Exposes the full coords object (altitude, heading, speed,
 // accuracy) plus a smoothed rate of turn and vertical speed derived from
 // consecutive readings.
-// How long to wait before starting the whole acquisition sequence over. Long
-// enough not to hammer a chip that is genuinely struggling, short enough that
-// walking out to the aircraft is noticed without the pilot doing anything.
-const RETRY_AFTER_MS = 10000
+// Deliberately NO automatic teardown-and-recreate cycle.
+//
+// An earlier version restarted the whole acquisition sequence every ten
+// seconds forever whenever it had no fix. That was wrong twice over.
+// watchPosition already keeps trying on its own and fires success the moment
+// a fix arrives, so recreating it does not help — it discards whatever
+// progress the chip had made. And every open tab ran its own copy, so a few
+// tabs left open meant the OS location service was being started and stopped
+// several times a second, indefinitely. On macOS that wedges CoreLocation for
+// the entire browser process: every site, including unrelated ones, starts
+// getting POSITION_UNAVAILABLE instantly. Which is exactly what happened.
+//
+// So: one watch, left alone to do its job. It is recreated only on a real
+// signal — the pilot asking, or the tab coming back to the foreground.
 
 export function useLiveLocation() {
   const [coords, setCoords] = useState(null) // { lat, lon, altFt, accuracyM, headingDeg, speedKt, timestamp }
@@ -23,9 +33,9 @@ export function useLiveLocation() {
   const [status, setStatus] = useState('pending')
   const [error, setError] = useState(null)
   const prev = useRef(null)
-  // Bumping this tears the watch down and starts the whole sequence again
-  // from scratch. It is what a manual retry drives, and what the automatic
-  // one uses too.
+  // Bumping this tears the watch down and starts the sequence again. Driven
+  // only by a deliberate retry or by the tab regaining focus — never by a
+  // timer.
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
@@ -39,7 +49,6 @@ export function useLiveLocation() {
     // dropped down to relaxed accuracy — both survive across watchPosition
     // restarts below, so a restart doesn't just retry the same request.
     let watchId
-    let retryTimer = null
     let everGotFix = false
     let relaxed = false
 
@@ -102,34 +111,41 @@ export function useLiveLocation() {
         return
       }
 
-      // Both attempts have now failed, and this used to be where the hook gave
-      // up permanently: `relaxed` stayed true, nothing else was ever tried,
-      // and the app sat on "No GPS" until it was fully reloaded. That is
-      // exactly wrong for the case it matters most — a cold start indoors, or
-      // a phone that has not seen sky yet. The pilot walks out to the aircraft
-      // and the app never notices.
-      //
-      // So keep trying, on a slow cycle. It is cheap next to the alternative,
-      // which is a pilot believing the app cannot see GPS at all.
-      if (retryTimer) return
-      retryTimer = setTimeout(() => {
-        retryTimer = null
-        setAttempt(a => a + 1)
-      }, RETRY_AFTER_MS)
+      // Both attempts have failed. The relaxed watch stays open and running —
+      // it will still deliver a fix the moment one becomes available, which is
+      // the walk-outside case — so there is nothing useful left to do here.
+      // Restarting it on a timer would only reset the chip's progress and
+      // thrash the OS.
     }
 
-    watchId = navigator.geolocation.watchPosition(handleSuccess, handleError, {
-      enableHighAccuracy: true, maximumAge: 1000, timeout: 15000,
-    })
+    // A hidden tab must not hold a location session open. Several backgrounded
+    // copies of this app contending for the same GPS is the documented cause
+    // of both failing (see this hook's own header) — and with nothing on
+    // screen reading the position, it buys nothing. onVisible above starts it
+    // the moment the tab is looked at.
+    if (document.visibilityState !== 'hidden') {
+      watchId = navigator.geolocation.watchPosition(handleSuccess, handleError, {
+        enableHighAccuracy: true, maximumAge: 1000, timeout: 15000,
+      })
+    }
+    // Registered before any early return below, deliberately. A tab that opens
+    // in the background must still start watching the moment it is looked at;
+    // an earlier draft returned first and left such a tab permanently
+    // location-less.
+    function onVisible() {
+      if (document.visibilityState === 'visible' && !everGotFix) setAttempt(a => a + 1)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
     return () => {
-      clearTimeout(retryTimer)
-      navigator.geolocation.clearWatch(watchId)
+      document.removeEventListener('visibilitychange', onVisible)
+      if (watchId != null) navigator.geolocation.clearWatch(watchId)
     }
   }, [attempt])
 
   // Offered so the UI can put a retry in front of the pilot rather than making
-  // them relaunch the app. Also resets the cycle, so a manual tap goes straight
-  // back to a high-accuracy attempt instead of waiting out the timer.
+  // them relaunch the app — and now the only thing besides refocusing that
+  // starts a fresh attempt at all.
   const retry = useCallback(() => setAttempt(a => a + 1), [])
 
   return { coords, derived, status, error, retry }
