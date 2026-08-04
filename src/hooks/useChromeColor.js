@@ -19,14 +19,30 @@ import { useEffect } from 'react'
 export function useChromeColor(color) {
   useEffect(() => {
     if (!color) return
-    const dark = document.documentElement.getAttribute('data-theme') !== 'light'
-    const meta = document.querySelector(
-      `meta[name="theme-color"][media*="${dark ? 'dark' : 'light'}"]`)
-    if (!meta) return
 
-    const original = meta.getAttribute('content')
+    // BOTH media-scoped tags, not just the one matching the app's theme.
+    //
+    // This is the fix for a white band across the top of an iPhone. The two
+    // tags are scoped to prefers-color-scheme, so iOS reads whichever matches
+    // the *system* appearance — while the app decides its own palette
+    // separately. A phone set to light running the app in dark therefore
+    // reads the light tag, which still said #ffffff: a white strip above a
+    // dark page. Writing one tag can only ever be right when the two happen
+    // to agree.
+    //
+    // Overwriting both is correct here precisely because this hook exists to
+    // say "the chrome is this colour, whatever the system thinks" — the page
+    // underneath is that colour either way. Both originals are captured and
+    // both are restored, so useTheme's own light/dark pair is intact the
+    // moment this screen unmounts.
+    const metas = [...document.querySelectorAll('meta[name="theme-color"]')]
+    if (!metas.length) return
+
+    const originals = metas.map(m => [m, m.getAttribute('content')])
     const apply = () => {
-      if (meta.getAttribute('content') !== color) meta.setAttribute('content', color)
+      for (const m of metas) {
+        if (m.getAttribute('content') !== color) m.setAttribute('content', color)
+      }
     }
     apply()
 
@@ -37,7 +53,9 @@ export function useChromeColor(color) {
 
     return () => {
       obs.disconnect()
-      if (original != null) meta.setAttribute('content', original)
+      for (const [m, original] of originals) {
+        if (original != null) m.setAttribute('content', original)
+      }
     }
   }, [color])
 }

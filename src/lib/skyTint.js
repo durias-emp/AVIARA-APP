@@ -52,16 +52,29 @@ function rgb(css) {
 }
 
 // Scales a colour toward or away from black until it is far enough from the
-// background to register. Scaling rather than blending with white keeps the
-// hue: clear-night navy brightens into a deeper blue, not into grey.
-function separate(colour, bg) {
+// background to register once painted. Scaling rather than blending with
+// white keeps the hue: clear-night navy brightens into a deeper blue, not
+// into grey.
+//
+// `alpha` is what the first version of this got wrong, and the error was
+// invisible in every test because the test measured the wrong thing. The
+// colour was separated from the background and *then* painted at 42%
+// opacity, which scales the separation down with it — a colour lifted to a
+// luminance gap of 0.085 composites to a gap of 0.036, and 0.036 against
+// black on a phone in daylight is nothing at all. Compositing is linear in
+// these weights, so the raw colour has to clear MIN_SEPARATION / alpha for
+// the painted result to clear MIN_SEPARATION.
+function separate(colour, bg, alpha) {
   if (!bg) return colour
+  const need = MIN_SEPARATION / Math.max(alpha, 0.01)
   const lc = luminance(colour)
   const lb = luminance(bg)
-  if (Math.abs(lc - lb) >= MIN_SEPARATION) return colour
+  if (Math.abs(lc - lb) >= need) return colour
 
   const lighten = lb < 0.5
-  const target = lighten ? lb + MIN_SEPARATION : Math.max(0, lb - MIN_SEPARATION)
+  const target = lighten
+    ? Math.min(1, lb + need)
+    : Math.max(0, lb - need)
   // A colour with no luminance at all cannot be scaled into one, so it gets
   // a neutral floor instead of a division by zero.
   if (lc < 0.002) return colour.map(() => clamp(target * 255))
@@ -69,10 +82,17 @@ function separate(colour, bg) {
   return colour.map(c => clamp(c * k))
 }
 
-function palette(type, isNight, bg) {
+// Each stop is separated against the alpha it will actually be painted at —
+// the top stop is more opaque than the mid one, so they need different lifts
+// to end up equally legible.
+function palette(type, isNight, bg, alphas) {
   const t = THEMES[type] || THEMES.clear
   const stops = (isNight ? t.night : t.day).map(h => rgb(h) ?? [0, 0, 0])
-  return stops.map(c => separate(c, bg))
+  return [
+    separate(stops[0], bg, alphas.top),
+    separate(stops[1], bg, alphas.mid),
+    stops[2],
+  ]
 }
 
 // A CSS gradient of rgba stops, fading to nothing before the bottom of the
@@ -83,9 +103,9 @@ function palette(type, isNight, bg) {
 // needs to lift or darken, and falls back to the raw palette.
 export function skyBackdrop(type, isNight, theme, bgCss) {
   const bg = rgb(bgCss)
-  const [a, b] = palette(type, isNight, bg)
   const k = theme === 'dark' ? 'dark' : 'light'
   const { top, mid } = ALPHA[k]
+  const [a, b] = palette(type, isNight, bg, ALPHA[k])
   return 'linear-gradient(180deg,'
     + ` rgba(${a[0]},${a[1]},${a[2]},${top}) 0%,`
     + ` rgba(${b[0]},${b[1]},${b[2]},${mid}) 42%,`
@@ -102,8 +122,9 @@ export function skyBackdrop(type, isNight, theme, bgCss) {
 export function skyChromeColor(type, isNight, theme, bgCss) {
   const bg = rgb(bgCss)
   if (!bg) return null
-  const [a] = palette(type, isNight, bg)
-  const t = ALPHA[theme === 'dark' ? 'dark' : 'light'].top
+  const k = theme === 'dark' ? 'dark' : 'light'
+  const [a] = palette(type, isNight, bg, ALPHA[k])
+  const t = ALPHA[k].top
   const hex = n => clamp(n).toString(16).padStart(2, '0')
   return `#${hex(a[0] * t + bg[0] * (1 - t))}`
        + `${hex(a[1] * t + bg[1] * (1 - t))}`
