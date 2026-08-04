@@ -94,6 +94,22 @@ export function AirportScene({ condition = 'clear' }) {
   )
 }
 
+// A pair of aviators, outlined, on the left of the card — the right-hand
+// side stays clear for the currency/medical/total-time readout that PilotRow
+// lays over the top.
+//
+// This replaced a drawn pilot. Two attempts at a figure (a uniformed bust,
+// then a restroom-sign pictogram) both read as a pirate, and the reason is
+// scale rather than draughtsmanship: 64px of card height leaves a body about
+// 40px tall, and at that size a peaked cap and a shirt collar collapse into
+// a tricorn and a sash however they are drawn. The glasses carry the same
+// "pilot" meaning in a shape that survives being small, because they are one
+// recognisable outline instead of a figure whose details have to land.
+//
+// Drawn inside y 26–64. The card is 64px tall against a 90-unit viewBox on
+// `slice`, so roughly the top and bottom 9 units are cropped at phone width;
+// sitting well inside that band is what keeps the glasses whole. The left
+// edge clears x 34, where the vertical "Pilot" label ends.
 export function PilotArt() {
   return (
     <svg viewBox="0 0 400 90" preserveAspectRatio="xMidYMid slice" style={ART_STYLE}>
@@ -106,25 +122,56 @@ export function PilotArt() {
       <rect width="400" height="90" fill="url(#pilot-bg)" />
       <circle cx="330" cy="45" r="55" fill="#ffffff" opacity="0.06" />
 
-      {/* shoulders with captain's-stripe epaulettes — a clearer "pilot"
-          cue than a plain bust silhouette */}
-      <g transform="translate(50,8)">
-        <path d="M8 78 Q58 52 108 78 L108 90 L8 90 Z" fill="#10173a" />
-        <g fill="#f2c14e">
-          <rect x="16" y="64" width="24" height="3.5" />
-          <rect x="16" y="71" width="24" height="3.5" />
-          <rect x="16" y="78" width="24" height="3.5" />
-          <rect x="76" y="64" width="24" height="3.5" />
-          <rect x="76" y="71" width="24" height="3.5" />
-          <rect x="76" y="78" width="24" height="3.5" />
-        </g>
+      {/* A filled silhouette rather than a stroked outline, with the lenses
+          carrying nearly the whole shape: a thin brow bar across the middle
+          of the top, big teardrop lenses hanging off it, a short nose piece
+          between them, and a hinge nub at each outer edge.
 
-        {/* head + peaked cap, clear brim and badge */}
-        <circle cx="58" cy="36" r="19" fill="#10173a" />
-        <ellipse cx="58" cy="26" rx="25" ry="5.5" fill="#0a0e24" />
-        <path d="M35 27 a23 23 0 0 1 46 0 h-5 a18 18 0 0 0 -36 0 z" fill="#0a0e24" />
-        <circle cx="58" cy="16" r="4" fill="#f2c14e" />
-      </g>
+          Light rather than dark, which the reference silhouette is not. The
+          card darkens towards the left under its scrim, and the glasses sit
+          in that darkest quarter — a near-black silhouette there disappears
+          into the background instead of reading as a shape.
+
+          The right lens is the left one mirrored about x=88, so the pair
+          cannot drift out of symmetry when the shape is tweaked. Everything
+          sits inside y 29–61: a 744px-wide desktop card shows only about
+          y 28–62 of this 90-unit viewBox, so that band is what it takes to
+          keep the glasses whole on a laptop as well as on a phone. */}
+      {/* The helmet is the project's own logo (brand/pqrh-logo-source.jpeg,
+          downscaled to 320px as public/pilot-helmet.png), drawn as light ink
+          on the navy card.
+
+          PNG rather than JPEG, and not for quality: the service worker's
+          globPatterns precache js/css/html/ico/png/svg/woff2, so a .jpg here
+          would ship but never reach the offline cache, and the card would
+          come up empty in the air. A 320px PNG is 66kB, in line with the
+          aircraft photos already precached alongside it.
+
+          It is masked rather than filtered. The source is dark engraving on
+          cream, and simply inverting it would reverse every tone: the goggle
+          lenses, which read as pale glass, would go dark. Instead the image
+          drives a luminance mask over a flat light fill, so the drawing keeps
+          its own tonal sense and only changes colour. The transfer curve is
+          steep on purpose — it drives the cream ground to zero so the card
+          shows through it cleanly instead of carrying a pale rectangle.
+
+          The masked rect covers only the helmet's own box, which is how the
+          "PQRH" wordmark is dropped: it sits at roughly y 75-80 in these
+          units, outside the rect, so it is never painted. */}
+      <defs>
+        <filter id="pilot-ink" x="0" y="0" width="100%" height="100%">
+          <feColorMatrix type="saturate" values="0" />
+          <feComponentTransfer>
+            <feFuncR type="table" tableValues="1 1 1 0.95 0.85 0.65 0.42 0.2 0.05 0 0" />
+            <feFuncG type="table" tableValues="1 1 1 0.95 0.85 0.65 0.42 0.2 0.05 0 0" />
+            <feFuncB type="table" tableValues="1 1 1 0.95 0.85 0.65 0.42 0.2 0.05 0 0" />
+          </feComponentTransfer>
+        </filter>
+        <mask id="pilot-helmet" maskUnits="userSpaceOnUse" x="44" y="12" width="60.9" height="60">
+          <image href="/pilot-helmet.png" x="13.89" y="-13.64" width="121.8" height="121.8" filter="url(#pilot-ink)" preserveAspectRatio="none" />
+        </mask>
+      </defs>
+      <rect x="44" y="12" width="60.9" height="60" fill="#e8edf9" mask="url(#pilot-helmet)" />
     </svg>
   )
 }
