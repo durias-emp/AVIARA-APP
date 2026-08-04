@@ -19,7 +19,11 @@ export function getCondition(metar) {
 }
 
 // Sky gradients: rich, layered like Apple Weather
-const THEMES = {
+// Exported so the home screen can tint its background from the same nine
+// palettes this file paints the sky with — see src/lib/skyTint.js. One
+// source, so the wash behind the home screen and the sky inside the airport
+// card cannot drift into two nearly-matching blues.
+export const THEMES = {
   clear:     { day:  ['#1a91f0','#2fb0fa','#6dd0ff'], night: ['#060e28','#0c1840','#102050'] },
   few:       { day:  ['#1e98f5','#3db4ff','#7dcfff'], night: ['#081028','#0e1d45','#182e60'] },
   scattered: { day:  ['#4288cc','#5aa4de','#86c0ef'], night: ['#0c1d38','#152840','#1e3858'] },

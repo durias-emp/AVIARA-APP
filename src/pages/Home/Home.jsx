@@ -1,6 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { get, put } from '../../lib/db'
+import { useThemeName } from '../../hooks/useTheme'
+import { useChromeColor } from '../../hooks/useChromeColor'
+import { skyBackdrop, skyChromeColor } from '../../lib/skyTint'
 import { getGlobalCurrencyStatus } from '../../lib/currency'
 import { loadWeather, parseFltCat, parseWind, parseVisib, parseTemp } from '../../lib/weather'
 import { getCondition } from '../../components/WeatherAnimation'
@@ -198,7 +201,7 @@ function MapCard({ onOpen, lastView }) {
    small flourish layered on top of it, not the main picture. ICAO + VFR/
    MVFR/IFR/LIFR pill sit together on the left; temp/wind/vis stay small
    and off to the right so nothing overlaps. ── */
-function AirportsHeroCard({ onOpen }) {
+function AirportsHeroCard({ onOpen, onCondition }) {
   const { profile } = usePilotProfile()
   const units = profile ?? {}
   const [icao, setIcao] = useState('')
@@ -220,6 +223,20 @@ function AirportsHeroCard({ onOpen }) {
     get('weather', icao).then(cached => { if (cached) setWx(cached) })
     loadWeather(icao).then(setWx).catch(() => {}).finally(() => setLoading(false))
   }, [icao])
+
+  // This card owns the home airport's weather, and the home screen tints its
+  // background from it. Reported upward rather than fetched a second time, and
+  // reported as null until there is a real observation — an unknown sky should
+  // leave the page alone, not paint a confident blue.
+  //
+  // Computed here, above the early returns below, because the effect that
+  // publishes it cannot live after one.
+  const sky = getCondition(wx?.metar ?? null)
+  const skyType = wx?.metar ? sky.type : null
+  const skyNight = sky.isNight
+  useEffect(() => {
+    onCondition?.(skyType ? { type: skyType, isNight: skyNight } : null)
+  }, [skyType, skyNight, onCondition])
 
   function handleClick() {
     if (ref.current) {
@@ -268,7 +285,7 @@ function AirportsHeroCard({ onOpen }) {
   }
 
   const cat = wx?.metar ? parseFltCat(wx.metar) : null
-  const { type: condition } = getCondition(wx?.metar ?? null)
+  const condition = sky.type
 
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
@@ -471,6 +488,36 @@ export default function Home() {
   // closes) purely so it survives between an open/close cycle for
   // MapCard's preview to pick up; see MapView's ViewReporter/MapViewSync.
   const [mapView, setMapView] = useState(null)
+
+  // The sky at the home airport, published by AirportsHeroCard — the only
+  // card that has any weather. null until a real observation arrives, which
+  // is what keeps the page from flashing a confident blue at launch.
+  //
+  // setSky is passed down as a prop, so it has to be stable: useState's
+  // setter already is, but wrapping the comparison here means an unchanged
+  // condition doesn't re-render the whole home screen every time the weather
+  // is refetched.
+  const [sky, setSky] = useState(null)
+  const publishSky = useCallback(next => {
+    setSky(prev =>
+      prev?.type === next?.type && prev?.isNight === next?.isNight ? prev : next)
+  }, [])
+
+  const theme = useThemeName()
+  // --bg is read live rather than assumed, because the tint has to know what
+  // it is sitting on: the same sky is lifted against a black background and
+  // darkened against a white one, and the status bar has to be flattened
+  // against it to avoid a band across the top of the phone.
+  const { backdrop, chrome } = useMemo(() => {
+    if (!sky) return { backdrop: null, chrome: null }
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
+    return {
+      backdrop: skyBackdrop(sky.type, sky.isNight, theme, bg),
+      chrome: skyChromeColor(sky.type, sky.isNight, theme, bg),
+    }
+  }, [sky, theme])
+  useChromeColor(chrome)
+
   const activeAircraft = aircraftList?.find(a => a.id === aircraftId)
   const aircraftImage = activeAircraft?.image ?? ''
   function loadCurrencyStatus() {
@@ -538,7 +585,7 @@ export default function Home() {
     'var(--ok)'
 
   function renderRow(key) {
-    if (key === 'airports') return <AirportsHeroCard key={key} onOpen={openCard} />
+    if (key === 'airports') return <AirportsHeroCard key={key} onOpen={openCard} onCondition={publishSky} />
     if (key === 'map')      return <MapCard key={key} onOpen={openCard} lastView={mapView} />
     if (key === 'hangar')   return <HangarCard key={key} aircraftImage={aircraftImage} aircraftCount={aircraftList?.length ?? 0} onOpen={openCard} />
     if (key === 'pilot')    return <PilotRow key={key} currencyDotColor={currencyDotColor} />
@@ -549,10 +596,29 @@ export default function Home() {
 
   return (
     <HomeLocationProvider>
+      {/* The weather at the home airport, spilling into the page behind the
+          buttons. Fixed rather than in flow so it covers the safe-area inset
+          at the top of the phone — a gradient that started below the notch
+          would produce the very band this is careful to avoid. Fades in
+          because the weather arrives a moment after the page does, and a
+          sudden wash would read as a glitch. */}
+      {backdrop && (
+        <div
+          aria-hidden
+          style={{
+            position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
+            background: backdrop,
+            opacity: 1,
+            animation: 'sky-fade 700ms ease',
+          }}
+        />
+      )}
+      <style>{'@keyframes sky-fade { from { opacity: 0 } to { opacity: 1 } }'}</style>
       <div style={{
         height: '100dvh', overflow: 'hidden', boxSizing: 'border-box',
         display: 'flex', flexDirection: 'column',
         padding: '14px 0 10px',
+        position: 'relative', zIndex: 1,
       }}>
 
         {order.map(renderRow)}
