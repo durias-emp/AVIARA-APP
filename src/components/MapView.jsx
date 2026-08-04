@@ -749,7 +749,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         onClick={toggleFlightTimer}
         aria-label={flightTimer.running ? 'Stop flight timer' : 'Start flight timer'}
         style={{
-          position: 'absolute', left: 12, bottom: 'calc(132px + var(--map-bottom-inset, 0px))', zIndex: 500,
+          position: 'absolute', left: 12, bottom: 'calc(150px + var(--map-bottom-inset, 0px))', zIndex: 500,
           transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
           height: 32, minWidth: 32, padding: flightTimer.running ? '0 10px' : 0,
           borderRadius: 16, border: 'none',
