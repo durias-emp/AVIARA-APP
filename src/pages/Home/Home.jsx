@@ -7,6 +7,8 @@ import { skyBackdrop, skyChromeColor } from '../../lib/skyTint'
 import { getGlobalCurrencyStatus } from '../../lib/currency'
 import { loadWeather, parseFltCat, parseWind, parseVisib, parseTemp } from '../../lib/weather'
 import { getCondition } from '../../components/WeatherAnimation'
+import { loadAreaWeather, conditionFromArea } from '../../lib/areaWeather'
+import { findAirport } from '../../lib/aerodromes'
 import { usePilotProfile } from '../../context/PilotProfile'
 import { useActiveAircraft } from '../../context/ActiveAircraft'
 import AirportPickerModal from '../../components/AirportPickerModal'
@@ -224,16 +226,38 @@ function AirportsHeroCard({ onOpen, onCondition }) {
     loadWeather(icao).then(setWx).catch(() => {}).finally(() => setLoading(false))
   }, [icao])
 
+  // A great many fields publish no METAR — that is the whole reason the
+  // Airports page grew its substitute-weather cards. Without this the home
+  // screen would fall back to "clear" for every one of them and paint a
+  // confident blue sky over an airport it knows nothing about.
+  //
+  // Only fetched when AWC has actually answered "nothing here" (noReport),
+  // never on a failed lookup, and never for a field that does report: the
+  // same gate the Airports page uses.
+  const [areaSky, setAreaSky] = useState(null)
+  useEffect(() => {
+    setAreaSky(null)
+    if (!icao || !wx?.noReport) return
+    let cancelled = false
+    findAirport(icao).then(hit => {
+      if (cancelled || !hit) return
+      return loadAreaWeather(icao, hit.lat, hit.lon)
+        .then(area => { if (!cancelled) setAreaSky(conditionFromArea(area)) })
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [icao, wx?.noReport])
+
   // This card owns the home airport's weather, and the home screen tints its
   // background from it. Reported upward rather than fetched a second time, and
-  // reported as null until there is a real observation — an unknown sky should
-  // leave the page alone, not paint a confident blue.
+  // reported as null until something real arrives — an unknown sky should
+  // leave the page alone.
   //
   // Computed here, above the early returns below, because the effect that
   // publishes it cannot live after one.
   const sky = getCondition(wx?.metar ?? null)
-  const skyType = wx?.metar ? sky.type : null
-  const skyNight = sky.isNight
+  const resolved = wx?.metar ? sky : areaSky
+  const skyType = resolved?.type ?? null
+  const skyNight = resolved?.isNight ?? false
   useEffect(() => {
     onCondition?.(skyType ? { type: skyType, isNight: skyNight } : null)
   }, [skyType, skyNight, onCondition])
@@ -285,7 +309,10 @@ function AirportsHeroCard({ onOpen, onCondition }) {
   }
 
   const cat = wx?.metar ? parseFltCat(wx.metar) : null
-  const condition = sky.type
+  // The scene on the card and the wash behind the page come from the same
+  // answer, so a station-less field doesn't get a sunny illustration over a
+  // stormy background.
+  const condition = resolved?.type ?? sky.type
 
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>

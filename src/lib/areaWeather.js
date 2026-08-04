@@ -32,6 +32,10 @@ const CURRENT = [
   'temperature_2m', 'dew_point_2m', 'relative_humidity_2m', 'apparent_temperature',
   'precipitation', 'weather_code', 'cloud_cover', 'pressure_msl',
   'wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m',
+  // Day or night *at the airport*, which is not the same question as day or
+  // night on the phone. A pilot in Barrie looking up a field in Arizona
+  // should see that field's sky, and the device clock knows nothing about it.
+  'is_day',
 ]
 
 // Stored in the existing `weather` store (keyPath 'icao') under a prefixed
@@ -129,6 +133,10 @@ export async function loadAreaWeather(icao, lat, lon) {
     precipMm: Number.isFinite(c.precipitation) ? c.precipitation : null,
     visM: visibilityAt(data.hourly, c.time),
     condition: WMO[c.weather_code] ?? null,
+    // The raw code and the day flag are kept alongside the prose so the home
+    // screen's sky tint can be derived from them — see conditionFromArea.
+    code: Number.isFinite(c.weather_code) ? c.weather_code : null,
+    isDay: c.is_day === 0 || c.is_day === 1 ? c.is_day : null,
     elevM: Number.isFinite(data.elevation) ? data.elevation : null,
     fetchedAt: Date.now(),
   }
@@ -209,4 +217,54 @@ export function areaCloud(a) {
 
 export function areaCondition(a) {
   return a?.condition ?? null
+}
+
+// ── Sky, for the home screen's background tint ───────────────
+//
+// getCondition() in WeatherAnimation.jsx classifies a METAR into the nine
+// sky types the app paints with. This is the same job done from a model
+// analysis instead, for the very large number of fields that publish no
+// METAR at all — without it the home screen falls back to "clear" and paints
+// a confident blue sky over an airport it knows nothing about.
+//
+// Precipitation, fog and thunderstorms come from the WMO code, because they
+// are what the code is for. The plain cloud tiers come from cloud_cover
+// instead: WMO collapses everything between "mainly clear" and "overcast"
+// into three values, while the app has four tiers and a percentage maps onto
+// them far more faithfully.
+
+const WMO_SKY = new Map([
+  [45, 'fog'], [48, 'fog'],
+  [51, 'rain'], [53, 'rain'], [55, 'rain'], [56, 'rain'], [57, 'rain'],
+  [61, 'rain'], [63, 'rain'], [65, 'rain'], [66, 'rain'], [67, 'rain'],
+  [80, 'rain'], [81, 'rain'], [82, 'rain'],
+  [71, 'snow'], [73, 'snow'], [75, 'snow'], [77, 'snow'],
+  [85, 'snow'], [86, 'snow'],
+  [95, 'storm'], [96, 'storm'], [99, 'storm'],
+])
+
+// Okta boundaries, the same ones a METAR uses: FEW is 1–2 eighths, SCT 3–4,
+// BKN 5–7, OVC 8. Expressed as percentages so the model's cloud cover lands
+// on the tier a human observer would have reported.
+function cloudTier(pct) {
+  if (pct == null) return 'clear'
+  if (pct < 12) return 'clear'
+  if (pct < 32) return 'few'
+  if (pct < 57) return 'scattered'
+  if (pct < 88) return 'broken'
+  return 'overcast'
+}
+
+// Returns { type, isNight } in the same shape getCondition() produces, or
+// null when there is nothing to go on — the caller must be able to tell
+// "no idea" apart from "clear", or it will paint the wrong sky confidently.
+export function conditionFromArea(area) {
+  if (!area) return null
+  const type = WMO_SKY.get(area.code) ?? cloudTier(area.cloudPct)
+  // is_day is computed for the airport's own coordinates. Falling back to the
+  // device clock is a last resort and wrong for anywhere far from the pilot,
+  // but it beats assuming daylight.
+  const hour = new Date().getHours()
+  const isNight = area.isDay == null ? (hour < 6 || hour >= 20) : area.isDay === 0
+  return { type, isNight }
 }
