@@ -306,6 +306,10 @@ export default function MapHome() {
   // read as well over dark tiles as over light ones.
   const chartOverBasemap = ['sectional', 'terrain', 'ifrlo', 'ifrhi', 'airspace']
     .some(k => layers[k])
+  // What the tiles under everything else actually are, which is not the same
+  // question as what theme the app is in. Anything drawn on top of the map has
+  // to contrast with this, not with the sheet.
+  const darkBasemap = isDark && !chartOverBasemap
   const expanded = snap !== 'collapsed'
 
   // Warm the planner while the pilot is looking at the map.
@@ -491,14 +495,20 @@ export default function MapHome() {
     className: 'home-base-icon',
     iconSize: [30, 30],
     iconAnchor: [15, 15],
+    // The source art is a dark silhouette, so it is flattened to a single
+    // solid colour and then flipped to whichever one the basemap is not.
+    // brightness(0) crushes it to black; invert(1) after that turns it white.
+    // Order matters: the drop shadow comes last so it is cast by the finished
+    // shape rather than being inverted along with it.
     html: `<img src="${isHelicopter ? '/helicopter.png' : '/modo-avion.png'}" alt=""
       style="width:30px;height:30px;object-fit:contain;
-             filter:brightness(0) drop-shadow(0 1px 2px rgba(0,0,0,0.45));" />`,
+             filter:brightness(0)${darkBasemap ? ' invert(1)' : ''}
+                    drop-shadow(0 1px 2px rgba(0,0,0,${darkBasemap ? 0.7 : 0.45}));" />`,
     // Inline styles, not width and height attributes: those are presentational
     // hints that lose to any CSS rule, and leaflet.css forces max-width:none
     // on images in the map, so attributes alone rendered this at its natural
     // 512px and covered half the screen.
-  }), [isHelicopter])
+  }), [isHelicopter, darkBasemap])
 
   const toggleLayer = (k) => setLayers(prev => {
     if (k === 'traffic' && prev.traffic) setSelected(null)
@@ -678,7 +688,7 @@ export default function MapHome() {
         {layers.traffic && (
           <TrafficLayer snapshot={traffic.snapshot} onSelect={setSelected} filter={tfcFilter} />
         )}
-        <Basemap dark={isDark && !chartOverBasemap} />
+        <Basemap dark={darkBasemap} />
         <ChartLayers layers={layers} openaipKey={openaipKey} tfrData={tfrData} />
         {track.length > 1 && (
           <Polyline positions={track} pathOptions={{ color: ACCENT, weight: 5, opacity: 0.9, lineCap: 'round' }} />
