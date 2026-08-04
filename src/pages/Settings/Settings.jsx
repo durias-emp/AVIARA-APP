@@ -4,7 +4,7 @@ import { HomeButton } from '../../components/Shell'
 import { IconChevronRight } from '../../components/Icons'
 import { useRegion } from '../../context/Region'
 import { get, put } from '../../lib/db'
-import { DEFAULT_AUTO_DETECT_CONFIG } from '../../hooks/useFlightDetector'
+import { DEFAULT_AUTO_DETECT_CONFIG, autoDetectEnabledFrom } from '../../hooks/useFlightDetector'
 import { SegControl } from '../../components/SegControl'
 
 const REGIONS = [
@@ -55,11 +55,11 @@ const AUTO_DETECT_MODES = [
 
 export default function Settings({ onBack, order, onMoveRow }) {
   const { region, setRegion } = useRegion()
-  const [autoDetectEnabled, setAutoDetectEnabled] = useState(false)
+  const [autoDetectEnabled, setAutoDetectEnabled] = useState(true)
   const [autoDetectConfig, setAutoDetectConfig] = useState(DEFAULT_AUTO_DETECT_CONFIG)
 
   useEffect(() => {
-    get('settings', 'autoDetectEnabled').then(row => setAutoDetectEnabled(!!row?.value))
+    get('settings', 'autoDetectEnabled').then(row => setAutoDetectEnabled(autoDetectEnabledFrom(row)))
     get('settings', 'autoDetectConfig').then(row => setAutoDetectConfig({ ...DEFAULT_AUTO_DETECT_CONFIG, ...(row?.value ?? {}) }))
   }, [])
 

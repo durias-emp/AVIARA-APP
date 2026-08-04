@@ -6,7 +6,7 @@ import { HomeButton } from './Shell'
 import { useHomeLocation } from '../context/HomeLocation'
 import { useMapLayer } from '../hooks/useMapLayer'
 import { useMapOverlays } from '../hooks/useMapOverlays'
-import { useFlightDetector, DEFAULT_AUTO_DETECT_CONFIG } from '../hooks/useFlightDetector'
+import { useFlightDetector, DEFAULT_AUTO_DETECT_CONFIG, autoDetectEnabledFrom } from '../hooks/useFlightDetector'
 import { useLogbook } from '../context/Logbook'
 import { useActiveAircraft } from '../context/ActiveAircraft'
 import { get } from '../lib/db'
@@ -618,10 +618,10 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   // Flight Detection section. Reuses this screen's own liveCoords (never a
   // second geolocation watch — see useFlightDetector's own header comment
   // for why that matters).
-  const [autoDetectEnabled, setAutoDetectEnabled] = useState(false)
+  const [autoDetectEnabled, setAutoDetectEnabled] = useState(true)
   const [autoDetectConfig, setAutoDetectConfig] = useState(DEFAULT_AUTO_DETECT_CONFIG)
   useEffect(() => {
-    get('settings', 'autoDetectEnabled').then(row => setAutoDetectEnabled(!!row?.value))
+    get('settings', 'autoDetectEnabled').then(row => setAutoDetectEnabled(autoDetectEnabledFrom(row)))
     get('settings', 'autoDetectConfig').then(row => setAutoDetectConfig({ ...DEFAULT_AUTO_DETECT_CONFIG, ...(row?.value ?? {}) }))
   }, [])
   const { state: detectState, draft: detectedDraft, reset: resetDetector } = useFlightDetector({
