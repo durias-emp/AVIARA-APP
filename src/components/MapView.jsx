@@ -7,6 +7,7 @@ import { useHomeLocation } from '../context/HomeLocation'
 import { useMapLayer } from '../hooks/useMapLayer'
 import { useMapOverlays } from '../hooks/useMapOverlays'
 import { useBreadcrumbTrail } from '../hooks/useBreadcrumbTrail'
+import { useFlightTimer, formatClock } from '../hooks/useFlightTimer'
 import { useFlightDetector, DEFAULT_AUTO_DETECT_CONFIG, autoDetectEnabledFrom } from '../hooks/useFlightDetector'
 import { useLogbook } from '../context/Logbook'
 import { useActiveAircraft } from '../context/ActiveAircraft'
@@ -656,6 +657,32 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   const { addEntry } = useLogbook()
   const { aircraftId: activeAircraftId } = useActiveAircraft()
   const [flightSavedBanner, setFlightSavedBanner] = useState(false)
+
+  // The pilot's own clock. Stopping it hands back a finished flight, which is
+  // logged here rather than in the hook because this is the screen that knows
+  // which aircraft is active. Tagged pendingReview like a detected flight, so
+  // both land in the same place for the pilot to confirm rather than being
+  // committed behind their back.
+  const flightTimer = useFlightTimer()
+  const [timedFlightBanner, setTimedFlightBanner] = useState(null)
+  function toggleFlightTimer() {
+    if (!flightTimer.running) { flightTimer.start(); return }
+    const flight = flightTimer.stop()
+    if (!flight) return
+    addEntry({
+      date: new Date(flight.startedAt).toISOString().slice(0, 10),
+      totalTime: flight.hours.toFixed(1),
+      startedAt: flight.startedAt,
+      endedAt: flight.endedAt,
+      durationMs: flight.elapsedMs,
+      aircraftId: activeAircraftId ?? null,
+      source: 'timer',
+      pendingReview: true,
+    }).then(() => {
+      setTimedFlightBanner(flight)
+      setTimeout(() => setTimedFlightBanner(null), 8000)
+    }).catch(() => {})
+  }
   useEffect(() => {
     if (detectState !== 'done' || !detectedDraft) return
     // Never silently commits a finished entry — it lands tagged pendingReview
@@ -712,6 +739,37 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         </div>
       )}
 
+      {/* The flight timer. Idle it is a button; running it is the clock,
+          because a timer you cannot read is not doing its job. Sits opposite
+          locate, on the same rail as everything else pegged to the drawer. */}
+      <button
+        onClick={toggleFlightTimer}
+        aria-label={flightTimer.running ? 'Stop flight timer' : 'Start flight timer'}
+        style={{
+          position: 'absolute', left: 12, bottom: 'calc(132px + var(--map-bottom-inset, 0px))', zIndex: 500,
+          transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
+          height: 32, minWidth: 32, padding: flightTimer.running ? '0 10px' : 0,
+          borderRadius: 16, border: 'none',
+          background: flightTimer.running ? 'var(--danger)' : 'var(--bg-card)',
+          boxShadow: 'var(--shadow-sm)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+        }}>
+        {flightTimer.running ? (
+          <>
+            <span style={{ width: 9, height: 9, borderRadius: 2, background: '#fff', flexShrink: 0 }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
+              {formatClock(flightTimer.elapsedMs)}
+            </span>
+          </>
+        ) : (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="13" r="8" />
+            <path d="M12 9v4l2.5 2M9 2h6" />
+          </svg>
+        )}
+      </button>
+
       <button
         onClick={handleLocate}
         disabled={noFixYet}
@@ -753,6 +811,16 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--danger)', flexShrink: 0 }} />
           Flight detected — recording
+        </div>
+      )}
+
+      {timedFlightBanner && (
+        <div style={{
+          position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
+          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
+          fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
+        }}>
+          Flight timed — {timedFlightBanner.clock} ({timedFlightBanner.hours.toFixed(1)} h). Review it in the logbook.
         </div>
       )}
 
