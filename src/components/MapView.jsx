@@ -99,7 +99,7 @@ export function MapLayers({ layer }) {
 // double-mount tearing down and recreating the underlying Leaflet map out
 // from under an in-flight `setView`). Shared by the full map and the
 // home-screen preview so both behave identically.
-export function LiveMap({ position, zoom, initialCenter, initialZoom, layer, markerRadius = 8, interactive = true, showZoomControl = true, zoomControlPosition, children }) {
+export function LiveMap({ position, zoom, initialCenter, initialZoom, layer, markerRadius = 8, interactive = true, zoomControlPosition, children }) {
   const interactionProps = interactive ? {} : {
     zoomControl: false, dragging: false, scrollWheelZoom: false,
     doubleClickZoom: false, touchZoom: false, keyboard: false, boxZoom: false,
@@ -121,7 +121,7 @@ export function LiveMap({ position, zoom, initialCenter, initialZoom, layer, mar
       zoomControl={false}
       {...interactionProps}
     >
-      {interactive && showZoomControl && <ZoomControl position={zoomControlPosition || 'topleft'} />}
+      {interactive && <ZoomControl position={zoomControlPosition || 'topleft'} />}
       <MapLayers layer={layer} />
       {position && (
         <CircleMarker
@@ -553,13 +553,21 @@ function RoutePreview({ route }) {
 // route bar leaves room on the left for that button, and with no button there
 // the room is a hole that pushes the bar off centre.
 //
-// `compactControls` drops the layers menu and the zoom buttons. They are the
-// two controls you reach for while looking at the map, so when most of the
-// map is covered — Home with its drawer open — they are clutter over the
-// little that is left. Everything that reports rather than adjusts (the route
-// bar, the GPS readout, locate) stays put, because that is what you still
-// want to see at a glance with the drawer up.
-export default function MapView({ onViewChange, lastView, bottomInset = 0, topInset = '0px', showHomeButton = true, compactControls = false } = {}) {
+// Every bottom-anchored control rides on --map-bottom-inset, so the whole
+// stack stays pegged to the top of the drawer and moves with it. Nothing is
+// mounted or unmounted as the drawer moves: a control that vanishes and
+// reappears reads as a glitch, and its position is the thing that should
+// change, not its existence.
+//
+// `insetDuration` is how long that movement takes. It is 0ms while a drag is
+// in progress, so the controls track the finger exactly, and matches the
+// drawer's own transition when it snaps, so the two ease together instead of
+// the controls jumping to the destination the drawer is still travelling to.
+//
+// `focusInset` is the settled height rather than the live one. The map's
+// recentring should happen once per drawer move, not on every frame of a
+// drag.
+export default function MapView({ onViewChange, lastView, bottomInset = 0, focusInset = null, insetDuration = '0ms', topInset = '0px', showHomeButton = true } = {}) {
   // Shared with Home's own map preview via HomeLocationProvider (mounted
   // once around Home, which never unmounts while this screen — an overlay
   // on top of Home — is open) rather than starting a separate watch here.
@@ -645,14 +653,14 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, topIn
   return (
     <div
       className="map-root"
-      style={{ height: '100%', position: 'relative', isolation: 'isolate', '--map-bottom-inset': `${bottomInset}px`, '--map-top-inset': topInset, '--map-left-inset': showHomeButton ? '52px' : '0px' }}>
+      style={{ height: '100%', position: 'relative', isolation: 'isolate', '--map-bottom-inset': `${bottomInset}px`, '--map-top-inset': topInset, '--map-left-inset': showHomeButton ? '52px' : '0px', '--map-inset-duration': insetDuration }}>
       {/* Leaflet's own control rail is inside the map container, so it can't
           read a wrapper's padding — it gets the inset directly. */}
-      <style>{'.map-root .leaflet-bottom { bottom: var(--map-bottom-inset, 0px); } .map-root .leaflet-top { top: var(--map-top-inset, 0px); }'}</style>
+      <style>{'.map-root .leaflet-bottom { bottom: calc(var(--map-bottom-inset, 0px) + 74px); transition: bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1); } .map-root .leaflet-top { top: var(--map-top-inset, 0px); }'}</style>
       <LiveMap
         position={centerPosition} zoom={LOCATION_ZOOM}
         initialCenter={lastView?.center} initialZoom={lastView?.zoom}
-        layer={layer} zoomControlPosition="bottomright" showZoomControl={!compactControls}
+        layer={layer} zoomControlPosition="bottomleft"
       >
         {overlays.radar && <RadarLayer />}
         {overlays.flightCategory && <FlightCategoryLayer />}
@@ -662,7 +670,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, topIn
         {overlays.seaplaneBases && <SeaplaneBaseLayer />}
         <LocateRecenter request={recenterRequest} />
         <RoutePreview route={route} />
-        <MapFocusOffset coveredHeight={bottomInset} />
+        <MapFocusOffset coveredHeight={focusInset ?? bottomInset} />
         {onViewChange && <ViewReporter onChange={onViewChange} />}
       </LiveMap>
 
@@ -677,7 +685,8 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, topIn
         disabled={noFixYet}
         aria-label="Locate me"
         style={{
-          position: 'absolute', right: 12, bottom: 'calc(136px + var(--map-bottom-inset, 0px))', zIndex: 500,
+          position: 'absolute', right: 12, bottom: 'calc(132px + var(--map-bottom-inset, 0px))', zIndex: 500,
+          transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
           width: 40, height: 40, borderRadius: '50%', border: 'none',
           background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -726,9 +735,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, topIn
       )}
 
       <FlightPlanBar onRouteChange={setRoute} />
-      {!compactControls && (
-        <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={toggleOverlay} />
-      )}
+      <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={toggleOverlay} />
       <GpsInfoBar route={route} coords={liveCoords} derived={liveDerived} status={liveStatus} />
     </div>
   )

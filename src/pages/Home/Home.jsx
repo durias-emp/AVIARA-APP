@@ -139,17 +139,21 @@ function HangarCard({ aircraftImage, aircraftCount = 0, onOpen }) {
 // It mounts once with Home and stays mounted, so a pan, a zoom, a chosen
 // layer or a typed route all survive opening and closing a card over the top.
 //
-// `bottomInset` is the drawer's height: MapView lifts its bottom-anchored
-// controls above it and pans the view up by half of it, so what you are
-// looking at stays centred in the strip still showing.
-function HomeMap({ coveredHeight, drawerOpen }) {
+// The drawer reports three numbers and they are not interchangeable. The live
+// height pegs the map's bottom controls to the drawer's edge frame by frame.
+// The settled height drives the map's recentring, which should happen once per
+// move rather than on every frame of a drag. The drag flag zeroes the
+// controls' transition so they track a finger exactly, and restores it so they
+// ease alongside the drawer when it snaps instead of arriving first.
+function HomeMap({ metrics }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'var(--bg)' }}>
       <MapView
-        bottomInset={coveredHeight}
+        bottomInset={metrics.live}
+        focusInset={metrics.settled}
+        insetDuration={metrics.dragging ? '0ms' : '260ms'}
         topInset="var(--safe-top)"
         showHomeButton={false}
-        compactControls={drawerOpen}
       />
     </div>
   )
@@ -184,9 +188,15 @@ function HomeDrawer({ open, onOpenChange, onHeightChange, children }) {
   const settledHeight = open ? openHeight : DRAWER_PEEK
   const height = drag == null ? settledHeight : drag
 
-  // Only the settled height reaches the map. Re-centring it on every frame of
-  // a drag means two things easing at once, which reads as the map lagging.
-  useEffect(() => { onHeightChange(settledHeight) }, [settledHeight, onHeightChange])
+  // Reports the live height, the settled height, and whether a drag is in
+  // progress. The chrome on the map rides the live one so it stays pegged to
+  // the drawer's edge frame by frame; the map's own recentring uses the
+  // settled one, because that should happen once per move rather than on
+  // every frame; and the drag flag is what lets the chrome ease with the
+  // drawer when it snaps but track the finger exactly when it does not.
+  useEffect(() => {
+    onHeightChange({ live: height, settled: settledHeight, dragging: drag != null })
+  }, [height, settledHeight, drag, onHeightChange])
 
   function handlePointerDown(e) {
     // The element is captured into a local, NOT read off the event later.
@@ -628,8 +638,8 @@ export default function Home() {
   // The drawer, and how much of the map it is covering. Open on launch, at
   // the height its own content needs.
   const [drawerOpen, setDrawerOpen] = useState(true)
-  const [coveredHeight, setCoveredHeight] = useState(0)
-  const handleDrawerHeight = useCallback(h => setCoveredHeight(h), [])
+  const [drawerMetrics, setDrawerMetrics] = useState({ live: 0, settled: 0, dragging: false })
+  const handleDrawerHeight = useCallback(m => setDrawerMetrics(m), [])
 
   const activeAircraft = aircraftList?.find(a => a.id === aircraftId)
   const aircraftImage = activeAircraft?.image ?? ''
@@ -710,7 +720,7 @@ export default function Home() {
 
   return (
     <HomeLocationProvider>
-      <HomeMap coveredHeight={coveredHeight} drawerOpen={drawerOpen} />
+      <HomeMap metrics={drawerMetrics} />
 
       <HomeDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onHeightChange={handleDrawerHeight}>
         {order.map(renderRow)}

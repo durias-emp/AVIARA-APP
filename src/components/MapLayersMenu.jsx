@@ -74,7 +74,8 @@ export default function MapLayersMenu({ layer, setLayer, layerOptions, overlays,
       <button
         onClick={() => setOpen(true)}
         style={{
-          position: 'absolute', bottom: 'calc(16px + var(--map-bottom-inset, 0px))', left: 16, zIndex: 500,
+          position: 'absolute', bottom: 'calc(84px + var(--map-bottom-inset, 0px))', right: 16, zIndex: 500,
+          transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
           display: 'flex', alignItems: 'center', gap: 7,
           background: 'var(--bg-card)', borderRadius: 14, boxShadow: 'var(--shadow-sm)',
           border: 'none', padding: '10px 14px', cursor: 'pointer',
