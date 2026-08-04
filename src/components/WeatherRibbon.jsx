@@ -87,9 +87,9 @@ export default function WeatherRibbon({
       <button onClick={() => setPicker(true)} style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '9px 14px', borderRadius: 14, border: 'none',
-        background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(14px)',
+        background: 'var(--map-panel)', backdropFilter: 'blur(14px)',
         boxShadow: '0 2px 10px rgba(0,0,0,0.18)', cursor: 'pointer',
-        fontSize: 12.5, fontWeight: 700, color: '#1c1c1e', ...style,
+        fontSize: 12.5, fontWeight: 700, color: 'var(--map-ink)', ...style,
       }}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
           strokeWidth="2.2" strokeLinecap="round">
@@ -125,7 +125,7 @@ export default function WeatherRibbon({
 
   return (<>
     <div style={{
-      background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(14px)',
+      background: 'var(--map-panel)', backdropFilter: 'blur(14px)',
       borderRadius: 14, boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
       overflow: 'hidden',
       // Sized by its contents, not stretched: collapsed this is a state and a
@@ -156,7 +156,7 @@ export default function WeatherRibbon({
         }}>{metar ? cat.label : loading ? '···' : '--'}</span>
 
         <span style={{
-          fontSize: 13.5, fontWeight: 700, color: '#1c1c1e',
+          fontSize: 13.5, fontWeight: 700, color: 'var(--map-ink)',
           letterSpacing: '0.4px', flexShrink: 0,
         }}>{icao}</span>
 
@@ -169,7 +169,7 @@ export default function WeatherRibbon({
         )}
 
         {!metar && !loading && (
-          <span style={{ fontSize: 12, color: 'rgba(60,60,67,0.5)' }}>
+          <span style={{ fontSize: 12, color: 'var(--map-ink-faint)' }}>
             {error ? 'No weather' : 'Tap for weather'}
           </span>
         )}
@@ -204,10 +204,10 @@ export default function WeatherRibbon({
           <div style={{ padding: '2px 12px 11px', minWidth: open ? 236 : 0 }}>
             {metar ? (<>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 8 }}>
-                <span style={{ fontSize: 24, fontWeight: 800, color: '#1c1c1e', letterSpacing: '-0.8px' }}>
+                <span style={{ fontSize: 24, fontWeight: 800, color: 'var(--map-ink)', letterSpacing: '-0.8px' }}>
                   {parseTemp(metar, units) ?? '--'}
                 </span>
-                <span style={{ fontSize: 11.5, color: 'rgba(60,60,67,0.55)', minWidth: 0,
+                <span style={{ fontSize: 11.5, color: 'var(--map-ink-dim)', minWidth: 0,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {parseAirportName(metar) || ''}
                 </span>
@@ -219,15 +219,15 @@ export default function WeatherRibbon({
                   <div key={m.icon} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <img src={m.icon} alt="" width={13} height={13}
                       style={{ filter: 'brightness(0)', opacity: 0.55, flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#1c1c1e' }}>{m.value}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--map-ink)' }}>{m.value}</span>
                   </div>
                 ))}
               </div>
 
               <button onClick={() => onDetailChange?.(true)} style={{
                 marginTop: 10, width: '100%', border: 'none', cursor: 'pointer',
-                background: 'rgba(60,60,67,0.07)', borderRadius: 9, padding: '9px 0',
-                fontSize: 11.5, fontWeight: 700, color: '#1c1c1e',
+                background: 'var(--map-fill)', borderRadius: 9, padding: '9px 0',
+                fontSize: 11.5, fontWeight: 700, color: 'var(--map-ink)',
               }}>
                 Full report, METAR and TAF
               </button>
@@ -244,7 +244,7 @@ export default function WeatherRibbon({
                 Change home airport
               </button>
             </>) : (
-              <div style={{ fontSize: 11.5, color: 'rgba(60,60,67,0.55)', padding: '2px 0 4px' }}>
+              <div style={{ fontSize: 11.5, color: 'var(--map-ink-dim)', padding: '2px 0 4px' }}>
                 {loading ? 'Loading conditions…' : error ? 'Weather unavailable right now' : 'No observation'}
               </div>
             )}

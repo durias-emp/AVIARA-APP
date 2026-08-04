@@ -856,3 +856,40 @@ input[type="number"]::-webkit-outer-spin-button {
 @media (prefers-reduced-motion: reduce) {
   .chart-chip { animation: none !important; }
 }
+
+/* ── Map overlay surfaces ─────────────────────────────────────
+   The panels that float over the chart: the weather strip, the chart
+   chips, the sheet, the traffic legend. They are their own palette
+   rather than the app's card tokens because they sit on top of map
+   imagery and need to stay legible over both a pale basemap and a
+   sectional, which the ordinary surfaces never have to do.
+
+   They exist so the map home follows the system appearance. Its colours
+   were literals, so switching the phone to dark left a white sheet and
+   white pills glued to a dark app. Anything added to that screen should
+   reach for these, not for a hex value. */
+:root {
+  --map-panel:       rgba(255,255,255,0.96);
+  --map-panel-solid: #ffffff;
+  --map-ink:         #1c1c1e;
+  --map-ink-dim:     rgba(60,60,67,0.6);
+  --map-ink-faint:   rgba(60,60,67,0.45);
+  --map-fill:        rgba(60,60,67,0.07);
+  --map-fill-soft:   rgba(60,60,67,0.05);
+  --map-hairline:    rgba(60,60,67,0.2);
+  /* Ink ON the inverted surface: a selected chip is ink-coloured, and its
+     label has to be the panel colour to stay readable. */
+  --map-ink-invert:  #ffffff;
+}
+
+[data-theme="dark"], [data-theme="red"] {
+  --map-panel:       rgba(28,28,30,0.94);
+  --map-panel-solid: #1c1c1e;
+  --map-ink:         #f2f2f7;
+  --map-ink-dim:     rgba(235,235,245,0.62);
+  --map-ink-faint:   rgba(235,235,245,0.4);
+  --map-fill:        rgba(255,255,255,0.11);
+  --map-fill-soft:   rgba(255,255,255,0.07);
+  --map-hairline:    rgba(255,255,255,0.18);
+  --map-ink-invert:  #1c1c1e;
+}

@@ -28,6 +28,7 @@ import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecord
 import { put, get, getAll } from '../../lib/db'
 import { getAirports } from '../../lib/aerodromes'
 import { loadTfrs } from '../../lib/tfr'
+import useIsDark from '../../hooks/useIsDark'
 import { TEMPLATES } from '../../data/aircraftTemplates'
 
 const ACCENT = '#FF5A1F'      // the one saturated colour on the screen, so the
@@ -79,23 +80,23 @@ function SelectedAircraft({ ac, onClose }) {
   ].filter(Boolean)
   return (
     <div style={{
-      background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(18px)',
+      background: 'var(--map-panel)', backdropFilter: 'blur(18px)',
       borderRadius: 16, padding: '12px 14px', minWidth: 210,
       boxShadow: '0 4px 20px rgba(0,0,0,0.14)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 14, fontWeight: 800, color: '#1c1c1e', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
+        <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--map-ink)', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
           {ac.cs || ac.id.toUpperCase()}
         </span>
         {ac.mlat && (
           <span style={{
-            fontSize: 9, fontWeight: 800, letterSpacing: '0.4px', color: 'rgba(60,60,67,0.6)',
-            background: 'rgba(60,60,67,0.09)', padding: '2px 5px', borderRadius: 4,
+            fontSize: 9, fontWeight: 800, letterSpacing: '0.4px', color: 'var(--map-ink-dim)',
+            background: 'var(--map-fill)', padding: '2px 5px', borderRadius: 4,
           }}>MLAT</span>
         )}
         <button onClick={onClose} aria-label="Close" style={{
           marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer',
-          color: 'rgba(60,60,67,0.5)', padding: 2, display: 'flex',
+          color: 'var(--map-ink-faint)', padding: 2, display: 'flex',
         }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
             <path d="M18 6L6 18M6 6l12 12" />
@@ -104,8 +105,8 @@ function SelectedAircraft({ ac, onClose }) {
       </div>
       {rows.map(([k, v]) => (
         <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 14, fontSize: 11.5, padding: '2px 0' }}>
-          <span style={{ color: 'rgba(60,60,67,0.55)' }}>{k}</span>
-          <span style={{ color: '#1c1c1e', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{v}</span>
+          <span style={{ color: 'var(--map-ink-dim)' }}>{k}</span>
+          <span style={{ color: 'var(--map-ink)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{v}</span>
         </div>
       ))}
     </div>
@@ -119,8 +120,8 @@ function Ctrl({ onClick, title, active, badge, children, size = CTRL }) {
     <button onClick={onClick} title={title} style={{
       position: 'relative', width: size, height: size, borderRadius: '50%',
       border: 'none', cursor: 'pointer', flexShrink: 0,
-      background: active ? '#1c1c1e' : 'rgba(255,255,255,0.96)',
-      color: active ? '#fff' : '#1c1c1e',
+      background: active ? 'var(--map-ink)' : 'var(--map-panel)',
+      color: active ? 'var(--map-ink-invert)' : 'var(--map-ink)',
       boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       transition: 'background 160ms, color 160ms',
@@ -129,7 +130,7 @@ function Ctrl({ onClick, title, active, badge, children, size = CTRL }) {
       {badge > 0 && (
         <span style={{
           position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20,
-          borderRadius: 10, background: '#1c1c1e', color: '#fff',
+          borderRadius: 10, background: 'var(--map-ink)', color: 'var(--map-ink-invert)',
           fontSize: 11, fontWeight: 700, display: 'flex',
           alignItems: 'center', justifyContent: 'center', padding: '0 5px',
           border: '2px solid #fff',
@@ -228,6 +229,8 @@ export default function MapHome() {
   // The active aircraft lives in the 'aircraft' store under 'profile', which is
   // where the rest of the app reads it from. Not on the pilot profile.
   const [ac, setAc] = useState(null)
+
+  const isDark = useIsDark()
 
   const [layers, setLayers] = useState(EMPTY_LAYERS)
   const [sheetOpen, setSheetOpen] = useState(true)
@@ -609,27 +612,27 @@ export default function MapHome() {
     ['MTOW', ac?.weights?.mtow ?? null],
   ].filter(([, v]) => v)
 
-  const statFont = { fontSize: 11, fontWeight: 600, color: 'rgba(60,60,67,0.6)', letterSpacing: '0.2px' }
-  const statBig = { fontSize: 26, fontWeight: 800, color: '#1c1c1e', letterSpacing: '-0.6px', fontVariantNumeric: 'tabular-nums' }
+  const statFont = { fontSize: 11, fontWeight: 600, color: 'var(--map-ink-dim)', letterSpacing: '0.2px' }
+  const statBig = { fontSize: 26, fontWeight: 800, color: 'var(--map-ink)', letterSpacing: '-0.6px', fontVariantNumeric: 'tabular-nums' }
   const tileBtn = { background: 'none', border: 'none', cursor: 'pointer', padding: 0,
     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, width: 92 }
   const tileCircle = { width: 58, height: 58, borderRadius: '50%',
     display: 'flex', alignItems: 'center', justifyContent: 'center' }
-  const tileLabel = { fontSize: 12, fontWeight: 600, color: '#1c1c1e' }
+  const tileLabel = { fontSize: 12, fontWeight: 600, color: 'var(--map-ink)' }
 
   return (
     // Fixed to the viewport rather than flowing in the shell: the map is the
     // screen here, and it has to reach every edge including under the status
     // bar and the home indicator. body is the containing block, which is what
     // makes this land on the real screen bottom.
-    <div style={{ position: 'fixed', inset: 0, background: '#e8e0d8', overflow: 'hidden' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'var(--bg)', overflow: 'hidden' }}>
       <MapContainer center={INITIAL_CENTER} zoom={10} zoomControl={false} attributionControl={false}
         style={{ height: '100%', width: '100%' }}>
         <SizeWatcher mapRef={mapRef} onReady={onMapReady} onMove={setMapCentre} />
         {layers.traffic && (
           <TrafficLayer snapshot={traffic.snapshot} onSelect={setSelected} filter={tfcFilter} />
         )}
-        <Basemap />
+        <Basemap dark={isDark} />
         <ChartLayers layers={layers} openaipKey={openaipKey} tfrData={tfrData} />
         {track.length > 1 && (
           <Polyline positions={track} pathOptions={{ color: ACCENT, weight: 5, opacity: 0.9, lineCap: 'round' }} />
@@ -711,8 +714,8 @@ export default function MapHome() {
         }}>
           {CHARTS.map((c, i) => (
             <button key={c.key} className="chart-chip" onClick={() => toggleLayer(c.key)} style={{
-              background: layers[c.key] ? '#1c1c1e' : 'rgba(255,255,255,0.96)',
-              color: layers[c.key] ? '#fff' : '#1c1c1e',
+              background: layers[c.key] ? 'var(--map-ink)' : 'var(--map-panel)',
+              color: layers[c.key] ? 'var(--map-ink-invert)' : 'var(--map-ink)',
               border: 'none', borderRadius: 10, cursor: 'pointer',
               // One width for all of them. Sized to its own label, TFR came out
               // narrower than ARSP and the column read as a ragged edge rather
@@ -749,10 +752,10 @@ export default function MapHome() {
         transition: 'opacity 260ms ease-out, transform 260ms cubic-bezier(0.34,1.2,0.64,1)',
       }}>
         <div style={{
-          background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(20px)',
+          background: 'var(--map-panel)', backdropFilter: 'blur(20px)',
           borderRadius: 18, padding: '16px 18px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
         }}>
-          <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: '#1c1c1e', marginBottom: 12 }}>
+          <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--map-ink)', marginBottom: 12 }}>
             {rec?.paused ? 'Paused' : 'Recording'}
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 }}>
@@ -823,7 +826,7 @@ export default function MapHome() {
         // arrive together instead of the corners popping at the end.
         transition: dragY != null ? 'none'
           : 'transform 380ms cubic-bezier(0.32,0.72,0,1), border-radius 380ms cubic-bezier(0.32,0.72,0,1)',
-        background: 'rgba(255,255,255,0.98)', backdropFilter: 'blur(20px)',
+        background: 'var(--map-panel)', backdropFilter: 'blur(20px)',
         borderRadius: `${radius}px ${radius}px 0 0`,
         boxShadow: '0 -4px 24px rgba(0,0,0,0.10)',
         display: 'flex', flexDirection: 'column',
@@ -849,7 +852,7 @@ export default function MapHome() {
             transition: 'padding-top 380ms cubic-bezier(0.32,0.72,0,1)',
           }}>
           <div onClick={() => setSnap(s2 => (s2 === 'collapsed' ? 'expanded' : 'collapsed'))} style={{
-            width: 40, height: 5, borderRadius: 3, background: 'rgba(60,60,67,0.2)',
+            width: 40, height: 5, borderRadius: 3, background: 'var(--map-hairline)',
             margin: '0 auto 14px', cursor: 'pointer',
           }} />
 
@@ -862,7 +865,7 @@ export default function MapHome() {
             <button
               onClick={() => (base ? setWxDetail(true) : setBasePicker(true))}
               style={tileBtn}>
-              <span style={{ ...tileCircle, background: 'rgba(60,60,67,0.09)', color: '#1c1c1e' }}>
+              <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)' }}>
                 <IconWeather />
               </span>
               <span style={tileLabel}>Weather</span>
@@ -870,7 +873,7 @@ export default function MapHome() {
 
             <button onClick={recording ? stopFlight : startFlight} style={{
               width: 86, height: 86, borderRadius: '50%', border: 'none', cursor: 'pointer',
-              background: recording ? '#1c1c1e' : ACCENT,
+              background: recording ? 'var(--map-ink)' : ACCENT,
               boxShadow: `0 6px 20px ${recording ? 'rgba(28,28,30,0.3)' : 'rgba(255,90,31,0.38)'}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: 'background 200ms',
@@ -881,14 +884,14 @@ export default function MapHome() {
             </button>
 
             <button onClick={() => navigate('/checklists')} style={tileBtn}>
-              <span style={{ ...tileCircle, background: 'rgba(60,60,67,0.09)', color: '#1c1c1e' }}>
+              <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)' }}>
                 <IconRoute />
               </span>
               <span style={tileLabel}>Plan Route</span>
             </button>
           </div>
 
-          <div style={{ textAlign: 'center', margin: '10px 0 6px', fontSize: 10, color: 'rgba(60,60,67,0.45)' }}>
+          <div style={{ textAlign: 'center', margin: '10px 0 6px', fontSize: 10, color: 'var(--map-ink-faint)' }}>
             {recording ? 'Recording your track · tap the square to end and log it'
               : snap === 'full' ? 'Reference aid only · Always consult current FAR/AIM'
               : snap === 'expanded' ? 'Keep pulling for the full logbook'
@@ -913,7 +916,7 @@ export default function MapHome() {
           <button onClick={() => navigate('/aircraft')} style={{
             display: 'block', width: '100%', textAlign: 'left', padding: '14px 16px 16px',
             marginBottom: 14, border: 'none', borderRadius: 18, cursor: 'pointer',
-            background: 'rgba(60,60,67,0.05)',
+            background: 'var(--map-fill-soft)',
           }}>
             {ac?.image && (
               <img src={ac.image} alt="" style={{
@@ -921,13 +924,13 @@ export default function MapHome() {
                 objectFit: 'contain', marginBottom: 4,
               }} />
             )}
-            <div style={{ fontSize: 18, fontWeight: 800, color: '#1c1c1e', letterSpacing: '-0.4px' }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--map-ink)', letterSpacing: '-0.4px' }}>
               {ac?.fullName || 'No aircraft set'}
             </div>
             {ac?.registration && (
               <div style={{
                 fontSize: 12.5, fontWeight: 700, fontFamily: 'monospace',
-                letterSpacing: '1px', color: 'rgba(60,60,67,0.5)', marginTop: 2,
+                letterSpacing: '1px', color: 'var(--map-ink-faint)', marginTop: 2,
               }}>{ac.registration}</div>
             )}
             {acStats.length > 0 && (
@@ -935,11 +938,11 @@ export default function MapHome() {
                 {acStats.map(([label, value]) => (
                   <span key={label} style={{
                     display: 'flex', alignItems: 'baseline', gap: 5,
-                    background: '#fff', borderRadius: 9, padding: '6px 10px',
+                    background: 'var(--map-panel-solid)', borderRadius: 9, padding: '6px 10px',
                   }}>
                     <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.5px',
-                      color: 'rgba(60,60,67,0.45)' }}>{label}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1c1c1e',
+                      color: 'var(--map-ink-faint)' }}>{label}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--map-ink)',
                       fontFamily: 'monospace' }}>{value}</span>
                   </span>
                 ))}
@@ -951,24 +954,24 @@ export default function MapHome() {
             {TOOLS.map(t => (
               <button key={t.to} onClick={() => navigate(t.to)} style={{
                 display: 'flex', alignItems: 'center', gap: 12, padding: '14px 14px',
-                background: 'rgba(60,60,67,0.05)', border: 'none', borderRadius: 16,
+                background: 'var(--map-fill-soft)', border: 'none', borderRadius: 16,
                 cursor: 'pointer', textAlign: 'left',
               }}>
                 <img src={t.icon} width={24} height={24} alt="" style={{ objectFit: 'contain', flexShrink: 0 }} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#1c1c1e', lineHeight: 1.25 }}>{t.label}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--map-ink)', lineHeight: 1.25 }}>{t.label}</span>
               </button>
             ))}
           </div>
 
           <div style={{ marginTop: 22, fontSize: 11, fontWeight: 700, letterSpacing: '0.6px',
-            color: 'rgba(60,60,67,0.5)', textTransform: 'uppercase' }}>
+            color: 'var(--map-ink-faint)', textTransform: 'uppercase' }}>
             {snap === 'full' ? `Logbook · ${flights.length}` : 'Recent flights'}
           </div>
           {flights.length === 0 ? (
             <div style={{ marginTop: 10, padding: '22px 16px', borderRadius: 16,
-              background: 'rgba(60,60,67,0.05)', textAlign: 'center' }}>
-              <div style={{ fontSize: 13, color: 'rgba(60,60,67,0.6)' }}>No flights logged yet</div>
-              <div style={{ fontSize: 11.5, color: 'rgba(60,60,67,0.45)', marginTop: 4 }}>
+              background: 'var(--map-fill-soft)', textAlign: 'center' }}>
+              <div style={{ fontSize: 13, color: 'var(--map-ink-dim)' }}>No flights logged yet</div>
+              <div style={{ fontSize: 11.5, color: 'var(--map-ink-faint)', marginTop: 4 }}>
                 Press start to record one, or complete a flight plan
               </div>
             </div>

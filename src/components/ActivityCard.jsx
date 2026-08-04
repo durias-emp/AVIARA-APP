@@ -27,10 +27,10 @@ function Stat({ value, label }) {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{
-        fontSize: 17, fontWeight: 800, color: '#1c1c1e',
+        fontSize: 17, fontWeight: 800, color: 'var(--map-ink)',
         letterSpacing: '-0.3px', fontVariantNumeric: 'tabular-nums',
       }}>{value}</div>
-      <div style={{ fontSize: 10.5, fontWeight: 600, color: 'rgba(60,60,67,0.5)', marginTop: 1 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--map-ink-faint)', marginTop: 1 }}>
         {label}
       </div>
     </div>
@@ -55,13 +55,13 @@ export default function ActivityCard({ flight, onOpen }) {
       // the map home's sheet, which is glass over a chart and always light;
       // in dark mode the token made the card black inside a white sheet, with
       // its own dark labels then unreadable on top of it.
-      background: '#fff', border: 'none', borderRadius: 18,
+      background: 'var(--map-panel-solid)', border: 'none', borderRadius: 18,
       boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 6px 18px rgba(0,0,0,0.05)',
       overflow: 'hidden', cursor: onOpen ? 'pointer' : 'default',
     }}>
       <div style={{ padding: '13px 15px 10px' }}>
         <div style={{
-          fontSize: 11, fontWeight: 600, color: 'rgba(60,60,67,0.5)',
+          fontSize: 11, fontWeight: 600, color: 'var(--map-ink-faint)',
           display: 'flex', alignItems: 'center', gap: 6,
         }}>
           <span>{flight.registration || flight.aircraft || 'No aircraft'}</span>
@@ -70,18 +70,18 @@ export default function ActivityCard({ flight, onOpen }) {
           {!recorded && (
             <span style={{
               marginLeft: 'auto', fontSize: 9.5, fontWeight: 700, letterSpacing: '0.4px',
-              color: 'rgba(60,60,67,0.55)', background: 'rgba(60,60,67,0.08)',
+              color: 'var(--map-ink-dim)', background: 'var(--map-fill)',
               padding: '3px 7px', borderRadius: 6, textTransform: 'uppercase',
             }}>Planned</span>
           )}
         </div>
         <div style={{
-          fontSize: 18, fontWeight: 800, color: '#1c1c1e',
+          fontSize: 18, fontWeight: 800, color: 'var(--map-ink)',
           letterSpacing: '-0.4px', marginTop: 3,
         }}>{title}</div>
       </div>
 
-      <div style={{ background: 'rgba(60,60,67,0.045)', padding: '2px 0' }}>
+      <div style={{ background: 'var(--map-fill-soft)', padding: '2px 0' }}>
         <FlightTrace track={flight.track} />
       </div>
 

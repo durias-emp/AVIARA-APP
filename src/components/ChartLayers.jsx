@@ -36,10 +36,20 @@ const BLANK = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAw
 
 const FAA = 'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services'
 
-export function Basemap() {
+// The basemap follows the app's appearance. A daylight road map under a dark
+// cockpit app is the brightest thing on the screen at night, which is the one
+// time a pilot most wants it not to be. CARTO publishes a dark variant on the
+// same scheme, so this is a URL change and nothing else.
+//
+// key forces Leaflet to rebuild the layer on the swap: changing only the url
+// prop leaves the already-loaded light tiles on screen until something else
+// invalidates them.
+export function Basemap({ dark = false }) {
+  const style = dark ? 'dark_all' : 'rastertiles/voyager'
   return (
     <TileLayer
-      url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+      key={style}
+      url={`https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png`}
       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' />
   )
 }
