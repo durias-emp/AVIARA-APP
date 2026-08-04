@@ -99,7 +99,7 @@ export function MapLayers({ layer }) {
 // double-mount tearing down and recreating the underlying Leaflet map out
 // from under an in-flight `setView`). Shared by the full map and the
 // home-screen preview so both behave identically.
-export function LiveMap({ position, zoom, initialCenter, initialZoom, layer, markerRadius = 8, interactive = true, zoomControlPosition, children }) {
+export function LiveMap({ position, zoom, initialCenter, initialZoom, layer, markerRadius = 8, interactive = true, showZoomControl = true, zoomControlPosition, children }) {
   const interactionProps = interactive ? {} : {
     zoomControl: false, dragging: false, scrollWheelZoom: false,
     doubleClickZoom: false, touchZoom: false, keyboard: false, boxZoom: false,
@@ -121,7 +121,7 @@ export function LiveMap({ position, zoom, initialCenter, initialZoom, layer, mar
       zoomControl={false}
       {...interactionProps}
     >
-      {interactive && <ZoomControl position={zoomControlPosition || 'topleft'} />}
+      {interactive && showZoomControl && <ZoomControl position={zoomControlPosition || 'topleft'} />}
       <MapLayers layer={layer} />
       {position && (
         <CircleMarker
@@ -549,8 +549,17 @@ function RoutePreview({ route }) {
 // middle of the strip you can still see.
 //
 // `showHomeButton` is false when this map IS the home screen, where a button
-// that navigates home is meaningless.
-export default function MapView({ onViewChange, lastView, bottomInset = 0, topInset = '0px', showHomeButton = true } = {}) {
+// that navigates home is meaningless. It also drives --map-left-inset: the
+// route bar leaves room on the left for that button, and with no button there
+// the room is a hole that pushes the bar off centre.
+//
+// `compactControls` drops the layers menu and the zoom buttons. They are the
+// two controls you reach for while looking at the map, so when most of the
+// map is covered — Home with its drawer open — they are clutter over the
+// little that is left. Everything that reports rather than adjusts (the route
+// bar, the GPS readout, locate) stays put, because that is what you still
+// want to see at a glance with the drawer up.
+export default function MapView({ onViewChange, lastView, bottomInset = 0, topInset = '0px', showHomeButton = true, compactControls = false } = {}) {
   // Shared with Home's own map preview via HomeLocationProvider (mounted
   // once around Home, which never unmounts while this screen — an overlay
   // on top of Home — is open) rather than starting a separate watch here.
@@ -636,14 +645,14 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, topIn
   return (
     <div
       className="map-root"
-      style={{ height: '100%', position: 'relative', isolation: 'isolate', '--map-bottom-inset': `${bottomInset}px`, '--map-top-inset': topInset }}>
+      style={{ height: '100%', position: 'relative', isolation: 'isolate', '--map-bottom-inset': `${bottomInset}px`, '--map-top-inset': topInset, '--map-left-inset': showHomeButton ? '52px' : '0px' }}>
       {/* Leaflet's own control rail is inside the map container, so it can't
           read a wrapper's padding — it gets the inset directly. */}
       <style>{'.map-root .leaflet-bottom { bottom: var(--map-bottom-inset, 0px); } .map-root .leaflet-top { top: var(--map-top-inset, 0px); }'}</style>
       <LiveMap
         position={centerPosition} zoom={LOCATION_ZOOM}
         initialCenter={lastView?.center} initialZoom={lastView?.zoom}
-        layer={layer} zoomControlPosition="bottomright"
+        layer={layer} zoomControlPosition="bottomright" showZoomControl={!compactControls}
       >
         {overlays.radar && <RadarLayer />}
         {overlays.flightCategory && <FlightCategoryLayer />}
@@ -717,7 +726,9 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, topIn
       )}
 
       <FlightPlanBar onRouteChange={setRoute} />
-      <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={toggleOverlay} />
+      {!compactControls && (
+        <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={toggleOverlay} />
+      )}
       <GpsInfoBar route={route} coords={liveCoords} derived={liveDerived} status={liveStatus} />
     </div>
   )

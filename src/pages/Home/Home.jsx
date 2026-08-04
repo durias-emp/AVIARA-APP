@@ -128,18 +128,6 @@ function HangarCard({ aircraftImage, aircraftCount = 0, onOpen }) {
   )
 }
 
-/* ── Map card — a live, non-interactive preview of the real map. The
-   preview map ignores taps/drags/pinches itself (all interaction props
-   below are off) so any tap anywhere on the card always opens the real,
-   fully interactive map instead of panning this little thumbnail. ── */
-
-// The Map card is the one hero button that grows: `flex: 1` lets it claim
-// whatever vertical space is left over after every other (fixed-height)
-// row, the tools/settings row, and the disclaimer text are laid out —
-// rather than hardcoding a pixel value that would only be correct on one
-// screen size, this is automatically "however much is missing" on any
-// device. `minHeight` keeps it from disappearing if the rest of the stack
-// ever grows taller than the viewport.
 /* ── The map, filling the screen behind the drawer ────────── */
 // The real map, not a copy of it. An earlier pass mounted a bare LiveMap
 // here, which gave a basemap and a position dot and silently dropped
@@ -154,13 +142,14 @@ function HangarCard({ aircraftImage, aircraftCount = 0, onOpen }) {
 // `bottomInset` is the drawer's height: MapView lifts its bottom-anchored
 // controls above it and pans the view up by half of it, so what you are
 // looking at stays centred in the strip still showing.
-function HomeMap({ coveredHeight }) {
+function HomeMap({ coveredHeight, drawerOpen }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'var(--bg)' }}>
       <MapView
         bottomInset={coveredHeight}
         topInset="var(--safe-top)"
         showHomeButton={false}
+        compactControls={drawerOpen}
       />
     </div>
   )
@@ -706,7 +695,7 @@ export default function Home() {
 
   return (
     <HomeLocationProvider>
-      <HomeMap coveredHeight={coveredHeight} />
+      <HomeMap coveredHeight={coveredHeight} drawerOpen={drawerOpen} />
 
       <HomeDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onHeightChange={handleDrawerHeight}>
         {order.map(renderRow)}
