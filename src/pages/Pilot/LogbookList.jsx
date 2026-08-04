@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BackButton } from '../../components/Shell'
 import { IconChevronRight } from '../../components/Icons'
+import { SegControl } from '../../components/SegControl'
 import { useLogbook } from '../../context/Logbook'
 import { useActiveAircraft } from '../../context/ActiveAircraft'
 import { computeTotalHours } from '../../lib/logbookFields'
+import { formatClock, decimalHours, entryDurationMs, recordingKind, isPending } from '../../lib/flightTime'
 
 function fmtDate(iso) {
   if (!iso) return 'No date'
@@ -50,12 +53,92 @@ function EntryRow({ entry, aircraftLabel, first }) {
   )
 }
 
+/* ── A flight the recorder captured, waiting to be accepted ── */
+// Shows the duration twice on purpose. The clock is what the pilot watched go
+// by; the decimal is what will land in the logbook, already rounded to the
+// tenth it will be logged as — so there is no surprise between agreeing to a
+// flight and seeing what it added.
+//
+// It also says what was measured. A detected flight is air time and a timed
+// one can be flight time; presenting them identically would quietly mix two
+// different quantities in the same column.
+function RecordedRow({ entry, aircraftLabel, first, onAdd, onDiscard, busy }) {
+  const ms = entryDurationMs(entry)
+  const kind = recordingKind(entry)
+
+  return (
+    <div style={{ padding: '14px 16px', borderTop: first ? 'none' : '0.5px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{fmtDate(entry.date)}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+            {kind.label} · {kind.detail}{aircraftLabel ? ` · ${aircraftLabel}` : ''}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
+            {formatClock(ms)}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
+            {decimalHours(ms).toFixed(1)} h to log
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button
+          onClick={() => onAdd(entry)}
+          disabled={busy}
+          style={{
+            flex: 1, padding: '9px', borderRadius: 'var(--r-sm)', border: 'none',
+            background: 'var(--accent)', color: 'var(--accent-fg)',
+            fontSize: 13, fontWeight: 700, cursor: busy ? 'default' : 'pointer',
+            opacity: busy ? 0.6 : 1, WebkitTapHighlightColor: 'transparent',
+          }}>Add to Logbook</button>
+        <button
+          onClick={() => onDiscard(entry)}
+          disabled={busy}
+          style={{
+            padding: '9px 14px', borderRadius: 'var(--r-sm)',
+            border: '0.5px solid var(--border)', background: 'var(--bg-card-2)',
+            color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600,
+            cursor: busy ? 'default' : 'pointer', WebkitTapHighlightColor: 'transparent',
+          }}>Discard</button>
+      </div>
+    </div>
+  )
+}
+
 // Reached from Pilot.jsx's Logbook card — a second-level screen (BackButton
 // + navigate(-1), same pattern as Profile Setup).
 export default function LogbookList() {
   const navigate = useNavigate()
-  const { entries } = useLogbook()
+  const { entries, updateEntry, deleteEntry } = useLogbook()
   const { aircraftList } = useActiveAircraft()
+  const [tab, setTab] = useState('Logbook')
+  const [busyId, setBusyId] = useState(null)
+
+  // Recorded flights are kept out of the logbook proper until accepted, which
+  // is what makes accepting them mean anything.
+  const logged = (entries ?? []).filter(e => !isPending(e))
+  const recorded = (entries ?? []).filter(isPending)
+
+  // Accepting is only ever "this is real now" — the times and the aircraft are
+  // already on the entry, and the row shows exactly what will be logged.
+  // Editing it further is the existing entry form's job, reached by tapping it
+  // once it is in the logbook.
+  function acceptRecorded(entry) {
+    setBusyId(entry.id)
+    updateEntry(entry.id, { pendingReview: false })
+      .catch(() => {})
+      .finally(() => setBusyId(null))
+  }
+  function discardRecorded(entry) {
+    setBusyId(entry.id)
+    deleteEntry(entry.id)
+      .catch(() => {})
+      .finally(() => setBusyId(null))
+  }
 
   const totalHours = computeTotalHours(entries)
   // Tracked separately from Total Hours — simulator time isn't flight time
@@ -98,7 +181,7 @@ export default function LogbookList() {
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Total Hours</div>
           </div>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>{(entries ?? []).length}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>{logged.length}</div>
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Entries</div>
           </div>
           {simHours > 0 && (
@@ -133,19 +216,56 @@ export default function LogbookList() {
           </Link>
         </div>
 
-        {entries === undefined ? null : entries.length === 0 ? (
-          <div style={{
-            background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)',
-            padding: '24px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-tertiary)',
-          }}>
-            No flights logged yet
-          </div>
+        {/* The count is in the label because a recorded flight is waiting on
+            the pilot — a tab that gave no sign of having anything behind it
+            would leave detected flights sitting unnoticed. */}
+        <div style={{ marginBottom: 14 }}>
+          <SegControl
+            options={['Logbook', recorded.length ? `Recorded (${recorded.length})` : 'Recorded']}
+            value={tab === 'Logbook' ? 'Logbook' : (recorded.length ? `Recorded (${recorded.length})` : 'Recorded')}
+            onChange={v => setTab(v.startsWith('Recorded') ? 'Recorded' : 'Logbook')}
+          />
+        </div>
+
+        {tab === 'Logbook' ? (
+          entries === undefined ? null : logged.length === 0 ? (
+            <div style={{
+              background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)',
+              padding: '24px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-tertiary)',
+            }}>
+              No flights logged yet
+            </div>
+          ) : (
+            <div style={{ background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+              {logged.map((e, i) => (
+                <EntryRow key={e.id} entry={e} aircraftLabel={aircraftById[e.aircraftId]} first={i === 0} />
+              ))}
+            </div>
+          )
         ) : (
-          <div style={{ background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-            {entries.map((e, i) => (
-              <EntryRow key={e.id} entry={e} aircraftLabel={aircraftById[e.aircraftId]} first={i === 0} />
-            ))}
-          </div>
+          entries === undefined ? null : recorded.length === 0 ? (
+            <div style={{
+              background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)',
+              padding: '24px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-tertiary)',
+            }}>
+              Nothing recorded yet. Flights land here when auto-detect catches
+              one, or when you stop the timer on the map.
+            </div>
+          ) : (
+            <div style={{ background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+              {recorded.map((e, i) => (
+                <RecordedRow
+                  key={e.id}
+                  entry={e}
+                  aircraftLabel={aircraftById[e.aircraftId]}
+                  first={i === 0}
+                  onAdd={acceptRecorded}
+                  onDiscard={discardRecorded}
+                  busy={busyId === e.id}
+                />
+              ))}
+            </div>
+          )
         )}
       </div>
     </div>

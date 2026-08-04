@@ -1,28 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { get, put, del } from '../lib/db'
+import { formatClock, decimalHours } from '../lib/flightTime'
 
 const STORE = 'settings'
 const KEY = 'manualFlightTimer'
-
-// Formats for the two things a logbook needs from the same number.
-//
-// Pilots read a timer as hours:minutes:seconds and log it as a decimal, and
-// the conversion between them is exactly the sort of arithmetic nobody should
-// be doing on the ramp. Both come from one source so they can never disagree.
-export function formatClock(ms) {
-  const total = Math.max(0, Math.floor(ms / 1000))
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  const s = total % 60
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-
-// Logbooks are kept in tenths, and the FAA's own guidance is to round to the
-// nearest tenth rather than truncate. 0.05 h is three minutes, so a six-minute
-// hop logs as 0.1 rather than disappearing.
-export function decimalHours(ms) {
-  return Math.max(0, Math.round((ms / 3_600_000) * 10) / 10)
-}
 
 // The manual flight timer: the pilot's own clock, started and stopped by hand.
 //
