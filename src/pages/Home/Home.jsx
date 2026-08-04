@@ -4,7 +4,9 @@ import { get, put } from '../../lib/db'
 import { useThemeName } from '../../hooks/useTheme'
 import { useChromeColor } from '../../hooks/useChromeColor'
 import { skyBackdrop, skyChromeColor } from '../../lib/skyTint'
-import { getGlobalCurrencyStatus } from '../../lib/currency'
+import { getCurrencyStatus } from '../../lib/currency'
+import { computeTotalHours } from '../../lib/logbookFields'
+import { useLogbook } from '../../context/Logbook'
 import { loadWeather, parseFltCat, parseWind, parseVisib, parseTemp } from '../../lib/weather'
 import WeatherAnimation, { getCondition } from '../../components/WeatherAnimation'
 import { loadAreaWeather, conditionFromArea, areaTemp, areaWind, areaVis } from '../../lib/areaWeather'
@@ -453,11 +455,44 @@ function DiscoverCard({ onOpen }) {
   )
 }
 
-/* ── Pilot row — small dot reflects currency status. Goes straight to
-   /pilot, whose own main screen IS the currency view now (medical +
-   flight currency, with a logbook slotted in next); profile-editing
-   fields live one level deeper at /profile ("Profile Setup"). ── */
-function PilotRow({ currencyDotColor }) {
+/* ── Pilot row — the uniformed figure sits on the left of the art, and the
+   right-hand side carries the readout: flight currency and medical, each
+   with its own status dot, and total logged time under them. Goes straight
+   to /pilot, whose own main screen IS the currency view (medical + flight
+   currency, with the logbook alongside); profile-editing fields live one
+   level deeper at /profile ("Profile Setup"). ── */
+
+// Grey, deliberately, for 'incomplete'/'unknown'. The rolled-up Home dot used
+// to treat "not entered yet" as valid so it wouldn't nag, which is defensible
+// for a single anonymous dot but not here: a dot sitting next to the word
+// "Medical" is a claim about the medical, and showing green for one nobody
+// has entered would be the app asserting something it does not know.
+const STATUS_DOT = {
+  expired:  'var(--danger)',
+  expiring: 'var(--warn)',
+  valid:    'var(--ok)',
+}
+function statusDotColor(status) {
+  return STATUS_DOT[status] ?? 'rgba(255,255,255,0.35)'
+}
+
+function StatusLine({ label, status }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+      <span>{label}</span>
+      <span style={{
+        width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+        background: statusDotColor(status),
+        boxShadow: '0 0 0 1.5px rgba(255,255,255,0.55)',
+      }} />
+    </div>
+  )
+}
+
+function PilotRow({ currencyCards }) {
+  const { entries } = useLogbook()
+  const totalHours = computeTotalHours(entries)
+
   return (
     <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
       <Link to="/pilot" style={{ textDecoration: 'none' }}>
@@ -473,11 +508,19 @@ function PilotRow({ currencyDotColor }) {
             background: 'linear-gradient(108deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.2) 55%, rgba(0,0,0,0.04) 100%)',
           }} />
           <HeroLabel>Pilot</HeroLabel>
-          <span style={{
-            position: 'absolute', top: 10, right: 14, zIndex: 1,
-            width: 9, height: 9, borderRadius: '50%',
-            background: currencyDotColor, boxShadow: '0 0 0 2px rgba(255,255,255,0.7)',
-          }} />
+
+          <div style={{
+            position: 'absolute', top: 0, bottom: 0, right: 14, zIndex: 1,
+            display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3,
+            fontSize: 11, fontWeight: 700, color: '#fff', lineHeight: 1,
+            textShadow: '0 1px 2px rgba(0,0,0,0.45)',
+          }}>
+            <StatusLine label="Currency" status={currencyCards?.current.status} />
+            <StatusLine label="Medical"  status={currencyCards?.valid.status} />
+            <div style={{ textAlign: 'right', fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontVariantNumeric: 'tabular-nums' }}>
+              TT: {totalHours.toFixed(1)}
+            </div>
+          </div>
         </div>
       </Link>
     </div>
@@ -519,7 +562,10 @@ export default function Home() {
   const { aircraftId, aircraftList, refreshAircraftList } = useActiveAircraft()
   const [openSection, setOpenSection]     = useState(null)
   const [sectionRect, setSectionRect]     = useState(null)
-  const [currencyStatus, setCurrencyStatus] = useState('valid')
+  // Raw currency/profile record rather than a rolled-up status: the Pilot
+  // card reports flight currency and medical separately now, so it needs both
+  // of getCurrencyStatus()'s cards, not the worst of the two.
+  const [currencyData, setCurrencyData] = useState(null)
   const [order, setOrder] = useState(DEFAULT_ORDER)
   // Last {center, zoom} the pilot left the real map screen at — null until
   // they've opened it at least once this session. Lifted up here (rather
@@ -560,7 +606,7 @@ export default function Home() {
   const activeAircraft = aircraftList?.find(a => a.id === aircraftId)
   const aircraftImage = activeAircraft?.image ?? ''
   function loadCurrencyStatus() {
-    get('currency', 'profile').then(d => setCurrencyStatus(getGlobalCurrencyStatus(d ?? {})))
+    get('currency', 'profile').then(d => setCurrencyData(d ?? {}))
   }
 
   useEffect(() => {
@@ -618,16 +664,18 @@ export default function Home() {
     put('settings', { key: 'homeOrder', value: next }).catch(() => {})
   }
 
-  const currencyDotColor =
-    currencyStatus === 'expired'  ? 'var(--danger)' :
-    currencyStatus === 'expiring' ? 'var(--warn)' :
-    'var(--ok)'
+  // Both cards come from one pass over the same record. Until it has loaded
+  // there is nothing to report, so the dots stay grey rather than flashing a
+  // confident green on the way in.
+  const currencyCards = useMemo(
+    () => (currencyData ? getCurrencyStatus(currencyData) : null),
+    [currencyData])
 
   function renderRow(key) {
     if (key === 'airports') return <AirportsHeroCard key={key} onOpen={openCard} onCondition={publishSky} />
     if (key === 'map')      return <MapCard key={key} onOpen={openCard} lastView={mapView} />
     if (key === 'hangar')   return <HangarCard key={key} aircraftImage={aircraftImage} aircraftCount={aircraftList?.length ?? 0} onOpen={openCard} />
-    if (key === 'pilot')    return <PilotRow key={key} currencyDotColor={currencyDotColor} />
+    if (key === 'pilot')    return <PilotRow key={key} currencyCards={currencyCards} />
     if (key === 'flight')   return <FlightPlanCard key={key} onOpen={openCard} />
     if (key === 'discover') return <DiscoverCard key={key} onOpen={openCard} />
     return null
