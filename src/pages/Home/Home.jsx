@@ -1,21 +1,18 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { get, put } from '../../lib/db'
-import { useThemeName } from '../../hooks/useTheme'
-import { useChromeColor } from '../../hooks/useChromeColor'
-import { skyBackdrop, skyChromeColor } from '../../lib/skyTint'
 import { getCurrencyStatus } from '../../lib/currency'
 import { computeTotalHours } from '../../lib/logbookFields'
 import { useLogbook } from '../../context/Logbook'
 import { loadWeather, parseFltCat, parseWind, parseVisib, parseTemp } from '../../lib/weather'
-import WeatherAnimation, { getCondition } from '../../components/WeatherAnimation'
+import { getCondition } from '../../components/WeatherAnimation'
 import { loadAreaWeather, conditionFromArea, areaTemp, areaWind, areaVis } from '../../lib/areaWeather'
 import { findAirport } from '../../lib/aerodromes'
 import { usePilotProfile } from '../../context/PilotProfile'
 import { useActiveAircraft } from '../../context/ActiveAircraft'
 import AirportPickerModal from '../../components/AirportPickerModal'
 import CardOverlay   from '../../components/CardOverlay'
-import MapView, { LiveMap, MapViewSync } from '../../components/MapView'
+import MapView, { LiveMap, MapViewSync, MapFocusOffset, ViewReporter } from '../../components/MapView'
 import AirportInfo from '../../components/AirportInfo'
 import ToolsMenu from '../../components/ToolsMenu'
 import { AirportScene, PilotArt, HangarArt, FlightPlanArt } from '../../components/HomeHeroArt'
@@ -145,56 +142,164 @@ const PREVIEW_ZOOM = 12
 // screen size, this is automatically "however much is missing" on any
 // device. `minHeight` keeps it from disappearing if the rest of the stack
 // ever grows taller than the viewport.
-function MapCard({ onOpen, lastView }) {
-  const ref = useRef(null)
+/* ── The map, filling the screen behind the drawer ────────── */
+// The map is the home screen now, not a card on it. It mounts once with Home
+// and stays mounted, so a pan or a zoom survives opening and closing a card
+// over the top of it — the thing the old preview thumbnail could only fake.
+//
+// `coveredHeight` is how much of the bottom the drawer is hiding; MapFocusOffset
+// uses it to keep whatever you're looking at in the middle of the strip you
+// can actually see.
+//
+// `syncView` is deliberately NOT the same state as the view this map reports
+// upward. Feeding a map its own reported view is a loop: report -> state ->
+// setView -> moveend -> report. It changes only when the full Map screen
+// closes, which is the one moment Home genuinely needs to catch up to a view
+// that was moved somewhere else.
+function HomeMap({ coveredHeight, onOpenFull, onViewChange, syncView }) {
   const { coords: liveCoords, status } = useHomeLocation()
   const position = liveCoords ? [liveCoords.lat, liveCoords.lon] : null
   const { layer } = useMapLayer()
+  const ref = useRef(null)
 
-  function handleClick() {
-    if (ref.current) {
-      const r = ref.current.getBoundingClientRect()
-      onOpen('map', { top: r.top, left: r.left, width: r.width, height: r.height })
-    }
+  function handleOpenFull() {
+    const r = ref.current?.getBoundingClientRect()
+    if (r) onOpenFull('map', { top: r.top, left: r.left, width: r.width, height: r.height })
   }
 
   return (
-    <div style={{ padding: `${ROW_GAP}px 18px 0`, flex: '1 1 auto', minHeight: HERO_HEIGHT, display: 'flex' }}>
-      <div
-        ref={ref}
-        onClick={handleClick}
-        role="button"
-        aria-label="Open map"
+    <div ref={ref} className="home-map" style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'var(--bg)' }}>
+      {/* Leaflet pins its controls 10px from the edge of the container, and
+          this container runs edge to edge under the notch — so on a phone the
+          zoom buttons land inside the status bar. Push the whole top rail
+          past the inset. The bottom rail is pushed clear of the drawer at its
+          peek height, which is the least of the map it can ever cover. */}
+      <style>{`
+        .home-map .leaflet-top { top: var(--safe-top); }
+        .home-map .leaflet-bottom { bottom: calc(var(--safe-bottom) + ${DRAWER_PEEK}px); }
+      `}</style>
+      {status !== 'pending' && (
+        <LiveMap
+          position={position} zoom={PREVIEW_ZOOM}
+          initialCenter={syncView?.center} initialZoom={syncView?.zoom}
+          layer={layer} markerRadius={7} interactive
+        >
+          <MapFocusOffset coveredHeight={coveredHeight} />
+          <ViewReporter onChange={onViewChange} />
+          <MapViewSync view={syncView} />
+        </LiveMap>
+      )}
+
+      {/* Everything the map screen has that this one doesn't — layers,
+          overlays, the route tools — still lives there. */}
+      <button
+        onClick={handleOpenFull}
+        aria-label="Open full map"
         style={{
-          background: 'var(--bg-card)', borderRadius: 20,
-          boxShadow: 'var(--shadow-sm)',
-          overflow: 'hidden', position: 'relative', isolation: 'isolate',
-          flex: '1 1 auto', width: '100%',
-          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+          position: 'absolute', top: 'calc(var(--safe-top) + 12px)', right: 14, zIndex: 500,
+          width: 38, height: 38, borderRadius: 12, border: 'none',
+          background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', WebkitTapHighlightColor: 'transparent', padding: 0,
         }}>
-        {status !== 'pending' && (
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-            {/* This preview mounts once and (per LiveMap's own design) never
-                moves itself after that, same as the real map — lastView,
-                fed down from Home and kept in sync with whatever the real
-                map screen was last panned/zoomed to (see MapView's
-                ViewReporter), is what lets this thumbnail catch up to a
-                view that already existed before this component mounted, or
-                change again on a later visit. Without it, this preview
-                always showed a fixed default zoom on your live position,
-                even right after leaving the real map panned somewhere else
-                entirely — the app should feel like one continuous map, not
-                a full map and a separate, independent preview. */}
-            <LiveMap
-              position={position} zoom={PREVIEW_ZOOM}
-              initialCenter={lastView?.center} initialZoom={lastView?.zoom}
-              layer={layer} markerRadius={6} interactive={false}
-            >
-              <MapViewSync view={lastView} />
-            </LiveMap>
-          </div>
-        )}
-        <HeroLabel>Map</HeroLabel>
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3h5v5M8 17H3v-5M17 3l-6 6M3 17l6-6" />
+        </svg>
+      </button>
+    </div>
+  )
+}
+
+/* ── The drawer ───────────────────────────────────────────── */
+// Two stops. Open is the height its own content needs — which is what puts
+// the cards exactly where they used to sit, without pinning the drawer to a
+// percentage that would drift the moment a row is added or removed. Peek is a
+// handle and nothing else.
+const DRAWER_PEEK = 30
+const DRAWER_MAX_FRACTION = 0.85
+
+function HomeDrawer({ open, onOpenChange, onHeightChange, children }) {
+  const contentRef = useRef(null)
+  const [contentHeight, setContentHeight] = useState(0)
+  const [drag, setDrag] = useState(null)
+
+  // The content measures itself, so the open height follows whatever is in
+  // the drawer rather than a number that has to be kept in step by hand.
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => setContentHeight(entry.contentRect.height))
+    ro.observe(el)
+    setContentHeight(el.getBoundingClientRect().height)
+    return () => ro.disconnect()
+  }, [])
+
+  // contentHeight measures the rows alone; the handle strip sits above them.
+  const openHeight = Math.min(contentHeight + DRAWER_PEEK, window.innerHeight * DRAWER_MAX_FRACTION)
+  const settledHeight = open ? openHeight : DRAWER_PEEK
+  const height = drag == null ? settledHeight : drag
+
+  // Only the settled height reaches the map. Re-centring it on every frame of
+  // a drag means two things easing at once, which reads as the map lagging.
+  useEffect(() => { onHeightChange(settledHeight) }, [settledHeight, onHeightChange])
+
+  function handlePointerDown(e) {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const startY = e.clientY
+    const startH = settledHeight
+    let moved = false
+
+    const move = ev => {
+      const next = startH + (startY - ev.clientY)
+      if (Math.abs(startY - ev.clientY) > 4) moved = true
+      setDrag(Math.max(DRAWER_PEEK, Math.min(openHeight, next)))
+    }
+    const up = ev => {
+      e.currentTarget.releasePointerCapture?.(ev.pointerId)
+      e.currentTarget.removeEventListener('pointermove', move)
+      e.currentTarget.removeEventListener('pointerup', up)
+      const finalH = startH + (startY - ev.clientY)
+      // A tap toggles; a drag snaps to whichever stop it ended up nearer.
+      onOpenChange(moved ? finalH > (openHeight + DRAWER_PEEK) / 2 : !open)
+      setDrag(null)
+    }
+    e.currentTarget.addEventListener('pointermove', move)
+    e.currentTarget.addEventListener('pointerup', up)
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 400,
+      height, boxSizing: 'border-box',
+      background: 'var(--bg)',
+      borderTopLeftRadius: 22, borderTopRightRadius: 22,
+      boxShadow: '0 -6px 24px rgba(0,0,0,0.22)',
+      transition: drag == null ? 'height 260ms cubic-bezier(0.32, 0.72, 0, 1)' : 'none',
+      display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      touchAction: 'none',
+    }}>
+      {/* The grab handle is the whole strip, not just the pill — a 4px target
+          on a moving drawer is not a target. */}
+      <div
+        onPointerDown={handlePointerDown}
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        aria-label={open ? 'Collapse drawer' : 'Expand drawer'}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenChange(!open) } }}
+        style={{
+          height: DRAWER_PEEK, flexShrink: 0, cursor: 'grab',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          WebkitTapHighlightColor: 'transparent',
+        }}>
+        <div style={{ width: 38, height: 4, borderRadius: 2, background: 'var(--text-secondary)', opacity: 0.4 }} />
+      </div>
+
+      <div style={{ flex: '1 1 auto', overflowY: 'auto', overscrollBehavior: 'contain' }}>
+        <div ref={contentRef}>
+          {children}
+          <div style={{ height: `calc(var(--safe-bottom) + 12px)` }} />
+        </div>
       </div>
     </div>
   )
@@ -205,7 +310,7 @@ function MapCard({ onOpen, lastView }) {
    small flourish layered on top of it, not the main picture. ICAO + VFR/
    MVFR/IFR/LIFR pill sit together on the left; temp/wind/vis stay small
    and off to the right so nothing overlaps. ── */
-function AirportsHeroCard({ onOpen, onCondition }) {
+function AirportsHeroCard({ onOpen }) {
   const { profile } = usePilotProfile()
   const units = profile ?? {}
   const [icao, setIcao] = useState('')
@@ -250,20 +355,11 @@ function AirportsHeroCard({ onOpen, onCondition }) {
   }, [icao, wx?.noReport])
   const areaSky = area ? conditionFromArea(area) : null
 
-  // This card owns the home airport's weather, and the home screen tints its
-  // background from it. Reported upward rather than fetched a second time, and
-  // reported as null until something real arrives — an unknown sky should
-  // leave the page alone.
-  //
-  // Computed here, above the early returns below, because the effect that
-  // publishes it cannot live after one.
+  // This card's own weather art. It used to also publish the sky upward so the
+  // whole home screen could be tinted from it; the map is the background now,
+  // so nothing is listening and the card keeps its weather to itself.
   const sky = getCondition(wx?.metar ?? null)
   const resolved = wx?.metar ? sky : areaSky
-  const skyType = resolved?.type ?? null
-  const skyNight = resolved?.isNight ?? false
-  useEffect(() => {
-    onCondition?.(skyType ? { type: skyType, isNight: skyNight } : null)
-  }, [skyType, skyNight, onCondition])
 
   function handleClick() {
     if (ref.current) {
@@ -312,9 +408,8 @@ function AirportsHeroCard({ onOpen, onCondition }) {
   }
 
   const cat = wx?.metar ? parseFltCat(wx.metar) : null
-  // The scene on the card and the wash behind the page come from the same
-  // answer, so a station-less field doesn't get a sunny illustration over a
-  // stormy background.
+  // A field with no station of its own still gets the right illustration: the
+  // model estimate stands in, so it doesn't show a sunny scene in a storm.
   const condition = resolved?.type ?? sky.type
 
   return (
@@ -547,7 +642,11 @@ function SectionContent({ section, order, onMoveRow, onMapViewChange, mapView })
   return null
 }
 
-const DEFAULT_ORDER = ['map', 'airports', 'hangar', 'pilot', 'flight', 'discover']
+// No 'map' row: the map is the screen the drawer sits on, not a card in it.
+// Saved orders from before that change still carry 'map', and it is filtered
+// out on load rather than migrated away, so a pilot who reordered their rows
+// keeps the order they chose either way.
+const DEFAULT_ORDER = ['airports', 'hangar', 'pilot', 'flight', 'discover']
 
 // The order shipped before Map moved to the top — a saved homeOrder that
 // still matches this exactly means the pilot never actually touched the
@@ -567,41 +666,22 @@ export default function Home() {
   // of getCurrencyStatus()'s cards, not the worst of the two.
   const [currencyData, setCurrencyData] = useState(null)
   const [order, setOrder] = useState(DEFAULT_ORDER)
-  // Last {center, zoom} the pilot left the real map screen at — null until
-  // they've opened it at least once this session. Lifted up here (rather
-  // than living inside MapView, which fully unmounts every time its overlay
-  // closes) purely so it survives between an open/close cycle for
-  // MapCard's preview to pick up; see MapView's ViewReporter/MapViewSync.
+  // The map's current {center, zoom}, reported up by the home map itself so
+  // the full Map screen opens exactly where Home is rather than somewhere
+  // else. Stable identity, because it is a prop on a map that must not
+  // re-subscribe its move listener on every render.
   const [mapView, setMapView] = useState(null)
+  const reportMapView = useCallback(next => setMapView(next), [])
 
-  // The sky at the home airport, published by AirportsHeroCard — the only
-  // card that has any weather. null until a real observation arrives, which
-  // is what keeps the page from flashing a confident blue at launch.
-  //
-  // setSky is passed down as a prop, so it has to be stable: useState's
-  // setter already is, but wrapping the comparison here means an unchanged
-  // condition doesn't re-render the whole home screen every time the weather
-  // is refetched.
-  const [sky, setSky] = useState(null)
-  const publishSky = useCallback(next => {
-    setSky(prev =>
-      prev?.type === next?.type && prev?.isNight === next?.isNight ? prev : next)
-  }, [])
+  // Fed to the home map only when the full Map screen closes. It cannot be
+  // `mapView` itself: a map told to show the view it just reported is a loop.
+  const [syncView, setSyncView] = useState(null)
 
-  const theme = useThemeName()
-  // --bg is read live rather than assumed, because the tint has to know what
-  // it is sitting on: the same sky is lifted against a black background and
-  // darkened against a white one, and the status bar has to be flattened
-  // against it to avoid a band across the top of the phone.
-  const { backdrop, chrome } = useMemo(() => {
-    if (!sky) return { backdrop: null, chrome: null }
-    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
-    return {
-      backdrop: skyBackdrop(sky.type, sky.isNight, theme, bg),
-      chrome: skyChromeColor(sky.type, sky.isNight, theme, bg),
-    }
-  }, [sky, theme])
-  useChromeColor(chrome)
+  // The drawer, and how much of the map it is covering. Open on launch, at
+  // the height its own content needs.
+  const [drawerOpen, setDrawerOpen] = useState(true)
+  const [coveredHeight, setCoveredHeight] = useState(0)
+  const handleDrawerHeight = useCallback(h => setCoveredHeight(h), [])
 
   const activeAircraft = aircraftList?.find(a => a.id === aircraftId)
   const aircraftImage = activeAircraft?.image ?? ''
@@ -651,6 +731,13 @@ export default function Home() {
     if (openSection === 'aircraft' || openSection === 'checklists') {
       loadCurrencyStatus()
     }
+    // The one moment the home map should adopt a view it did not set itself:
+    // the pilot has just been panning around on the full Map screen, and
+    // coming back to a map still sitting where they left Home would read as
+    // the app forgetting what they just did.
+    if (openSection === 'map') {
+      setSyncView(mapView)
+    }
     setOpenSection(null)
     setSectionRect(null)
   }
@@ -672,8 +759,7 @@ export default function Home() {
     [currencyData])
 
   function renderRow(key) {
-    if (key === 'airports') return <AirportsHeroCard key={key} onOpen={openCard} onCondition={publishSky} />
-    if (key === 'map')      return <MapCard key={key} onOpen={openCard} lastView={mapView} />
+    if (key === 'airports') return <AirportsHeroCard key={key} onOpen={openCard} />
     if (key === 'hangar')   return <HangarCard key={key} aircraftImage={aircraftImage} aircraftCount={aircraftList?.length ?? 0} onOpen={openCard} />
     if (key === 'pilot')    return <PilotRow key={key} currencyCards={currencyCards} />
     if (key === 'flight')   return <FlightPlanCard key={key} onOpen={openCard} />
@@ -683,49 +769,14 @@ export default function Home() {
 
   return (
     <HomeLocationProvider>
-      {/* The weather at the home airport, spilling into the page behind the
-          buttons. Fixed rather than in flow so it covers the safe-area inset
-          at the top of the phone — a gradient that started below the notch
-          would produce the very band this is careful to avoid. Fades in
-          because the weather arrives a moment after the page does, and a
-          sudden wash would read as a glitch. */}
-      {backdrop && (
-        <div
-          aria-hidden
-          style={{
-            position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
-            background: backdrop,
-            opacity: 1,
-            animation: 'sky-fade 700ms ease',
-          }}
-        />
-      )}
-      {/* The weather itself, over the tint: cloud when it's cloudy, rain when
-          it's raining, snow, fog, lightning. The same components the airport
-          card paints with, so the two can never show different weather.
-          Held well back — this is behind every button on the screen, and it
-          has to read as atmosphere rather than as content competing with the
-          photographs on top of it. */}
-      {sky && (
-        <div
-          aria-hidden
-          style={{
-            position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
-            opacity: 0.5,
-            animation: 'sky-fade 1200ms ease',
-          }}
-        >
-          <WeatherAnimation condition={sky} elementsOnly />
-        </div>
-      )}
-      <style>{'@keyframes sky-fade { from { opacity: 0 } to { opacity: 1 } }'}</style>
-      <div style={{
-        height: '100dvh', overflow: 'hidden', boxSizing: 'border-box',
-        display: 'flex', flexDirection: 'column',
-        padding: '14px 0 10px',
-        position: 'relative', zIndex: 1,
-      }}>
+      <HomeMap
+        coveredHeight={coveredHeight}
+        onOpenFull={openCard}
+        onViewChange={reportMapView}
+        syncView={syncView}
+      />
 
+      <HomeDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onHeightChange={handleDrawerHeight}>
         {order.map(renderRow)}
 
         {/* ── Tools / Settings ── */}
@@ -735,11 +786,11 @@ export default function Home() {
             <ModuleCard section="settings" onOpen={openCard} Icon={IconGear}   label="Settings" />
           </div>
         </div>
-      </div>
+      </HomeDrawer>
 
       {openSection && sectionRect && (
         <CardOverlay cardRect={sectionRect} onClose={closeCard}>
-          <SectionContent section={openSection} order={order} onMoveRow={moveRow} onMapViewChange={setMapView} mapView={mapView} />
+          <SectionContent section={openSection} order={order} onMoveRow={moveRow} onMapViewChange={reportMapView} mapView={mapView} />
         </CardOverlay>
       )}
     </HomeLocationProvider>

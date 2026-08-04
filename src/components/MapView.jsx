@@ -476,7 +476,7 @@ export function MapViewSync({ view }) {
 // showing whatever view HAD last been successfully reported. A stable
 // map.on subscription that's set up once and never torn down mid-session
 // doesn't have this gap.
-function ViewReporter({ onChange }) {
+export function ViewReporter({ onChange }) {
   const map = useMap()
   useEffect(() => {
     function handleMoveEnd() {
@@ -486,6 +486,35 @@ function ViewReporter({ onChange }) {
     map.on('moveend', handleMoveEnd)
     return () => map.off('moveend', handleMoveEnd)
   }, [map, onChange])
+  return null
+}
+
+// Keeps whatever the pilot is looking at centred in the part of the map that
+// is actually visible, when something else covers the bottom of the screen —
+// on Home, the drawer.
+//
+// The map container stays the full height of the window; only the exposed
+// strip above the drawer changes. A point sitting at the container's centre
+// is therefore too low to see properly once the drawer is up, so the view is
+// panned up by half the covered height, which puts it back in the middle of
+// what's left. Shrinking the container instead would work, but Leaflet would
+// have to re-lay-out and re-fetch tiles on every drawer movement.
+//
+// Panned by the DELTA rather than set absolutely: the pilot may have panned
+// the map themselves since the last change, and jumping to an absolute offset
+// would throw that away. `animate: false` because this runs alongside the
+// drawer's own transition, and two easing curves on the same movement read as
+// the map lagging behind the drawer.
+export function MapFocusOffset({ coveredHeight }) {
+  const map = useMap()
+  const applied = useRef(0)
+  useEffect(() => {
+    const want = coveredHeight / 2
+    const delta = want - applied.current
+    if (Math.abs(delta) < 0.5) return
+    applied.current = want
+    map.panBy([0, delta], { animate: false })
+  }, [coveredHeight, map])
   return null
 }
 
