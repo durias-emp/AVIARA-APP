@@ -28,6 +28,7 @@ import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecord
 import { put, get, getAll } from '../../lib/db'
 import { getAirports } from '../../lib/aerodromes'
 import { loadTfrs } from '../../lib/tfr'
+import { TEMPLATES } from '../../data/aircraftTemplates'
 
 const ACCENT = '#FF5A1F'      // the one saturated colour on the screen, so the
                               // action is never ambiguous
@@ -306,7 +307,20 @@ export default function MapHome() {
     get('settings', 'openaip_key')
       .then(r => { if (r?.value) setOpenaipKey(r.value) })
       .catch(() => {})
-    get('aircraft', 'profile').then(p => setAc(p ?? null)).catch(() => {})
+    // The saved profile carries identity only: id, registration, fullName,
+    // pilot and Hobbs. The photo and the book figures live in the template it
+    // was created from, so they are matched back here. Without this the banner
+    // knew the aircraft's name and nothing else, which is why the helicopter
+    // had no picture.
+    //
+    // Matched on fullName, not id: the profile's id is the IndexedDB key and
+    // is always the string 'profile'.
+    get('aircraft', 'profile').then(p => {
+      if (!p) return setAc(null)
+      const tpl = TEMPLATES.find(t => t.fullName === p.fullName)
+      // Saved values win: a pilot who edited a figure meant it.
+      setAc(tpl ? { ...tpl, ...p } : p)
+    }).catch(() => {})
     loadFlights()
     resolveBase()
   }, [])
