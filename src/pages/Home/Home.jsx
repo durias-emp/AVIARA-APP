@@ -12,13 +12,12 @@ import { usePilotProfile } from '../../context/PilotProfile'
 import { useActiveAircraft } from '../../context/ActiveAircraft'
 import AirportPickerModal from '../../components/AirportPickerModal'
 import CardOverlay   from '../../components/CardOverlay'
-import MapView, { LiveMap, MapViewSync, MapFocusOffset, ViewReporter } from '../../components/MapView'
+import MapView from '../../components/MapView'
 import AirportInfo from '../../components/AirportInfo'
 import ToolsMenu from '../../components/ToolsMenu'
 import { AirportScene, PilotArt, HangarArt, FlightPlanArt } from '../../components/HomeHeroArt'
 import HeroLabel, { HERO_LABEL_WIDTH } from '../../components/HeroLabel'
-import { HomeLocationProvider, useHomeLocation } from '../../context/HomeLocation'
-import { useMapLayer } from '../../hooks/useMapLayer'
+import { HomeLocationProvider } from '../../context/HomeLocation'
 import { IconWrench, IconGear, IconFriends } from '../../components/Icons'
 import Checklists from '../Checklists/Checklists'
 import Hangar     from '../Aircraft/Hangar'
@@ -133,7 +132,6 @@ function HangarCard({ aircraftImage, aircraftCount = 0, onOpen }) {
    preview map ignores taps/drags/pinches itself (all interaction props
    below are off) so any tap anywhere on the card always opens the real,
    fully interactive map instead of panning this little thumbnail. ── */
-const PREVIEW_ZOOM = 12
 
 // The Map card is the one hero button that grows: `flex: 1` lets it claim
 // whatever vertical space is left over after every other (fixed-height)
@@ -143,69 +141,27 @@ const PREVIEW_ZOOM = 12
 // device. `minHeight` keeps it from disappearing if the rest of the stack
 // ever grows taller than the viewport.
 /* ── The map, filling the screen behind the drawer ────────── */
-// The map is the home screen now, not a card on it. It mounts once with Home
-// and stays mounted, so a pan or a zoom survives opening and closing a card
-// over the top of it — the thing the old preview thumbnail could only fake.
+// The real map, not a copy of it. An earlier pass mounted a bare LiveMap
+// here, which gave a basemap and a position dot and silently dropped
+// everything else the map screen has: radar, flight category, TFRs, the
+// airport/heliport/seaplane layers, the layers menu, locate, the flight plan
+// bar and the GPS readout. Rendering MapView itself means there is one map in
+// the app rather than two that have to be kept in step.
 //
-// `coveredHeight` is how much of the bottom the drawer is hiding; MapFocusOffset
-// uses it to keep whatever you're looking at in the middle of the strip you
-// can actually see.
+// It mounts once with Home and stays mounted, so a pan, a zoom, a chosen
+// layer or a typed route all survive opening and closing a card over the top.
 //
-// `syncView` is deliberately NOT the same state as the view this map reports
-// upward. Feeding a map its own reported view is a loop: report -> state ->
-// setView -> moveend -> report. It changes only when the full Map screen
-// closes, which is the one moment Home genuinely needs to catch up to a view
-// that was moved somewhere else.
-function HomeMap({ coveredHeight, onOpenFull, onViewChange, syncView }) {
-  const { coords: liveCoords, status } = useHomeLocation()
-  const position = liveCoords ? [liveCoords.lat, liveCoords.lon] : null
-  const { layer } = useMapLayer()
-  const ref = useRef(null)
-
-  function handleOpenFull() {
-    const r = ref.current?.getBoundingClientRect()
-    if (r) onOpenFull('map', { top: r.top, left: r.left, width: r.width, height: r.height })
-  }
-
+// `bottomInset` is the drawer's height: MapView lifts its bottom-anchored
+// controls above it and pans the view up by half of it, so what you are
+// looking at stays centred in the strip still showing.
+function HomeMap({ coveredHeight }) {
   return (
-    <div ref={ref} className="home-map" style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'var(--bg)' }}>
-      {/* Leaflet pins its controls 10px from the edge of the container, and
-          this container runs edge to edge under the notch — so on a phone the
-          zoom buttons land inside the status bar. Push the whole top rail
-          past the inset. The bottom rail is pushed clear of the drawer at its
-          peek height, which is the least of the map it can ever cover. */}
-      <style>{`
-        .home-map .leaflet-top { top: var(--safe-top); }
-        .home-map .leaflet-bottom { bottom: calc(var(--safe-bottom) + ${DRAWER_PEEK}px); }
-      `}</style>
-      {status !== 'pending' && (
-        <LiveMap
-          position={position} zoom={PREVIEW_ZOOM}
-          initialCenter={syncView?.center} initialZoom={syncView?.zoom}
-          layer={layer} markerRadius={7} interactive
-        >
-          <MapFocusOffset coveredHeight={coveredHeight} />
-          <ViewReporter onChange={onViewChange} />
-          <MapViewSync view={syncView} />
-        </LiveMap>
-      )}
-
-      {/* Everything the map screen has that this one doesn't — layers,
-          overlays, the route tools — still lives there. */}
-      <button
-        onClick={handleOpenFull}
-        aria-label="Open full map"
-        style={{
-          position: 'absolute', top: 'calc(var(--safe-top) + 12px)', right: 14, zIndex: 500,
-          width: 38, height: 38, borderRadius: 12, border: 'none',
-          background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', WebkitTapHighlightColor: 'transparent', padding: 0,
-        }}>
-        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 3h5v5M8 17H3v-5M17 3l-6 6M3 17l6-6" />
-        </svg>
-      </button>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'var(--bg)' }}>
+      <MapView
+        bottomInset={coveredHeight}
+        topInset="var(--safe-top)"
+        showHomeButton={false}
+      />
     </div>
   )
 }
@@ -631,10 +587,9 @@ function PilotRow({ currencyCards }) {
    for the reorder list's display names). ── */
 
 /* ── Section content map ──────────────────────────────────── */
-function SectionContent({ section, order, onMoveRow, onMapViewChange, mapView }) {
+function SectionContent({ section, order, onMoveRow }) {
   if (section === 'checklists') return <Checklists />
   if (section === 'aircraft')   return <Hangar />
-  if (section === 'map')        return <MapView onViewChange={onMapViewChange} lastView={mapView} />
   if (section === 'airports')   return <AirportInfo />
   if (section === 'tools')      return <ToolsMenu />
   if (section === 'settings')   return <Settings order={order} onMoveRow={onMoveRow} />
@@ -666,17 +621,6 @@ export default function Home() {
   // of getCurrencyStatus()'s cards, not the worst of the two.
   const [currencyData, setCurrencyData] = useState(null)
   const [order, setOrder] = useState(DEFAULT_ORDER)
-  // The map's current {center, zoom}, reported up by the home map itself so
-  // the full Map screen opens exactly where Home is rather than somewhere
-  // else. Stable identity, because it is a prop on a map that must not
-  // re-subscribe its move listener on every render.
-  const [mapView, setMapView] = useState(null)
-  const reportMapView = useCallback(next => setMapView(next), [])
-
-  // Fed to the home map only when the full Map screen closes. It cannot be
-  // `mapView` itself: a map told to show the view it just reported is a loop.
-  const [syncView, setSyncView] = useState(null)
-
   // The drawer, and how much of the map it is covering. Open on launch, at
   // the height its own content needs.
   const [drawerOpen, setDrawerOpen] = useState(true)
@@ -731,13 +675,6 @@ export default function Home() {
     if (openSection === 'aircraft' || openSection === 'checklists') {
       loadCurrencyStatus()
     }
-    // The one moment the home map should adopt a view it did not set itself:
-    // the pilot has just been panning around on the full Map screen, and
-    // coming back to a map still sitting where they left Home would read as
-    // the app forgetting what they just did.
-    if (openSection === 'map') {
-      setSyncView(mapView)
-    }
     setOpenSection(null)
     setSectionRect(null)
   }
@@ -769,12 +706,7 @@ export default function Home() {
 
   return (
     <HomeLocationProvider>
-      <HomeMap
-        coveredHeight={coveredHeight}
-        onOpenFull={openCard}
-        onViewChange={reportMapView}
-        syncView={syncView}
-      />
+      <HomeMap coveredHeight={coveredHeight} />
 
       <HomeDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onHeightChange={handleDrawerHeight}>
         {order.map(renderRow)}
@@ -790,7 +722,7 @@ export default function Home() {
 
       {openSection && sectionRect && (
         <CardOverlay cardRect={sectionRect} onClose={closeCard}>
-          <SectionContent section={openSection} order={order} onMoveRow={moveRow} onMapViewChange={reportMapView} mapView={mapView} />
+          <SectionContent section={openSection} order={order} onMoveRow={moveRow} />
         </CardOverlay>
       )}
     </HomeLocationProvider>

@@ -541,7 +541,16 @@ function RoutePreview({ route }) {
   )
 }
 
-export default function MapView({ onViewChange, lastView } = {}) {
+// `bottomInset` is how much of the bottom of the map something else is
+// covering — on Home, the drawer. It does two things: lifts every
+// bottom-anchored control clear of the cover (via --map-bottom-inset, which
+// the layers menu, the GPS bar and Leaflet's own control rail all read), and
+// pans the view up by half of it so what you are looking at stays in the
+// middle of the strip you can still see.
+//
+// `showHomeButton` is false when this map IS the home screen, where a button
+// that navigates home is meaningless.
+export default function MapView({ onViewChange, lastView, bottomInset = 0, topInset = '0px', showHomeButton = true } = {}) {
   // Shared with Home's own map preview via HomeLocationProvider (mounted
   // once around Home, which never unmounts while this screen — an overlay
   // on top of Home — is open) rather than starting a separate watch here.
@@ -625,7 +634,12 @@ export default function MapView({ onViewChange, lastView } = {}) {
   const locationUnavailable = noFixYet && (liveStatus === 'error' || liveStatus === 'unsupported')
 
   return (
-    <div style={{ height: '100%', position: 'relative', isolation: 'isolate' }}>
+    <div
+      className="map-root"
+      style={{ height: '100%', position: 'relative', isolation: 'isolate', '--map-bottom-inset': `${bottomInset}px`, '--map-top-inset': topInset }}>
+      {/* Leaflet's own control rail is inside the map container, so it can't
+          read a wrapper's padding — it gets the inset directly. */}
+      <style>{'.map-root .leaflet-bottom { bottom: var(--map-bottom-inset, 0px); } .map-root .leaflet-top { top: var(--map-top-inset, 0px); }'}</style>
       <LiveMap
         position={centerPosition} zoom={LOCATION_ZOOM}
         initialCenter={lastView?.center} initialZoom={lastView?.zoom}
@@ -639,19 +653,22 @@ export default function MapView({ onViewChange, lastView } = {}) {
         {overlays.seaplaneBases && <SeaplaneBaseLayer />}
         <LocateRecenter request={recenterRequest} />
         <RoutePreview route={route} />
+        <MapFocusOffset coveredHeight={bottomInset} />
         {onViewChange && <ViewReporter onChange={onViewChange} />}
       </LiveMap>
 
-      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 600 }}>
-        <HomeButton />
-      </div>
+      {showHomeButton && (
+        <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 600 }}>
+          <HomeButton />
+        </div>
+      )}
 
       <button
         onClick={handleLocate}
         disabled={noFixYet}
         aria-label="Locate me"
         style={{
-          position: 'absolute', right: 12, bottom: 136, zIndex: 500,
+          position: 'absolute', right: 12, bottom: 'calc(136px + var(--map-bottom-inset, 0px))', zIndex: 500,
           width: 40, height: 40, borderRadius: '50%', border: 'none',
           background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',

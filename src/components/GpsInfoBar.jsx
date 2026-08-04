@@ -203,7 +203,7 @@ export default function GpsInfoBar({ route, coords, derived, status }) {
       <div
         onClick={() => setPicking(true)}
         style={{
-          position: 'absolute', bottom: 72, left: 12, right: 12, zIndex: 500,
+          position: 'absolute', bottom: 'calc(72px + var(--map-bottom-inset, 0px))', left: 12, right: 12, zIndex: 500,
           background: 'var(--bg-card)', borderRadius: 14, boxShadow: 'var(--shadow-sm)',
           display: 'flex', overflowX: 'auto', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
         }}>
