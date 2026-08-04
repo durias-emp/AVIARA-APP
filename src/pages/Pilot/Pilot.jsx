@@ -749,6 +749,40 @@ function LogbookCard() {
   )
 }
 
+// Card 5 — Flight Debriefs. Same entry-point shape as the Logbook card above:
+// a summary that opens the real screen. It exists because a debrief was
+// previously reachable only from inside the logbook, which buried a recorded
+// flight behind knowing where to look for it.
+// ---------------------------------------------------------------------------
+function DebriefCard() {
+  const { entries } = useLogbook()
+  const withTrack = (entries ?? []).filter(e => (e.track?.length ?? 0) >= 2)
+  return (
+    <Link to="/debriefs" style={{ textDecoration: 'none' }}>
+      <div style={{
+        background: 'var(--bg-card)', borderRadius: 14,
+        border: '0.5px solid var(--border)',
+        marginBottom: 10, overflow: 'hidden',
+        padding: '14px 14px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px' }}>Flight Debriefs</span>
+          <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+            {entries === undefined
+              ? 'Loading…'
+              : withTrack.length === 0
+                ? 'No recorded flights yet'
+                : `${withTrack.length} recorded ${withTrack.length === 1 ? 'flight' : 'flights'}`}
+          </span>
+        </div>
+        <span style={{ color: 'var(--text-tertiary)', display: 'flex', flexShrink: 0 }}><IconChevronRight size={16} /></span>
+      </div>
+    </Link>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Root — Pilot page. Focus: medical currency, flight currency, and (soon)
 // a logbook — profile fields (name/certificate/home airport/units/account)
@@ -829,6 +863,7 @@ export default function Pilot() {
         <ImCurrentCard   data={data} onChange={handleChange} warnDays={warnDays} />
         <ImValidCard     data={data} onChange={handleChange} warnDays={warnDays} />
         <LogbookCard />
+        <DebriefCard />
       </div>
 
       <div style={{ padding: '8px 16px 0', textAlign: 'center' }}>
