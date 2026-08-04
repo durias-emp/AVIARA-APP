@@ -305,6 +305,30 @@ export default function MapHome() {
     .some(k => layers[k])
   const expanded = snap !== 'collapsed'
 
+  // Warm the planner while the pilot is looking at the map.
+  //
+  // Plan Route lazy-loads a 1.4 MB chunk (250 kB over the wire), and the tap
+  // was paying for all of it: nothing happens until the download and parse
+  // finish, which on cellular is seconds of a button that looks broken.
+  // Fetching it during idle time means the module is already in memory by the
+  // time it is asked for, and the tap is immediate.
+  //
+  // Not on a metered or slow connection. A pilot on one bar of cellular did
+  // not ask for a quarter megabyte they may never use, and the honest trade
+  // there is a slower tap rather than their data.
+  useEffect(() => {
+    const conn = navigator.connection
+    if (conn?.saveData) return
+    if (conn && /2g/.test(conn.effectiveType ?? '')) return
+
+    const idle = window.requestIdleCallback ?? (cb => setTimeout(cb, 2000))
+    const cancel = window.cancelIdleCallback ?? clearTimeout
+    // Same specifier App.jsx lazy-loads, so this warms that exact chunk
+    // rather than creating a second copy of it.
+    const id = idle(() => { import('../Checklists/Checklists').catch(() => {}) })
+    return () => cancel(id)
+  }, [])
+
   useEffect(() => {
     const onResize = () => setViewportH(window.innerHeight)
     window.addEventListener('resize', onResize)
