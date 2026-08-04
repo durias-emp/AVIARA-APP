@@ -15,6 +15,7 @@ const Calculators = lazy(() => import('./pages/Calculators/Calculators'))
 const Checklists  = lazy(() => import('./pages/Checklists/Checklists'))
 const Hangar      = lazy(() => import('./pages/Aircraft/Hangar'))
 const Pilot       = lazy(() => import('./pages/Pilot/Pilot'))
+const FlightDebriefs = lazy(() => import('./pages/Pilot/FlightDebriefs'))
 const Reference   = lazy(() => import('./pages/Reference/Reference'))
 const Weather     = lazy(() => import('./pages/Weather/Weather'))
 const LogbookList      = lazy(() => import('./pages/Pilot/LogbookList'))
@@ -118,6 +119,7 @@ function AppRoutes({ theme }) {
             <Route path="/profile" element={<Profile />} />
             <Route path="/pilot" element={<Pilot />} />
             <Route path="/logbook" element={<LogbookList />} />
+            <Route path="/debriefs" element={<FlightDebriefs />} />
             <Route path="/logbook/fields" element={<LogbookFields />} />
             <Route path="/logbook/import" element={<LogbookImport />} />
             <Route path="/logbook/scan" element={<LogbookScan />} />

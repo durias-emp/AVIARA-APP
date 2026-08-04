@@ -8,6 +8,7 @@ import { useMapLayer } from '../hooks/useMapLayer'
 import { useMapOverlays } from '../hooks/useMapOverlays'
 import { useBreadcrumbTrail } from '../hooks/useBreadcrumbTrail'
 import { useFlightTimer } from '../hooks/useFlightTimer'
+import { useWakeLock } from '../hooks/useWakeLock'
 import { formatClock } from '../lib/flightTime'
 import { useFlightDetector, DEFAULT_AUTO_DETECT_CONFIG, autoDetectEnabledFrom } from '../hooks/useFlightDetector'
 import { useLogbook } from '../context/Logbook'
@@ -666,6 +667,10 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   // committed behind their back.
   const flightTimer = useFlightTimer({ coords: liveCoords })
   const [timedFlightBanner, setTimedFlightBanner] = useState(null)
+  // The screen staying awake is the difference between recording a flight and
+  // recording the first thirty seconds of one. Held whenever either recorder
+  // is running — the pilot's timer, or auto-detect having caught a departure.
+  const screenAwake = useWakeLock(flightTimer.running || detectState === 'recording')
   function toggleFlightTimer() {
     if (!flightTimer.running) { flightTimer.start(); return }
     const flight = flightTimer.stop()
@@ -814,6 +819,22 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--danger)', flexShrink: 0 }} />
           Flight detected — recording
+        </div>
+      )}
+
+      {/* Only shown when the lock could NOT be taken. Confirming that the
+          screen will stay on is noise; warning that it will not is the thing a
+          pilot can act on — set Auto-Lock to Never before pushing the throttle
+          up, rather than discovering a five-minute track afterwards. */}
+      {(flightTimer.running || detectState === 'recording') && !screenAwake && (
+        <div style={{
+          position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
+          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
+          fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warn)', flexShrink: 0 }} />
+          Recording — set Auto-Lock to Never, or the screen will stop it.
         </div>
       )}
 

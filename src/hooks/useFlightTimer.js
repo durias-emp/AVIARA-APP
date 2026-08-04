@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { get, put, del } from '../lib/db'
 import { formatClock, decimalHours } from '../lib/flightTime'
-import { isUsableFix, shouldKeepFix, trackDistanceNm } from '../lib/track'
+import { isUsableFix, shouldKeepFix, trackDistanceNm, fixFrom } from '../lib/track'
 
 const STORE = 'settings'
 const KEY = 'manualFlightTimer'
@@ -56,7 +56,7 @@ export function useFlightTimer({ coords } = {}) {
   // re-render the whole map screen for a line nobody is looking at yet.
   useEffect(() => {
     if (!startedAt || !isUsableFix(coords)) return
-    const point = { lat: coords.lat, lon: coords.lon, altFt: coords.altFt ?? null, t: Date.now() }
+    const point = fixFrom(coords)
     if (!shouldKeepFix(trackRef.current[trackRef.current.length - 1], point)) return
     trackRef.current = [...trackRef.current, point]
   }, [startedAt, coords])

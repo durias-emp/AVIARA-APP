@@ -41,6 +41,24 @@ export function shouldKeepFix(last, next) {
   return true
 }
 
+// One fix, in the shape everything downstream reads.
+//
+// The live watch already reports heading, groundspeed and accuracy, and the
+// track was throwing all three away — which left the recorder unable to answer
+// anything a debrief asks. Recording them costs nothing; recovering them after
+// the flight is impossible.
+export function fixFrom(coords, t = Date.now()) {
+  return {
+    lat: coords.lat,
+    lon: coords.lon,
+    altFt: coords.altFt ?? null,
+    speedKt: coords.speedKt ?? null,
+    headingDeg: coords.headingDeg ?? null,
+    accuracyM: coords.accuracyM ?? null,
+    t,
+  }
+}
+
 export function trackDistanceNm(track) {
   if (!track || track.length < 2) return 0
   let nm = 0
