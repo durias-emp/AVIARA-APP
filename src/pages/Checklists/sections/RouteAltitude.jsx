@@ -5,6 +5,8 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { MapContainer, TileLayer, Marker, Polyline, Polygon, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
+import ChartLayers, { Basemap } from '../../../components/ChartLayers'
+import { CHARTS, EMPTY_LAYERS, resolveOpenaipKey } from '../../../components/chartDefs'
 import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
 import { get, put } from '../../../lib/db'
 import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
@@ -1099,11 +1101,19 @@ function MapControlStack({ onClose }) {
 // that have no ICAO code to type into the TO field: a ranch strip, a lake, a
 // section corner, a friend's grass runway. Those pilots need to point at it.
 //
-// Deliberately spare: a basemap, the departure, and whatever the pilot taps.
-// No charts, no airspace, no terrain. This map answers one question, and the
-// full map with all its layers is one Calculate away.
+// It carries the chart layers. It was deliberately spare once, on the argument
+// that it answers one question and the full map is a Calculate away, and that
+// was wrong: the question it answers is WHERE, and a pilot choosing a point on
+// a road map cannot see the ridge behind it or the restricted area over it.
+// Terrain is on by default because it draws everywhere; the FAA charts are a
+// tap away and simply draw nothing outside their coverage.
 function PickDestinationMap({ depPos, depIdent, onClose, onPick }) {
   const [pt, setPt] = useState(null)
+  const [pickLayers, setPickLayers] = useState({ ...EMPTY_LAYERS, terrain: true })
+  const [pickChartsOpen, setPickChartsOpen] = useState(false)
+  const pickOaKey = resolveOpenaipKey()
+  const togglePick = (k) => setPickLayers(prev => ({ ...prev, [k]: !prev[k] }))
+  const pickActive = Object.values(pickLayers).filter(Boolean).length
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#e8e0d8' }}>
@@ -1112,8 +1122,8 @@ function PickDestinationMap({ depPos, depIdent, onClose, onPick }) {
           style={{ height: '100%', width: '100%' }}
           zoomAnimationThreshold={10}
           zoomControl={false} attributionControl={false}>
-          <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' />
+          <Basemap />
+          <ChartLayers layers={pickLayers} openaipKey={pickOaKey} />
           <MapInvalidator />
           <TapToPlace onPlace={setPt} />
           <CircleMarker center={depPos} radius={7}
@@ -1134,6 +1144,49 @@ function PickDestinationMap({ depPos, depIdent, onClose, onPick }) {
         padding: '7px 10px', color: '#fff', fontSize: 11, fontWeight: 700, letterSpacing: '0.4px',
       }}>
         FROM {depIdent}
+      </div>
+
+      {/* Chart layers. Same set as the route map, so what a pilot turns on to
+          choose a point is what they will see once the route is drawn. */}
+      <div style={{
+        position: 'absolute', right: 12, top: 'calc(var(--safe-top) + 60px)',
+        zIndex: 10004, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 7,
+      }}>
+        <button onClick={() => setPickChartsOpen(o => !o)} style={{
+          position: 'relative', width: 38, height: 38, padding: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: pickChartsOpen ? 'rgba(255,255,255,0.95)' : 'rgba(10,10,10,0.75)',
+          color: pickChartsOpen ? '#111' : 'rgba(255,255,255,0.9)',
+          backdropFilter: 'blur(12px)',
+          border: '0.5px solid rgba(255,255,255,0.18)', borderRadius: 9, cursor: 'pointer',
+        }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.9" strokeLinejoin="round">
+            <path d="M12 3l9 5-9 5-9-5 9-5z" /><path d="M3 13l9 5 9-5" strokeLinecap="round" />
+          </svg>
+          {pickActive > 0 && (
+            <span style={{
+              position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17,
+              borderRadius: 9, background: '#0a84ff', color: '#fff', fontSize: 10,
+              fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>{pickActive}</span>
+          )}
+        </button>
+
+        {/* Only the layers this map can actually draw. CHARTS also carries
+            live traffic and TFRs, and neither is wired here: offering a chip
+            that toggles nothing is worse than not offering it. */}
+        {pickChartsOpen && CHARTS.filter(c => c.key !== 'traffic' && c.key !== 'tfr').map(c => (
+          <button key={c.key} onClick={() => togglePick(c.key)} style={{
+            width: 56, height: 32, borderRadius: 8, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: pickLayers[c.key] ? 'rgba(255,255,255,0.95)' : 'rgba(10,10,10,0.75)',
+            color: pickLayers[c.key] ? '#111' : 'rgba(255,255,255,0.9)',
+            backdropFilter: 'blur(12px)',
+            border: '0.5px solid rgba(255,255,255,0.18)',
+            fontSize: 10.5, fontWeight: 700, letterSpacing: '0.4px',
+          }}>{c.label}</button>
+        ))}
       </div>
 
       <button onClick={onClose} style={{
