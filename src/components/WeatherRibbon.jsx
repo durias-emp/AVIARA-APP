@@ -23,6 +23,8 @@ import AirportPickerModal from './AirportPickerModal'
 // observation as current is exactly the failure this app exists to prevent, so
 // staleness is shown rather than hidden.
 const STALE_MS = 75 * 60 * 1000
+// The app's highlight colour, the same one the record button uses.
+const ACCENT = '#FF5A1F'
 
 export default function WeatherRibbon({
   icao, units = {}, style, onChangeAirport,
@@ -142,8 +144,9 @@ export default function WeatherRibbon({
           base is the rare one, so the frequent one gets the whole target and
           the rare one gets a labelled control inside. */}
       <button onClick={() => setOpen(o => !o)} style={{
-        display: 'flex', alignItems: 'center', gap: 7, width: '100%',
-        padding: '6px 9px 6px 7px', border: 'none', background: 'none',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: 7, width: '100%',
+        padding: '6px 12px', border: 'none', background: 'none',
         cursor: 'pointer',
       }}>
         <span style={{
@@ -199,8 +202,6 @@ export default function WeatherRibbon({
               set the width of the collapsed pill too, which is why a strip
               showing two short words still stretched halfway across the map. */}
           <div style={{ padding: '2px 12px 11px', minWidth: open ? 236 : 0 }}>
-            <div style={{ height: 1, background: 'rgba(60,60,67,0.1)', margin: '0 0 9px' }} />
-
             {metar ? (<>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 8 }}>
                 <span style={{ fontSize: 24, fontWeight: 800, color: '#1c1c1e', letterSpacing: '-0.8px' }}>
@@ -212,21 +213,6 @@ export default function WeatherRibbon({
                 </span>
               </div>
 
-              {/* Named, not implied. A dotted underline on a code is a hint
-                  that has to be guessed at; a word cannot be misread. */}
-              <button onClick={() => setPicker(true)} style={{
-                marginBottom: 9, border: 'none', cursor: 'pointer',
-                background: 'rgba(60,60,67,0.07)', borderRadius: 8,
-                padding: '5px 9px', fontSize: 11, fontWeight: 700,
-                color: 'rgba(60,60,67,0.75)', display: 'flex', alignItems: 'center', gap: 5,
-              }}>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 21s7-6.5 7-11a7 7 0 1 0-14 0c0 4.5 7 11 7 11z" />
-                  <circle cx="12" cy="10" r="2.4" />
-                </svg>
-                Change home airport
-              </button>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px 14px' }}>
                 {metrics.map(m => (
@@ -240,10 +226,22 @@ export default function WeatherRibbon({
 
               <button onClick={() => onDetailChange?.(true)} style={{
                 marginTop: 10, width: '100%', border: 'none', cursor: 'pointer',
-                background: 'rgba(60,60,67,0.07)', borderRadius: 9, padding: '7px 0',
+                background: 'rgba(60,60,67,0.07)', borderRadius: 9, padding: '9px 0',
                 fontSize: 11.5, fontWeight: 700, color: '#1c1c1e',
               }}>
                 Full report, METAR and TAF
+              </button>
+
+              {/* Last, and in the accent, because it is the only thing in this
+                  panel that changes something rather than reporting it. Same
+                  shape as the button above so the two read as a pair of
+                  actions rather than a button and a link. */}
+              <button onClick={() => setPicker(true)} style={{
+                marginTop: 7, width: '100%', border: 'none', cursor: 'pointer',
+                background: ACCENT, borderRadius: 9, padding: '9px 0',
+                fontSize: 11.5, fontWeight: 700, color: '#fff',
+              }}>
+                Change home airport
               </button>
             </>) : (
               <div style={{ fontSize: 11.5, color: 'rgba(60,60,67,0.55)', padding: '2px 0 4px' }}>

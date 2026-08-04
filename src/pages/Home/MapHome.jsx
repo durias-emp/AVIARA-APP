@@ -62,7 +62,6 @@ const TOOLS = [
   { to: '/calc',       icon: '/E6B CALC.svg',   label: 'Calculators' },
   { to: '/currency',   icon: '/cheque.png',     label: 'Currency' },
   { to: '/reference',  icon: '/libros.png',     label: 'Quick Reference' },
-  { to: '/aircraft',   icon: '/modo-avion.png', label: 'Aircraft' },
 ]
 
 // One tapped aircraft. Deliberately sparse: this is a reference readout, and
@@ -586,6 +585,16 @@ export default function MapHome() {
       Math.abs(d.lastY - s2[1]) < Math.abs(d.lastY - best[1]) ? s2 : best)[0])
   }
 
+  // The same four the Aircraft screen shows under the photo. Only the ones
+  // this profile actually carries: a row of dashes says less than a shorter
+  // row of real numbers.
+  const acStats = [
+    ['TAS', ac?.vspeeds?.cruise ? `${ac.vspeeds.cruise} kt` : null],
+    ['BURN', ac?.burnRate?.cruise ?? null],
+    ['FUEL', ac?.fuel?.usable ?? ac?.fuel?.total ?? null],
+    ['MTOW', ac?.weights?.mtow ?? null],
+  ].filter(([, v]) => v)
+
   const statFont = { fontSize: 11, fontWeight: 600, color: 'rgba(60,60,67,0.6)', letterSpacing: '0.2px' }
   const statBig = { fontSize: 26, fontWeight: 800, color: '#1c1c1e', letterSpacing: '-0.6px', fontVariantNumeric: 'tabular-nums' }
   const tileBtn = { background: 'none', border: 'none', cursor: 'pointer', padding: 0,
@@ -883,6 +892,47 @@ export default function MapHome() {
           transition: 'opacity 200ms ease-out',
           pointerEvents: expanded ? 'auto' : 'none',
         }}>
+          {/* The pilot's aircraft, first thing in the drawer. The dedicated
+              Aircraft screen already leads with this and it is the one thing
+              in here that is theirs rather than the app's, so it belongs at
+              the top rather than behind a tile labelled Aircraft. */}
+          <button onClick={() => navigate('/aircraft')} style={{
+            display: 'block', width: '100%', textAlign: 'left', padding: '14px 16px 16px',
+            marginBottom: 14, border: 'none', borderRadius: 18, cursor: 'pointer',
+            background: 'rgba(60,60,67,0.05)',
+          }}>
+            {ac?.image && (
+              <img src={ac.image} alt="" style={{
+                display: 'block', width: '100%', maxHeight: 128,
+                objectFit: 'contain', marginBottom: 4,
+              }} />
+            )}
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#1c1c1e', letterSpacing: '-0.4px' }}>
+              {ac?.fullName || 'No aircraft set'}
+            </div>
+            {ac?.registration && (
+              <div style={{
+                fontSize: 12.5, fontWeight: 700, fontFamily: 'monospace',
+                letterSpacing: '1px', color: 'rgba(60,60,67,0.5)', marginTop: 2,
+              }}>{ac.registration}</div>
+            )}
+            {acStats.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 8px', marginTop: 11 }}>
+                {acStats.map(([label, value]) => (
+                  <span key={label} style={{
+                    display: 'flex', alignItems: 'baseline', gap: 5,
+                    background: '#fff', borderRadius: 9, padding: '6px 10px',
+                  }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.5px',
+                      color: 'rgba(60,60,67,0.45)' }}>{label}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1c1c1e',
+                      fontFamily: 'monospace' }}>{value}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </button>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {TOOLS.map(t => (
               <button key={t.to} onClick={() => navigate(t.to)} style={{
