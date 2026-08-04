@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AVIARA GPS check</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 18px; background: #0d1430; color: #fff; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { font-size: 12px; opacity: 0.7; margin-bottom: 16px; word-break: break-all; }
+  .row { border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; background: #1b2547; }
+  .row b { display: block; font-size: 13px; margin-bottom: 3px; }
+  .row span { font-size: 13px; word-break: break-word; }
+  .ok   { background: #14532d; }
+  .bad  { background: #7f1d1d; }
+  .wait { background: #1e3a8a; }
+</style>
+</head>
+<body>
+<h1>AVIARA GPS check</h1>
+<div class="sub" id="meta"></div>
+<div id="out"></div>
+<script>
+// Standalone diagnostic — no React, no service worker logic, no app code.
+// Answers one question: when THIS page, on THIS origin, in THIS browser,
+// asks for a position the four different ways, what does the OS say?
+var out = document.getElementById('out');
+document.getElementById('meta').textContent =
+  location.origin + ' · secure: ' + window.isSecureContext + ' · ' + navigator.userAgent;
+
+function row(id, label, cls, text) {
+  var el = document.getElementById(id);
+  if (!el) { el = document.createElement('div'); el.id = id; out.appendChild(el); }
+  el.className = 'row ' + cls;
+  el.innerHTML = '<b>' + label + '</b><span>' + text + '</span>';
+}
+
+// 0. What does the browser think the permission is?
+if (navigator.permissions && navigator.permissions.query) {
+  navigator.permissions.query({ name: 'geolocation' }).then(function (p) {
+    row('perm', '0. Permission state for this site', p.state === 'granted' ? 'ok' : (p.state === 'denied' ? 'bad' : 'wait'), p.state);
+    p.onchange = function () { row('perm', '0. Permission state for this site', p.state === 'granted' ? 'ok' : 'bad', p.state); };
+  });
+} else {
+  row('perm', '0. Permission state for this site', 'wait', 'permissions API not available');
+}
+
+function runTest(id, label, opts) {
+  var t0 = Date.now();
+  row(id, label, 'wait', 'asking…');
+  navigator.geolocation.getCurrentPosition(
+    function (pos) {
+      row(id, label, 'ok', 'FIX in ' + (Date.now() - t0) + 'ms · ±' + Math.round(pos.coords.accuracy) + 'm · ' +
+        pos.coords.latitude.toFixed(4) + ', ' + pos.coords.longitude.toFixed(4));
+    },
+    function (err) {
+      row(id, label, 'bad', 'code ' + err.code + ' — ' + (err.message || 'no message') + ' · after ' + (Date.now() - t0) + 'ms');
+    },
+    opts
+  );
+}
+
+// 1. Bare minimum — the way most sites ask.
+runTest('t1', '1. Plain request (no options)', undefined);
+// 2. Exactly what AVIARA asks first.
+setTimeout(function(){ runTest('t2', '2. AVIARA’s first attempt (highAccuracy, 15s)', { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }); }, 500);
+// 3. Exactly AVIARA's fallback.
+setTimeout(function(){ runTest('t3', '3. AVIARA’s fallback (relaxed, cached ok, 20s)', { enableHighAccuracy: false, maximumAge: 30000, timeout: 20000 }); }, 1000);
+
+// 4. A live watch, AVIARA-style, counting fixes for 30 seconds.
+setTimeout(function () {
+  var n = 0, t0 = Date.now(), lastErr = null;
+  row('t4', '4. Continuous watch (30s)', 'wait', 'watching…');
+  var id = navigator.geolocation.watchPosition(
+    function () { n++; row('t4', '4. Continuous watch (30s)', 'ok', n + ' fixes so far'); },
+    function (err) { lastErr = 'code ' + err.code + ' — ' + (err.message || ''); row('t4', '4. Continuous watch (30s)', n ? 'ok' : 'bad', n + ' fixes · last error: ' + lastErr); },
+    { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
+  );
+  setTimeout(function () {
+    navigator.geolocation.clearWatch(id);
+    row('t4', '4. Continuous watch (30s)', n > 0 ? 'ok' : 'bad',
+      'finished: ' + n + ' fixes in ' + Math.round((Date.now() - t0) / 1000) + 's' + (lastErr ? ' · last error: ' + lastErr : ''));
+  }, 30000);
+}, 1500);
+</script>
+</body>
+</html>
