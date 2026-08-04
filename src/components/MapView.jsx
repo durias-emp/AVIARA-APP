@@ -607,7 +607,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   // A fresh watch per mount used to mean this screen always opened cold, no
   // matter how recently it had a real fix; now it usually already knows
   // the position by the time it opens.
-  const { coords: liveCoords, derived: liveDerived, status: liveStatus, error: liveError } = useHomeLocation()
+  const { coords: liveCoords, derived: liveDerived, status: liveStatus, error: liveError, retry: retryLocation } = useHomeLocation()
   const { layer, setLayer } = useMapLayer()
   const { overlays, toggleOverlay } = useMapOverlays()
   const { trail: breadcrumbTrail, reset: resetBreadcrumbs } = useBreadcrumbTrail({
@@ -814,14 +814,26 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         </svg>
       </button>
 
+      {/* Tappable. The watch retries on its own every ten seconds now, but a
+          pilot standing on the ramp watching it fail should not have to guess
+          whether anything is still happening, or relaunch the app to force it.
+          The banner says what went wrong, that it is still trying, and gives
+          them a way to ask for it now. */}
       {locationUnavailable && (
-        <div style={{
-          position: 'absolute', top: 68, left: 12, right: 12, zIndex: 500,
-          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
-          fontSize: 13, color: 'var(--text-secondary)', boxShadow: 'var(--shadow-sm)',
-        }}>
-          {liveError}
-        </div>
+        <button
+          onClick={retryLocation}
+          aria-label="Retry locating"
+          style={{
+            position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
+            background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
+            border: 'none', textAlign: 'left', width: 'auto',
+            boxShadow: 'var(--shadow-sm)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+          }}>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{liveError}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginTop: 3 }}>
+            Still trying · tap to retry now
+          </div>
+        </button>
       )}
 
       {detectState === 'recording' && (
