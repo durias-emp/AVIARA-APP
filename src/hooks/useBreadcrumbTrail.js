@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { get, put, del } from '../lib/db'
-import { isUsableFix, shouldKeepFix } from '../lib/track'
+import { isUsableFix, shouldKeepFix, fixFrom } from '../lib/track'
 
 const STORE = 'settings'
 const KEY = 'breadcrumbTrail'
@@ -66,7 +66,7 @@ export function useBreadcrumbTrail({ enabled, coords }) {
   useEffect(() => {
     if (!enabled || !isUsableFix(coords)) return
 
-    const point = { lat: coords.lat, lon: coords.lon, altFt: coords.altFt ?? null, t: Date.now() }
+    const point = fixFrom(coords)
     const points = pointsRef.current
     if (!shouldKeepFix(points[points.length - 1], point)) return
 
