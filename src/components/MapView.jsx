@@ -656,7 +656,12 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
       style={{ height: '100%', position: 'relative', isolation: 'isolate', '--map-bottom-inset': `${bottomInset}px`, '--map-top-inset': topInset, '--map-left-inset': showHomeButton ? '52px' : '0px', '--map-inset-duration': insetDuration }}>
       {/* Leaflet's own control rail is inside the map container, so it can't
           read a wrapper's padding — it gets the inset directly. */}
-      <style>{'.map-root .leaflet-bottom { bottom: calc(var(--map-bottom-inset, 0px) + 74px); transition: bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1); } .map-root .leaflet-top { top: var(--map-top-inset, 0px); }'}</style>
+      <style>{`
+        .map-root .leaflet-bottom { bottom: calc(var(--map-bottom-inset, 0px) + 74px); transition: bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1); }
+        .map-root .leaflet-top { top: var(--map-top-inset, 0px); }
+        .map-root .leaflet-control-zoom a { width: 24px; height: 24px; line-height: 24px; font-size: 16px; }
+        .map-root .leaflet-control-zoom { border-radius: 8px; }
+      `}</style>
       <LiveMap
         position={centerPosition} zoom={LOCATION_ZOOM}
         initialCenter={lastView?.center} initialZoom={lastView?.zoom}
@@ -685,15 +690,15 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         disabled={noFixYet}
         aria-label="Locate me"
         style={{
-          position: 'absolute', right: 12, bottom: 'calc(132px + var(--map-bottom-inset, 0px))', zIndex: 500,
+          position: 'absolute', right: 12, bottom: 'calc(122px + var(--map-bottom-inset, 0px))', zIndex: 500,
           transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
-          width: 40, height: 40, borderRadius: '50%', border: 'none',
+          width: 32, height: 32, borderRadius: '50%', border: 'none',
           background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: noFixYet ? 'default' : 'pointer', WebkitTapHighlightColor: 'transparent',
           opacity: noFixYet ? 0.55 : 1,
         }}>
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2.2" strokeLinecap="round">
           <circle cx="12" cy="12" r="3.5" />
           <line x1="12" y1="1" x2="12" y2="4.5" />
           <line x1="12" y1="19.5" x2="12" y2="23" />

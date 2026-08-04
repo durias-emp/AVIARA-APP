@@ -76,22 +76,22 @@ export default function MapLayersMenu({ layer, setLayer, layerOptions, overlays,
         style={{
           position: 'absolute', bottom: 'calc(84px + var(--map-bottom-inset, 0px))', right: 16, zIndex: 500,
           transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
-          display: 'flex', alignItems: 'center', gap: 7,
-          background: 'var(--bg-card)', borderRadius: 14, boxShadow: 'var(--shadow-sm)',
-          border: 'none', padding: '10px 14px', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 5,
+          background: 'var(--bg-card)', borderRadius: 11, boxShadow: 'var(--shadow-sm)',
+          border: 'none', padding: '6px 10px', cursor: 'pointer',
           WebkitTapHighlightColor: 'transparent',
         }}>
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <polygon points="12 2 2 7 12 12 22 7 12 2" />
           <polyline points="2 17 12 22 22 17" />
           <polyline points="2 12 12 17 22 12" />
         </svg>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Layers</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)' }}>Layers</span>
         {activeOverlayCount > 0 && (
           <span style={{
-            minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8,
+            minWidth: 14, height: 14, padding: '0 3px', borderRadius: 7,
             background: 'var(--accent)', color: 'var(--accent-fg)',
-            fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>{activeOverlayCount}</span>
         )}
       </button>
