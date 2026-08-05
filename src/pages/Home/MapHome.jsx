@@ -582,6 +582,15 @@ export default function MapHome() {
   const recording = rec != null
   const track = rec?.track?.map(p => [p.lat, p.lon]) ?? []
 
+  // Where the bottom of the chip stack sits: clear of the sheet, then clear of
+  // the two map controls, so the chips rest on top of the layers button that
+  // opens them. Kept as a bare expression rather than a finished calc() because
+  // it is used twice, once as an offset and once subtracted from the available
+  // height, and calc() nests but does not concatenate.
+  const chipStackBottom = sheetOpen
+    ? `${SHEET_COLLAPSED_PX}px + var(--safe-bottom) + ${recording ? 132 : 16}px + ${CTRL_STACK_H}px`
+    : `var(--safe-bottom) + 28px + ${CTRL_STACK_H}px`
+
   // The sheet is always the full height of the screen and is moved down out of
   // the way, rather than being resized. Animating transform is cheap and never
   // reflows its contents; animating height would relayout the whole list on
@@ -780,39 +789,30 @@ export default function MapHome() {
           screen: six permanent chips is what a cluttered EFB looks like. */}
       {chartsEverOpened && (
         <div style={{
-          // Pinned under the airport pill in the top corner rather than floated
-          // off the layers button. Anchored to the top, not the bottom: hung
-          // from the button the tallest column grew up into the pill on a short
-          // phone, and it also sat across the middle of the map, which is the
-          // part a pilot is actually looking at. Growing down from the top
-          // fills the corner that was empty and leaves the centre clear.
+          // Sits directly on top of the layers button, which is the button that
+          // opened it, and shares its right edge so the chips, the layers button
+          // and the locate button all line up.
           //
-          // Right edge shared with the controls below, so the stack, the layers
-          // button and the locate button all line up on one edge.
-          //
-          // The column count is not fixed. Two columns fit a phone but not a
-          // short window, where the first chip was cut off above the top of the
-          // screen. Bounding the box between the pill and the layers button and
-          // letting the chips wrap means the stack grows a third and fourth
-          // column instead of ever running off the top.
+          // It grows upward from there. What it must never do is keep growing
+          // past the airport pill, which is what happened when the column count
+          // was fixed at two: on a short screen the first chip ended up above
+          // the top edge, cut off. So the height is capped rather than the
+          // columns counted, and the chips wrap into a third or fourth column
+          // when there is not enough height for two.
           //
           // The box is anchored by its right edge and shrink-wraps its content,
-          // so each new column widens it leftward into empty map. That keeps
-          // plain wrap, which fills left to right, so SECT stays the top-left
-          // chip and the set still reads in order. wrap-reverse also fits, but
-          // it starts at the right and the columns then read backwards.
+          // so each new column widens it leftward into empty map. That is why
+          // plain wrap works here: it fills left to right, so SECT stays the
+          // top-left chip and the set still reads in order. wrap-reverse also
+          // fits but starts at the right, and the columns then read backwards.
           position: 'absolute', right: 14, zIndex: 500,
-          top: 'calc(var(--safe-top) + 58px)',
-          // top and bottom set the hard limit, so the stack can never reach the
-          // pill or the buttons. maxHeight then clamps it further to keep the
-          // columns even. Whichever is smaller wins, which is what makes this
-          // work at both ends: on a phone the cap bites and gives two columns of
-          // six, on a short window the bottom bound bites first and the wrap
-          // balances the columns itself.
-          bottom: sheetOpen
-            ? `calc(${SHEET_COLLAPSED_PX}px + var(--safe-bottom) + ${recording ? 132 : 16}px + ${CTRL_STACK_H}px)`
-            : `calc(var(--safe-bottom) + 28px + ${CTRL_STACK_H}px)`,
-          maxHeight: CHIP_STACK_MAX_H,
+          bottom: `calc(${chipStackBottom})`,
+          // Two limits, whichever is smaller. CHIP_STACK_MAX_H keeps the columns
+          // even on a tall phone, where unlimited height gave a column of nine
+          // beside a column of three: it fit, but it read as a mistake. The
+          // second is the room actually left between the pill and the button,
+          // which is what bites on a short screen and makes it wrap instead.
+          height: `min(${CHIP_STACK_MAX_H}px, calc(100% - var(--safe-top) - 58px - (${chipStackBottom})))`,
           display: 'flex', flexDirection: 'column', flexWrap: 'wrap',
           gap: 8, alignContent: 'flex-start', justifyContent: 'flex-start',
           // Fades out with the rest of the map's chrome when the sheet is
