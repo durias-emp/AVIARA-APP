@@ -96,6 +96,47 @@ export function FlightCategoryLayer() {
 // mounted background they have to be far smaller.
 const AIRPORT_MIN_ZOOM = 7
 
+// The airport marker: an aircraft in a filled disc, rather than a plain dot.
+//
+// Rebuilt as SVG rather than dropped in as an image, because the fill has to
+// carry the tower status the dot used to carry: blue towered, magenta
+// non-towered, grey where the data does not say. A flat PNG is one colour and
+// would have thrown that away, and this scales cleanly on a retina screen at
+// three sizes.
+//
+// The white ring is not decoration. These sit on a dark basemap and on a pale
+// sectional, and a magenta disc on a sectional's magenta airspace is invisible
+// without an outline separating it.
+//
+// Cached because there are only nine of these (three colours by three sizes)
+// and up to 500 markers on screen; building one per marker per render is the
+// difference between a smooth pan and a stuttering one.
+const airportIconCache = new Map()
+
+function airportIcon(color, size) {
+  const key = `${color}:${size}`
+  const hit = airportIconCache.get(key)
+  if (hit) return hit
+
+  // Plane glyph pointing up and to the right, matching the app's other
+  // aircraft marks. Drawn in a 24 unit box and scaled by the icon size.
+  const plane = 'M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z'
+  const icon = L.divIcon({
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    html: `<svg width="${size}" height="${size}" viewBox="0 0 24 24"
+             style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4))">
+             <circle cx="12" cy="12" r="11" fill="${color}" stroke="#fff" stroke-width="1.6"/>
+             <g transform="rotate(45 12 12)">
+               <path d="${plane}" fill="#fff" transform="translate(12 12) scale(0.62) translate(-12 -12)"/>
+             </g>
+           </svg>`,
+  })
+  airportIconCache.set(key, icon)
+  return icon
+}
+
 export function AirportLayer() {
   const map = useMap()
   const [airports, setAirports] = useState(null)
@@ -147,15 +188,15 @@ export function AirportLayer() {
     const detail = details[a.ident]
     const hasTower = detail ? (detail.f ?? []).some(([label]) => /tower|twr/i.test(label)) : null
     const color = hasTower == null ? '#8e8e93' : hasTower ? '#0a84ff' : '#d946a8'
-    const radius = a.cls === 2 ? 10 : a.cls === 1 ? 8 : 5.5
+    const size = a.cls === 2 ? 28 : a.cls === 1 ? 23 : 18
     const longestRwy = (detail?.r ?? []).reduce((best, r) => (r[2] > (best?.[2] ?? 0) ? r : best), null)
     return (
       // ident alone isn't a safe React key — OurAirports' local/GPS-code
       // fallback idents aren't guaranteed unique (109 collisions in the
       // current pack, e.g. two unrelated fields both landing on the same
       // fallback code), which silently drops one marker under a shared key.
-      <CircleMarker key={`${a.ident}-${a.lat}-${a.lon}`} center={[a.lat, a.lon]} radius={radius}
-        pathOptions={{ color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }}>
+      <Marker key={`${a.ident}-${a.lat}-${a.lon}`} position={[a.lat, a.lon]}
+        icon={airportIcon(color, size)}>
         <Popup>
           <div style={{ fontSize: 12, lineHeight: 1.5 }}>
             <strong>{a.ident}</strong>{a.name ? ` — ${a.name}` : ''}
@@ -171,7 +212,7 @@ export function AirportLayer() {
             )}
           </div>
         </Popup>
-      </CircleMarker>
+      </Marker>
     )
   })
 }
