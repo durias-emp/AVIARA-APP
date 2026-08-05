@@ -1098,7 +1098,7 @@ function PerformanceChartsSection({ profile, onAddAxisValue, onUpdateAxisValue, 
 }
 
 /* ── Main component ──────────────────────────────────────── */
-export default function Aircraft({ aircraftId, onBack, onDeleted }) {
+export default function Aircraft({ aircraftId, onBack, onDeleted, onHangar }) {
   const [profile, setProfile] = useState(null)
   const [saving, setSaving] = useState(false)
   const [showCustomModal, setShowCustomModal] = useState(false)
@@ -1493,9 +1493,32 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
           <span style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--text)', lineHeight: 1 }}>
             Aircraft
           </span>
-          {saving && (
-            <span style={{ fontSize: 12, color: 'var(--text-tertiary)', marginLeft: 'auto', letterSpacing: '0.2px' }}>Saving…</span>
-          )}
+          {/* Right-hand group, so the save indicator and the hangar button
+              share one edge instead of fighting over marginLeft:auto. */}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+            {saving && (
+              <span style={{ fontSize: 12, color: 'var(--text-tertiary)', letterSpacing: '0.2px' }}>Saving…</span>
+            )}
+            {/* The way out to the rest of the hangar. The map home now opens
+                this screen directly, so without it a pilot who came in that
+                way could reach one aircraft and never discover they can keep
+                several. Only rendered when there is somewhere to go. */}
+            {onHangar && (
+              <button onClick={onHangar} aria-label="Open hangar" style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '7px 12px', borderRadius: 999, cursor: 'pointer',
+                border: '1px solid var(--border)', background: 'var(--bg-card-2)',
+                color: 'var(--text)', fontSize: 13, fontWeight: 600,
+              }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 21V10l9-6 9 6v11" />
+                  <path d="M7 21v-7h10v7" />
+                </svg>
+                Hangar
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Aircraft hero */}

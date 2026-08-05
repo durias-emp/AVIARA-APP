@@ -82,7 +82,14 @@ export default function Hangar({ initialOpenId = null }) {
   if (aircraftList === undefined) return null // still loading
 
   if (openId) {
-    return <Aircraft aircraftId={openId} onBack={() => setOpenId(null)} onDeleted={handleAircraftDeleted} />
+    return (
+      <Aircraft
+        aircraftId={openId}
+        onBack={() => setOpenId(null)}
+        onDeleted={handleAircraftDeleted}
+        onHangar={() => setOpenId(null)}
+      />
+    )
   }
 
   if (wizardOpen) {

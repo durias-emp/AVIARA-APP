@@ -231,23 +231,29 @@ export default function WeatherRibbon({
               }}>
                 Full report, METAR and TAF
               </button>
-
-              {/* Last, and in the accent, because it is the only thing in this
-                  panel that changes something rather than reporting it. Same
-                  shape as the button above so the two read as a pair of
-                  actions rather than a button and a link. */}
-              <button onClick={() => setPicker(true)} style={{
-                marginTop: 7, width: '100%', border: 'none', cursor: 'pointer',
-                background: ACCENT, borderRadius: 9, padding: '9px 0',
-                fontSize: 11.5, fontWeight: 700, color: '#fff',
-              }}>
-                Change home airport
-              </button>
             </>) : (
               <div style={{ fontSize: 11.5, color: 'var(--map-ink-dim)', padding: '2px 0 4px' }}>
                 {loading ? 'Loading conditions…' : error ? 'Weather unavailable right now' : 'No observation'}
               </div>
             )}
+
+            {/* Outside the branch above, so it is there whether or not the
+                field reports. It used to sit inside, which meant the one case
+                where a pilot most wants to move on, a home airport with no
+                observation, was the one case with no way to leave it: the
+                panel said "No observation" and offered nothing else.
+                Plenty of small strips never report, so this is the normal
+                state for them rather than an error.
+
+                Last, and in the accent, because it is the only thing in this
+                panel that changes something rather than reporting it. */}
+            <button onClick={() => setPicker(true)} style={{
+              marginTop: metar ? 7 : 10, width: '100%', border: 'none', cursor: 'pointer',
+              background: ACCENT, borderRadius: 9, padding: '9px 0',
+              fontSize: 11.5, fontWeight: 700, color: '#fff',
+            }}>
+              Change home airport
+            </button>
           </div>
         </div>
       </div>
