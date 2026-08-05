@@ -27,11 +27,38 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // So: one watch, left alone to do its job. It is recreated only on a real
 // signal — the pilot asking, or the tab coming back to the foreground.
 
+// The last fix this device ever got, surviving relaunches. A pilot opening
+// the app in the hangar should see their airfield under a "last known"
+// marker, not the middle of the continent — the previous session's fix is
+// almost always a better guess than no guess. localStorage rather than
+// IndexedDB so it can be read synchronously on the very first render, in
+// time to be the map's mount view.
+const LAST_FIX_KEY = 'aviara.lastFix'
+
+function readStoredFix() {
+  try {
+    const f = JSON.parse(localStorage.getItem(LAST_FIX_KEY))
+    if (f && Number.isFinite(f.lat) && Number.isFinite(f.lon) && Number.isFinite(f.timestamp)) return f
+  } catch (e) {}
+  return null
+}
+
 export function useLiveLocation() {
   const [coords, setCoords] = useState(null) // { lat, lon, altFt, accuracyM, headingDeg, speedKt, timestamp }
   const [derived, setDerived] = useState({ rotDegSec: null, vsFpm: null })
   const [status, setStatus] = useState('pending')
   const [error, setError] = useState(null)
+  // Numeric GeolocationPositionError code (1 = permission denied), because
+  // the UI treats "the phone said no" differently from "no signal yet":
+  // one needs the pilot to change a setting, the other just needs patience,
+  // and telling them to wait for a permission error is a lie.
+  const [errorCode, setErrorCode] = useState(null)
+  // Live fix if there is one, else the newest fix this device ever had
+  // (with its own timestamp, so consumers can say how old it is). Never
+  // feed this to anything that records — a track built from a stale point
+  // is fiction — it exists for orientation: mount views, the greyed dot.
+  const [lastKnown, setLastKnown] = useState(readStoredFix)
+  const lastPersistRef = useRef(0)
   const prev = useRef(null)
   // Bumping this tears the watch down and starts the sequence again. Driven
   // only by a deliberate retry or by the tab regaining focus — never by a
@@ -56,6 +83,7 @@ export function useLiveLocation() {
       everGotFix = true
       setStatus('success')
       setError(null)
+      setErrorCode(null)
       const c = result.coords
       const next = {
         lat: c.latitude,
@@ -87,11 +115,24 @@ export function useLiveLocation() {
       }
       prev.current = next
       setCoords(next)
+      setLastKnown(next)
+      // Written at most every 10s — the value only matters across a
+      // relaunch, so per-tick writes buy nothing.
+      if (Date.now() - lastPersistRef.current > 10000) {
+        lastPersistRef.current = Date.now()
+        try {
+          localStorage.setItem(LAST_FIX_KEY, JSON.stringify({
+            lat: next.lat, lon: next.lon, altFt: next.altFt,
+            accuracyM: next.accuracyM, timestamp: next.timestamp,
+          }))
+        } catch (e) {}
+      }
     }
 
     function handleError(err) {
       setStatus('error')
       setError(`Location error (code ${err.code}): ${err.message || 'unknown'}`)
+      setErrorCode(err.code ?? null)
       // A raw high-accuracy GPS fix can be slow or unavailable (weak sky
       // view, chip still warming up) — same story as useCurrentLocation's
       // one-shot retry. watchPosition itself just keeps hammering the same
@@ -148,5 +189,5 @@ export function useLiveLocation() {
   // starts a fresh attempt at all.
   const retry = useCallback(() => setAttempt(a => a + 1), [])
 
-  return { coords, derived, status, error, retry }
+  return { coords, derived, status, error, errorCode, lastKnown, retry }
 }
