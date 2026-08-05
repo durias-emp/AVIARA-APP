@@ -6,7 +6,6 @@ const KEY   = 'mapOverlays'
 const EVENT = 'aviara-map-overlays'
 
 const DEFAULTS = {
-  breadcrumbs: false,
   radar: false,
   flightCategory: false,
   tfr: false,

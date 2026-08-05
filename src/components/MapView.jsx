@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Marker, Polyline, Polygon, Popup, ZoomControl, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -6,11 +6,7 @@ import { HomeButton } from './Shell'
 import { useHomeLocation } from '../context/HomeLocation'
 import { useMapLayer } from '../hooks/useMapLayer'
 import { useMapOverlays } from '../hooks/useMapOverlays'
-import { useBreadcrumbTrail } from '../hooks/useBreadcrumbTrail'
-import { useFlightTimer } from '../hooks/useFlightTimer'
-import { useWakeLock } from '../hooks/useWakeLock'
-import { formatClock } from '../lib/flightTime'
-import { useFlightDetector, DEFAULT_AUTO_DETECT_CONFIG, autoDetectEnabledFrom } from '../hooks/useFlightDetector'
+import { useFlightDetector, DEFAULT_AUTO_DETECT_CONFIG } from '../hooks/useFlightDetector'
 import { useLogbook } from '../context/Logbook'
 import { useActiveAircraft } from '../context/ActiveAircraft'
 import { get } from '../lib/db'
@@ -139,21 +135,6 @@ export function LiveMap({ position, zoom, initialCenter, initialZoom, layer, mar
   )
 }
 
-// The pilot's own track, drawn behind them for as long as the overlay is on.
-// Two strokes: a wide translucent casing under a solid core, so the line stays
-// legible over both a dark satellite image and a pale sectional without
-// needing to know which is underneath.
-function BreadcrumbLayer({ trail }) {
-  if (trail.length < 2) return null
-  const path = trail.map(p => [p.lat, p.lon])
-  return (
-    <>
-      <Polyline positions={path} pathOptions={{ color: '#000', weight: 7, opacity: 0.28, lineCap: 'round', lineJoin: 'round' }} />
-      <Polyline positions={path} pathOptions={{ color: '#ff6b35', weight: 3, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }} />
-    </>
-  )
-}
-
 // Radar — public NEXRAD mosaic tiles from the Iowa Environmental Mesonet
 // (IEM), no API key required. Refreshes every 5 min, matching IEM's own
 // update cadence.
@@ -231,10 +212,6 @@ function FlightCategoryLayer() {
 // real EFB; medium and then small fields join in as the pilot zooms closer,
 // which is what keeps the in-view count (and the cap below) sane rather than
 // a hard cutoff that makes the whole layer vanish at once.
-// The map is the home screen now, mounted for as long as the app is open, so
-// marker counts are a standing cost rather than one the pilot opted into.
-const AIRPORT_MIN_ZOOM = 7
-
 function AirportLayer() {
   const map = useMap()
   const [airports, setAirports] = useState(null)
@@ -254,14 +231,8 @@ function AirportLayer() {
     if (!airports) return
     function load() {
       const z = map.getZoom()
-      // Below this there is nothing to read: 2000 markers at world zoom is an
-      // unreadable smear, and it is now the home screen's resting state rather
-      // than something the pilot opened on purpose. The caps that follow were
-      // sized for a map you had to go and open; as a permanently mounted
-      // background they have to be far smaller.
-      if (z < AIRPORT_MIN_ZOOM) { setVisible([]); return }
-      const minCls = z >= 9 ? 0 : 1
-      const cap = z >= 9 ? 500 : 300
+      const minCls = z >= 9 ? 0 : z >= 6 ? 1 : 2
+      const cap = minCls === 2 ? 2000 : minCls === 1 ? 800 : 500
       const b = map.getBounds()
       const south = b.getSouth(), north = b.getNorth(), west = b.getWest(), east = b.getEast()
       const hits = []
@@ -336,11 +307,7 @@ const SEAPLANE_ICON = L.divIcon({
 // inventing a criterion the source data doesn't have.
 const AUX_CAP = 400
 
-// minZoom defaults to a real floor, not 0. At 0 the guard below reads
-// `zoom < 0`, which is false forever — so the default silently turned the
-// limit off entirely. Seaplane bases were declared without the prop and drew
-// 400 markers across the whole country at world zoom.
-function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 8 }) {
+function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 0 }) {
   const map = useMap()
   const [list, setList] = useState(null)
   const [visible, setVisible] = useState([])
@@ -394,7 +361,7 @@ function HeliportLayer() {
   return <AuxAerodromeLayer dataKey="heliports" icon={HELIPORT_ICON} kindLabel="Heliport" minZoom={8} />
 }
 function SeaplaneBaseLayer() {
-  return <AuxAerodromeLayer dataKey="seaplaneBases" icon={SEAPLANE_ICON} kindLabel="Seaplane base" minZoom={8} />
+  return <AuxAerodromeLayer dataKey="seaplaneBases" icon={SEAPLANE_ICON} kindLabel="Seaplane base" />
 }
 
 // TFRs — FAA GeoServer WFS via our /api/tfr proxy (same source and parsing
@@ -509,7 +476,7 @@ export function MapViewSync({ view }) {
 // showing whatever view HAD last been successfully reported. A stable
 // map.on subscription that's set up once and never torn down mid-session
 // doesn't have this gap.
-export function ViewReporter({ onChange }) {
+function ViewReporter({ onChange }) {
   const map = useMap()
   useEffect(() => {
     function handleMoveEnd() {
@@ -519,35 +486,6 @@ export function ViewReporter({ onChange }) {
     map.on('moveend', handleMoveEnd)
     return () => map.off('moveend', handleMoveEnd)
   }, [map, onChange])
-  return null
-}
-
-// Keeps whatever the pilot is looking at centred in the part of the map that
-// is actually visible, when something else covers the bottom of the screen —
-// on Home, the drawer.
-//
-// The map container stays the full height of the window; only the exposed
-// strip above the drawer changes. A point sitting at the container's centre
-// is therefore too low to see properly once the drawer is up, so the view is
-// panned up by half the covered height, which puts it back in the middle of
-// what's left. Shrinking the container instead would work, but Leaflet would
-// have to re-lay-out and re-fetch tiles on every drawer movement.
-//
-// Panned by the DELTA rather than set absolutely: the pilot may have panned
-// the map themselves since the last change, and jumping to an absolute offset
-// would throw that away. `animate: false` because this runs alongside the
-// drawer's own transition, and two easing curves on the same movement read as
-// the map lagging behind the drawer.
-export function MapFocusOffset({ coveredHeight }) {
-  const map = useMap()
-  const applied = useRef(0)
-  useEffect(() => {
-    const want = coveredHeight / 2
-    const delta = want - applied.current
-    if (Math.abs(delta) < 0.5) return
-    applied.current = want
-    map.panBy([0, delta], { animate: false })
-  }, [coveredHeight, map])
   return null
 }
 
@@ -574,52 +512,16 @@ function RoutePreview({ route }) {
   )
 }
 
-// `bottomInset` is how much of the bottom of the map something else is
-// covering — on Home, the drawer. It does two things: lifts every
-// bottom-anchored control clear of the cover (via --map-bottom-inset, which
-// the layers menu, the GPS bar and Leaflet's own control rail all read), and
-// pans the view up by half of it so what you are looking at stays in the
-// middle of the strip you can still see.
-//
-// `showHomeButton` is false when this map IS the home screen, where a button
-// that navigates home is meaningless. It also drives --map-left-inset: the
-// route bar leaves room on the left for that button, and with no button there
-// the room is a hole that pushes the bar off centre.
-//
-// Every bottom-anchored control rides on --map-bottom-inset, so the whole
-// stack stays pegged to the top of the drawer and moves with it. Nothing is
-// mounted or unmounted as the drawer moves: a control that vanishes and
-// reappears reads as a glitch, and its position is the thing that should
-// change, not its existence.
-//
-// `insetDuration` is how long that movement takes. It is 0ms while a drag is
-// in progress, so the controls track the finger exactly, and matches the
-// drawer's own transition when it snaps, so the two ease together instead of
-// the controls jumping to the destination the drawer is still travelling to.
-//
-// `focusInset` is the settled height rather than the live one. The map's
-// recentring should happen once per drawer move, not on every frame of a
-// drag.
-export default function MapView({ onViewChange, lastView, bottomInset = 0, focusInset = null, insetDuration = '0ms', topInset = '0px', showHomeButton = true } = {}) {
+export default function MapView({ onViewChange, lastView } = {}) {
   // Shared with Home's own map preview via HomeLocationProvider (mounted
   // once around Home, which never unmounts while this screen — an overlay
   // on top of Home — is open) rather than starting a separate watch here.
   // A fresh watch per mount used to mean this screen always opened cold, no
   // matter how recently it had a real fix; now it usually already knows
   // the position by the time it opens.
-  const { coords: liveCoords, derived: liveDerived, status: liveStatus, error: liveError, retry: retryLocation } = useHomeLocation()
+  const { coords: liveCoords, derived: liveDerived, status: liveStatus, error: liveError } = useHomeLocation()
   const { layer, setLayer } = useMapLayer()
   const { overlays, toggleOverlay } = useMapOverlays()
-  const { trail: breadcrumbTrail, reset: resetBreadcrumbs } = useBreadcrumbTrail({
-    enabled: overlays.breadcrumbs, coords: liveCoords,
-  })
-  // Turning the trail on starts a new one. Doing this here, on the actual
-  // toggle, is what makes it a deliberate reset rather than something the app
-  // does to itself whenever overlay state finishes loading.
-  const handleToggleOverlay = useCallback(key => {
-    if (key === 'breadcrumbs' && !overlays.breadcrumbs) resetBreadcrumbs()
-    toggleOverlay(key)
-  }, [overlays.breadcrumbs, toggleOverlay, resetBreadcrumbs])
   const [route, setRoute] = useState(null)
   const [recenterRequest, setRecenterRequest] = useState(null)
   // [lat,lon] once a fix exists, else null — feeds ONLY the blue "you are
@@ -661,10 +563,10 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   // Flight Detection section. Reuses this screen's own liveCoords (never a
   // second geolocation watch — see useFlightDetector's own header comment
   // for why that matters).
-  const [autoDetectEnabled, setAutoDetectEnabled] = useState(true)
+  const [autoDetectEnabled, setAutoDetectEnabled] = useState(false)
   const [autoDetectConfig, setAutoDetectConfig] = useState(DEFAULT_AUTO_DETECT_CONFIG)
   useEffect(() => {
-    get('settings', 'autoDetectEnabled').then(row => setAutoDetectEnabled(autoDetectEnabledFrom(row)))
+    get('settings', 'autoDetectEnabled').then(row => setAutoDetectEnabled(!!row?.value))
     get('settings', 'autoDetectConfig').then(row => setAutoDetectConfig({ ...DEFAULT_AUTO_DETECT_CONFIG, ...(row?.value ?? {}) }))
   }, [])
   const { state: detectState, draft: detectedDraft, reset: resetDetector } = useFlightDetector({
@@ -673,38 +575,6 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   const { addEntry } = useLogbook()
   const { aircraftId: activeAircraftId } = useActiveAircraft()
   const [flightSavedBanner, setFlightSavedBanner] = useState(false)
-
-  // The pilot's own clock. Stopping it hands back a finished flight, which is
-  // logged here rather than in the hook because this is the screen that knows
-  // which aircraft is active. Tagged pendingReview like a detected flight, so
-  // both land in the same place for the pilot to confirm rather than being
-  // committed behind their back.
-  const flightTimer = useFlightTimer({ coords: liveCoords })
-  const [timedFlightBanner, setTimedFlightBanner] = useState(null)
-  // The screen staying awake is the difference between recording a flight and
-  // recording the first thirty seconds of one. Held whenever either recorder
-  // is running — the pilot's timer, or auto-detect having caught a departure.
-  const screenAwake = useWakeLock(flightTimer.running || detectState === 'recording')
-  function toggleFlightTimer() {
-    if (!flightTimer.running) { flightTimer.start(); return }
-    const flight = flightTimer.stop()
-    if (!flight) return
-    addEntry({
-      date: new Date(flight.startedAt).toISOString().slice(0, 10),
-      totalTime: flight.hours.toFixed(1),
-      startedAt: flight.startedAt,
-      endedAt: flight.endedAt,
-      durationMs: flight.elapsedMs,
-      track: flight.track,
-      distanceNm: flight.distanceNm,
-      aircraftId: activeAircraftId ?? null,
-      source: 'timer',
-      pendingReview: true,
-    }).then(() => {
-      setTimedFlightBanner(flight)
-      setTimeout(() => setTimedFlightBanner(null), 8000)
-    }).catch(() => {})
-  }
   useEffect(() => {
     if (detectState !== 'done' || !detectedDraft) return
     // Never silently commits a finished entry — it lands tagged pendingReview
@@ -726,23 +596,12 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   const locationUnavailable = noFixYet && (liveStatus === 'error' || liveStatus === 'unsupported')
 
   return (
-    <div
-      className="map-root"
-      style={{ height: '100%', position: 'relative', isolation: 'isolate', '--map-bottom-inset': `${bottomInset}px`, '--map-top-inset': topInset, '--map-left-inset': showHomeButton ? '52px' : '0px', '--map-inset-duration': insetDuration }}>
-      {/* Leaflet's own control rail is inside the map container, so it can't
-          read a wrapper's padding — it gets the inset directly. */}
-      <style>{`
-        .map-root .leaflet-bottom { bottom: calc(var(--map-bottom-inset, 0px) + 74px); transition: bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1); }
-        .map-root .leaflet-top { top: var(--map-top-inset, 0px); }
-        .map-root .leaflet-control-zoom a { width: 24px; height: 24px; line-height: 24px; font-size: 16px; }
-        .map-root .leaflet-control-zoom { border-radius: 8px; }
-      `}</style>
+    <div style={{ height: '100%', position: 'relative', isolation: 'isolate' }}>
       <LiveMap
         position={centerPosition} zoom={LOCATION_ZOOM}
         initialCenter={lastView?.center} initialZoom={lastView?.zoom}
-        layer={layer} zoomControlPosition="bottomleft"
+        layer={layer} zoomControlPosition="bottomright"
       >
-        {overlays.breadcrumbs && <BreadcrumbLayer trail={breadcrumbTrail} />}
         {overlays.radar && <RadarLayer />}
         {overlays.flightCategory && <FlightCategoryLayer />}
         {overlays.tfr && <TfrLayer />}
@@ -751,61 +610,26 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         {overlays.seaplaneBases && <SeaplaneBaseLayer />}
         <LocateRecenter request={recenterRequest} />
         <RoutePreview route={route} />
-        <MapFocusOffset coveredHeight={focusInset ?? bottomInset} />
         {onViewChange && <ViewReporter onChange={onViewChange} />}
       </LiveMap>
 
-      {showHomeButton && (
-        <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 600 }}>
-          <HomeButton />
-        </div>
-      )}
-
-      {/* The flight timer. Idle it is a button; running it is the clock,
-          because a timer you cannot read is not doing its job. Sits opposite
-          locate, on the same rail as everything else pegged to the drawer. */}
-      <button
-        onClick={toggleFlightTimer}
-        aria-label={flightTimer.running ? 'Stop flight timer' : 'Start flight timer'}
-        style={{
-          position: 'absolute', left: 12, bottom: 'calc(150px + var(--map-bottom-inset, 0px))', zIndex: 500,
-          transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
-          height: 32, minWidth: 32, padding: flightTimer.running ? '0 10px' : 0,
-          borderRadius: 16, border: 'none',
-          background: flightTimer.running ? 'var(--danger)' : 'var(--bg-card)',
-          boxShadow: 'var(--shadow-sm)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
-        }}>
-        {flightTimer.running ? (
-          <>
-            <span style={{ width: 9, height: 9, borderRadius: 2, background: '#fff', flexShrink: 0 }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
-              {formatClock(flightTimer.elapsedMs)}
-            </span>
-          </>
-        ) : (
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="13" r="8" />
-            <path d="M12 9v4l2.5 2M9 2h6" />
-          </svg>
-        )}
-      </button>
+      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 600 }}>
+        <HomeButton />
+      </div>
 
       <button
         onClick={handleLocate}
         disabled={noFixYet}
         aria-label="Locate me"
         style={{
-          position: 'absolute', right: 12, bottom: 'calc(122px + var(--map-bottom-inset, 0px))', zIndex: 500,
-          transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
-          width: 32, height: 32, borderRadius: '50%', border: 'none',
+          position: 'absolute', right: 12, bottom: 136, zIndex: 500,
+          width: 40, height: 40, borderRadius: '50%', border: 'none',
           background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: noFixYet ? 'default' : 'pointer', WebkitTapHighlightColor: 'transparent',
           opacity: noFixYet ? 0.55 : 1,
         }}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2.2" strokeLinecap="round">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round">
           <circle cx="12" cy="12" r="3.5" />
           <line x1="12" y1="1" x2="12" y2="4.5" />
           <line x1="12" y1="19.5" x2="12" y2="23" />
@@ -814,26 +638,14 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         </svg>
       </button>
 
-      {/* Tappable. The watch retries on its own every ten seconds now, but a
-          pilot standing on the ramp watching it fail should not have to guess
-          whether anything is still happening, or relaunch the app to force it.
-          The banner says what went wrong, that it is still trying, and gives
-          them a way to ask for it now. */}
       {locationUnavailable && (
-        <button
-          onClick={retryLocation}
-          aria-label="Retry locating"
-          style={{
-            position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
-            background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
-            border: 'none', textAlign: 'left', width: 'auto',
-            boxShadow: 'var(--shadow-sm)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
-          }}>
-          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{liveError}</div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginTop: 3 }}>
-            Still trying · tap to retry now
-          </div>
-        </button>
+        <div style={{
+          position: 'absolute', top: 68, left: 12, right: 12, zIndex: 500,
+          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
+          fontSize: 13, color: 'var(--text-secondary)', boxShadow: 'var(--shadow-sm)',
+        }}>
+          {liveError}
+        </div>
       )}
 
       {detectState === 'recording' && (
@@ -848,32 +660,6 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         </div>
       )}
 
-      {/* Only shown when the lock could NOT be taken. Confirming that the
-          screen will stay on is noise; warning that it will not is the thing a
-          pilot can act on — set Auto-Lock to Never before pushing the throttle
-          up, rather than discovering a five-minute track afterwards. */}
-      {(flightTimer.running || detectState === 'recording') && !screenAwake && (
-        <div style={{
-          position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
-          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
-          fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warn)', flexShrink: 0 }} />
-          Recording — set Auto-Lock to Never, or the screen will stop it.
-        </div>
-      )}
-
-      {timedFlightBanner && (
-        <div style={{
-          position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
-          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
-          fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
-        }}>
-          Flight timed — {timedFlightBanner.clock} ({timedFlightBanner.hours.toFixed(1)} h). Review it in the logbook.
-        </div>
-      )}
-
       {flightSavedBanner && (
         <div style={{
           position: 'absolute', top: 68, left: 12, right: 12, zIndex: 500,
@@ -885,7 +671,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
       )}
 
       <FlightPlanBar onRouteChange={setRoute} />
-      <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={handleToggleOverlay} />
+      <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={toggleOverlay} />
       <GpsInfoBar route={route} coords={liveCoords} derived={liveDerived} status={liveStatus} />
     </div>
   )

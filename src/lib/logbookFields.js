@@ -94,15 +94,6 @@ export function defaultFieldConfig() {
 
 // Sim time is excluded on purpose — it isn't flight time (see LogbookList.jsx's
 // EntryRow comment) — so this is real logged hours only.
-//
-// Flights awaiting review are excluded for a different reason: the detector
-// and the manual timer both file their results as pendingReview so the pilot
-// can confirm them, and a total that counted them would be claiming hours
-// nobody has agreed to yet. It would also move on its own, mid-flight, as the
-// detector filed entries — a running total that changes without the pilot
-// doing anything is not a total they can quote.
 export function computeTotalHours(entries) {
-  return (entries ?? [])
-    .filter(e => e.pendingReview !== true)
-    .reduce((sum, e) => sum + (parseFloat(e.totalTime) || 0), 0)
+  return (entries ?? []).reduce((sum, e) => sum + (parseFloat(e.totalTime) || 0), 0)
 }
