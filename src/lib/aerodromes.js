@@ -21,6 +21,25 @@
 // underneath, which is what 10 NM means.
 
 import { bboxOf, crossTrackNm, haversineNm, sampleRoute } from './corridor'
+import { ES_AERODROME_ROWS, ES_HELIPORT_ROWS } from '../data/esAerodromes'
+
+// National data that has no upstream builder gets folded in here rather than
+// written into the generated packs, which are rebuilt every 28 days and would
+// drop it. See src/data/esAerodromes.js.
+//
+// Matched on position, not on name: two unrelated El Salvador strips are both
+// called El Platanar and sit 50 NM apart, so names prove nothing. Half a
+// nautical mile is comfortably tighter than the distance between any two real
+// fields and comfortably looser than the disagreement between two sources
+// describing the same one.
+const SAME_FIELD_NM = 0.5
+
+function mergeSupplement(base, extra, latI = 1, lonI = 2) {
+  if (!base) return base
+  const added = extra.filter(e =>
+    !base.some(b => haversineNm(e[latI], e[lonI], b[latI], b[lonI]) < SAME_FIELD_NM))
+  return added.length ? base.concat(added) : base
+}
 
 // Indexed by the OurAirports class: 0 small, 1 medium, 2 large.
 export const CORRIDOR_BY_CLASS = [10, 20, 40]
@@ -34,7 +53,8 @@ let _airports = null
 export async function getAirports() {
   if (_airports) return _airports
   try {
-    _airports = (await import('../data/geo/airports.json')).default.airports
+    const bundled = (await import('../data/geo/airports.json')).default.airports
+    _airports = mergeSupplement(bundled, ES_AERODROME_ROWS)
     return _airports
   } catch {
     return null
@@ -95,7 +115,12 @@ let _aux = null
 export async function getAuxAerodromes() {
   if (_aux) return _aux
   const d = (await import('../data/geo/aux_aerodromes.json')).default
-  _aux = d
+  _aux = {
+    ...d,
+    // The bundled pack has no heliports anywhere in El Salvador, so without
+    // this the heliport layer draws an empty country.
+    heliports: mergeSupplement(d.heliports, ES_HELIPORT_ROWS),
+  }
   return _aux
 }
 

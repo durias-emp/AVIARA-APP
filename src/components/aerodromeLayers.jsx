@@ -122,10 +122,12 @@ export function AirportLayer() {
       const south = b.getSouth(), north = b.getNorth(), west = b.getWest(), east = b.getEast()
       const hits = []
       for (const a of airports) {
-        const [ident, lat, lon, cls, name] = a
+        // elevFt and source are only present on the hand-maintained national
+        // rows merged in by lib/aerodromes.js; the bundled pack stops at name.
+        const [ident, lat, lon, cls, name, elevFt, source] = a
         if (cls < minCls) continue
         if (lat < south || lat > north || lon < west || lon > east) continue
-        hits.push({ ident, lat, lon, cls, name })
+        hits.push({ ident, lat, lon, cls, name, elevFt, source })
         if (hits.length >= cap) break
       }
       setVisible(hits)
@@ -160,6 +162,13 @@ export function AirportLayer() {
             <br />
             {hasTower == null ? 'Tower status unknown' : hasTower ? 'Towered' : 'Non-towered'}
             {longestRwy && <><br />{longestRwy[2].toLocaleString()} ft {longestRwy[3]}</>}
+            {a.elevFt != null && <><br />{a.elevFt.toLocaleString()} ft elevation</>}
+            {/* Where a figure comes from travels with the figure. These rows
+                are a national authority's list, not the bundled pack, and the
+                name is a name rather than an ICAO code. */}
+            {a.source && (
+              <><br /><span style={{ opacity: 0.7 }}>{a.source} · no ICAO code</span></>
+            )}
           </div>
         </Popup>
       </CircleMarker>
@@ -210,9 +219,9 @@ function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 8 }) {
       const south = b.getSouth(), north = b.getNorth(), west = b.getWest(), east = b.getEast()
       const hits = []
       for (const a of list) {
-        const [ident, lat, lon, name] = a
+        const [ident, lat, lon, name, elevFt, source] = a
         if (lat < south || lat > north || lon < west || lon > east) continue
-        hits.push({ ident, lat, lon, name })
+        hits.push({ ident, lat, lon, name, elevFt, source })
         if (hits.length >= AUX_CAP) break
       }
       setVisible(hits)
@@ -232,8 +241,16 @@ function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 8 }) {
     <Marker key={`${a.ident}-${a.lat}-${a.lon}`} position={[a.lat, a.lon]} icon={icon}>
       <Popup>
         <div style={{ fontSize: 12, lineHeight: 1.5 }}>
-          <strong>{a.ident}</strong> — {a.name}
+          {/* The name is only appended when there is one to append. The
+              national rows merged in by lib/aerodromes.js have no separate
+              name, because the name IS the identifier: they have no ICAO
+              code, and this used to render a dangling em dash. */}
+          <strong>{a.ident}</strong>{a.name ? ` — ${a.name}` : ''}
           <br />{kindLabel}
+          {a.elevFt != null && <><br />{a.elevFt.toLocaleString()} ft elevation</>}
+          {a.source && (
+            <><br /><span style={{ opacity: 0.7 }}>{a.source} · no ICAO code</span></>
+          )}
         </div>
       </Popup>
     </Marker>
