@@ -11,6 +11,7 @@
 // cached; the PWA precache makes it available offline after first load.
 
 import { get, put } from './db'
+import { getAirports } from './aerodromes'
 
 let _fixes = null
 let _navaids = null
@@ -50,17 +51,55 @@ export async function getUserWaypoints() {
   return row?.list ?? []
 }
 
+// A name is reserved if the route bar would resolve it to something else
+// FIRST — which includes every alias the bar tries, not just exact matches:
+// it checks airports before waypoints, and for a 3-letter token it also
+// tries the K-prefixed form (BOS finds KBOS), so a user waypoint named BOS
+// would silently never resolve. Blocking those at save time is the whole
+// point of the restriction: one name, one meaning, no route-detector
+// ambiguity.
+async function reservedBy(ident) {
+  const named = await lookupNamed(ident)
+  if (named) return named.kind === 'GPS' ? 'a GPS fix' : `the ${ident} VOR`
+  const airports = await getAirports()
+  const tryIdents = [ident]
+  if (ident.length === 3) tryIdents.push('K' + ident)
+  if (ident.length === 4 && ident[0] === 'K') tryIdents.push(ident.slice(1))
+  for (const cand of tryIdents) {
+    if (airports.some(a => a[0] === cand)) {
+      return cand === ident ? `the ${cand} airport` : `the ${cand} airport (route entries treat ${ident} as ${cand})`
+    }
+  }
+  return null
+}
+
 export async function saveUserWaypoint(name, lat, lon) {
   const ident = name.trim().toUpperCase()
-  const reserved = await lookupNamed(ident)
+  if (!ident) throw new Error('A waypoint needs a name')
+  if (!/^[A-Z0-9]{2,10}$/.test(ident)) {
+    throw new Error('Names are 2–10 letters/digits, no spaces — they have to survive the route bar')
+  }
+  const reserved = await reservedBy(ident)
   if (reserved) {
-    throw new Error(`"${ident}" already exists as a ${reserved.kind} waypoint`)
+    throw new Error(`"${ident}" is taken by ${reserved}`)
   }
   const list = await getUserWaypoints()
   const next = list.filter(w => w.name !== ident)
   next.push({ name: ident, lat, lon, createdAt: Date.now() })
   await put('settings', { key: 'user_waypoints', list: next })
   return { kind: 'USER', name: ident, lat, lon }
+}
+
+// "Just save it" with no name typed: WP01, WP02, … — first free slot,
+// checked against the same reservation rules as a typed name (some real
+// airport idents contain digits, so even these can collide in principle).
+export async function nextAutoName() {
+  const taken = new Set((await getUserWaypoints()).map(w => w.name))
+  for (let i = 1; i <= 99; i++) {
+    const cand = `WP${String(i).padStart(2, '0')}`
+    if (!taken.has(cand) && !(await reservedBy(cand))) return cand
+  }
+  throw new Error('All 99 auto-names are used — name this one yourself')
 }
 
 export async function removeUserWaypoint(name) {

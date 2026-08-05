@@ -13,6 +13,9 @@ const DEFAULTS = {
   airports: false,
   heliports: false,
   seaplaneBases: false,
+  // AVIARA-to-AVIARA pilot reports. Off by default like every overlay —
+  // the pilot opting in is what "has the PIREP layer turned on" means.
+  pireps: false,
 }
 
 // Persisted, multi-select overlay toggles — separate from useMapLayer's

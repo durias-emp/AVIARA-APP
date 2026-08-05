@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Marker, Polyline, Polygon, Popup, ZoomControl, useMap } from 'react-leaflet'
+import { createPortal } from 'react-dom'
+import { MapContainer, TileLayer, CircleMarker, Marker, Polyline, Polygon, Popup, Tooltip, ZoomControl, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { HomeButton } from './Shell'
@@ -13,9 +14,12 @@ import { formatClock } from '../lib/flightTime'
 import { useFlightDetector, DEFAULT_AUTO_DETECT_CONFIG, autoDetectEnabledFrom } from '../hooks/useFlightDetector'
 import { useLogbook } from '../context/Logbook'
 import { useActiveAircraft } from '../context/ActiveAircraft'
-import { get } from '../lib/db'
+import { get, put } from '../lib/db'
+import { submitPirep, listRecentPireps, PIREP_SKY, PIREP_WX, PIREP_WX_LABELS, PIREP_TURB, PIREP_ICING } from '../lib/pireps'
 import { FLTCAT } from '../lib/weather'
 import { getAirports, getAirportDetails, getAuxAerodromes, findAirport } from '../lib/aerodromes'
+import { getUserWaypoints, saveUserWaypoint, removeUserWaypoint, nextAutoName } from '../lib/waypoints'
+import { fmtAvCoord } from '../lib/geo'
 import MapLayersMenu from './MapLayersMenu'
 import FlightPlanBar from './FlightPlanBar'
 import GpsInfoBar from './GpsInfoBar'
@@ -161,6 +165,12 @@ export function LiveMap({ position, positionStale = false, zoom, initialCenter, 
       style={{ width: '100%', height: '100%' }}
       attributionControl={false}
       zoomControl={false}
+      // Leaflet only turns its hold-for-contextmenu synthesis on when it
+      // detects Safari; Chrome on iOS is WebKit in a trenchcoat and misses
+      // that check, so force it — press-and-hold must mean the same thing
+      // in every browser the app runs in. Desktop right-click fires
+      // contextmenu natively either way.
+      tapHold={true}
       {...interactionProps}
     >
       {interactive && <ZoomControl position={zoomControlPosition || 'topleft'} />}
@@ -621,6 +631,104 @@ export function MapFocusOffset({ coveredHeight, duration = '0ms' }) {
   return null
 }
 
+// Fired whenever the user-waypoint list changes, so every open view of it
+// (the map layer here, and any future list UI) reloads without prop
+// plumbing — same pattern as useMapLayer's 'aviara-map-layer' event.
+const USER_WAYPOINTS_EVENT = 'aviara-user-waypoints'
+
+// The pilot's own named points, always visible — a waypoint you can only
+// see while an overlay toggle is on is a waypoint you'll forget you have.
+// Amber, to sit apart from the purple route line and the blue position dot.
+function UserWaypointLayer() {
+  const [list, setList] = useState([])
+  useEffect(() => {
+    const load = () => getUserWaypoints().then(setList).catch(() => {})
+    load()
+    window.addEventListener(USER_WAYPOINTS_EVENT, load)
+    return () => window.removeEventListener(USER_WAYPOINTS_EVENT, load)
+  }, [])
+  return (
+    <>
+      {list.map(w => (
+        <CircleMarker key={w.name} center={[w.lat, w.lon]} radius={6}
+          pathOptions={{ color: '#fff', weight: 2, fillColor: '#f59e0b', fillOpacity: 1 }}>
+          <Tooltip permanent direction="top" offset={[0, -6]}>
+            <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'monospace' }}>{w.name}</span>
+          </Tooltip>
+          <Popup>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>{w.name}</div>
+            <div style={{ fontSize: 11, fontFamily: 'monospace' }}>{fmtAvCoord(w.lat, w.lon)}</div>
+            <button
+              onClick={() => removeUserWaypoint(w.name).then(() => window.dispatchEvent(new Event(USER_WAYPOINTS_EVENT)))}
+              style={{
+                marginTop: 6, padding: '4px 10px', borderRadius: 8, border: 'none',
+                background: 'var(--danger)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+              }}>
+              Delete waypoint
+            </button>
+          </Popup>
+        </CircleMarker>
+      ))}
+    </>
+  )
+}
+
+// AVIARA-to-AVIARA PIREPs, refreshed when the layer mounts (toggled on)
+// and every five minutes while it stays on. Urgent reports draw red,
+// routine ones blue; both age out of the query at 12 hours (lib/pireps).
+function PirepLayer() {
+  const [reports, setReports] = useState([])
+  useEffect(() => {
+    let alive = true
+    const load = () => listRecentPireps().then(({ data }) => { if (alive) setReports(data) })
+    load()
+    window.addEventListener('aviara-pireps', load)
+    const t = setInterval(load, 5 * 60 * 1000)
+    return () => { alive = false; clearInterval(t); window.removeEventListener('aviara-pireps', load) }
+  }, [])
+  const age = iso => {
+    const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
+    return m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`
+  }
+  return (
+    <>
+      {reports.map(p => (
+        <CircleMarker key={p.id} center={[p.lat, p.lon]} radius={7}
+          pathOptions={{ color: '#fff', weight: 2, fillColor: p.urgent ? '#dc2626' : '#2563eb', fillOpacity: 0.95 }}>
+          <Popup>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>
+              {p.urgent ? 'URGENT PIREP (UUA)' : 'PIREP (UA)'} · {age(p.created_at)}
+            </div>
+            <div style={{ fontSize: 11, marginTop: 3, lineHeight: 1.5 }}>
+              {p.altitude_ft != null && <div>Altitude: {p.altitude_ft.toLocaleString()} ft</div>}
+              {p.aircraft_type && <div>Aircraft: {p.aircraft_type}</div>}
+              {p.sky && <div>Sky: {p.sky}</div>}
+              {p.wx?.length > 0 && <div>Weather: {p.wx.map(w => PIREP_WX_LABELS[w] || w).join(', ')}</div>}
+              {p.turbulence && <div>Turbulence: {p.turbulence}</div>}
+              {p.icing && <div>Icing: {p.icing}</div>}
+              {p.remarks && <div>Remarks: {p.remarks}</div>}
+            </div>
+            <div style={{ fontSize: 10, color: '#888', marginTop: 4 }}>Shared by an AVIARA pilot — not an FAA PIREP</div>
+          </Popup>
+        </CircleMarker>
+      ))}
+    </>
+  )
+}
+
+// Surfaces Leaflet's contextmenu as "the pilot pressed and held here" (or
+// right-clicked, on desktop — same event). The menu itself is MapView's;
+// this only reports the geographic point.
+function MapPressCapture({ onPress }) {
+  const map = useMap()
+  useEffect(() => {
+    const h = e => onPress({ lat: e.latlng.lat, lon: e.latlng.lng })
+    map.on('contextmenu', h)
+    return () => map.off('contextmenu', h)
+  }, [map, onPress])
+  return null
+}
+
 // The typed-route preview from FlightPlanBar — a simple line + waypoint
 // dots, fit into view once per new route (not on every render, so the user
 // can freely pan/zoom afterward without the map yanking back).
@@ -694,6 +802,105 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   }, [overlays.breadcrumbs, toggleOverlay, resetBreadcrumbs])
   const [route, setRoute] = useState(null)
   const [recenterRequest, setRecenterRequest] = useState(null)
+  // Press-and-hold flow: pressMenu holds the {lat,lon} the pilot pressed
+  // (menu open), wptDraft holds the point a waypoint is being named for
+  // (dialog open). Only one is ever non-null at a time.
+  const [pressMenu, setPressMenu] = useState(null)
+  const [wptDraft, setWptDraft] = useState(null)
+  const [wptName, setWptName] = useState('')
+  const [wptError, setWptError] = useState(null)
+  const [wptSaving, setWptSaving] = useState(false)
+  const handleMapPress = useCallback(p => setPressMenu(p), [])
+
+  // A raw coordinate appended to whatever route exists — the "I just want
+  // this lat/long in the route" half of press-and-hold. The route bar's
+  // TEXT is not rewritten (it can't spell a coordinate the resolver could
+  // re-parse); the drawn line and the GPS bar's next/dest fields are the
+  // source of truth the moment this is used.
+  function appendPointToRoute(p) {
+    const pt = { kind: 'LL', name: fmtAvCoord(p.lat, p.lon), label: null, lat: p.lat, lon: p.lon }
+    setRoute(r => (r && r.length ? [...r, pt] : [pt]))
+    setPressMenu(null)
+  }
+
+  // UAP: the full report form already exists as its own tool with its own
+  // draft store — the map's job is only to seed a draft with the pressed
+  // location so the pilot finishes it there ("the UAP folder"), not to
+  // clone a 15-field form into a map sheet.
+  const [uapBanner, setUapBanner] = useState(false)
+  async function startUapDraftAt(p) {
+    const now = new Date()
+    await put('uapReports', {
+      id: `uap-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      createdAt: now.toISOString(),
+      date: now.toISOString().slice(0, 10),
+      time: now.toTimeString().slice(0, 5),
+      durationBucket: '', locationText: fmtAvCoord(p.lat, p.lon), lat: p.lat, lon: p.lon, altitudeFt: '',
+      shape: '', motion: '', angularSize: '', color: '', sound: '',
+      witnesses: '', nearbyObjects: '', weatherVisibility: '', description: '',
+      ageRange: '', gender: '', genderOther: '',
+      consent: false,
+    }).catch(() => {})
+    setPressMenu(null)
+    setUapBanner(true)
+    setTimeout(() => setUapBanner(false), 8000)
+  }
+
+  // PIREP: filed from the map, shared with every AVIARA pilot who has the
+  // layer on. Checkbox/radio groups mirror the standard report's element
+  // groups (/SK /WX /TB /IC), constrained to the same vocabulary the DB
+  // enforces.
+  const [pirepDraft, setPirepDraft] = useState(null)   // {lat, lon} → sheet open
+  const [pirep, setPirep] = useState({ urgent: false, altitudeFt: '', aircraftType: '', sky: null, wx: [], turbulence: null, icing: null, remarks: '' })
+  const [pirepError, setPirepError] = useState(null)
+  const [pirepSending, setPirepSending] = useState(false)
+  const [pirepBanner, setPirepBanner] = useState(false)
+  function openPirepAt(p) {
+    setPirep({
+      urgent: false,
+      altitudeFt: liveCoords?.altFt != null ? String(Math.round(liveCoords.altFt)) : '',
+      aircraftType: '', sky: null, wx: [], turbulence: null, icing: null, remarks: '',
+    })
+    setPirepError(null)
+    setPirepDraft(p)
+    setPressMenu(null)
+  }
+  async function sendPirep() {
+    if (!pirepDraft) return
+    setPirepSending(true)
+    setPirepError(null)
+    const { error } = await submitPirep({
+      lat: pirepDraft.lat, lon: pirepDraft.lon,
+      altitude_ft: pirep.altitudeFt ? parseInt(pirep.altitudeFt, 10) : null,
+      aircraft_type: pirep.aircraftType.trim() || null,
+      urgent: pirep.urgent,
+      sky: pirep.sky, wx: pirep.wx, turbulence: pirep.turbulence, icing: pirep.icing,
+      remarks: pirep.remarks.trim() || null,
+    })
+    setPirepSending(false)
+    if (error) { setPirepError(error.message); return }
+    setPirepDraft(null)
+    window.dispatchEvent(new Event('aviara-pireps'))
+    setPirepBanner(true)
+    setTimeout(() => setPirepBanner(false), 6000)
+  }
+
+  async function saveWaypointDraft() {
+    if (!wptDraft) return
+    setWptSaving(true)
+    setWptError(null)
+    try {
+      const name = wptName.trim() || await nextAutoName()
+      await saveUserWaypoint(name, wptDraft.lat, wptDraft.lon)
+      window.dispatchEvent(new Event(USER_WAYPOINTS_EVENT))
+      setWptDraft(null)
+      setWptName('')
+    } catch (e) {
+      setWptError(e.message)
+    } finally {
+      setWptSaving(false)
+    }
+  }
   // The "you are here" dot: the live fix while there is one, else the last
   // fix this device ever had, drawn grey (see LiveMap's positionStale) so a
   // remembered position can orient the pilot without impersonating a real
@@ -878,6 +1085,9 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         {overlays.airports && <AirportLayer />}
         {overlays.heliports && <HeliportLayer />}
         {overlays.seaplaneBases && <SeaplaneBaseLayer />}
+        {overlays.pireps && <PirepLayer />}
+        <UserWaypointLayer />
+        <MapPressCapture onPress={handleMapPress} />
         <LocateRecenter request={recenterRequest} coveredHeight={focusInset ?? bottomInset} />
         <RoutePreview route={route} />
         <MapFocusOffset coveredHeight={focusInset ?? bottomInset} duration={insetDuration} />
@@ -919,6 +1129,29 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
             <path d="M12 9v4l2.5 2M9 2h6" />
           </svg>
         )}
+      </button>
+
+      {/* Drop a pin on the aircraft's own position — one tap on the ramp
+          marks the tie-down, the fuel pump, the hole in the fence. Sits
+          directly above Locate: both buttons are "do something with where
+          I am", and both are honest enough to disable without a fix. */}
+      <button
+        onClick={() => liveCoords && setWptDraft({ lat: liveCoords.lat, lon: liveCoords.lon })}
+        disabled={noFixYet}
+        aria-label="Save my position as a waypoint"
+        style={{
+          position: 'absolute', right: 12, bottom: 'calc(162px + var(--map-bottom-inset, 0px))', zIndex: 500,
+          transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
+          width: 32, height: 32, borderRadius: '50%', border: 'none',
+          background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: noFixYet ? 'default' : 'pointer', WebkitTapHighlightColor: 'transparent',
+          opacity: noFixYet ? 0.55 : 1,
+        }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 21s-6-5.6-6-10a6 6 0 1 1 12 0c0 4.4-6 10-6 10z" />
+          <circle cx="12" cy="11" r="2.2" />
+        </svg>
       </button>
 
       <button
@@ -1062,6 +1295,268 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
           fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
         }}>
           Flight saved — review it in the Hangar's Flight History
+        </div>
+      )}
+
+      {/* Press-and-hold menu: what can be done with a point on the map.
+          Portaled to <body>: on Home this map lives in a zIndex:0 layer
+          UNDER the drawer, and position:fixed cannot out-z-index its own
+          stacking context — an overlay rendered in place sits behind the
+          drawer no matter what number it wears. */}
+      {pressMenu && createPortal(
+        <div
+          onClick={() => setPressMenu(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'flex-end' }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', background: 'var(--bg)', borderRadius: '20px 20px 0 0', padding: '14px 18px calc(20px + env(safe-area-inset-bottom, 0px))' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+              Map point
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'monospace', color: 'var(--text)', margin: '2px 0 12px' }}>
+              {fmtAvCoord(pressMenu.lat, pressMenu.lon)}
+            </div>
+            <button
+              onClick={() => { setWptDraft(pressMenu); setPressMenu(null) }}
+              style={{
+                display: 'block', width: '100%', padding: '13px 14px', borderRadius: 12, border: 'none',
+                background: 'var(--bg-card)', color: 'var(--text)', fontSize: 14, fontWeight: 700,
+                textAlign: 'left', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', marginBottom: 8,
+              }}>
+              📍 Create user waypoint here
+            </button>
+            <button
+              onClick={() => appendPointToRoute(pressMenu)}
+              style={{
+                display: 'block', width: '100%', padding: '13px 14px', borderRadius: 12, border: 'none',
+                background: 'var(--bg-card)', color: 'var(--text)', fontSize: 14, fontWeight: 700,
+                textAlign: 'left', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', marginBottom: 8,
+              }}>
+              ➕ Add this point to the route
+            </button>
+            <button
+              onClick={() => openPirepAt(pressMenu)}
+              style={{
+                display: 'block', width: '100%', padding: '13px 14px', borderRadius: 12, border: 'none',
+                background: 'var(--bg-card)', color: 'var(--text)', fontSize: 14, fontWeight: 700,
+                textAlign: 'left', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', marginBottom: 8,
+              }}>
+              📡 File a PIREP here
+            </button>
+            <button
+              onClick={() => startUapDraftAt(pressMenu)}
+              style={{
+                display: 'block', width: '100%', padding: '13px 14px', borderRadius: 12, border: 'none',
+                background: 'var(--bg-card)', color: 'var(--text)', fontSize: 14, fontWeight: 700,
+                textAlign: 'left', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', marginBottom: 8,
+              }}>
+              🛸 Report a UAP sighting here
+            </button>
+            <button
+              onClick={() => setPressMenu(null)}
+              style={{
+                display: 'block', width: '100%', padding: '13px 14px', borderRadius: 12, border: 'none',
+                background: 'transparent', color: 'var(--text-secondary)', fontSize: 14, fontWeight: 700,
+                cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+              }}>
+              Cancel
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Naming dialog for a new user waypoint — from press-and-hold or the
+          pin-drop button. Blank name = auto WP01…, so "just save where I
+          am" is two taps. Save errors (name taken by an airport/VOR/fix)
+          render inline; the restriction exists so the route bar never has
+          two meanings for one ident. Portaled for the same stacking-context
+          reason as the press menu above. */}
+      {wptDraft && createPortal(
+        <div
+          onClick={() => { if (!wptSaving) { setWptDraft(null); setWptName(''); setWptError(null) } }}
+          style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 400, background: 'var(--bg)', borderRadius: 18, padding: '18px 18px 16px', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+              New user waypoint
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'monospace', color: 'var(--text)', margin: '2px 0 12px' }}>
+              {fmtAvCoord(wptDraft.lat, wptDraft.lon)}
+            </div>
+            <input
+              value={wptName}
+              onChange={e => { setWptName(e.target.value.toUpperCase()); setWptError(null) }}
+              onKeyDown={e => { if (e.key === 'Enter') saveWaypointDraft() }}
+              placeholder="Name — blank saves as WP01…"
+              autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '12px 14px', borderRadius: 12,
+                border: '1px solid var(--border)', background: 'var(--bg-card)', outline: 'none',
+                fontSize: 16, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.04em', color: 'var(--text)',
+              }}
+            />
+            {wptError && (
+              <div style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600, marginTop: 8 }}>{wptError}</div>
+            )}
+            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+              <button
+                onClick={() => { setWptDraft(null); setWptName(''); setWptError(null) }}
+                disabled={wptSaving}
+                style={{
+                  flex: 1, padding: '12px 0', borderRadius: 12, border: 'none',
+                  background: 'var(--bg-card)', color: 'var(--text)', fontSize: 14, fontWeight: 700,
+                  cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+                }}>
+                Cancel
+              </button>
+              <button
+                onClick={saveWaypointDraft}
+                disabled={wptSaving}
+                style={{
+                  flex: 1, padding: '12px 0', borderRadius: 12, border: 'none',
+                  background: 'var(--accent)', color: 'var(--accent-fg)', fontSize: 14, fontWeight: 700,
+                  cursor: 'pointer', WebkitTapHighlightColor: 'transparent', opacity: wptSaving ? 0.6 : 1,
+                }}>
+                {wptSaving ? 'Saving…' : 'Save waypoint'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* PIREP form — the standard report's element groups as tap targets.
+          Portaled like the other sheets. Chip groups: sky and severity are
+          single-choice (radio behavior), weather phenomena multi-choice. */}
+      {pirepDraft && createPortal(
+        <div
+          onClick={() => { if (!pirepSending) setPirepDraft(null) }}
+          style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end' }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxHeight: '85vh', overflowY: 'auto', background: 'var(--bg)', borderRadius: '20px 20px 0 0', padding: '16px 18px calc(20px + env(safe-area-inset-bottom, 0px))' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+              File PIREP · {fmtAvCoord(pirepDraft.lat, pirepDraft.lon)}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', margin: '3px 0 12px' }}>
+              Shared with AVIARA pilots who have the PIREPs layer on — not filed with the FAA.
+            </div>
+
+            {[
+              { title: 'Report type', single: true, field: 'urgent', opts: [{ v: false, l: 'UA · Routine' }, { v: true, l: 'UUA · Urgent' }] },
+              { title: 'Sky', single: true, field: 'sky', opts: PIREP_SKY.map(v => ({ v, l: v })) },
+              { title: 'Weather', single: false, field: 'wx', opts: PIREP_WX.map(v => ({ v, l: PIREP_WX_LABELS[v] })) },
+              { title: 'Turbulence', single: true, field: 'turbulence', opts: PIREP_TURB.map(v => ({ v, l: v })) },
+              { title: 'Icing', single: true, field: 'icing', opts: PIREP_ICING.map(v => ({ v, l: v })) },
+            ].map(group => (
+              <div key={group.title} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 6 }}>
+                  {group.title}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {group.opts.map(o => {
+                    const active = group.single
+                      ? pirep[group.field] === o.v
+                      : pirep.wx.includes(o.v)
+                    return (
+                      <button key={String(o.v)}
+                        onClick={() => setPirep(prev => group.single
+                          ? { ...prev, [group.field]: prev[group.field] === o.v && group.field !== 'urgent' ? null : o.v }
+                          : { ...prev, wx: prev.wx.includes(o.v) ? prev.wx.filter(x => x !== o.v) : [...prev.wx, o.v] })}
+                        style={{
+                          padding: '7px 12px', borderRadius: 16, fontSize: 12, fontWeight: 700,
+                          border: active ? 'none' : '1px solid var(--border)',
+                          background: active ? 'var(--accent)' : 'var(--bg-card)',
+                          color: active ? 'var(--accent-fg)' : 'var(--text)',
+                          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+                        }}>
+                        {o.l}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <input
+                value={pirep.altitudeFt}
+                onChange={e => setPirep(prev => ({ ...prev, altitudeFt: e.target.value.replace(/[^\d]/g, '') }))}
+                placeholder="Altitude (ft)" inputMode="numeric"
+                style={{
+                  flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10,
+                  border: '1px solid var(--border)', background: 'var(--bg-card)', outline: 'none',
+                  fontSize: 14, fontWeight: 700, color: 'var(--text)',
+                }} />
+              <input
+                value={pirep.aircraftType}
+                onChange={e => setPirep(prev => ({ ...prev, aircraftType: e.target.value.toUpperCase() }))}
+                placeholder="Aircraft (C172)" autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+                style={{
+                  flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10,
+                  border: '1px solid var(--border)', background: 'var(--bg-card)', outline: 'none',
+                  fontSize: 14, fontWeight: 700, color: 'var(--text)',
+                }} />
+            </div>
+            <input
+              value={pirep.remarks}
+              onChange={e => setPirep(prev => ({ ...prev, remarks: e.target.value }))}
+              placeholder="Remarks (optional)"
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10,
+                border: '1px solid var(--border)', background: 'var(--bg-card)', outline: 'none',
+                fontSize: 14, color: 'var(--text)',
+              }} />
+
+            {pirepError && (
+              <div style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600, marginTop: 8 }}>{pirepError}</div>
+            )}
+            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+              <button
+                onClick={() => setPirepDraft(null)}
+                disabled={pirepSending}
+                style={{
+                  flex: 1, padding: '12px 0', borderRadius: 12, border: 'none',
+                  background: 'var(--bg-card)', color: 'var(--text)', fontSize: 14, fontWeight: 700,
+                  cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+                }}>
+                Cancel
+              </button>
+              <button
+                onClick={sendPirep}
+                disabled={pirepSending}
+                style={{
+                  flex: 1, padding: '12px 0', borderRadius: 12, border: 'none',
+                  background: 'var(--accent)', color: 'var(--accent-fg)', fontSize: 14, fontWeight: 700,
+                  cursor: 'pointer', WebkitTapHighlightColor: 'transparent', opacity: pirepSending ? 0.6 : 1,
+                }}>
+                {pirepSending ? 'Sharing…' : 'Share PIREP'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {uapBanner && (
+        <div style={{
+          position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
+          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
+          fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
+        }}>
+          🛸 UAP draft saved with this location — finish and submit it in Tools → UAP Report.
+        </div>
+      )}
+
+      {pirepBanner && (
+        <div style={{
+          position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
+          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
+          fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
+        }}>
+          📡 PIREP shared — visible to AVIARA pilots with the PIREPs layer on.
         </div>
       )}
 

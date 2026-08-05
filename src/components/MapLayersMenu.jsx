@@ -13,6 +13,7 @@ export const OVERLAY_OPTIONS = [
   { key: 'radar',          label: 'Radar',              live: true },
   { key: 'flightCategory', label: 'Flight Category',    live: true },
   { key: 'tfr',            label: 'TFRs',                live: true },
+  { key: 'pireps',         label: 'PIREPs (AVIARA pilots)', live: true },
   { key: 'notams',         label: 'NOTAMs',              live: false },
   { key: 'traffic',        label: 'Traffic',             live: false },
   { key: 'winds',          label: 'Winds',                live: false },
