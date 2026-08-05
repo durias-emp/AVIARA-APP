@@ -31,11 +31,11 @@ const LOCATION_ZOOM = 13
 // Location toggle, and "move outside" becomes the glareshield — a metal
 // airframe is the sky-view problem pilots actually have.
 const GPS_TIPS = [
-  'Give the phone sky — on the glareshield or by a window; the airframe blocks GPS.',
-  'Wi-Fi or mobile data speeds up the first fix.',
-  'Low Power Mode slows GPS — turn it off for flying.',
-  'Check Precise Location is on: Settings → Privacy & Security → Location Services → Safari Websites.',
-  'Last resort: quit and reopen the app, or restart the phone.',
+  'Give the phone sky — glareshield or window; the airframe blocks GPS.',
+  'Wi-Fi or mobile data speeds the first fix.',
+  'Turn off Low Power Mode.',
+  'Precise Location on: Settings → Privacy & Security → Location Services.',
+  'Still stuck? Reopen the app, or restart the phone.',
 ]
 
 // The exact steps to un-deny location, for the browser this is actually
@@ -956,6 +956,11 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
             position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
             background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
             border: 'none', textAlign: 'left', width: 'auto',
+            // With the drawer up, the visible strip can be shorter than the
+            // tip list — cap the card at the space that's actually free
+            // (above the GPS bar) and scroll inside it, rather than running
+            // underneath the bar and the zoom rail.
+            maxHeight: 'calc(100% - var(--map-bottom-inset, 0px) - 150px)', overflowY: 'auto',
             boxShadow: 'var(--shadow-sm)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
           }}>
           {locationDenied ? (
