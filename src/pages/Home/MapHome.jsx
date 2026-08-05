@@ -39,17 +39,19 @@ const CTRL = 52
 const CHIP_W = 62
 const CHIP_H = 38
 
-// The chips, split into two columns of equal height.
+// How much room the right-hand controls need below the chips: two buttons, the
+// gap between them, and a gap above.
+const CTRL_STACK_H = CTRL * 2 + 12 + 10
+
+// The tallest a column of chips may get before the next one starts.
 //
-// Balanced rather than split by kind. Grouping charts against overlays gave
-// five and seven, and the seven-tall column is 46px taller: enough to run under
-// the airport pill on a short phone once the stack is pinned to the top. Even
-// columns also read as one block rather than two ragged ones, and the order is
-// preserved left to right, so the charts still come first.
-const CHIP_COLUMNS = (() => {
-  const half = Math.ceil(CHARTS.length / 2)
-  return [CHARTS.slice(0, half), CHARTS.slice(half)]
-})()
+// Without this the chips simply fill whatever height is available, so a tall
+// phone gave a column of nine beside a column of three: it fits, but it reads
+// as a mistake. Six is half of the twelve chips, so the common case is two even
+// columns, and on a short window the height limit bites first and the wrap
+// balances them itself.
+const CHIP_COL_MAX = 6
+const CHIP_STACK_MAX_H = CHIP_COL_MAX * (CHIP_H + 8) - 8
 
 // Three resting heights. Collapsed is the handle and the actions; expanded
 // leaves a strip of map above it so it never reads as a takeover; full is a
@@ -787,9 +789,32 @@ export default function MapHome() {
           //
           // Right edge shared with the controls below, so the stack, the layers
           // button and the locate button all line up on one edge.
+          //
+          // The column count is not fixed. Two columns fit a phone but not a
+          // short window, where the first chip was cut off above the top of the
+          // screen. Bounding the box between the pill and the layers button and
+          // letting the chips wrap means the stack grows a third and fourth
+          // column instead of ever running off the top.
+          //
+          // The box is anchored by its right edge and shrink-wraps its content,
+          // so each new column widens it leftward into empty map. That keeps
+          // plain wrap, which fills left to right, so SECT stays the top-left
+          // chip and the set still reads in order. wrap-reverse also fits, but
+          // it starts at the right and the columns then read backwards.
           position: 'absolute', right: 14, zIndex: 500,
           top: 'calc(var(--safe-top) + 58px)',
-          display: 'flex', flexDirection: 'row', gap: 8, alignItems: 'flex-start',
+          // top and bottom set the hard limit, so the stack can never reach the
+          // pill or the buttons. maxHeight then clamps it further to keep the
+          // columns even. Whichever is smaller wins, which is what makes this
+          // work at both ends: on a phone the cap bites and gives two columns of
+          // six, on a short window the bottom bound bites first and the wrap
+          // balances the columns itself.
+          bottom: sheetOpen
+            ? `calc(${SHEET_COLLAPSED_PX}px + var(--safe-bottom) + ${recording ? 132 : 16}px + ${CTRL_STACK_H}px)`
+            : `calc(var(--safe-bottom) + 28px + ${CTRL_STACK_H}px)`,
+          maxHeight: CHIP_STACK_MAX_H,
+          display: 'flex', flexDirection: 'column', flexWrap: 'wrap',
+          gap: 8, alignContent: 'flex-start', justifyContent: 'flex-start',
           // Fades out with the rest of the map's chrome when the sheet is
           // raised. Hung from the button these rode up with it; pinned to the
           // top they would otherwise sit over the strip of map the expanded
@@ -800,39 +825,33 @@ export default function MapHome() {
           // they must not still be tappable.
           pointerEvents: chartsOpen && !expanded ? 'auto' : 'none',
         }}>
-          {CHIP_COLUMNS.map((col, ci) => {
-            return (
-              <div key={ci} style={{
-                display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end',
-              }}>
-                {col.map((c, i) => (
-                  <button key={c.key} className="chart-chip" onClick={() => toggleLayer(c.key)} style={{
-                    background: layers[c.key] ? 'var(--map-ink)' : 'var(--map-panel)',
-                    color: layers[c.key] ? 'var(--map-ink-invert)' : 'var(--map-ink)',
-                    border: 'none', borderRadius: 10, cursor: 'pointer',
-                    // One width for all of them. Sized to its own label, TFR came
-                    // out narrower than ARSP and the column read as a ragged edge
-                    // rather than a set of controls.
-                    width: CHIP_W, height: CHIP_H,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 11.5, fontWeight: 700, letterSpacing: '0.4px',
-                    boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
-                    // Opening, each chip arrives a beat after the one below it, so
-                    // the column unrolls upward from the layers button. Closing runs
-                    // the other way, top first, so it retracts back into it. The
-                    // stagger is what makes it read as one object rather than a
-                    // dozen things that happened to move at once. Both columns run
-                    // off their own index so they unroll together.
-                    animation: `${chartsOpen ? 'chipIn' : 'chipOut'} 220ms cubic-bezier(0.34,1.3,0.64,1) both`,
-                    animationDelay: chartsOpen
-                      ? `${(col.length - 1 - i) * 28}ms`
-                      : `${i * 24}ms`,
-                    transition: 'background 160ms, color 160ms',
-                  }}>{c.label}</button>
-                ))}
-              </div>
-            )
-          })}
+          {/* One flat list, so the wrap above decides the columns rather than
+              this deciding them in advance. */}
+          {CHARTS.map((c, i) => (
+            <button key={c.key} className="chart-chip" onClick={() => toggleLayer(c.key)} style={{
+              background: layers[c.key] ? 'var(--map-ink)' : 'var(--map-panel)',
+              color: layers[c.key] ? 'var(--map-ink-invert)' : 'var(--map-ink)',
+              border: 'none', borderRadius: 10, cursor: 'pointer',
+              // One size for all of them. Sized to its own label, TFR came out
+              // narrower than ARSP and the column read as a ragged edge rather
+              // than a set of controls. flexShrink because a wrapping column
+              // container will otherwise squash them to fit rather than wrap.
+              width: CHIP_W, height: CHIP_H, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 11.5, fontWeight: 700, letterSpacing: '0.4px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
+              // Opening, each chip arrives a beat after the one after it, so the
+              // stack unrolls back toward the layers button it came out of.
+              // Closing runs the other way so it retracts into it. The stagger is
+              // what makes it read as one object rather than a dozen things that
+              // happened to move at once.
+              animation: `${chartsOpen ? 'chipIn' : 'chipOut'} 220ms cubic-bezier(0.34,1.3,0.64,1) both`,
+              animationDelay: chartsOpen
+                ? `${(CHARTS.length - 1 - i) * 16}ms`
+                : `${i * 14}ms`,
+              transition: 'background 160ms, color 160ms',
+            }}>{c.label}</button>
+          ))}
         </div>
       )}
 
