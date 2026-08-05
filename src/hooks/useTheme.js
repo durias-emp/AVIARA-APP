@@ -34,6 +34,27 @@ function paintChrome() {
   // whatever the system happens to be.
 }
 
+// A read-only view of the active palette.
+//
+// useTheme() below installs media listeners and repaints the browser chrome,
+// which must happen exactly once, in App. Anything that merely needs to *know*
+// the palette — to pick an opacity, say — uses this instead and takes no
+// ownership of anything.
+export function useThemeName() {
+  const [name, setName] = useState(
+    () => document.documentElement.getAttribute('data-theme') || currentTheme())
+
+  useEffect(() => {
+    const read = () => setName(document.documentElement.getAttribute('data-theme') || currentTheme())
+    read()
+    const obs = new MutationObserver(read)
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => obs.disconnect()
+  }, [])
+
+  return name
+}
+
 export function useTheme() {
   const [theme, setTheme] = useState(currentTheme)
 

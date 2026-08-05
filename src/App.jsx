@@ -2,7 +2,11 @@ import { Suspense, lazy, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useTheme } from './hooks/useTheme'
 import { PilotProfileProvider, usePilotProfile } from './context/PilotProfile'
+import { ActiveAircraftProvider } from './context/ActiveAircraft'
+import { LogbookProvider } from './context/Logbook'
+import { RegionProvider } from './context/Region'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { SocialProfileProvider } from './context/SocialProfile'
 import BackOverrideProvider from './context/BackOverrideProvider'
 import Shell from './components/Shell'
 
@@ -11,10 +15,29 @@ import Shell from './components/Shell'
 const Home        = lazy(() => import('./pages/Home/MapHome'))
 const Calculators = lazy(() => import('./pages/Calculators/Calculators'))
 const Checklists  = lazy(() => import('./pages/Checklists/Checklists'))
-const Aircraft    = lazy(() => import('./pages/Aircraft/Aircraft'))
-const Currency    = lazy(() => import('./pages/Currency/Currency'))
+const Hangar      = lazy(() => import('./pages/Aircraft/Hangar'))
+const Pilot       = lazy(() => import('./pages/Pilot/Pilot'))
+const FlightDebriefs = lazy(() => import('./pages/Pilot/FlightDebriefs'))
 const Reference   = lazy(() => import('./pages/Reference/Reference'))
 const Weather     = lazy(() => import('./pages/Weather/Weather'))
+const LogbookList      = lazy(() => import('./pages/Pilot/LogbookList'))
+const LogbookEntryForm = lazy(() => import('./pages/Pilot/LogbookEntryForm'))
+const LogbookFields    = lazy(() => import('./pages/Pilot/LogbookFields'))
+const LogbookImport    = lazy(() => import('./pages/Pilot/LogbookImport'))
+const LogbookScan      = lazy(() => import('./pages/Pilot/LogbookScan'))
+// Four sections that main reached only as panels inside its own menu-style
+// Home. This branch replaced that screen, so without addresses of their own
+// they would have shipped present but unreachable: code in the bundle with no
+// door. Discover mattered most, since the entire social half of the app hung
+// off it and only a shared link could open it.
+const Discover    = lazy(() => import('./pages/Discover/Discover'))
+const AirportInfo = lazy(() => import('./components/AirportInfo'))
+const ToolsMenu   = lazy(() => import('./components/ToolsMenu'))
+const Settings    = lazy(() => import('./pages/Settings/Settings'))
+// Where a shared link lands. Lazy like everything else — a pilot who never
+// opens one never downloads them.
+const SharedPost    = lazy(() => import('./pages/Discover/SharedLink').then(m => ({ default: m.SharedPost })))
+const SharedListing = lazy(() => import('./pages/Discover/SharedLink').then(m => ({ default: m.SharedListing })))
 const Onboarding    = lazy(() => import('./pages/Onboarding/Onboarding'))
 const Profile       = lazy(() => import('./pages/Profile/Profile'))
 const SignIn        = lazy(() => import('./pages/SignIn/SignIn'))
@@ -73,27 +96,14 @@ function AppRoutes({ theme }) {
     </Suspense>
   )
 
-  // Sign-in is required before anything else. A pre-existing install (real
-  // local data, onboarding already done, no account yet) gets reassuring
-  // "back up your data" copy instead of the generic sign-in screen; the
-  // actual sign-in flow is identical either way.
-  //
-  // The one exception is local development, where signing in on every reload
-  // to reach a screen three taps deep is pure friction. It is gated on BOTH
-  // import.meta.env.DEV, which Vite hardcodes to false in any production
-  // build, so the branch is dead code Rollup strips from the bundle, and an
-  // opt-in flag in .env.local, which is gitignored and never reaches the
-  // deployment. There is no way to turn this on against the real app.
-  const devBypass = import.meta.env.DEV && import.meta.env.VITE_DEV_BYPASS === '1'
-
-  if (!session && !devBypass) {
-    const legacy = profile != null && profile.onboardingComplete
-    return (
-      <Suspense fallback={null}>
-        <SignIn legacy={legacy} />
-      </Suspense>
-    )
-  }
+  // Sign-in is NOT required to use the app — everything here is local-first
+  // (IndexedDB) by design, and forcing an account before a first-time
+  // visitor (or someone trying it out on someone else's recommendation) can
+  // even see the app was pure friction with no corresponding benefit. An
+  // account only matters once a pilot wants cross-device backup or a social
+  // feature (Friends/DMs, UAP report submission) — those are gated
+  // individually, at the point of use, not app-wide. Reachable any time from
+  // Profile > Account.
 
   // Signed in but the cloud restore is still running, showing the gate now
   // would read an empty local profile and bounce a returning user into
@@ -116,11 +126,32 @@ function AppRoutes({ theme }) {
             <Route path="/" element={<Home />} />
             <Route path="/calc" element={<Calculators />} />
             <Route path="/checklists" element={<Checklists />} />
-            <Route path="/aircraft" element={<Aircraft />} />
+            <Route path="/aircraft" element={<Hangar />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/currency" element={<Currency />} />
+            <Route path="/pilot" element={<Pilot />} />
+            <Route path="/logbook" element={<LogbookList />} />
+            <Route path="/debriefs" element={<FlightDebriefs />} />
+            <Route path="/logbook/fields" element={<LogbookFields />} />
+            <Route path="/logbook/import" element={<LogbookImport />} />
+            <Route path="/logbook/scan" element={<LogbookScan />} />
+            <Route path="/logbook/:id" element={<LogbookEntryForm />} />
             <Route path="/reference" element={<Reference />} />
             <Route path="/weather" element={<Weather />} />
+            {/* Settings is rendered without `order`/`onMoveRow` on purpose:
+                those reordered the cards on main's menu-style Home, and this
+                branch's home is a map. The component already guards on them,
+                so the reorder block simply doesn't appear, and its back button
+                falls through to the map. */}
+            <Route path="/discover" element={<Discover />} />
+            <Route path="/airports" element={<AirportInfo />} />
+            <Route path="/tools" element={<ToolsMenu />} />
+            <Route path="/settings" element={<Settings />} />
+            {/* Shared links. /m/ is reachable signed out on purpose —
+                listings are public in RLS, and an aircraft ad you can't
+                send to a buyer without the app isn't much of an ad. */}
+            <Route path="/p/:postId" element={<SharedPost />} />
+            <Route path="/m/:listingId" element={<SharedListing />} />
+            <Route path="/signin" element={<SignIn legacy={profile != null && profile.onboardingComplete} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
@@ -134,11 +165,19 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <PilotProfileProvider>
-        <BrowserRouter>
-          <AppRoutes theme={theme} />
-        </BrowserRouter>
-      </PilotProfileProvider>
+      <SocialProfileProvider>
+        <PilotProfileProvider>
+          <ActiveAircraftProvider>
+            <LogbookProvider>
+              <RegionProvider>
+                <BrowserRouter>
+                  <AppRoutes theme={theme} />
+                </BrowserRouter>
+              </RegionProvider>
+            </LogbookProvider>
+          </ActiveAircraftProvider>
+        </PilotProfileProvider>
+      </SocialProfileProvider>
     </AuthProvider>
   )
 }

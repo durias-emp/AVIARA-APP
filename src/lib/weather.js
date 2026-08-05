@@ -1,4 +1,5 @@
 import { get, put } from './db'
+import { getAirportIdents } from './aerodromes'
 
 function awcUrl(endpoint, params = {}) {
   const qs = new URLSearchParams({ path: endpoint, ...params }).toString()
@@ -8,13 +9,34 @@ function awcUrl(endpoint, params = {}) {
 async function awcFetch(endpoint, params) {
   const res = await fetch(awcUrl(endpoint, params), { signal: AbortSignal.timeout(12000) })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json()
+  // AWC answers a station it has nothing for with 204 No Content, and the
+  // proxy passes that straight through. That is a successful "nothing here",
+  // not a failure — but res.json() on an empty body throws a parse error
+  // indistinguishable from a genuinely broken response, which is how a field
+  // with no METAR ended up on the same code path as an unreachable server.
+  // Normalising it to an empty list here is what lets fetchMetar tell the two
+  // apart, and that distinction is the gate on substitute weather.
+  if (res.status === 204) return []
+  const text = await res.text()
+  if (!text.trim()) return []
+  return JSON.parse(text)
 }
 
 export async function fetchMetar(icao) {
   const id = icao.toUpperCase()
   const data = await awcFetch('metar', { ids: id, format: 'json', hours: '3' })
-  if (!Array.isArray(data) || !data.length) throw new Error('No METAR data for ' + id)
+  if (!Array.isArray(data) || !data.length) {
+    // AWC answered, and the answer was "nothing here". That is a different
+    // fact from "the request failed", and the difference decides whether the
+    // airport page may show substitute weather from somewhere else: standing
+    // in for a field that genuinely has no station is helpful, while standing
+    // in for one that does — because the network happened to be down — hides
+    // a real observation behind a model estimate. Only this branch is
+    // allowed to trigger substitution; see loadWeather's noReport flag.
+    const err = new Error('No METAR data for ' + id)
+    err.noReport = true
+    throw err
+  }
   return data[0]
 }
 
@@ -40,24 +62,33 @@ export async function fetchTaf(icao) {
 //
 // Returns { metar, station, distNm } or null. One request, and only when the
 // field itself has no report.
-export async function nearestMetar(lat, lon, { withinNm = 20 } = {}) {
+// Every station reporting inside the box, nearest first. One request — the
+// callers below all want a different slice of the same answer, and asking
+// AWC three times for three overlapping boxes would be three times the
+// latency for the same data.
+async function stationsNear(lat, lon, withinNm) {
   // A degree of latitude is 60 NM; longitude shrinks with the cosine. The box
   // is a prefilter: the haversine below is what decides.
   const dLat = withinNm / 60
   const dLon = withinNm / (60 * Math.max(0.05, Math.cos(lat * Math.PI / 180)))
+  const data = await awcFetch('metar', {
+    bbox: `${(lat - dLat).toFixed(3)},${(lon - dLon).toFixed(3)},${(lat + dLat).toFixed(3)},${(lon + dLon).toFixed(3)}`,
+    format: 'json',
+  })
+  if (!Array.isArray(data)) return []
+  const out = []
+  for (const m of data) {
+    if (!Number.isFinite(m?.lat) || !Number.isFinite(m?.lon) || !m.rawOb) continue
+    const d = haversineNm(lat, lon, m.lat, m.lon)
+    if (d <= withinNm) out.push({ metar: m, ident: m.icaoId, distNm: d })
+  }
+  return out.sort((a, b) => a.distNm - b.distNm)
+}
+
+export async function nearestMetar(lat, lon, { withinNm = 20 } = {}) {
   try {
-    const data = await awcFetch('metar', {
-      bbox: `${(lat - dLat).toFixed(3)},${(lon - dLon).toFixed(3)},${(lat + dLat).toFixed(3)},${(lon + dLon).toFixed(3)}`,
-      format: 'json',
-    })
-    if (!Array.isArray(data) || !data.length) return null
-    let best = null
-    for (const m of data) {
-      if (!Number.isFinite(m?.lat) || !Number.isFinite(m?.lon) || !m.rawOb) continue
-      const d = haversineNm(lat, lon, m.lat, m.lon)
-      if (d <= withinNm && (!best || d < best.distNm)) best = { metar: m, station: m.icaoId, distNm: d }
-    }
-    return best
+    const [best] = await stationsNear(lat, lon, withinNm)
+    return best ? { metar: best.metar, station: best.ident, distNm: best.distNm } : null
   } catch {
     return null
   }
@@ -72,18 +103,128 @@ function haversineNm(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.sqrt(a))
 }
 
+const POINTS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+                'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+
+// True bearing from the first point to the second, as a compass point. The
+// card says "31 nm NE" rather than "31 nm" because the direction is what
+// makes the distance mean something: a station 31 nm upwind of a front is
+// telling you about weather you are about to get, and one 31 nm downwind is
+// telling you about weather that has already gone past.
+export function compassPointFrom(lat1, lon1, lat2, lon2) {
+  const toRad = d => (d * Math.PI) / 180
+  const dLon = toRad(lon2 - lon1)
+  const y = Math.sin(dLon) * Math.cos(toRad(lat2))
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+            Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon)
+  const deg = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360
+  return POINTS[Math.round(deg / 22.5) % 16]
+}
+
+// A station reporting from this close is on the field itself, whatever it
+// calls itself. Barrie-Lake Simcoe is the worked example: the airport is
+// CYLS, and the automated station sitting on it files under CXBI, 0.4 nm
+// away. Asking AWC for "CYLS" returns nothing, which is how a field with a
+// working AWOS came to display "No weather available". Anything inside this
+// radius is presented as the field's own weather rather than as somewhere
+// nearby, because that is what it is.
+export const ON_FIELD_NM = 3
+
+function describe(lat, lon, hit, taf) {
+  return {
+    ident: hit.ident,
+    name: hit.metar?.name ?? null,
+    lat: hit.metar.lat,
+    lon: hit.metar.lon,
+    distNm: hit.distNm,
+    point: compassPointFrom(lat, lon, hit.metar.lat, hit.metar.lon),
+    onField: hit.distNm <= ON_FIELD_NM,
+    metar: hit.metar,
+    taf,
+  }
+}
+
+// How far to look for each kind of stand-in. The nearest station is only
+// worth offering while it plausibly describes the same weather, so it stays
+// local. A full airport report is worth reaching much further for, because
+// it carries things no bare station does — a visibility, an altimeter, a
+// flight category and a forecast — and a pilot can judge a 90 NM TAF for
+// themselves as long as the distance is stated.
+const STATION_NM = 60
+const AIRPORT_NM = 150
+
+// The two stand-ins for a field that reports nothing, from one bbox query.
+//
+//   station — the closest thing reporting anything at all, whatever it is.
+//     Often not an airport: CYLS's own weather comes from CXBI, an automated
+//     station on the field that publishes no visibility, no altimeter and no
+//     TAF
+//   airport — the closest actual aerodrome publishing a METAR, which is a
+//     different and complementary answer. For CYLS that is CYQA 31 NM out,
+//     with a full observation and a forecast. Suppressed when the nearest
+//     station is already an airport, since the two cards would then be the
+//     same report printed twice
+//
+// Returns { station, airport }, either or both null. Never throws.
+export async function substituteWeather(lat, lon) {
+  let all
+  try {
+    all = await stationsNear(lat, lon, AIRPORT_NM)
+  } catch {
+    return { station: null, airport: null }
+  }
+  if (!all.length) return { station: null, airport: null }
+
+  const nearest = all[0].distNm <= STATION_NM ? all[0] : null
+  const idents = await getAirportIdents().catch(() => null)
+
+  const nearestIsAirport = !!nearest && !!idents?.has(nearest.ident)
+  const airportHit = (!idents || nearestIsAirport)
+    ? null
+    : all.find(s => idents.has(s.ident)) ?? null
+
+  const [stationTaf, airportTaf] = await Promise.all([
+    nearest ? fetchTaf(nearest.ident) : null,
+    airportHit ? fetchTaf(airportHit.ident) : null,
+  ])
+
+  return {
+    station: nearest ? describe(lat, lon, nearest, stationTaf) : null,
+    airport: airportHit ? describe(lat, lon, airportHit, airportTaf) : null,
+  }
+}
+
+// { icao, metar, taf, fetchedAt, error, noReport }
+//
+// `noReport` means the field publishes no observation of its own — not that
+// the lookup failed. Settled rather than Promise.all'd because the two
+// products are independent: a field can publish a TAF and have its METAR
+// briefly missing, and the old shape threw that TAF away along with the
+// METAR.
 export async function loadWeather(icao) {
   const id = icao.toUpperCase()
-  try {
-    const [metar, taf] = await Promise.all([fetchMetar(id), fetchTaf(id)])
-    const result = { icao: id, metar, taf, fetchedAt: Date.now(), error: null }
+  const [m, t] = await Promise.allSettled([fetchMetar(id), fetchTaf(id)])
+  const taf = t.status === 'fulfilled' ? t.value : null
+
+  if (m.status === 'fulfilled') {
+    const result = { icao: id, metar: m.value, taf, fetchedAt: Date.now(), error: null, noReport: false }
     await put('weather', result)
     return result
-  } catch (err) {
-    const cached = await get('weather', id)
-    if (cached) return { ...cached, error: err.message }
-    throw err
   }
+
+  if (m.reason?.noReport) {
+    const result = { icao: id, metar: null, taf, fetchedAt: Date.now(), error: null, noReport: true }
+    await put('weather', result)
+    return result
+  }
+
+  // A genuine failure — network, proxy, timeout. Fall back to whatever was
+  // last stored, and carry the reason so the page can say why it is old.
+  // Deliberately does NOT set noReport: an unreachable AWC says nothing
+  // about whether this field has a station.
+  const cached = await get('weather', id)
+  if (cached) return { ...cached, error: m.reason?.message ?? 'weather unavailable' }
+  throw m.reason ?? new Error('weather unavailable')
 }
 
 // ── Parsers ──────────────────────────────────────────────────
@@ -159,18 +300,28 @@ function speedFromKt(kt, unit) {
   return Math.round(kt)
 }
 
-export function parseWind(metar, units = {}) {
-  if (!metar) return '—'
+// Direction and speed as separate strings — for layouts (like the airport
+// diagram card) that stack them on their own lines instead of one run of
+// text. parseWind() below is just this joined back into the original
+// single-string format every other call site already expects.
+export function parseWindParts(metar, units = {}) {
+  if (!metar) return { dir: null, speed: '—' }
   const { wdir, wspd, wgst } = metar
   const unit = units.unitSpeed ?? 'KT'
   const unitLabel = unit === 'KM/H' ? 'km/h' : unit === 'MPH' ? 'mph' : 'kt'
   const spd = speedFromKt(wspd, unit)
   const gst = wgst ? speedFromKt(wgst, unit) : null
-  if (!wspd || wspd === 0) return 'Calm'
+  if (!wspd || wspd === 0) return { dir: null, speed: 'Calm' }
+  const speed = `${spd}${gst ? `G${gst}` : ''} ${unitLabel}`
   // wdir can be a number or the string "VRB"
-  if (!wdir || wdir === 'VRB') return `VRB ${spd}${gst ? `G${gst}` : ''} ${unitLabel}`
-  const dir = String(Math.round(Number(wdir))).padStart(3, '0')
-  return `${dir}° ${spd}${gst ? `G${gst}` : ''} ${unitLabel}`
+  if (!wdir || wdir === 'VRB') return { dir: 'VRB', speed }
+  return { dir: `${String(Math.round(Number(wdir))).padStart(3, '0')}°`, speed }
+}
+
+export function parseWind(metar, units = {}) {
+  if (!metar) return '—'
+  const { dir, speed } = parseWindParts(metar, units)
+  return dir ? `${dir} ${speed}` : speed
 }
 
 export function parseVisib(metar, units = {}) {
@@ -247,17 +398,34 @@ export function parseWx(metar) {
   return metar?.wxString ?? metar?.presentWx ?? null
 }
 
+// ForeFlight-style compact relative age — "9m ago" under an hour, "3h 24m
+// ago" (not just "3h ago") once it isn't, so a report doesn't visibly jump
+// by up to 59 minutes at a time once it crosses the hour mark.
+function formatAge(thenMs) {
+  if (thenMs == null || Number.isNaN(thenMs)) return null
+  const mins = Math.max(0, Math.round((Date.now() - thenMs) / 60000))
+  if (mins < 1) return 'Just now'
+  if (mins < 60) return `${mins}m ago`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m === 0 ? `${h}h ago` : `${h}h ${m}m ago`
+}
+
 export function parseObsAge(metar) {
   if (!metar?.obsTime) return null
-  const mins = Math.round((Date.now() / 1000 - metar.obsTime) / 60)
-  if (mins < 60) return `${mins} min ago`
-  return `${Math.round(mins / 60)}h ago`
+  return formatAge(metar.obsTime * 1000)
+}
+
+// TAF's own issue time (when it was ISSUED, not when it becomes valid from —
+// validTimeFrom is the forecast period's start, a different thing) — an ISO
+// string from AWC, unlike METAR's obsTime (Unix seconds), hence the
+// separate Date.parse here rather than reusing parseObsAge's math directly.
+export function parseTafAge(taf) {
+  if (!taf?.issueTime) return null
+  return formatAge(Date.parse(taf.issueTime))
 }
 
 export function parseFetchAge(fetchedAt) {
   if (!fetchedAt) return null
-  const mins = Math.round((Date.now() - fetchedAt) / 60000)
-  if (mins < 1) return 'Just now'
-  if (mins < 60) return `${mins} min ago`
-  return `${Math.round(mins / 60)}h ago`
+  return formatAge(fetchedAt)
 }

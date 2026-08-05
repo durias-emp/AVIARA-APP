@@ -16,7 +16,7 @@ import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expan
 import { sampleRoute } from '../../../lib/corridor'
 import { analyzeTerrain, MOUNTAIN_FT } from '../../../lib/terrain'
 import { analyzeWater } from '../../../lib/water'
-import { analyzeAerodromes } from '../../../lib/aerodromes'
+import { analyzeAerodromes, findAirport } from '../../../lib/aerodromes'
 import { analyzeAirspace } from '../../../lib/airspace'
 import { recommendCruise, fmtAlt } from '../../../lib/cruiseAdvisor'
 import { parseAircraftPerf } from '../../../lib/climbPerf'
@@ -27,6 +27,8 @@ import AerodromePopup from './AerodromePopup'
 import { fetchBriefing } from '../../../lib/altitudeBrief'
 import { lookupRoutes, classifyRoute } from '../../../lib/preferredRoutes'
 import { expandProcedure } from '../../../lib/procedures'
+import { scopedSettingsKey } from '../../../lib/aircraft'
+import { useActiveAircraft } from '../../../context/ActiveAircraft'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -1094,9 +1096,36 @@ function MapControlStack({ onClose }) {
   )
 }
 
+// The basemap's paper colour. Named because it has to agree in three places
+// (both full-bleed map surfaces and the status-bar tint below), and a drift
+// between them is exactly what shows up as a seam across the notch.
+const FULLBLEED_MAP_BG = '#e8e0d8'
+
+// iOS paints the status-bar strip with theme-color — that is what the bar
+// investigation in main.jsx and index.html concluded ("the bar was painting
+// theme-color all along"). Everywhere else in the app that strip is invisible
+// because theme-color and --bg are the same value on purpose: #ffffff in
+// light, #000000 in dark. The two maps below are the app's only surfaces that
+// go edge to edge in a colour of their own, so on an iPhone the strip stayed
+// white above a tan map and read as a blank band across the top. Point
+// theme-color at the map while it is open, put it back on the way out.
+//
+// Only the tag content changes: the media-scoped light/dark pair from
+// index.html is preserved and restored, so the normal theming is untouched.
+function useStatusBarTint(active, color) {
+  useEffect(() => {
+    if (!active) return
+    const metas = document.querySelectorAll('meta[name="theme-color"]')
+    if (!metas.length) return
+    const previous = Array.from(metas, m => m.getAttribute('content'))
+    metas.forEach(m => m.setAttribute('content', color))
+    return () => metas.forEach((m, i) => m.setAttribute('content', previous[i]))
+  }, [active, color])
+}
+
 // Choosing where you are flying to, on the map.
 //
-// The route map only exists once a route does, and a route needs two ends. 
+// The route map only exists once a route does, and a route needs two ends.
 // which is exactly the assumption this breaks. Plenty of flying is to places
 // that have no ICAO code to type into the TO field: a ranch strip, a lake, a
 // section corner, a friend's grass runway. Those pilots need to point at it.
@@ -1114,9 +1143,10 @@ function PickDestinationMap({ depPos, depIdent, onClose, onPick }) {
   const pickOaKey = resolveOpenaipKey()
   const togglePick = (k) => setPickLayers(prev => ({ ...prev, [k]: !prev[k] }))
   const pickActive = Object.values(pickLayers).filter(Boolean).length
+  useStatusBarTint(true, FULLBLEED_MAP_BG)
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#e8e0d8' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: FULLBLEED_MAP_BG }}>
       <div style={{ position: 'absolute', inset: 0 }}>
         <MapContainer center={depPos} zoom={8}
           style={{ height: '100%', width: '100%' }}
@@ -1729,12 +1759,16 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const [brief, setBrief] = useState(null)
   const [briefBusy, setBriefBusy] = useState(false)
 
+  // Multi-aircraft: read the ACTIVE aircraft's record, not the legacy
+  // single-'profile' row (which no longer exists in the hangar data model).
+  const { aircraftId } = useActiveAircraft()
   useEffect(() => {
-    get('aircraft', 'profile').then(profile => {
+    if (!aircraftId) { setAircraft(null); return }
+    get('aircraft', aircraftId).then(profile => {
       setIsHelicopter(profile?.category === 'helicopter')
       setAircraft(profile || null)
     })
-  }, [])
+  }, [aircraftId])
 
   // Route inputs
   const [dep, setDep]              = useState('')
@@ -1761,6 +1795,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     })
   }, [])
   const [mapFullscreen, setMapFS]   = useState(false)
+  // The fullscreen map is an inline block inside a portal rather than its own
+  // component, so its status-bar tint is driven from here.
+  useStatusBarTint(mapFullscreen, FULLBLEED_MAP_BG)
   const [showRefs, setShowRefs]     = useState(false)
   // Cleared view: the pilot swipes the bottom card down and everything but the
   // close button and the zoom control gets out of the way, so the chart can be
@@ -1846,11 +1883,25 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     })
   }, [])
 
+  // AWC answers "does this field report weather", which is not the same
+  // question as "does this field exist", and validating against it alone
+  // rejected real aerodromes as nonexistent. CYLS (Barrie-Lake Simcoe) has
+  // no AWC record and no METAR, yet sits in the bundled database with
+  // coordinates and a 5,000 ft runway, and came back "Airport not found" —
+  // while neighbouring CYQA and CYYZ both answer from AWC, so the gap is
+  // per-field, not regional, and it falls on exactly the small fields this
+  // app sets out to serve as well as the majors. AWC still goes first: when
+  // it does answer it carries elevation and runway detail the bundled list
+  // has no room for. See findAirport() for the shared fallback.
+  async function resolveEndpoint(id) {
+    return (await fetchAWC(id)) ?? (await findAirport(id))
+  }
+
   async function validateDep() {
     const id = dep.trim().toUpperCase()
     if (id.length < 3) return
     setDepChk(true); setDepErr(null)
-    const result = await fetchAWC(id)
+    const result = await resolveEndpoint(id)
     setDepChk(false)
     if (result) {
       setDep(id); setDepVal(true)
@@ -1863,7 +1914,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     const id = dest.trim().toUpperCase()
     if (id.length < 3) return
     setDestChk(true); setDestErr(null)
-    const result = await fetchAWC(id)
+    const result = await resolveEndpoint(id)
     setDestChk(false)
     if (result) { setDest(id); setDestVal(true) }
     else setDestErr('Airport not found')
@@ -2253,7 +2304,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // reach the other end, and that question belongs next to the route, not two
   // steps further on where the fuel figures happen to live.
   const [fuelPlan, setFuelPlan] = useState(null)
-  useEffect(() => { get('settings', 'cruise').then(r => r && setFuelPlan(r)) }, [])
+  useEffect(() => { get('settings', scopedSettingsKey('cruise', aircraftId)).then(r => r && setFuelPlan(r)) }, [aircraftId])
 
   const [pickMode, setPickMode] = useState(false)
   // The standalone "where am I going" map, shown before a route exists.
@@ -3602,9 +3653,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                   }
 
                   return (
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#e8e0d8' }}>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: FULLBLEED_MAP_BG }}>
                       {/* Map: full height */}
-                      <div style={{ position: 'absolute', inset: 0, background: '#e8e0d8' }}>
+                      <div style={{ position: 'absolute', inset: 0, background: FULLBLEED_MAP_BG }}>
                         <MapContainer center={mapCenter} zoom={7}
                           ref={setFsMap}
                           style={{ height: '100%', width: '100%' }}

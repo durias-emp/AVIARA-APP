@@ -62,8 +62,16 @@ const TOOLS = [
   // screen, and listing it twice makes the grid look fuller than it is while
   // teaching two routes to one place.
   { to: '/calc',       icon: '/E6B CALC.svg',   label: 'Calculators' },
-  { to: '/currency',   icon: '/cheque.png',     label: 'Currency' },
+  // Was '/currency', which no longer exists: that screen grew into Pilot,
+  // which reports currency alongside medical, total time and the logbook.
+  { to: '/pilot',      icon: '/cheque.png',     label: 'Pilot' },
   { to: '/reference',  icon: '/libros.png',     label: 'Quick Reference' },
+  { to: '/airports',   icon: '/control-tower.png', label: 'Airports' },
+  { to: '/tools',      icon: '/filtrar.png',    label: 'Tools' },
+  // Placeholder icon: the project has no gear, and main drew these two as
+  // inline SVG rather than PNG. Worth replacing when these screens are
+  // restyled, along with the filter standing in for Tools.
+  { to: '/settings',   icon: '/llaves.png',     label: 'Settings' },
 ]
 
 // One tapped aircraft. Deliberately sparse: this is a reference readout, and

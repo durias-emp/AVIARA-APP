@@ -5,14 +5,14 @@ import FuelConverter from '../../components/FuelConverter'
 
 const TABS = ['Conversions', 'Performance']
 
-export default function Calculators() {
+export default function Calculators({ onBack }) {
   const [tab, setTab] = useState(0)
 
   return (
     <div>
       {/* Page title */}
       <div style={{ padding: '20px 20px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <BackButton />
+        <BackButton onBack={onBack} />
         <h2 style={{
           fontSize: 28,
           fontWeight: 700,

@@ -1,0 +1,84 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+
+// Segmented control — sliding highlight over a row of string options.
+// Pulled out of Onboarding.jsx into its own module so other pages (Profile,
+// Aircraft) can import it without creating a circular dependency with
+// Onboarding (which itself imports from Aircraft.jsx).
+//
+// The highlight is measured rather than computed from 100/options.length.
+// Equal-width arithmetic only holds while every label fits its share, and
+// the Airports page now carries five — Weather / Frequencies / Runways /
+// Procedures / NOTAMs does not fit a phone. Two changes make that work
+// without altering how the existing two- and three-option users look:
+//
+//   * `minWidth: max-content` stops a button being squeezed narrower than
+//     its own text. While there is room, flex-basis 0 still divides the
+//     width equally exactly as before; only once a label would be clipped
+//     does it claim more, and the row scrolls
+//   * the pill is positioned from the active button's real offsetLeft/
+//     offsetWidth, so it stays under the right label once those widths stop
+//     being equal
+export function SegControl({ options, value, onChange }) {
+  const wrapRef = useRef(null)
+  const btnRefs = useRef([])
+  const [box, setBox] = useState(null)
+  const idx = options.indexOf(value)
+
+  useLayoutEffect(() => {
+    const el = btnRefs.current[idx]
+    if (!el) { setBox(null); return }
+    const measure = () => setBox({ left: el.offsetLeft, width: el.offsetWidth })
+    measure()
+    // A late-loading font or a resized pane moves the buttons after first
+    // paint; without watching for it the pill sits where the text used to be.
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    if (wrapRef.current) ro.observe(wrapRef.current)
+    return () => ro.disconnect()
+  }, [idx, options.join(' ')])
+
+  // Keep the selected option in view when the row is wide enough to scroll.
+  useEffect(() => {
+    btnRefs.current[idx]?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+  }, [idx])
+
+  return (
+    <div
+      ref={wrapRef}
+      className="seg-control"
+      style={{
+        display: 'flex', background: 'rgba(120,120,128,0.12)',
+        borderRadius: 'var(--r-sm)', padding: 3, position: 'relative',
+        overflowX: 'auto', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
+      }}>
+      <style>{`.seg-control::-webkit-scrollbar { display: none; }`}</style>
+      <div style={{
+        position: 'absolute', top: 3, bottom: 3,
+        left: box ? box.left : 3,
+        width: box ? box.width : 0,
+        background: 'var(--bg-card)',
+        borderRadius: 6,
+        boxShadow: '0 1px 4px rgba(0,0,0,0.14), 0 0 0 0.5px rgba(0,0,0,0.06)',
+        transition: 'left 0.25s cubic-bezier(0.34, 1.2, 0.64, 1), width 0.25s cubic-bezier(0.34, 1.2, 0.64, 1)',
+        pointerEvents: 'none',
+        opacity: box ? 1 : 0,
+      }} />
+      {options.map((opt, i) => (
+        <button
+          key={opt}
+          ref={el => { btnRefs.current[i] = el }}
+          onClick={() => onChange(opt)}
+          style={{
+            flex: 1, minWidth: 'max-content',
+            padding: '7px 6px', borderRadius: 6, border: 'none', cursor: 'pointer',
+            fontWeight: 600, fontSize: 13,
+            background: 'transparent',
+            color: value === opt ? 'var(--text)' : 'var(--text-secondary)',
+            fontFamily: 'inherit', position: 'relative', zIndex: 1,
+            transition: 'color 0.18s',
+            whiteSpace: 'nowrap',
+          }}>{opt}</button>
+      ))}
+    </div>
+  )
+}

@@ -1,0 +1,32 @@
+# Deploy from the REPO ROOT, not this directory — the worker shares
+# src/lib/notamParse.js with the PWA:
+#   fly deploy --config services/aviara-svc/fly.toml --dockerfile services/aviara-svc/Dockerfile
+app = "aviara-svc"
+primary_region = "yyz"          # Toronto — closest to both partners and to NAV CANADA
+
+[build]
+
+[env]
+  PORT = "8080"
+  POLL_INTERVAL_SEC = "300"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Never scale to zero. The whole point of this service is being awake when
+  # nobody is looking — a mirror that sleeps is just the serverless setup
+  # again with extra steps.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "10s"
+  method = "GET"
+  path = "/"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

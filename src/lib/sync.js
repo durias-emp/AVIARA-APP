@@ -1,9 +1,9 @@
 import { supabase } from './supabase'
 import { get, put, getAll, clearStore } from './db'
 
-// The five stores backed up to the cloud. `weather` is excluded. It's a
-// disposable fetch cache, not pilot data worth restoring.
-export const SYNCED_STORES = ['aircraft', 'currency', 'checklists', 'settings', 'flights']
+// The stores backed up to the cloud. `weather`/`airportDiagram` are
+// excluded — disposable fetch caches, not pilot data worth restoring.
+export const SYNCED_STORES = ['aircraft', 'currency', 'checklists', 'settings', 'flights', 'logbookEntries', 'uapReports']
 
 async function currentUserId() {
   const { data } = await supabase.auth.getSession()

@@ -30,12 +30,22 @@ over ~5 NM across are kept: anything smaller cannot change a glide-range or
 life-jacket decision.
 
 Aerodromes come from OurAirports (public domain, same source as the navaid
-pack), in two files: the position list used for route proximity, and a details
-file (runways and frequencies) that replaces scraping a third-party site for
-the same information — worldwide, offline, and with no CORS proxy in the path. Large and medium fields carry their name; small fields are ident-only,
-which halves the file — a strip you would look up by ident anyway. Heliports,
-seaplane bases, balloonports and closed fields are excluded: none of them
-change how you cross an airport's traffic.
+pack), in three files: the airport position list used for route proximity,
+a heliport/seaplane-base position list (kept separate — see below), and a
+details file (runways and frequencies) that replaces scraping a third-party
+site for the same information — worldwide, offline, and with no CORS proxy
+in the path. Every field carries its full name, small strips included (see
+the Aerodromes section for what that costs and why it is worth it).
+Balloonports and closed fields are excluded: neither changes how you
+cross an airport's traffic, and a closed field's coordinates are actively
+misleading to plot.
+
+Heliports and seaplane bases are real landing options a pilot plans around
+(the map's Heliports/Seaplane Bases layers), so they are not excluded — but
+they are kept out of airports.json entirely rather than folded into its
+`cls` field, since that field mixed into "biggest field first" sorting
+elsewhere (analyzeAerodromes) is a size tier, and a heliport isn't a bigger
+or smaller airport, it's not an airport.
 
 Output: src/data/geo/land.json
   {"polys": [[lat,lon], ...],         # flat vertex store
@@ -172,9 +182,20 @@ print(f'-> {os.path.getsize(path)/1e6:.2f} MB')
 
 
 # ── Aerodromes ────────────────────────────────────────────────────
-# [ident, lat, lon, class, name?] where class is 2 large / 1 medium / 0 small.
-# Names are carried for 2 and 1 only; including them for all 43k small fields
-# adds a megabyte for strips that are identified by code in practice.
+# [ident, lat, lon, class, name] where class is 2 large / 1 medium / 0 small.
+#
+# Every field carries its full name. The previous rule — names for large and
+# medium only, truncated to 30 characters — was measured rather than assumed
+# and both halves of it were wrong. The truncation saved 533 bytes gzipped
+# while showing pilots "Barrie-Lake Simcoe Regional Ai", and naming all 34k
+# fields costs 228 KB gzipped, not the megabyte claimed here. That is a real
+# cost but the right one: airports.json is in vite.config.js's globIgnores
+# and runtime-cached, so it never touches PWA install or update, which is
+# that list's entire purpose. And "identified by code in practice" was the
+# assumption behind leaving small strips nameless — but findAirport() and
+# the airport picker both show a name back to the pilot to confirm they
+# typed the right code, and for 28,885 small fields there was nothing to
+# show.
 CLASS = {'large_airport': 2, 'medium_airport': 1, 'small_airport': 0}
 
 ap_path = os.path.join(SCRATCH, 'airports.csv')
@@ -183,6 +204,27 @@ if not os.path.exists(ap_path):
     urllib.request.urlretrieve(AIRPORTS_URL, ap_path)
 
 airports = []
+# Everything the airport picker can search on that isn't already in
+# airports.json — city, IATA code, country — as a positional sidecar rather
+# than extra columns on the main file. Two reasons for the split:
+#
+#   * airports.json is loaded by the map layer and the en-route corridor
+#     analysis on every flight, and neither of them will ever search by city.
+#     Inlining the same data costs those paths 166 KB gzipped for nothing;
+#     the sidecar is fetched only when a pilot actually types a word
+#   * positional means the ident is not repeated, which is most of the
+#     saving: keyed by ident the same content is 260 KB gzipped, positional
+#     it is 131 KB
+#
+# A city that already appears inside the airport's own name is stored as
+# empty — searching the name finds it either way, and that alone is 10,932
+# of the 27,924 cities.
+#
+# Built in this loop, not a second pass, because the alignment IS the schema:
+# row i here describes airports[i] there. The reader re-checks the length and
+# the first/last idents before trusting it, and disables city search rather
+# than mislabelling airports if a future edit ever breaks the pairing.
+search = []
 for row in csv.DictReader(open(ap_path, encoding='utf-8')):
     cls = CLASS.get(row['type'])
     if cls is None:
@@ -196,17 +238,71 @@ for row in csv.DictReader(open(ap_path, encoding='utf-8')):
     # They are not identifiers a pilot can use, so they are not worth listing.
     if not ident or re.fullmatch(r'[A-Z]{2}-\d+', ident):
         continue
-    entry = [ident, la, lo, cls]
-    if cls:
-        entry.append(row['name'][:30])
-    airports.append(entry)
+    airports.append([ident, la, lo, cls, row['name']])
+
+    muni = (row['municipality'] or '').strip()
+    iata = (row['iata_code'] or '').strip()
+    if muni and muni.lower() in row['name'].lower():
+        muni = ''
+    # Trailing empties only — a field with a city and no IATA code keeps its
+    # leading position, so the reader can split on tab without counting.
+    search.append('\t'.join([muni, iata, (row['iso_country'] or '').strip()]).rstrip('\t'))
 
 ap_out = f'{OUT}/airports.json'
 json.dump({'airports': airports,
            'note': 'OurAirports, public domain. Large/medium/small airports; '
-                   'heliports, seaplane bases and closed fields excluded.'},
+                   'heliports, seaplane bases, balloonports and closed fields '
+                   'excluded (heliports and seaplane bases are in '
+                   'aux_aerodromes.json instead).'},
           open(ap_out, 'w'), separators=(',', ':'))
 print(f'aerodromes: {len(airports)} fields -> {os.path.getsize(ap_out)/1e6:.2f} MB')
+
+search_out = f'{OUT}/airport_search.json'
+json.dump({'n': len(airports),
+           'first': airports[0][0],
+           'last': airports[-1][0],
+           'rows': search,
+           'note': 'Positional sidecar to airports.json: rows[i] describes '
+                   'airports[i]. Each row is "city\\tIATA\\tcountry" with '
+                   'trailing empties dropped, and city omitted where it '
+                   'already appears in the airport name. n/first/last exist '
+                   'so a reader can prove the two files still line up.'},
+          open(search_out, 'w'), separators=(',', ':'))
+n_city = sum(1 for s in search if s.split('\t')[0])
+n_iata = sum(1 for s in search if len(s.split('\t')) > 1 and s.split('\t')[1])
+print(f'search index: {n_city} cities, {n_iata} IATA codes '
+      f'-> {os.path.getsize(search_out)/1e6:.2f} MB')
+
+# ── Heliports & seaplane bases ─────────────────────────────────────
+# Own file, own [ident, lat, lon, name] shape — no `cls`, since these
+# aren't a size tier of airport (see the module docstring). Re-reads the
+# already-downloaded/cached CSV rather than merging into the loop above;
+# this script runs rarely (by hand, not on the 28-day refresh), so a
+# second cheap pass over 86k rows is worth it for keeping the two outputs'
+# filters independently readable.
+AUX_TYPES = {'heliport': 'heliports', 'seaplane_base': 'seaplaneBases'}
+aux = {'heliports': [], 'seaplaneBases': []}
+for row in csv.DictReader(open(ap_path, encoding='utf-8')):
+    key = AUX_TYPES.get(row['type'])
+    if key is None:
+        continue
+    try:
+        la, lo = round(float(row['latitude_deg']), 4), round(float(row['longitude_deg']), 4)
+    except ValueError:
+        continue
+    ident = row['icao_code'] or row['gps_code'] or row['ident']
+    if not ident or re.fullmatch(r'[A-Z]{2}-\d+', ident):
+        continue
+    aux[key].append([ident, la, lo, row['name']])
+
+aux_out = f'{OUT}/aux_aerodromes.json'
+json.dump({**aux,
+           'note': 'OurAirports, public domain. Heliports and seaplane bases '
+                   'with a usable ICAO/GPS/local ident — placeholder-only '
+                   'idents excluded, same convention as airports.json.'},
+          open(aux_out, 'w'), separators=(',', ':'))
+print(f'aux aerodromes: {len(aux["heliports"])} heliports, '
+      f'{len(aux["seaplaneBases"])} seaplane bases -> {os.path.getsize(aux_out)/1e6:.2f} MB')
 
 # Runway and frequency details are built separately, from the FAA's NASR
 # subscription and the COCESNA eAIP where those cover the field — see

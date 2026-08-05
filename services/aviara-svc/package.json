@@ -1,0 +1,15 @@
+{
+  "name": "aviara-svc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AVIARA always-on worker: NOTAM mirror, and where SWIM ingest, push notifications and flight-plan filing will live.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/index.js",
+    "dry-run": "DRY_RUN=1 node src/index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}
