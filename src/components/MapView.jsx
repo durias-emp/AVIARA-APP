@@ -24,6 +24,20 @@ import GpsInfoBar from './GpsInfoBar'
 export const FALLBACK_CENTER = [39.8, -98.6]
 const LOCATION_ZOOM = 13
 
+// What actually speeds up a stubborn GPS fix, in the order a pilot can act
+// on it from the seat. Adapted from the standard advice ("battery saver
+// off, high-accuracy on, data on, clear sky view") for iOS and for
+// aircraft: the Android-only "high accuracy mode" becomes iOS's Precise
+// Location toggle, and "move outside" becomes the glareshield — a metal
+// airframe is the sky-view problem pilots actually have.
+const GPS_TIPS = [
+  'Give the phone sky — glareshield or window; the airframe blocks GPS.',
+  'Wi-Fi or mobile data speeds the first fix.',
+  'Turn off Low Power Mode.',
+  'Precise Location on: Settings → Privacy & Security → Location Services.',
+  'Still stuck? Reopen the app, or restart the phone.',
+]
+
 // The exact steps to un-deny location, for the browser this is actually
 // running in. A permission denial is the pilot's own device telling the
 // app no; the only useful thing software can do about it is name the
@@ -821,6 +835,23 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   // numeric code and not a false "still trying". Retrying after the pilot
   // flips the setting works without a reload, so the tap stays useful.
   const locationDenied = locationUnavailable && liveErrorCode === 1
+  // A cold GPS start can legitimately take a while, and tips that appear at
+  // second three are noise. Past thirty seconds without any fix, the pilot
+  // is owed the short list of things that actually speed one up. A banner,
+  // never a pop-up: GPS blips happen in flight, and nothing is allowed to
+  // jump in front of the moving map. (In flight a fix exists, so this whole
+  // block is gone anyway.)
+  const [slowFix, setSlowFix] = useState(false)
+  useEffect(() => {
+    if (liveCoords) { setSlowFix(false); return }
+    const t = setTimeout(() => setSlowFix(true), 30000)
+    return () => clearTimeout(t)
+  }, [liveCoords])
+  // iOS's Precise Location toggle is invisible to a web app EXCEPT through
+  // the numbers: with it off, fixes arrive with ~kilometres of accuracy
+  // instead of metres. That signature is detectable, so name the switch
+  // instead of letting the pilot stare at a dot parked a town away.
+  const coarseFix = liveCoords && liveCoords.accuracyM != null && liveCoords.accuracyM > 1000
 
   return (
     <div
@@ -917,7 +948,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
           whether anything is still happening, or relaunch the app to force it.
           The banner says what went wrong, that it is still trying, and gives
           them a way to ask for it now. */}
-      {locationUnavailable && (
+      {noFixYet && (locationUnavailable || slowFix) && (
         <button
           onClick={retryLocation}
           aria-label="Retry locating"
@@ -925,6 +956,11 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
             position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
             background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
             border: 'none', textAlign: 'left', width: 'auto',
+            // With the drawer up, the visible strip can be shorter than the
+            // tip list — cap the card at the space that's actually free
+            // (above the GPS bar) and scroll inside it, rather than running
+            // underneath the bar and the zoom rail.
+            maxHeight: 'calc(100% - var(--map-bottom-inset, 0px) - 150px)', overflowY: 'auto',
             boxShadow: 'var(--shadow-sm)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
           }}>
           {locationDenied ? (
@@ -941,13 +977,44 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
             </>
           ) : (
             <>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{liveError}</div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                {locationUnavailable ? liveError : 'Still looking for GPS…'}
+              </div>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginTop: 3 }}>
                 Still trying · tap to retry now
               </div>
+              {slowFix && (
+                <div style={{ marginTop: 8, borderTop: '0.5px solid var(--border)', paddingTop: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+                    Taking a while — what helps
+                  </div>
+                  {GPS_TIPS.map((tip, i) => (
+                    <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, display: 'flex', gap: 6 }}>
+                      <span style={{ flexShrink: 0 }}>·</span>
+                      <span>{tip}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </button>
+      )}
+
+      {/* A fix that exists but is kilometres wide is worse than none if the
+          app stays quiet about it — the dot looks authoritative parked a
+          town away. Named cause + named switch, and it disappears on its
+          own the moment real accuracy arrives. Suppressed while recording
+          so it never stacks over the recording banner. */}
+      {coarseFix && detectState !== 'recording' && (
+        <div style={{
+          position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
+          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
+          fontSize: 12, color: 'var(--text-secondary)', boxShadow: 'var(--shadow-sm)',
+        }}>
+          Position is coarse (±{Math.round(liveCoords.accuracyM / 1000)} km) — if this persists,
+          Precise Location may be off for AVIARA: Settings → Privacy &amp; Security → Location Services.
+        </div>
       )}
 
       {detectState === 'recording' && (
