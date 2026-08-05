@@ -14,6 +14,7 @@ import { useLogbook } from '../context/Logbook'
 import { useActiveAircraft } from '../context/ActiveAircraft'
 import { get } from '../lib/db'
 import { findAirport } from '../lib/aerodromes'
+import { ROUTE_COLOR, ROUTE_OPACITY, ROUTE_WEIGHT } from './mapStyle'
 // Moved to their own module so this branch's map home draws the same
 // airports, heliports, seaplane bases and radar from one copy.
 import { AirportLayer, HeliportLayer, SeaplaneBaseLayer, RadarLayer, FlightCategoryLayer } from './aerodromeLayers'
@@ -391,10 +392,11 @@ function RoutePreview({ route }) {
   if (!route?.length) return null
   return (
     <>
-      <Polyline positions={route.map(w => [w.lat, w.lon])} pathOptions={{ color: '#a855f7', weight: 4, opacity: 0.75 }} />
+      <Polyline positions={route.map(w => [w.lat, w.lon])}
+        pathOptions={{ color: ROUTE_COLOR, weight: ROUTE_WEIGHT, opacity: ROUTE_OPACITY }} />
       {route.map((w, i) => (
         <CircleMarker key={i} center={[w.lat, w.lon]} radius={7}
-          pathOptions={{ color: '#fff', weight: 2.5, fillColor: '#a855f7', fillOpacity: 1 }}>
+          pathOptions={{ color: '#fff', weight: 2.5, fillColor: ROUTE_COLOR, fillOpacity: 1 }}>
           <Popup><div style={{ fontSize: 12, fontWeight: 700 }}>{w.name}{w.label ? ` — ${w.label}` : ''}</div></Popup>
         </CircleMarker>
       ))}

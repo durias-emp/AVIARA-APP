@@ -10,12 +10,15 @@
 // What is deliberately NOT borrowed: anything that ranks pilots by speed or
 // altitude. Competing on those is a flight-safety problem, not engagement.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MapContainer, Polyline, CircleMarker, Marker, Tooltip, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import ChartLayers, { Basemap } from '../../components/ChartLayers'
 import { CHARTS, EMPTY_LAYERS, resolveOpenaipKey } from '../../components/chartDefs'
+// Route styling lives in one place now, shared with the planner and its
+// preview map: three copies of a hex is how the three drifted apart.
+import { ROUTE_COLOR, ROUTE_OPACITY, ROUTE_WEIGHT } from '../../components/mapStyle'
 import ActivityCard from '../../components/ActivityCard'
 import TrafficLayer from '../../components/TrafficLayer'
 import TrafficLegend from '../../components/TrafficLegend'
@@ -25,15 +28,25 @@ import AirportPickerModal from '../../components/AirportPickerModal'
 import { createPortal } from 'react-dom'
 import WeatherRibbon from '../../components/WeatherRibbon'
 import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecorder'
-import { put, get, getAll } from '../../lib/db'
+import { put, get, getAll, del } from '../../lib/db'
 import { getAirports } from '../../lib/aerodromes'
 import { loadTfrs } from '../../lib/tfr'
 import useIsDark from '../../hooks/useIsDark'
 import { TEMPLATES } from '../../data/aircraftTemplates'
 import { useActiveAircraft } from '../../context/ActiveAircraft'
 
+// The flight plan, loaded only when it is asked for. Same specifier App.jsx
+// lazy-loads and the same one the idle warm-up below fetches, so all three
+// share one chunk rather than making three copies of a megabyte and a half.
+const Planner = lazy(() => import('../Checklists/Checklists'))
+
 const ACCENT = '#FF5A1F'      // the one saturated colour on the screen, so the
                               // action is never ambiguous
+// The planned route, drawn to be told apart from the recorded track at a
+// glance: the track is the accent orange, so the plan is violet. The exact
+// value is the planner's own, from the preview map in RouteAltitude, because
+// a route that changes colour on its way from one screen to the other reads
+// as a different route.
 const CTRL = 52
 // One size for every chart chip, so the column has a straight edge instead of
 // stepping in and out with the length of each label.
@@ -65,6 +78,18 @@ const SHEET_COLLAPSED_PX = 178
 const SHEET_EXPANDED_VH = 0.82
 const SHEET_FULL_TRIGGER = 0.75
 const SHEET_RADIUS = 22
+// Where the drawer rests while the flight plan is open in it: half the screen
+// each, map above and planner below, so the route can be watched as it is
+// typed. It is tight, and deliberately so. The planner's own tab bar and
+// action row take about a third of the space this leaves, and the answer to
+// that is the drag up to full screen rather than a taller resting stop that
+// would push the map out of the picture the planner exists to be seen against.
+const SHEET_PLAN_VH = 0.5
+// How much taller the collapsed drawer stands while it is carrying a route.
+// Without it the card lands below the fold, hidden by the very drawer that
+// exists to show it, and the pilot has to pull the sheet up to read numbers
+// that were just put there for them.
+const ROUTE_CARD_PX = 96
 // How far a finger must travel before the sheet treats it as a drag rather
 // than a tap. Below this the buttons in the header keep their taps.
 const DRAG_SLOP = 6
@@ -88,6 +113,80 @@ const TOOLS = [
   // restyled, along with the filter standing in for Tools.
   { to: '/settings',   icon: '/llaves.png',     label: 'Settings' },
 ]
+
+// The planned route, on the drawer. The same four figures the planner shows
+// under Calculate Route, in the same words, because a pilot who checked them
+// there should not have to work out whether these are the same numbers.
+//
+// Magnetic course gets the emphasis: it is the one you actually fly. True
+// course and variation are underneath it as the working, not as headline
+// figures competing with it.
+function RouteSummary({ route, onClear, onEdit }) {
+  const stat = { display: 'flex', flexDirection: 'column', gap: 2 }
+  const statValue = { fontSize: 17, fontWeight: 800, color: 'var(--map-ink)', letterSpacing: '-0.3px', fontVariantNumeric: 'tabular-nums' }
+  const statLabel = { fontSize: 9, fontWeight: 600, color: 'var(--map-ink-faint)', letterSpacing: '0.4px' }
+
+  return (
+    <div style={{
+      background: 'var(--map-fill)', borderRadius: 14, padding: '10px 12px', marginTop: 12,
+      display: 'flex', alignItems: 'center', gap: 12,
+    }}>
+      {/* The whole card reopens the plan. The X is the only thing on it that
+          does not, so it is given its own hit area away from the numbers. */}
+      <button
+        onClick={onEdit}
+        style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0,
+          cursor: 'pointer', textAlign: 'left' }}>
+        <div style={{
+          fontSize: 13, fontWeight: 700, color: 'var(--map-ink)', marginBottom: 7,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {route.dep} <span style={{ color: 'var(--map-ink-faint)', fontWeight: 600 }}>→</span> {route.dest}
+        </div>
+        <div style={{ display: 'flex', gap: 20 }}>
+          <div style={stat}>
+            <span style={statValue}>{route.distNm}<span style={{ fontSize: 11, fontWeight: 600, marginLeft: 2 }}>NM</span></span>
+            <span style={statLabel}>DISTANCE</span>
+          </div>
+          <div style={stat}>
+            <span style={statValue}>{route.mc}°</span>
+            <span style={statLabel}>MAG COURSE</span>
+          </div>
+          {/* Only if the planner actually produced them. A route restored from
+              an older version of this record has the first two and not always
+              the rest, and a blank figure on a flight plan is worse than none. */}
+          {route.tc != null && (
+            <div style={stat}>
+              <span style={{ ...statValue, fontSize: 14, color: 'var(--map-ink-dim)' }}>{route.tc}°</span>
+              <span style={statLabel}>TRUE</span>
+            </div>
+          )}
+          {route.magVar != null && (
+            <div style={stat}>
+              <span style={{ ...statValue, fontSize: 14, color: 'var(--map-ink-dim)' }}>
+                {parseFloat(route.magVar) >= 0 ? '+' : ''}{route.magVar}°
+              </span>
+              <span style={statLabel}>VAR</span>
+            </div>
+          )}
+        </div>
+      </button>
+
+      <button
+        onClick={onClear}
+        aria-label="Clear route"
+        style={{
+          width: 30, height: 30, borderRadius: '50%', border: 'none', flexShrink: 0,
+          background: 'var(--map-panel)', color: 'var(--map-ink-dim)', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+          <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+        </svg>
+      </button>
+    </div>
+  )
+}
 
 // One tapped aircraft. Deliberately sparse: this is a reference readout, and
 // padding it with fields the feed reports unreliably would suggest more
@@ -287,7 +386,21 @@ export default function MapHome() {
   // app can do. Dragging between them is how the rest of the app is reached
   // now that the home screen is a map, so it has to feel like a sheet rather
   // than a button that swaps screens.
-  const [snap, setSnap] = useState('collapsed')   // collapsed | expanded | full
+  const [snap, setSnap] = useState('collapsed')   // collapsed | plan | expanded | full
+  // Planning happens here now, not on a screen of its own. Plan Route raises
+  // the drawer to the 'plan' stop and fills it with the flight plan, so the
+  // map keeps showing what the route is being drawn across. /checklists still
+  // exists and still works; this is the way in, not the only way.
+  const [planning, setPlanning] = useState(false)
+  // The calculated route: drawn on the map, summarised on the collapsed
+  // drawer, and cleared by the X on that card. Read back from IndexedDB on
+  // mount, so a route survives the app being closed and reopened, which is
+  // what a flight plan made the night before has to do.
+  const [route, setRoute] = useState(null)
+  // The closed drawer's height, which is not one number any more: it stands
+  // taller when it has a route to report. Not while planning, where the
+  // drawer's height is set by the planning stop instead.
+  const collapsedPx = SHEET_COLLAPSED_PX + (route && !planning ? ROUTE_CARD_PX : 0)
   // The viewport, measured rather than assumed: reading window.innerHeight
   // during render is fine once, but it has to be re-read when the phone is
   // rotated or the browser chrome changes, or every snap point is stale.
@@ -514,6 +627,55 @@ export default function MapHome() {
     }
   }, [base, baseResolved, pos, mapReady])
 
+  // A route planned earlier is still the plan. Restored on mount so the line
+  // is on the map when the app is opened the morning after it was drawn, which
+  // is when a flight plan is most often looked at.
+  useEffect(() => {
+    get('settings', 'route')
+      .then(saved => { if (saved?.depPos && saved?.destPos) setRoute(saved) })
+      .catch(() => {})
+  }, [])
+
+  // Departure, every waypoint the planner expanded, then destination. The
+  // planner has already turned airways and procedures into the fixes they
+  // stand for, so this is a plain list of points and needs no aeronautical
+  // knowledge of its own.
+  const routeLine = useMemo(() => {
+    if (!route?.depPos || !route?.destPos) return []
+    const mid = (route.wpts ?? [])
+      .filter(w => w?.lat != null && w?.lon != null)
+      .map(w => [w.lat, w.lon])
+    return [route.depPos, ...mid, route.destPos]
+  }, [route])
+
+  // Frame a new route once. The plan is what the map is being looked at for
+  // the moment one exists, so it takes the camera from the base framing above
+  // rather than being drawn somewhere off the edge of a map still centred on
+  // home. Keyed on the route's own endpoints, so panning away afterwards
+  // stands: only a different route moves the camera again.
+  const fittedRoute = useRef(null)
+  useEffect(() => {
+    if (!mapRef.current || routeLine.length < 2) return
+    const key = JSON.stringify(routeLine)
+    if (fittedRoute.current === key) return
+    fittedRoute.current = key
+    framed.current = true
+    mapRef.current.fitBounds(L.latLngBounds(routeLine), {
+      // The drawer covers the bottom of the map, so the route is fitted into
+      // what is actually visible above it rather than into the whole map, on
+      // which the destination would sit behind the card describing it.
+      paddingTopLeft: [40, 40],
+      paddingBottomRight: [40, SHEET_COLLAPSED_PX + ROUTE_CARD_PX + 40],
+      // Not animated, and not for want of polish. Flying the camera to a route
+      // restored at mount left the basemap blank: Leaflet ran the zoom
+      // animation and never fetched tiles for where it landed, so the line was
+      // drawn over nothing at all. Cutting straight to the framing loads them
+      // every time. A map with no map on it is not a trade worth making for a
+      // half-second glide.
+      animate: false,
+    })
+  }, [routeLine, mapReady])
+
   // The pilot's own position marker, in the shape of what they fly. The
   // top-down silhouette is the one that reads as an aircraft on a map; the
   // other plane icon is a three-quarter view of one taking off, which points
@@ -589,6 +751,36 @@ export default function MapHome() {
     loadFlights()
   }
 
+  // ── The planner, opened and closed in place ──────────────────────────
+  function openPlanner() {
+    setSheetOpen(true)
+    setPlanning(true)
+    setSnap('plan')
+  }
+
+  function leavePlanner() {
+    setPlanning(false)
+    setSnap('collapsed')
+  }
+
+  // Calculate Route was pressed and it worked. The drawer's job now is to get
+  // out of the way of the line it just produced, which is the whole point of
+  // planning on top of the map rather than on a screen away from it.
+  function onRouteCalculated(calculated) {
+    setRoute(calculated)
+    setPlanning(false)
+    setSnap('collapsed')
+  }
+
+  // Forget the route: off the map, off the drawer, out of storage. Deleted
+  // rather than just dropped from state, or it would come back on the next
+  // launch, and a route the pilot dismissed coming back is worse than one
+  // that never persisted at all.
+  function clearRoute() {
+    setRoute(null)
+    del('settings', 'route').catch(() => {})
+  }
+
   const recording = rec != null
   const track = rec?.track?.map(p => [p.lat, p.lon]) ?? []
 
@@ -598,7 +790,7 @@ export default function MapHome() {
   // it is used twice, once as an offset and once subtracted from the available
   // height, and calc() nests but does not concatenate.
   const chipStackBottom = sheetOpen
-    ? `${SHEET_COLLAPSED_PX}px + var(--safe-bottom) + ${recording ? 132 : 16}px + ${CTRL_STACK_H}px`
+    ? `${collapsedPx}px + var(--safe-bottom) + ${recording ? 132 : 16}px + ${CTRL_STACK_H}px`
     : `var(--safe-bottom) + 28px + ${CTRL_STACK_H}px`
 
   // The sheet is always the full height of the screen and is moved down out of
@@ -611,8 +803,12 @@ export default function MapHome() {
   const vh = viewportH
   const Y_FULL = 0
   const Y_EXPANDED = Math.round(vh * (1 - SHEET_EXPANDED_VH))
-  const Y_COLLAPSED = Math.max(0, vh - SHEET_COLLAPSED_PX)
-  const restY = snap === 'full' ? Y_FULL : snap === 'expanded' ? Y_EXPANDED : Y_COLLAPSED
+  const Y_PLAN = Math.round(vh * (1 - SHEET_PLAN_VH))
+  const Y_COLLAPSED = Math.max(0, vh - collapsedPx)
+  const restY = snap === 'full' ? Y_FULL
+    : snap === 'expanded' ? Y_EXPANDED
+    : snap === 'plan' ? Y_PLAN
+    : Y_COLLAPSED
   const y = dragY != null ? dragY : restY
 
   // Corners square off as the sheet approaches the top, rather than snapping
@@ -695,6 +891,20 @@ export default function MapHome() {
     // Dragging that far is unambiguous, and snapping back from there would
     // feel like the sheet fighting the hand.
     if (d.lastY <= vh * (1 - SHEET_FULL_TRIGGER)) { setSnap('full'); return }
+
+    // With the planner in the drawer there are only two stops, half and full,
+    // and a third outcome: pulled down far enough, the plan is put away. That
+    // costs nothing to do by accident. Every field writes itself to storage as
+    // it is filled in, and Plan Route comes back to exactly the same place.
+    if (planning) {
+      if (d.lastY > (Y_PLAN + Y_COLLAPSED) / 2 || (flick && !up && snap === 'plan')) {
+        leavePlanner()
+        return
+      }
+      setSnap(Math.abs(d.lastY - Y_FULL) < Math.abs(d.lastY - Y_PLAN) ? 'full' : 'plan')
+      return
+    }
+
     if (flick) {
       // Flicks move one stop in the direction of travel, so a hard pull from
       // collapsed does not skip past the useful middle stop to full screen.
@@ -731,6 +941,27 @@ export default function MapHome() {
         )}
         <Basemap dark={darkBasemap} />
         <ChartLayers layers={layers} openaipKey={openaipKey} tfrData={tfrData} />
+        {/* The plan, under the track rather than over it: where both exist,
+            what was actually flown is the one that has to be readable. */}
+        {routeLine.length > 1 && (
+          <>
+            <Polyline positions={routeLine}
+              pathOptions={{ color: ROUTE_COLOR, weight: ROUTE_WEIGHT, opacity: ROUTE_OPACITY, lineCap: 'round', lineJoin: 'round' }} />
+            {/* Turning points, small: they are structure, not destinations. */}
+            {routeLine.slice(1, -1).map((p, i) => (
+              <CircleMarker key={`wpt-${i}`} center={p} radius={3.5}
+                pathOptions={{ color: '#fff', weight: 1.5, fillColor: ROUTE_COLOR, fillOpacity: 1 }} />
+            ))}
+            {[[routeLine[0], route.dep], [routeLine[routeLine.length - 1], route.dest]].map(([p, ident]) => (
+              <CircleMarker key={`end-${ident}`} center={p} radius={6}
+                pathOptions={{ color: '#fff', weight: 2.5, fillColor: ROUTE_COLOR, fillOpacity: 1 }}>
+                <Tooltip permanent direction="top" offset={[0, -10]} className="home-base-label">
+                  {ident}
+                </Tooltip>
+              </CircleMarker>
+            ))}
+          </>
+        )}
         {track.length > 1 && (
           <Polyline positions={track} pathOptions={{ color: ACCENT, weight: 5, opacity: 0.9, lineCap: 'round' }} />
         )}
@@ -939,9 +1170,10 @@ export default function MapHome() {
       )}
 
       {/* The sheet. Collapsed it is the actions; dragged up it is the rest of
-          the app. Two resting heights and nothing in between, because a
-          control surface that stops wherever the finger left it is a surface
-          you have to aim at. */}
+          the app; and while a flight is being planned it is the flight plan,
+          resting at half the screen so the map stays in view above it. Resting
+          heights and nothing in between, because a control surface that stops
+          wherever the finger left it is a surface you have to aim at. */}
       <div style={{
         position: 'absolute', left: 0, right: 0, top: 0, zIndex: 600,
         height: '100%',
@@ -962,6 +1194,25 @@ export default function MapHome() {
         overflow: 'hidden',
       }}>
 
+      {/* The part of the sheet that is actually on the screen.
+          The sheet itself is always a full screen tall and is moved down out
+          of the way, so anything told to fill it fills a box whose bottom half
+          is below the phone. The list never minded, because it scrolls and its
+          end is meant to be out of sight. The planner minds a great deal: its
+          tab bar sits at the bottom of its column, and that bottom was landing
+          somewhere under the home indicator where nobody could reach it.
+          Bounding the column to the visible height puts it back on the screen.
+
+          Sized from the resting position rather than the live drag, so a
+          finger on the handle moves the sheet without relaying out the whole
+          flight plan sixty times a second. The cost is a strip of empty sheet
+          below the content while a drag is heading upward, which is gone the
+          moment it lands. */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', minHeight: 0,
+        height: planning ? `${Math.max(0, vh - restY)}px` : '100%',
+      }}>
+
         {/* The grab area: handle and actions. Dragging anywhere on this moves
             the sheet, which is a bigger target than the handle alone and is
             what people reach for anyway. */}
@@ -977,11 +1228,22 @@ export default function MapHome() {
             paddingLeft: 18, paddingRight: 18,
             transition: 'padding-top 380ms cubic-bezier(0.32,0.72,0,1)',
           }}>
-          <div onClick={() => setSnap(s2 => (s2 === 'collapsed' ? 'expanded' : 'collapsed'))} style={{
-            width: 40, height: 5, borderRadius: 3, background: 'var(--map-hairline)',
-            margin: '0 auto 14px', cursor: 'pointer',
-          }} />
+          <div
+            onClick={() => {
+              // While planning, the handle toggles between the two stops the
+              // planner has rather than the two the drawer normally has.
+              if (planning) { setSnap(s2 => (s2 === 'plan' ? 'full' : 'plan')); return }
+              setSnap(s2 => (s2 === 'collapsed' ? 'expanded' : 'collapsed'))
+            }}
+            style={{
+              width: 40, height: 5, borderRadius: 3, background: 'var(--map-hairline)',
+              margin: planning ? '0 auto 8px' : '0 auto 14px', cursor: 'pointer',
+            }} />
 
+          {/* The three actions step aside while the plan is open. They are what
+              the drawer is for the rest of the time, and the flight plan needs
+              every pixel of a half-height drawer. */}
+          {!planning && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', gap: 10 }}>
             {/* Weather, opposite the route planner. These are the two things a
                 pilot does before a flight, so they flank the one thing they do
@@ -1009,24 +1271,54 @@ export default function MapHome() {
                 : <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M8 5.5v13l11-6.5z" /></svg>}
             </button>
 
-            <button onClick={() => navigate('/checklists')} style={tileBtn}>
+            <button onClick={openPlanner} style={tileBtn}>
               <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)' }}>
                 <IconRoute />
               </span>
               <span style={tileLabel}>Plan Route</span>
             </button>
           </div>
+          )}
 
-          <div style={{ textAlign: 'center', margin: '10px 0 6px', fontSize: 10, color: 'var(--map-ink-faint)' }}>
-            {recording ? 'Recording your track · tap the square to end and log it'
+          {/* The route, once there is one: what was planned, in the numbers a
+              pilot reads off a flight plan, and an X to be rid of it. Sits
+              above the actions rather than replacing them, so the record
+              button stays where the hand expects it. It is, after all, the
+              route you are about to fly. */}
+          {!planning && route && (
+            <RouteSummary route={route} onClear={clearRoute} onEdit={openPlanner} />
+          )}
+
+          <div style={{ textAlign: 'center', margin: planning ? '2px 0 6px' : '10px 0 6px', fontSize: 10, color: 'var(--map-ink-faint)' }}>
+            {planning ? (snap === 'full' ? 'Pull down to put the plan away' : 'Pull up for the whole plan · down to put it away')
+              : recording ? 'Recording your track · tap the square to end and log it'
               : snap === 'full' ? 'Reference aid only · Always consult current FAR/AIM'
               : snap === 'expanded' ? 'Keep pulling for the full logbook'
               : 'Pull up for everything else'}
           </div>
         </div>
 
+        {/* The flight plan itself, filling what is left of the drawer. Mounted
+            only while planning, so leaving it is what unmounts the megabyte of
+            planner and its Leaflet previews rather than leaving them running
+            under a map that is already drawing one. */}
+        {planning && (
+          <Suspense fallback={
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, color: 'var(--map-ink-faint)' }}>
+              Opening the flight plan…
+            </div>
+          }>
+            <Planner embedded onClose={leavePlanner} onRouteCalculated={onRouteCalculated} />
+          </Suspense>
+        )}
+
         {/* Everything else. Scrolls inside the sheet once expanded; inert while
-            collapsed so a swipe there moves the sheet instead of the list. */}
+            collapsed so a swipe there moves the sheet instead of the list.
+            Gone entirely while planning: the planner scrolls and swipes on its
+            own, and these drag handlers would take every one of those gestures
+            and move the drawer with them instead. */}
+        {!planning && (
         <div
           ref={bodyRef}
           onPointerDown={onBodyDragStart} onPointerMove={onDragMove}
@@ -1139,6 +1431,8 @@ export default function MapHome() {
             </div>
           )}
         </div>
+        )}
+      </div>
       </div>
 
     </div>

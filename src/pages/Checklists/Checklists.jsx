@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { HomeButton } from '../../components/Shell'
 import { get, put, del } from '../../lib/db'
 import { trackEvent } from '../../lib/analytics'
@@ -8,6 +9,7 @@ import ChecklistTabShell from './ChecklistTabShell'
 import FlightPlanOnePager from './FlightPlanOnePager'
 import FlightPlanTypePicker from './FlightPlanTypePicker'
 import SplitFlapTitle from './shared/SplitFlapTitle'
+import { PlannerHostContext } from './shared/PlannerHost'
 
 const TITLE_INTRO_MS = 3000    // how long "Flight Plan" shows before switching to the active step
 const TITLE_CYCLE_MS = 60000   // how often it flashes back to "Flight Plan"
@@ -72,6 +74,12 @@ const CHECKLISTS = [
   },
 ]
 
+// Renders a full-screen overlay against the body instead of in place, for the
+// hosts where "in place" is inside something the browser has transformed.
+function portalIf(embedded, node) {
+  return embedded ? createPortal(node, document.body) : node
+}
+
 /* ── Flatten all item ids in a checklist ─────────────────────── */
 function flattenIds(items) {
   const ids = []
@@ -87,13 +95,24 @@ function allIds(checklist) {
 }
 
 /* ── Root component ──────────────────────────────────────────── */
-export default function Checklists() {
-  return <ChecklistDetail checklist={CHECKLISTS[0]} />
+//
+// Two hosts, one planner. Standalone at /checklists it owns the screen;
+// embedded it fills whatever box the map home's drawer gives it, and reports
+// a calculated route back so the drawer can drop down and show the line.
+export default function Checklists({ embedded = false, onClose, onRouteCalculated }) {
+  return (
+    <ChecklistDetail
+      checklist={CHECKLISTS[0]}
+      embedded={embedded}
+      onBack={onClose}
+      onRouteCalculated={onRouteCalculated}
+    />
+  )
 }
 
 
 /* ── Checklist detail: full-screen tabbed steps ─────────────── */
-function ChecklistDetail({ checklist, onBack }) {
+function ChecklistDetail({ checklist, onBack, embedded = false, onRouteCalculated }) {
   const { aircraftId } = useActiveAircraft()
   const [checked, setChecked]         = useState(new Set())
   const [customItems, setCustomItems] = useState({ PILOT: [] })
@@ -243,26 +262,47 @@ function ChecklistDetail({ checklist, onBack }) {
   const pct      = total > 0 ? done / total : 0
   const complete = done === total
 
+  // Only the embedded planner has a host to talk to. Standalone this stays
+  // null, and usePlannerHost's consumers fall back to doing nothing.
+  const plannerHost = useMemo(
+    () => (embedded ? { embedded: true, onRouteCalculated, onClose: onBack } : null),
+    [embedded, onRouteCalculated, onBack],
+  )
+
+  // The container below is pinned to the viewport rather than sized by its
+  // ancestors. The pane inside it can only scroll if its height is definite,
+  // and previously that height arrived through a six-link chain of flex rules.
+  // #root, the app shell, <main>, that div, the tab shell, the pane, any one
+  // of which failing quietly let the pane stretch to its content, at which
+  // point there is no overflow and nothing scrolls. That failure was observed
+  // in the field (pane 1,762 px tall in a 696 px viewport) without being
+  // reproducible locally, which is exactly the behaviour of a layout that
+  // depends on everything above it. position:fixed depends on nothing.
+  // The body's safe-area padding doesn't reach a fixed child, so the top
+  // inset is re-applied there; the fixed footer already handles the bottom.
+  //
+  // Embedded, it cannot be fixed: it has to be the size of the drawer, not
+  // the size of the screen. The chain of heights that made the standalone
+  // version fragile is only two links long there (the drawer sets a definite
+  // height, this fills it), and the drawer sits below the notch already, so
+  // there is no top inset to re-apply.
   return (
-    // Pinned to the viewport rather than sized by its ancestors. The pane
-    // below can only scroll if its height is definite, and previously that
-    // height arrived through a six-link chain of flex rules. #root, the app
-    // shell, <main>, this div, the tab shell, the pane, any one of which
-    // failing quietly let the pane stretch to its content, at which point
-    // there is no overflow and nothing scrolls. That failure was observed in
-    // the field (pane 1,762 px tall in a 696 px viewport) without being
-    // reproducible locally, which is exactly the behaviour of a layout that
-    // depends on everything above it. position:fixed depends on nothing.
-    // The body's safe-area padding doesn't reach a fixed child, so the top
-    // inset is re-applied here; the fixed footer already handles the bottom.
-    <div style={{
-      position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
-      paddingTop: 'var(--safe-top)', background: 'var(--bg)',
-    }}>
-      {/* Header */}
-      <div style={{ padding: '20px 16px 12px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+    <PlannerHostContext.Provider value={plannerHost}>
+    <div style={embedded
+      ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }
+      : {
+        position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
+        paddingTop: 'var(--safe-top)', background: 'var(--bg)',
+      }}>
+      {/* Header. Tighter embedded: the drawer's own handle sits directly
+          above it, and the standalone screen's breathing room would push the
+          first card off a half-height drawer. */}
+      <div style={{
+        padding: embedded ? '4px 16px 8px' : '20px 16px 12px',
+        display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0,
+      }}>
         <HomeButton onBack={onBack} />
-        <h2 style={{ flex: 1, fontSize: 22, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)', margin: 0 }}>
+        <h2 style={{ flex: 1, fontSize: embedded ? 18 : 22, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)', margin: 0 }}>
           <SplitFlapTitle text={headerTitle} />
         </h2>
         {flightPlanType !== null && (
@@ -279,6 +319,7 @@ function ChecklistDetail({ checklist, onBack }) {
 
       {flightPlanType && (
       <ChecklistTabShell
+        embedded={embedded}
         sections={checklist.sections}
         resetKey={resetKey}
         checked={checked}
@@ -303,13 +344,20 @@ function ChecklistDetail({ checklist, onBack }) {
 
       {/* ── Flight Plan one-pager. Shown before the checklist resets, so
           all the per-flight data it reads is still in IndexedDB. Closing it
-          is what actually resets the checklist for the next flight. ── */}
-      {onePagerOpen && (
+          is what actually resets the checklist for the next flight.
+
+          Both of these cover the whole screen with position:fixed, which only
+          means the screen while no ancestor is transformed. Embedded in the
+          map home's drawer one is, so they are lifted out to the body, where
+          fixed means what they were written to assume. Standalone they are
+          left exactly where they were rather than portalled for symmetry:
+          that path works today and is not worth re-proving. ── */}
+      {onePagerOpen && portalIf(embedded,
         <FlightPlanOnePager onClose={() => { setOnePagerOpen(false); reset() }} />
       )}
 
       {/* ── Add custom item drawer ── */}
-      {addDrawerOpen && (
+      {addDrawerOpen && portalIf(embedded,
         <AddItemDrawer
           sections={checklist.sections}
           onClose={() => setAddDrawerOpen(false)}
@@ -320,6 +368,7 @@ function ChecklistDetail({ checklist, onBack }) {
         />
       )}
     </div>
+    </PlannerHostContext.Provider>
   )
 }
 

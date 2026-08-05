@@ -7,9 +7,11 @@ import { MapContainer, TileLayer, Marker, Polyline, Polygon, CircleMarker, Popup
 import L from 'leaflet'
 import ChartLayers, { Basemap } from '../../../components/ChartLayers'
 import { CHARTS, EMPTY_LAYERS, resolveOpenaipKey } from '../../../components/chartDefs'
+import { ROUTE_COLOR, ROUTE_OPACITY, ROUTE_WEIGHT } from '../../../components/mapStyle'
 import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
 import { get, put } from '../../../lib/db'
 import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
+import { usePlannerHost } from '../shared/PlannerHost'
 import { FAA_CHART_CYCLE } from '../shared/faaData'
 import { awcUrl, proxyFetch, fetchAWC, lookupAirport, parseMetar, bearingDeg, haversineNm } from '../shared/awc'
 import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expandAirway, getAirwayGeometry, getWorldRef } from '../../../lib/waypoints'
@@ -687,10 +689,10 @@ function PolylineEditor({ waypoints, onDragInsert }) {
         seg, prev, next, latlng, moved: false,
         startPx: map.latLngToContainerPoint(latlng),
         line: L.polyline(withBend(seg, latlng), {
-          color: '#a855f7', weight: 4, opacity: 0.65,
+          color: ROUTE_COLOR, weight: ROUTE_WEIGHT, opacity: ROUTE_OPACITY,
         }).addTo(map),
         dot: L.circleMarker(latlng, {
-          radius: 8, color: '#fff', weight: 2.5, fillColor: '#a855f7', fillOpacity: 1,
+          radius: 8, color: '#fff', weight: 2.5, fillColor: ROUTE_COLOR, fillOpacity: 1,
         }).addTo(map),
       }
       tempLayers.current.push(drag.current.line, drag.current.dot)
@@ -728,10 +730,12 @@ function PolylineEditor({ waypoints, onDragInsert }) {
       positions={positions}
       pathOptions={{ color: 'transparent', weight: 36, opacity: 0 }}
     />
-    {/* Visible line: ForeFlight-style magenta/purple course line, slightly
-        translucent. Hidden while a drag is in progress: the dragged line takes
-        its place, so the route bends rather than gaining a second line. */}
-    <Polyline ref={visRef} positions={positions} pathOptions={{ color: '#a855f7', weight: 4, opacity: 0.65 }} />
+    {/* Visible line: the magenta course line every GPS and EFB draws, from the
+        shared map style so this map, the map home and the preview agree.
+        Hidden while a drag is in progress: the dragged line takes its place,
+        so the route bends rather than gaining a second line. */}
+    <Polyline ref={visRef} positions={positions}
+      pathOptions={{ color: ROUTE_COLOR, weight: ROUTE_WEIGHT, opacity: ROUTE_OPACITY }} />
   </>)
 }
 
@@ -1735,6 +1739,9 @@ function AirportLabels({ dep, dest, depPos, destPos, onFlyTo }) {
 
 /* ── Altitude + Route calculator ─────────────────────────────── */
 export function AltitudeItem({ item, isChecked, onToggle }) {
+  // Null on the standalone screen: nobody is waiting to be told about a route
+  // there, and calculating one is not the end of anything.
+  const plannerHost = usePlannerHost()
   const [open, setOpen]           = useState(false)
   const [course, setCourse]       = useState('')
   const [selectedAlt, setSelectedAlt] = useState(null)
@@ -3428,7 +3435,19 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         </button>
 
         <button
-          onClick={() => calcRoute()}
+          // The only caller that means "I am finished planning". The other
+          // five recalculate as a side effect of something the pilot is still
+          // doing (restoring saved rows, picking a destination on the map,
+          // dropping a waypoint), and handing the drawer back to the map
+          // mid-gesture would take the planner away from someone still using
+          // it. So the host is told here rather than inside calcRoute.
+          onClick={async () => {
+            const calculated = await calcRoute()
+            // A failed calculation leaves the pilot here, with the error
+            // message right below this button, which is where they can act
+            // on it. Nothing to show on a map either way.
+            if (calculated) plannerHost?.onRouteCalculated?.(calculated)
+          }}
           disabled={routeLoading || !dep.trim() || !dest.trim()}
           style={{
             width: '100%', padding: '9px 0', borderRadius: 9,

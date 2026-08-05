@@ -34,7 +34,7 @@ function PaneActivityProvider({ onActiveChange, children }) {
 export default function ChecklistTabShell({
   sections, resetKey, checked, onToggle, total,
   customItems, onDeleteCustomItem, onUpdateCustomItemValue, completeBar,
-  activeIndex, onActiveIndexChange,
+  activeIndex, onActiveIndexChange, embedded = false,
 }) {
   const [dragPx, setDragPx] = useState(0)
   const [dragging, setDragging] = useState(false)
@@ -56,14 +56,22 @@ export default function ChecklistTabShell({
   // The footer (tab bar + action buttons) is position:fixed to the real
   // viewport bottom, immune to any dvh/ancestor-height mismatch. Panes pad
   // their bottom by its measured height so content never sits underneath it.
+  //
+  // Embedded, it cannot be fixed at all. The map home's drawer is moved with
+  // a transform, and a transformed ancestor becomes the containing block for
+  // its fixed descendants: bottom:0 would resolve against the drawer's own
+  // box, which is a full screen tall and mostly below the fold, putting the
+  // tab bar off the bottom of the phone. In flow at the end of the column it
+  // lands on the drawer's real bottom edge, and the panes need no padding
+  // because nothing is floating over them any more.
   useLayoutEffect(() => {
     const el = footerRef.current
-    if (!el || typeof ResizeObserver === 'undefined') return
+    if (embedded || !el || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(() => setFooterHeight(el.offsetHeight))
     observer.observe(el)
     setFooterHeight(el.offsetHeight)
     return () => observer.disconnect()
-  }, [])
+  }, [embedded])
 
   function onTouchStart(e) {
     // Gestures that start on a map belong to the map (pan/zoom/long-press). 
@@ -183,8 +191,19 @@ export default function ChecklistTabShell({
 
       <div
         ref={footerRef}
-        className="fixed-footer-bar"
-        style={{ transform: footerHidden ? 'translateY(calc(100% + 24px + var(--safe-bottom)))' : 'translateY(0)' }}
+        className={embedded ? undefined : 'fixed-footer-bar'}
+        style={embedded
+          // Sits at the bottom of the drawer, and gets out of the way while a
+          // card is open exactly as the floating version does. Out of flow
+          // rather than slid off the bottom, because in flow that is what
+          // hands the space back: a drawer at half a screen has perhaps two
+          // hundred pixels for an open card, and this is most of them.
+          ? {
+            flexShrink: 0, background: 'var(--bg-card)',
+            borderTop: '0.5px solid var(--border)',
+            display: footerHidden ? 'none' : 'block',
+          }
+          : { transform: footerHidden ? 'translateY(calc(100% + 24px + var(--safe-bottom)))' : 'translateY(0)' }}
       >
         <StepTabBar
           sections={sections}
