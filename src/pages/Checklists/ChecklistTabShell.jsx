@@ -198,9 +198,24 @@ export default function ChecklistTabShell({
           // rather than slid off the bottom, because in flow that is what
           // hands the space back: a drawer at half a screen has perhaps two
           // hundred pixels for an open card, and this is most of them.
+          // No rule above it. Floating, the bar needs an edge because it sits
+          // over content that scrolls under it. In flow it does not: the drawer
+          // ends where it ends, and a line drawn across it only cuts the plan
+          // in half a second time.
+          //
+          // The bottom inset is re-applied by hand. The floating bar gets it
+          // from .fixed-footer-bar, and dropping that class to put the bar in
+          // flow dropped the inset with it: the drawer reaches the true bottom
+          // of the screen, so Add Step and Complete Flight Plan sat down in the
+          // home indicator's strip. Nothing the desktop preview would ever
+          // show, because there the inset is zero.
           ? {
-            flexShrink: 0, background: 'var(--bg-card)',
-            borderTop: '0.5px solid var(--border)',
+            // No surface of its own. A filled bar inside the drawer draws a
+            // second panel on top of the first, which is most of what made the
+            // planner look bolted on. The buttons carry their own shape and do
+            // not need a slab behind them.
+            flexShrink: 0, background: 'transparent',
+            paddingBottom: 'var(--safe-bottom)',
             display: footerHidden ? 'none' : 'block',
           }
           : { transform: footerHidden ? 'translateY(calc(100% + 24px + var(--safe-bottom)))' : 'translateY(0)' }}

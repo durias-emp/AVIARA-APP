@@ -289,7 +289,28 @@ function ChecklistDetail({ checklist, onBack, embedded = false, onRouteCalculate
   return (
     <PlannerHostContext.Provider value={plannerHost}>
     <div style={embedded
-      ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }
+      ? {
+        flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
+        // Inside the drawer this must not paint a surface of its own. The
+        // drawer is a translucent glass panel; the planner was filling it
+        // with opaque near-black, so it read as a second window sitting in a
+        // hole rather than as part of the sheet.
+        background: 'transparent',
+        // The planner and everything under it is built on the app's surface
+        // tokens, and the drawer is built on the map's. Rather than rewrite
+        // every card, the tokens are remapped here and the whole subtree
+        // follows: same components, drawer palette. This is the one place
+        // that has to know the planner can live in two different rooms.
+        '--bg': 'transparent',
+        '--bg-grouped': 'transparent',
+        '--bg-card': 'var(--map-fill-soft)',
+        '--bg-card-2': 'var(--map-fill)',
+        '--text': 'var(--map-ink)',
+        '--text-secondary': 'var(--map-ink-dim)',
+        '--text-tertiary': 'var(--map-ink-faint)',
+        '--border': 'var(--map-hairline)',
+        '--border-strong': 'var(--map-hairline)',
+      }
       : {
         position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
         paddingTop: 'var(--safe-top)', background: 'var(--bg)',
@@ -337,6 +358,7 @@ function ChecklistDetail({ checklist, onBack, embedded = false, onRouteCalculate
             checklist={checklist}
             onComplete={() => setOnePagerOpen(true)}
             onAddStep={() => setAddDrawerOpen(true)}
+            embedded={embedded}
           />
         }
       />
@@ -372,7 +394,7 @@ function ChecklistDetail({ checklist, onBack, embedded = false, onRouteCalculate
   )
 }
 
-function CompleteButton({ pct, complete, checklist, onComplete, onAddStep }) {
+function CompleteButton({ pct, complete, checklist, onComplete, onAddStep, embedded = false }) {
   const { aircraftId } = useActiveAircraft()
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
@@ -448,7 +470,11 @@ function CompleteButton({ pct, complete, checklist, onComplete, onAddStep }) {
   return (
     <div style={{
       padding: '12px 16px', display: 'flex', gap: 10, flexShrink: 0,
-      background: 'var(--bg-card)',
+      // Transparent in the drawer, where the sheet is already a surface and a
+      // second one stacked on it is what read as bolted together. Full screen
+      // it still needs its own fill, because there it floats over content
+      // scrolling underneath.
+      background: embedded ? 'transparent' : 'var(--bg-card)',
     }}>
       {/* Add Step: opens the add-custom-item drawer */}
       <button
