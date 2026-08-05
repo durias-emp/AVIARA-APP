@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect, useCallback, useContext, useRef, Fragment, lazy, Suspense } from 'react'
+import { MemoryRouter, Routes, Route, UNSAFE_LocationContext, UNSAFE_NavigationContext } from 'react-router-dom'
+import { BackOverrideContext } from '../../context/BackOverride'
 import { HomeButton } from '../../components/Shell'
 import { IconPerson, IconChevronRight } from '../../components/Icons'
 import { get, put } from '../../lib/db'
@@ -12,6 +13,76 @@ import {
   medicalExpiryRows, ageAt,
   fmtDate, fmtDaysLeft,
 } from '../../lib/currency'
+
+// ---------------------------------------------------------------------------
+// In-drawer sub-app host.
+//
+// Logbook, Debriefs and Profile Setup are real routed pages (five routes and
+// nine internal navigations in the logbook alone), and they used to be
+// reached by <Link> — which navigated the whole app away from Home, tearing
+// down the map and the drawer. The bug wasn't the pages; it was the transport.
+//
+// So the pages now run unchanged inside a nested MemoryRouter: their own
+// useNavigate/Link calls resolve against it, in-memory, and the browser URL
+// never moves — Home and the map never unmount. The host div is
+// position:fixed, which the drawer's translateZ(0) scopes to the drawer's own
+// box (the same trick Checklists' inset:0 chrome relies on), so the sub-app
+// fills the drawer and not the screen.
+//
+// Any navigation to a route the sub-app doesn't own — a page's own Home
+// button, an old escape path — lands on the catch-all and closes the host,
+// which is exactly what "back out of this" should mean here. The drawer's
+// edge-swipe closes it the same way via BackOverride.
+// ---------------------------------------------------------------------------
+
+const LogbookList      = lazy(() => import('./LogbookList'))
+const LogbookEntryForm = lazy(() => import('./LogbookEntryForm'))
+const LogbookFields    = lazy(() => import('./LogbookFields'))
+const LogbookImport    = lazy(() => import('./LogbookImport'))
+const LogbookScan      = lazy(() => import('./LogbookScan'))
+const FlightDebriefs   = lazy(() => import('./FlightDebriefs'))
+const ProfileSetup     = lazy(() => import('../Profile/Profile'))
+
+function ExitRoute({ onExit }) {
+  useEffect(() => { onExit() }, [onExit])
+  return null
+}
+
+function PilotSubApp({ entry, onClose }) {
+  const backOverride = useContext(BackOverrideContext)
+  useEffect(() => backOverride?.push?.(onClose), [backOverride, onClose])
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 60,
+      background: 'var(--bg)', overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+    }}>
+      {/* react-router refuses to nest a Router inside another Router — the
+          check is simply "is there a location context above me". Nulling
+          that context out makes the MemoryRouter below legitimately
+          top-level for everything under it. UNSAFE_ by name and by nature:
+          pinned to react-router 7.x, and if an upgrade removes these
+          exports this file fails at build — loudly, not subtly. */}
+      <UNSAFE_LocationContext.Provider value={null}>
+      <UNSAFE_NavigationContext.Provider value={null}>
+      <MemoryRouter initialEntries={[entry]}>
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path="/logbook" element={<LogbookList />} />
+            <Route path="/logbook/fields" element={<LogbookFields />} />
+            <Route path="/logbook/import" element={<LogbookImport />} />
+            <Route path="/logbook/scan" element={<LogbookScan />} />
+            <Route path="/logbook/:id" element={<LogbookEntryForm />} />
+            <Route path="/debriefs" element={<FlightDebriefs />} />
+            <Route path="/profile" element={<ProfileSetup />} />
+            <Route path="*" element={<ExitRoute onExit={onClose} />} />
+          </Routes>
+        </Suspense>
+      </MemoryRouter>
+      </UNSAFE_NavigationContext.Provider>
+      </UNSAFE_LocationContext.Provider>
+    </div>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Shared UI primitives
@@ -724,11 +795,12 @@ function ImValidCard({ data, onChange, warnDays }) {
 // reasoning as Profile Setup living on its own page: this card is a summary/
 // entry point, not where the actual feature lives.
 // ---------------------------------------------------------------------------
-function LogbookCard() {
+function LogbookCard({ onOpen }) {
   const { entries } = useLogbook()
   const totalHours = computeTotalHours(entries)
   return (
-    <Link to="/logbook" style={{ textDecoration: 'none' }}>
+    <div onClick={onOpen} role="button" tabIndex={0} aria-label="Open logbook"
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen() } }}>
       <div style={{
         background: 'var(--bg-card)', borderRadius: 14,
         border: '0.5px solid var(--border)',
@@ -745,7 +817,7 @@ function LogbookCard() {
         </div>
         <span style={{ color: 'var(--text-tertiary)', display: 'flex', flexShrink: 0 }}><IconChevronRight size={16} /></span>
       </div>
-    </Link>
+    </div>
   )
 }
 
@@ -754,11 +826,12 @@ function LogbookCard() {
 // previously reachable only from inside the logbook, which buried a recorded
 // flight behind knowing where to look for it.
 // ---------------------------------------------------------------------------
-function DebriefCard() {
+function DebriefCard({ onOpen }) {
   const { entries } = useLogbook()
   const withTrack = (entries ?? []).filter(e => (e.track?.length ?? 0) >= 2)
   return (
-    <Link to="/debriefs" style={{ textDecoration: 'none' }}>
+    <div onClick={onOpen} role="button" tabIndex={0} aria-label="Open flight debriefs"
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen() } }}>
       <div style={{
         background: 'var(--bg-card)', borderRadius: 14,
         border: '0.5px solid var(--border)',
@@ -779,7 +852,7 @@ function DebriefCard() {
         </div>
         <span style={{ color: 'var(--text-tertiary)', display: 'flex', flexShrink: 0 }}><IconChevronRight size={16} /></span>
       </div>
-    </Link>
+    </div>
   )
 }
 
@@ -799,6 +872,10 @@ export default function Pilot() {
   const [data, setData] = useState({})
   const [warnDays] = useState(WARN_DAYS_DEFAULT)
   const [loaded, setLoaded] = useState(false)
+  // Which sub-app is open in the drawer, as its entry route — see
+  // PilotSubApp at the top of this file. null = the Pilot cards.
+  const [subApp, setSubApp] = useState(null)
+  const closeSubApp = useCallback(() => setSubApp(null), [])
 
   useEffect(() => {
     get('currency', 'profile').then(saved => {
@@ -849,22 +926,24 @@ export default function Pilot() {
             fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
           }}>Pilot</h2>
         </div>
-        <Link to="/profile" aria-label="Profile setup" style={{
-          width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+        <button onClick={() => setSubApp('/profile')} aria-label="Profile setup" style={{
+          width: 40, height: 40, borderRadius: '50%', flexShrink: 0, border: 'none',
           background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'var(--text)', WebkitTapHighlightColor: 'transparent',
+          color: 'var(--text)', WebkitTapHighlightColor: 'transparent', cursor: 'pointer',
         }}>
           <IconPerson size={19} />
-        </Link>
+        </button>
       </div>
 
       <div style={{ padding: '0 16px' }}>
         <ImCurrentCard   data={data} onChange={handleChange} warnDays={warnDays} />
         <ImValidCard     data={data} onChange={handleChange} warnDays={warnDays} />
-        <LogbookCard />
-        <DebriefCard />
+        <LogbookCard onOpen={() => setSubApp('/logbook')} />
+        <DebriefCard onOpen={() => setSubApp('/debriefs')} />
       </div>
+
+      {subApp && <PilotSubApp entry={subApp} onClose={closeSubApp} />}
 
       <div style={{ padding: '8px 16px 0', textAlign: 'center' }}>
         <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
