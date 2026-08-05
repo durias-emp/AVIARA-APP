@@ -145,7 +145,22 @@ export function MapLayers({ layer }) {
 // double-mount tearing down and recreating the underlying Leaflet map out
 // from under an in-flight `setView`). Shared by the full map and the
 // home-screen preview so both behave identically.
-export function LiveMap({ position, positionStale = false, zoom, initialCenter, initialZoom, layer, markerRadius = 8, interactive = true, zoomControlPosition, children }) {
+// Simple top-view aircraft, drawn point-up; rotated per render to the
+// screen-relative track. One shape for everyone — the pilot asked for "a
+// random simple aircraft design", not a fleet picker.
+function ownshipIcon(screenDeg) {
+  return L.divIcon({
+    className: '',
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    html: `<svg width="34" height="34" viewBox="0 0 24 24" style="transform:rotate(${Math.round(screenDeg)}deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5))">
+      <path d="M12 2 L13.4 9 L21 12 L13.4 13.6 L13.1 18.6 L15.4 20.6 L15.4 21.8 L12 20.8 L8.6 21.8 L8.6 20.6 L10.9 18.6 L10.6 13.6 L3 12 L10.6 9 Z"
+        fill="#0a84ff" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/>
+    </svg>`,
+  })
+}
+
+export function LiveMap({ position, positionStale = false, heading = null, mapBearing = 0, zoom, initialCenter, initialZoom, layer, markerRadius = 8, interactive = true, showZoomControl = true, zoomControlPosition, children }) {
   const interactionProps = interactive ? {} : {
     zoomControl: false, dragging: false, scrollWheelZoom: false,
     doubleClickZoom: false, touchZoom: false, keyboard: false, boxZoom: false,
@@ -173,15 +188,19 @@ export function LiveMap({ position, positionStale = false, zoom, initialCenter, 
       tapHold={true}
       {...interactionProps}
     >
-      {interactive && <ZoomControl position={zoomControlPosition || 'topleft'} />}
+      {interactive && showZoomControl && <ZoomControl position={zoomControlPosition || 'topleft'} />}
       <MapLayers layer={layer} />
-      {position && (
+      {/* Ownship when the GPS reports a ground track (moving); the plain dot
+          when stationary (a parked aircraft has no meaningful nose-direction
+          from GPS alone) or stale (grey — orientation, not truth). The icon's
+          rotation is screen-relative: ground track minus however far the map
+          itself is rotated, so in Track Up it points straight up. */}
+      {position && !positionStale && heading != null ? (
+        <Marker position={position} icon={ownshipIcon(heading - mapBearing)} interactive={false} />
+      ) : position && (
         <CircleMarker
           center={position}
           radius={markerRadius}
-          // Grey when stale: a last-known position is orientation, not truth,
-          // and a confident blue dot over a position the aircraft may have
-          // left hours ago is exactly the kind of lie a nav app must not tell.
           pathOptions={positionStale
             ? { color: '#fff', weight: 3, fillColor: '#9a9aa2', fillOpacity: 0.85 }
             : { color: '#fff', weight: 3, fillColor: '#0a84ff', fillOpacity: 1 }}
@@ -616,18 +635,22 @@ export function ViewReporter({ onChange }) {
 // map arrives alongside the drawer instead of teleporting ahead of it.
 // (Leaflet's pan easing isn't the drawer's exact bezier; over a quarter of
 // a second the difference isn't readable, and it beats the old jump.)
-export function MapFocusOffset({ coveredHeight, duration = '0ms' }) {
+export function MapFocusOffset({ coveredHeight, duration = '0ms', suspended = false }) {
   const map = useMap()
   const applied = useRef(0)
   useEffect(() => {
     const want = coveredHeight / 2
+    // While follow mode owns the view (suspended), it applies the covered
+    // offset itself on every fix — panning here too would double it. Keep
+    // the bookkeeping in sync so follow ending doesn't cause a jump.
+    if (suspended) { applied.current = want; return }
     const delta = want - applied.current
     if (Math.abs(delta) < 0.5) return
     applied.current = want
     const ms = parseFloat(duration) || 0
     if (ms > 0) map.panBy([0, delta], { animate: true, duration: ms / 1000 })
     else map.panBy([0, delta], { animate: false })
-  }, [coveredHeight, map, duration])
+  }, [coveredHeight, map, duration, suspended])
   return null
 }
 
@@ -716,6 +739,49 @@ function PirepLayer() {
   )
 }
 
+// Hands the Leaflet map instance up to MapView, which needs it for the
+// custom zoom buttons that live OUTSIDE the rotating canvas (Leaflet's own
+// control would rotate with the map in Track Up).
+function MapRef({ onMap }) {
+  const map = useMap()
+  useEffect(() => { onMap(map) }, [map, onMap])
+  return null
+}
+
+// Follow mode: while on, every GPS fix recenters the map on the aircraft —
+// Google-Maps-style — until the pilot drags, which hands the map back to
+// them (reported via onUserDrag; Locate re-engages). setView never fires
+// dragstart, so following can't cancel itself.
+//
+// The screen offset (drawer covering the bottom, plus the Track-Up-Ahead
+// placement in the lower region of the visible strip) is applied in SCREEN
+// space and converted to map-frame pixels through the current rotation:
+// with the canvas CSS-rotated by -bearing, screen-down (0, dy) is the map
+// vector (-dy·sinθ, dy·cosθ).
+function FollowController({ follow, orientation, fix, bearing, coveredHeight, onUserDrag }) {
+  const map = useMap()
+  useEffect(() => {
+    const h = () => onUserDrag()
+    map.on('dragstart', h)
+    return () => map.off('dragstart', h)
+  }, [map, onUserDrag])
+  useEffect(() => {
+    if (!follow || !fix) return
+    map.setView([fix.lat, fix.lon], map.getZoom(), { animate: false })
+    const visibleH = Math.max(0, window.innerHeight - coveredHeight)
+    // Positive dy lifts the ownship UP the screen (drawer compensation);
+    // Track-Up-Ahead SUBTRACTS, pushing the ownship down into the lower
+    // region of the visible strip so the map ahead gets the space. dy can
+    // legitimately go negative — don't gate on sign.
+    const dy = coveredHeight / 2 - (orientation === 'trackAhead' ? 0.22 * visibleH : 0)
+    if (Math.abs(dy) > 0.5) {
+      const th = bearing * Math.PI / 180
+      map.panBy([-dy * Math.sin(th), dy * Math.cos(th)], { animate: false })
+    }
+  }, [follow, fix, orientation, bearing, coveredHeight, map])
+  return null
+}
+
 // Surfaces Leaflet's contextmenu as "the pilot pressed and held here" (or
 // right-clicked, on desktop — same event). The menu itself is MapView's;
 // this only reports the geographic point.
@@ -802,6 +868,63 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   }, [overlays.breadcrumbs, toggleOverlay, resetBreadcrumbs])
   const [route, setRoute] = useState(null)
   const [recenterRequest, setRecenterRequest] = useState(null)
+  // Follow mode: Locate engages it, a manual drag breaks it. While on,
+  // FollowController recenters on every fix.
+  const [follow, setFollow] = useState(false)
+  const handleUserDrag = useCallback(() => setFollow(false), [])
+  // 'north' | 'track' | 'trackAhead' — persisted, cycled by the map button.
+  const [orientation, setOrientationState] = useState('north')
+  useEffect(() => {
+    get('settings', 'mapOrientation').then(row => { if (row?.value) setOrientationState(row.value) }).catch(() => {})
+  }, [])
+  function cycleOrientation() {
+    const order = ['north', 'track', 'trackAhead']
+    const next = order[(order.indexOf(orientation) + 1) % order.length]
+    setOrientationState(next)
+    put('settings', { key: 'mapOrientation', value: next }).catch(() => {})
+  }
+  // The map canvas's rotation. Continuous (unwrapped) so 359°→1° turns 2°
+  // through north instead of spinning 358° the long way under the CSS
+  // transition. Returns to 0 whenever follow is off or the mode is North Up
+  // — after a manual pan the map reads like a chart again until Locate
+  // re-engages the track.
+  const [bearing, setBearing] = useState(0)
+  useEffect(() => {
+    const target = (follow && orientation !== 'north' && liveCoords?.headingDeg != null)
+      ? liveCoords.headingDeg
+      : (!follow || orientation === 'north') ? 0 : null
+    if (target == null) return   // tracking mode, no ground track yet: hold current rotation
+    setBearing(prev => {
+      const d = ((target - prev) % 360 + 540) % 360 - 180
+      return Math.abs(d) < 0.5 ? prev : prev + d
+    })
+  }, [liveCoords, follow, orientation])
+  // The rotating canvas is a square with the viewport's diagonal as its
+  // side, centered — however the map turns, no corner of the screen ever
+  // shows past its edge. Measured from the actual container, re-measured
+  // on resize: measuring window dimensions once at mount produced a 0×0
+  // canvas (and an invisible map) when the hosting view initialized before
+  // layout settled. The || fallback guards the same zero on first render.
+  const rootRef = useRef(null)
+  const [canvasSize, setCanvasSize] = useState(() => Math.ceil(Math.hypot(window.innerWidth, window.innerHeight)) || 1200)
+  useEffect(() => {
+    const measure = () => {
+      const w = rootRef.current?.clientWidth || window.innerWidth
+      const h = rootRef.current?.clientHeight || window.innerHeight
+      const d = Math.ceil(Math.hypot(w, h))
+      if (d > 0) setCanvasSize(prev => (Math.abs(prev - d) > 2 ? d : prev))
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [])
+  // Leaflet map instance, for the custom zoom buttons that must sit outside
+  // the rotating canvas.
+  const mapApiRef = useRef(null)
+  const handleMapInstance = useCallback(m => { mapApiRef.current = m }, [])
+  // Leaflet sized itself against whatever the canvas measured at creation;
+  // a later canvas correction is invisible to it without this.
+  useEffect(() => { mapApiRef.current?.invalidateSize() }, [canvasSize])
   // Press-and-hold flow: pressMenu holds the {lat,lon} the pilot pressed
   // (menu open), wptDraft holds the point a waypoint is being named for
   // (dialog open). Only one is ever non-null at a time.
@@ -941,6 +1064,9 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
     autoCenteredRef.current = true
     if (!lastView) {
       setRecenterRequest({ lat: liveCoords.lat, lon: liveCoords.lon, zoom: LOCATION_ZOOM })
+      // Opening onto your own position IS following it — same as every
+      // consumer mapping app. The first drag hands the map back.
+      setFollow(true)
     }
   }, [liveCoords, lastView])
 
@@ -968,6 +1094,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   function handleLocate() {
     if (!liveCoords) return
     setRecenterRequest({ lat: liveCoords.lat, lon: liveCoords.lon })
+    setFollow(true)
   }
 
   // Foreground flight auto-detection — settings-gated, per Settings.jsx's
@@ -1063,20 +1190,36 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   return (
     <div
       className="map-root"
-      style={{ height: '100%', position: 'relative', isolation: 'isolate', '--map-bottom-inset': `${bottomInset}px`, '--map-top-inset': topInset, '--map-left-inset': showHomeButton ? '52px' : '0px', '--map-inset-duration': insetDuration }}>
+      ref={rootRef}
+      style={{ height: '100%', position: 'relative', isolation: 'isolate', overflow: 'hidden', '--map-bottom-inset': `${bottomInset}px`, '--map-top-inset': topInset, '--map-left-inset': showHomeButton ? '52px' : '0px', '--map-inset-duration': insetDuration }}>
       {/* Leaflet's own control rail is inside the map container, so it can't
           read a wrapper's padding — it gets the inset directly. */}
+      {/* Leaflet's own zoom control is gone from this screen (it lived
+          inside the canvas and would rotate in Track Up) — the custom
+          buttons below replace it. The rail rules stay for any control
+          Leaflet still owns. */}
       <style>{`
         .map-root .leaflet-bottom { bottom: calc(var(--map-bottom-inset, 0px) + 74px); transition: bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1); }
         .map-root .leaflet-top { top: var(--map-top-inset, 0px); }
-        .map-root .leaflet-control-zoom a { width: 24px; height: 24px; line-height: 24px; font-size: 16px; }
-        .map-root .leaflet-control-zoom { border-radius: 8px; }
       `}</style>
+      {/* The rotating canvas. A diagonal-sized square centered on the
+          viewport, CSS-rotated by -bearing so the ground track points
+          screen-up in the Track Up modes; the transition keeps GPS heading
+          jitter from twitching the whole world. Everything that must NOT
+          rotate (buttons, bars, banners) lives outside this div. */}
+      <div style={{
+        position: 'absolute', left: '50%', top: '50%',
+        width: canvasSize, height: canvasSize,
+        marginLeft: -canvasSize / 2, marginTop: -canvasSize / 2,
+        transform: `rotate(${-bearing}deg)`, transformOrigin: '50% 50%',
+        transition: 'transform 0.8s linear',
+      }}>
       <LiveMap
         position={dotPosition} positionStale={dotStale} zoom={LOCATION_ZOOM}
+        heading={liveCoords?.headingDeg ?? null} mapBearing={bearing}
         initialCenter={lastView?.center ?? staleSeed?.center}
         initialZoom={lastView ? lastView.zoom : staleSeed?.zoom}
-        layer={layer} zoomControlPosition="bottomleft"
+        layer={layer} showZoomControl={false}
       >
         {overlays.breadcrumbs && <BreadcrumbLayer trail={breadcrumbTrail} />}
         {overlays.radar && <RadarLayer />}
@@ -1087,12 +1230,18 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         {overlays.seaplaneBases && <SeaplaneBaseLayer />}
         {overlays.pireps && <PirepLayer />}
         <UserWaypointLayer />
+        <MapRef onMap={handleMapInstance} />
         <MapPressCapture onPress={handleMapPress} />
+        <FollowController
+          follow={follow} orientation={orientation} fix={liveCoords} bearing={bearing}
+          coveredHeight={focusInset ?? bottomInset} onUserDrag={handleUserDrag}
+        />
         <LocateRecenter request={recenterRequest} coveredHeight={focusInset ?? bottomInset} />
         <RoutePreview route={route} />
-        <MapFocusOffset coveredHeight={focusInset ?? bottomInset} duration={insetDuration} />
+        <MapFocusOffset coveredHeight={focusInset ?? bottomInset} duration={insetDuration} suspended={follow} />
         {onViewChange && <ViewReporter onChange={onViewChange} />}
       </LiveMap>
+      </div>
 
       {showHomeButton && (
         <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 600 }}>
@@ -1131,6 +1280,36 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         )}
       </button>
 
+      {/* Zoom, outside the rotating canvas so + stays + at any bearing. */}
+      <div style={{
+        position: 'absolute', left: 12, bottom: 'calc(74px + var(--map-bottom-inset, 0px))', zIndex: 500,
+        transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
+        display: 'flex', flexDirection: 'column', borderRadius: 10, overflow: 'hidden', boxShadow: 'var(--shadow-sm)',
+      }}>
+        <button onClick={() => mapApiRef.current?.zoomIn()} aria-label="Zoom in"
+          style={{ width: 32, height: 30, border: 'none', background: 'var(--bg-card)', color: 'var(--text)', fontSize: 17, fontWeight: 700, cursor: 'pointer', WebkitTapHighlightColor: 'transparent', borderBottom: '0.5px solid var(--border)' }}>+</button>
+        <button onClick={() => mapApiRef.current?.zoomOut()} aria-label="Zoom out"
+          style={{ width: 32, height: 30, border: 'none', background: 'var(--bg-card)', color: 'var(--text)', fontSize: 17, fontWeight: 700, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>−</button>
+      </div>
+
+      {/* Orientation: North Up → Track Up → Track Up Ahead, cycled. Sits
+          under Locate on the same rail — the two are one habit: orient,
+          then follow. */}
+      <button
+        onClick={cycleOrientation}
+        aria-label="Map orientation"
+        style={{
+          position: 'absolute', right: 12, bottom: 'calc(82px + var(--map-bottom-inset, 0px))', zIndex: 500,
+          transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
+          height: 32, minWidth: 32, padding: '0 8px', borderRadius: 16, border: 'none',
+          background: orientation === 'north' ? 'var(--bg-card)' : 'var(--accent)',
+          color: orientation === 'north' ? 'var(--text)' : 'var(--accent-fg)',
+          fontSize: 11, fontWeight: 800, letterSpacing: '0.03em',
+          boxShadow: 'var(--shadow-sm)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+        }}>
+        {orientation === 'north' ? 'N↑' : orientation === 'track' ? 'TRK↑' : 'TRK↑▲'}
+      </button>
+
       {/* Drop a pin on the aircraft's own position — one tap on the ramp
           marks the tie-down, the fuel pump, the hole in the fence. Sits
           directly above Locate: both buttons are "do something with where
@@ -1162,12 +1341,13 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
           position: 'absolute', right: 12, bottom: 'calc(122px + var(--map-bottom-inset, 0px))', zIndex: 500,
           transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
           width: 32, height: 32, borderRadius: '50%', border: 'none',
-          background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
+          // Accent while following — the button is a mode, not a one-shot.
+          background: follow ? 'var(--accent)' : 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: noFixYet ? 'default' : 'pointer', WebkitTapHighlightColor: 'transparent',
           opacity: noFixYet ? 0.55 : 1,
         }}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2.2" strokeLinecap="round">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={follow ? 'var(--accent-fg)' : 'var(--text)'} strokeWidth="2.2" strokeLinecap="round">
           <circle cx="12" cy="12" r="3.5" />
           <line x1="12" y1="1" x2="12" y2="4.5" />
           <line x1="12" y1="19.5" x2="12" y2="23" />
