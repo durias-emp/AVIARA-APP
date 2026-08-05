@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Marker, Polyline, Polygon, Popup, ZoomControl, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Marker, Polyline, Polygon, Popup, Tooltip, ZoomControl, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { HomeButton } from './Shell'
@@ -16,6 +16,8 @@ import { useActiveAircraft } from '../context/ActiveAircraft'
 import { get } from '../lib/db'
 import { FLTCAT } from '../lib/weather'
 import { getAirports, getAirportDetails, getAuxAerodromes, findAirport } from '../lib/aerodromes'
+import { getUserWaypoints, saveUserWaypoint, removeUserWaypoint, nextAutoName } from '../lib/waypoints'
+import { fmtAvCoord } from '../lib/geo'
 import MapLayersMenu from './MapLayersMenu'
 import FlightPlanBar from './FlightPlanBar'
 import GpsInfoBar from './GpsInfoBar'
@@ -161,6 +163,12 @@ export function LiveMap({ position, positionStale = false, zoom, initialCenter, 
       style={{ width: '100%', height: '100%' }}
       attributionControl={false}
       zoomControl={false}
+      // Leaflet only turns its hold-for-contextmenu synthesis on when it
+      // detects Safari; Chrome on iOS is WebKit in a trenchcoat and misses
+      // that check, so force it — press-and-hold must mean the same thing
+      // in every browser the app runs in. Desktop right-click fires
+      // contextmenu natively either way.
+      tapHold={true}
       {...interactionProps}
     >
       {interactive && <ZoomControl position={zoomControlPosition || 'topleft'} />}
@@ -621,6 +629,61 @@ export function MapFocusOffset({ coveredHeight, duration = '0ms' }) {
   return null
 }
 
+// Fired whenever the user-waypoint list changes, so every open view of it
+// (the map layer here, and any future list UI) reloads without prop
+// plumbing — same pattern as useMapLayer's 'aviara-map-layer' event.
+const USER_WAYPOINTS_EVENT = 'aviara-user-waypoints'
+
+// The pilot's own named points, always visible — a waypoint you can only
+// see while an overlay toggle is on is a waypoint you'll forget you have.
+// Amber, to sit apart from the purple route line and the blue position dot.
+function UserWaypointLayer() {
+  const [list, setList] = useState([])
+  useEffect(() => {
+    const load = () => getUserWaypoints().then(setList).catch(() => {})
+    load()
+    window.addEventListener(USER_WAYPOINTS_EVENT, load)
+    return () => window.removeEventListener(USER_WAYPOINTS_EVENT, load)
+  }, [])
+  return (
+    <>
+      {list.map(w => (
+        <CircleMarker key={w.name} center={[w.lat, w.lon]} radius={6}
+          pathOptions={{ color: '#fff', weight: 2, fillColor: '#f59e0b', fillOpacity: 1 }}>
+          <Tooltip permanent direction="top" offset={[0, -6]}>
+            <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'monospace' }}>{w.name}</span>
+          </Tooltip>
+          <Popup>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>{w.name}</div>
+            <div style={{ fontSize: 11, fontFamily: 'monospace' }}>{fmtAvCoord(w.lat, w.lon)}</div>
+            <button
+              onClick={() => removeUserWaypoint(w.name).then(() => window.dispatchEvent(new Event(USER_WAYPOINTS_EVENT)))}
+              style={{
+                marginTop: 6, padding: '4px 10px', borderRadius: 8, border: 'none',
+                background: 'var(--danger)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+              }}>
+              Delete waypoint
+            </button>
+          </Popup>
+        </CircleMarker>
+      ))}
+    </>
+  )
+}
+
+// Surfaces Leaflet's contextmenu as "the pilot pressed and held here" (or
+// right-clicked, on desktop — same event). The menu itself is MapView's;
+// this only reports the geographic point.
+function MapPressCapture({ onPress }) {
+  const map = useMap()
+  useEffect(() => {
+    const h = e => onPress({ lat: e.latlng.lat, lon: e.latlng.lng })
+    map.on('contextmenu', h)
+    return () => map.off('contextmenu', h)
+  }, [map, onPress])
+  return null
+}
+
 // The typed-route preview from FlightPlanBar — a simple line + waypoint
 // dots, fit into view once per new route (not on every render, so the user
 // can freely pan/zoom afterward without the map yanking back).
@@ -694,6 +757,43 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   }, [overlays.breadcrumbs, toggleOverlay, resetBreadcrumbs])
   const [route, setRoute] = useState(null)
   const [recenterRequest, setRecenterRequest] = useState(null)
+  // Press-and-hold flow: pressMenu holds the {lat,lon} the pilot pressed
+  // (menu open), wptDraft holds the point a waypoint is being named for
+  // (dialog open). Only one is ever non-null at a time.
+  const [pressMenu, setPressMenu] = useState(null)
+  const [wptDraft, setWptDraft] = useState(null)
+  const [wptName, setWptName] = useState('')
+  const [wptError, setWptError] = useState(null)
+  const [wptSaving, setWptSaving] = useState(false)
+  const handleMapPress = useCallback(p => setPressMenu(p), [])
+
+  // A raw coordinate appended to whatever route exists — the "I just want
+  // this lat/long in the route" half of press-and-hold. The route bar's
+  // TEXT is not rewritten (it can't spell a coordinate the resolver could
+  // re-parse); the drawn line and the GPS bar's next/dest fields are the
+  // source of truth the moment this is used.
+  function appendPointToRoute(p) {
+    const pt = { kind: 'LL', name: fmtAvCoord(p.lat, p.lon), label: null, lat: p.lat, lon: p.lon }
+    setRoute(r => (r && r.length ? [...r, pt] : [pt]))
+    setPressMenu(null)
+  }
+
+  async function saveWaypointDraft() {
+    if (!wptDraft) return
+    setWptSaving(true)
+    setWptError(null)
+    try {
+      const name = wptName.trim() || await nextAutoName()
+      await saveUserWaypoint(name, wptDraft.lat, wptDraft.lon)
+      window.dispatchEvent(new Event(USER_WAYPOINTS_EVENT))
+      setWptDraft(null)
+      setWptName('')
+    } catch (e) {
+      setWptError(e.message)
+    } finally {
+      setWptSaving(false)
+    }
+  }
   // The "you are here" dot: the live fix while there is one, else the last
   // fix this device ever had, drawn grey (see LiveMap's positionStale) so a
   // remembered position can orient the pilot without impersonating a real
@@ -878,6 +978,8 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         {overlays.airports && <AirportLayer />}
         {overlays.heliports && <HeliportLayer />}
         {overlays.seaplaneBases && <SeaplaneBaseLayer />}
+        <UserWaypointLayer />
+        <MapPressCapture onPress={handleMapPress} />
         <LocateRecenter request={recenterRequest} coveredHeight={focusInset ?? bottomInset} />
         <RoutePreview route={route} />
         <MapFocusOffset coveredHeight={focusInset ?? bottomInset} duration={insetDuration} />
@@ -919,6 +1021,29 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
             <path d="M12 9v4l2.5 2M9 2h6" />
           </svg>
         )}
+      </button>
+
+      {/* Drop a pin on the aircraft's own position — one tap on the ramp
+          marks the tie-down, the fuel pump, the hole in the fence. Sits
+          directly above Locate: both buttons are "do something with where
+          I am", and both are honest enough to disable without a fix. */}
+      <button
+        onClick={() => liveCoords && setWptDraft({ lat: liveCoords.lat, lon: liveCoords.lon })}
+        disabled={noFixYet}
+        aria-label="Save my position as a waypoint"
+        style={{
+          position: 'absolute', right: 12, bottom: 'calc(162px + var(--map-bottom-inset, 0px))', zIndex: 500,
+          transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
+          width: 32, height: 32, borderRadius: '50%', border: 'none',
+          background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: noFixYet ? 'default' : 'pointer', WebkitTapHighlightColor: 'transparent',
+          opacity: noFixYet ? 0.55 : 1,
+        }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 21s-6-5.6-6-10a6 6 0 1 1 12 0c0 4.4-6 10-6 10z" />
+          <circle cx="12" cy="11" r="2.2" />
+        </svg>
       </button>
 
       <button
@@ -1062,6 +1187,112 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
           fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
         }}>
           Flight saved — review it in the Hangar's Flight History
+        </div>
+      )}
+
+      {/* Press-and-hold menu: what can be done with a point on the map.
+          Fixed overlay, same pattern as the GPS bar's field picker — it
+          must cover the drawer too, not just the map strip. */}
+      {pressMenu && (
+        <div
+          onClick={() => setPressMenu(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'flex-end' }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', background: 'var(--bg)', borderRadius: '20px 20px 0 0', padding: '14px 18px calc(20px + env(safe-area-inset-bottom, 0px))' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+              Map point
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'monospace', color: 'var(--text)', margin: '2px 0 12px' }}>
+              {fmtAvCoord(pressMenu.lat, pressMenu.lon)}
+            </div>
+            <button
+              onClick={() => { setWptDraft(pressMenu); setPressMenu(null) }}
+              style={{
+                display: 'block', width: '100%', padding: '13px 14px', borderRadius: 12, border: 'none',
+                background: 'var(--bg-card)', color: 'var(--text)', fontSize: 14, fontWeight: 700,
+                textAlign: 'left', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', marginBottom: 8,
+              }}>
+              📍 Create user waypoint here
+            </button>
+            <button
+              onClick={() => appendPointToRoute(pressMenu)}
+              style={{
+                display: 'block', width: '100%', padding: '13px 14px', borderRadius: 12, border: 'none',
+                background: 'var(--bg-card)', color: 'var(--text)', fontSize: 14, fontWeight: 700,
+                textAlign: 'left', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', marginBottom: 8,
+              }}>
+              ➕ Add this point to the route
+            </button>
+            <button
+              onClick={() => setPressMenu(null)}
+              style={{
+                display: 'block', width: '100%', padding: '13px 14px', borderRadius: 12, border: 'none',
+                background: 'transparent', color: 'var(--text-secondary)', fontSize: 14, fontWeight: 700,
+                cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+              }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Naming dialog for a new user waypoint — from press-and-hold or the
+          pin-drop button. Blank name = auto WP01…, so "just save where I
+          am" is two taps. Save errors (name taken by an airport/VOR/fix)
+          render inline; the restriction exists so the route bar never has
+          two meanings for one ident. */}
+      {wptDraft && (
+        <div
+          onClick={() => { if (!wptSaving) { setWptDraft(null); setWptName(''); setWptError(null) } }}
+          style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 400, background: 'var(--bg)', borderRadius: 18, padding: '18px 18px 16px', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+              New user waypoint
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'monospace', color: 'var(--text)', margin: '2px 0 12px' }}>
+              {fmtAvCoord(wptDraft.lat, wptDraft.lon)}
+            </div>
+            <input
+              value={wptName}
+              onChange={e => { setWptName(e.target.value.toUpperCase()); setWptError(null) }}
+              onKeyDown={e => { if (e.key === 'Enter') saveWaypointDraft() }}
+              placeholder="Name — blank saves as WP01…"
+              autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '12px 14px', borderRadius: 12,
+                border: '1px solid var(--border)', background: 'var(--bg-card)', outline: 'none',
+                fontSize: 16, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.04em', color: 'var(--text)',
+              }}
+            />
+            {wptError && (
+              <div style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600, marginTop: 8 }}>{wptError}</div>
+            )}
+            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+              <button
+                onClick={() => { setWptDraft(null); setWptName(''); setWptError(null) }}
+                disabled={wptSaving}
+                style={{
+                  flex: 1, padding: '12px 0', borderRadius: 12, border: 'none',
+                  background: 'var(--bg-card)', color: 'var(--text)', fontSize: 14, fontWeight: 700,
+                  cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+                }}>
+                Cancel
+              </button>
+              <button
+                onClick={saveWaypointDraft}
+                disabled={wptSaving}
+                style={{
+                  flex: 1, padding: '12px 0', borderRadius: 12, border: 'none',
+                  background: 'var(--accent)', color: 'var(--accent-fg)', fontSize: 14, fontWeight: 700,
+                  cursor: 'pointer', WebkitTapHighlightColor: 'transparent', opacity: wptSaving ? 0.6 : 1,
+                }}>
+                {wptSaving ? 'Saving…' : 'Save waypoint'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
