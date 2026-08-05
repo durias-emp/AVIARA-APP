@@ -15,7 +15,7 @@ import { useLogbook } from '../context/Logbook'
 import { useActiveAircraft } from '../context/ActiveAircraft'
 import { get } from '../lib/db'
 import { FLTCAT } from '../lib/weather'
-import { getAirports, getAirportDetails, getAuxAerodromes } from '../lib/aerodromes'
+import { getAirports, getAirportDetails, getAuxAerodromes, findAirport } from '../lib/aerodromes'
 import MapLayersMenu from './MapLayersMenu'
 import FlightPlanBar from './FlightPlanBar'
 import GpsInfoBar from './GpsInfoBar'
@@ -23,6 +23,24 @@ import GpsInfoBar from './GpsInfoBar'
 // Center of the continental US — only used if location is denied/unavailable.
 export const FALLBACK_CENTER = [39.8, -98.6]
 const LOCATION_ZOOM = 13
+
+// The exact steps to un-deny location, for the browser this is actually
+// running in. A permission denial is the pilot's own device telling the
+// app no; the only useful thing software can do about it is name the
+// switch. Wording verified on-device for iOS Safari 2026-08-04 (the aA →
+// Website Settings path is what fixed it).
+function locationPermissionHelp() {
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches
+    || window.navigator.standalone === true
+  if (ios && standalone) {
+    return 'Open the iPhone Settings app → Privacy & Security → Location Services, and allow location for web apps. If AVIARA isn\'t listed there, remove it from the Home Screen and add it again — it will ask fresh.'
+  }
+  if (ios) {
+    return 'In Safari, tap "aA" in the address bar → Website Settings → Location → Allow, then reload.'
+  }
+  return 'Click the icon next to the web address → Site settings → Location → Allow, then reload.'
+}
 
 // Satellite and Road are each a full base map on their own. VFR/IFR Lo/IFR
 // Hi are FAA chart overlays, drawn on top of the same Road base — same tile
@@ -109,7 +127,7 @@ export function MapLayers({ layer }) {
 // double-mount tearing down and recreating the underlying Leaflet map out
 // from under an in-flight `setView`). Shared by the full map and the
 // home-screen preview so both behave identically.
-export function LiveMap({ position, zoom, initialCenter, initialZoom, layer, markerRadius = 8, interactive = true, zoomControlPosition, children }) {
+export function LiveMap({ position, positionStale = false, zoom, initialCenter, initialZoom, layer, markerRadius = 8, interactive = true, zoomControlPosition, children }) {
   const interactionProps = interactive ? {} : {
     zoomControl: false, dragging: false, scrollWheelZoom: false,
     doubleClickZoom: false, touchZoom: false, keyboard: false, boxZoom: false,
@@ -137,7 +155,12 @@ export function LiveMap({ position, zoom, initialCenter, initialZoom, layer, mar
         <CircleMarker
           center={position}
           radius={markerRadius}
-          pathOptions={{ color: '#fff', weight: 3, fillColor: '#0a84ff', fillOpacity: 1 }}
+          // Grey when stale: a last-known position is orientation, not truth,
+          // and a confident blue dot over a position the aircraft may have
+          // left hours ago is exactly the kind of lie a nav app must not tell.
+          pathOptions={positionStale
+            ? { color: '#fff', weight: 3, fillColor: '#9a9aa2', fillOpacity: 0.85 }
+            : { color: '#fff', weight: 3, fillColor: '#0a84ff', fillOpacity: 1 }}
         />
       )}
       {children}
@@ -613,7 +636,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   // A fresh watch per mount used to mean this screen always opened cold, no
   // matter how recently it had a real fix; now it usually already knows
   // the position by the time it opens.
-  const { coords: liveCoords, derived: liveDerived, status: liveStatus, error: liveError, retry: retryLocation } = useHomeLocation()
+  const { coords: liveCoords, derived: liveDerived, status: liveStatus, error: liveError, errorCode: liveErrorCode, lastKnown, retry: retryLocation } = useHomeLocation()
   const { layer, setLayer } = useMapLayer()
   const { overlays, toggleOverlay } = useMapOverlays()
   const { trail: breadcrumbTrail, reset: resetBreadcrumbs } = useBreadcrumbTrail({
@@ -628,13 +651,27 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   }, [overlays.breadcrumbs, toggleOverlay, resetBreadcrumbs])
   const [route, setRoute] = useState(null)
   const [recenterRequest, setRecenterRequest] = useState(null)
-  // [lat,lon] once a fix exists, else null — feeds ONLY the blue "you are
-  // here" dot (see LiveMap), never the viewport itself. Lazily seeded from
-  // whatever the shared watch already knows at mount time.
-  const [centerPosition, setCenterPosition] = useState(() => liveCoords ? [liveCoords.lat, liveCoords.lon] : null)
+  // The "you are here" dot: the live fix while there is one, else the last
+  // fix this device ever had, drawn grey (see LiveMap's positionStale) so a
+  // remembered position can orient the pilot without impersonating a real
+  // one. Derived on every render rather than kept in state — an earlier
+  // version stored it and only wrote it on the FIRST fix, which froze the
+  // dot at wherever the session started for as long as the screen stayed
+  // open.
+  const dotPosition = liveCoords ? [liveCoords.lat, liveCoords.lon]
+    : lastKnown ? [lastKnown.lat, lastKnown.lon]
+    : null
+  const dotStale = !liveCoords && !!lastKnown
+  // Where the map opens when there is no remembered view: the last known
+  // fix, a step wider than the live-fix zoom — the pilot is near there, not
+  // provably at there. Read synchronously (localStorage-backed) so it's
+  // ready for the map's one and only mount.
+  const staleSeed = !lastView && lastKnown ? { center: [lastKnown.lat, lastKnown.lon], zoom: 11 } : null
   // Whether this screen even needs to auto-jump the viewport onto a GPS fix
   // at all: not if we're opening onto a remembered view (lastView), and not
   // if we already had a fix at mount (nothing to jump onto — already there).
+  // Opening on a stale seed does NOT count: when the first real fix arrives
+  // it should still pull the view onto the aircraft.
   const autoCenteredRef = useRef(!!liveCoords || !!lastView)
 
   // Jump the viewport onto the pilot's real position once, the moment the
@@ -652,11 +689,31 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   useEffect(() => {
     if (autoCenteredRef.current || !liveCoords) return
     autoCenteredRef.current = true
-    setCenterPosition([liveCoords.lat, liveCoords.lon])
     if (!lastView) {
       setRecenterRequest({ lat: liveCoords.lat, lon: liveCoords.lon, zoom: LOCATION_ZOOM })
     }
   }, [liveCoords, lastView])
+
+  // Last rung of the opening-view ladder: no remembered view, no fix ever
+  // recorded on this device — open on the pilot's home airport rather than
+  // a continent. Async (settings + airport lookup), so it arrives after
+  // mount and recenters the already-visible map; if a real fix or the
+  // pilot beats it there, it stands down. Deliberately does not mark
+  // autoCenteredRef: the first live fix still wins over the home airport.
+  useEffect(() => {
+    if (lastView || lastKnown || liveCoords) return
+    let cancelled = false
+    get('settings', 'homeAirport')
+      .then(row => row?.value ? findAirport(row.value) : null)
+      .then(apt => {
+        if (cancelled || !apt || autoCenteredRef.current) return
+        setRecenterRequest({ lat: apt.lat, lon: apt.lon, zoom: 10 })
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+    // Mount-once by intent: this is only about where the map OPENS.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function handleLocate() {
     if (!liveCoords) return
@@ -730,6 +787,11 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   // the watch recovers after an earlier error (it keeps trying on its own,
   // it's a continuous watch), this clears itself automatically next render.
   const locationUnavailable = noFixYet && (liveStatus === 'error' || liveStatus === 'unsupported')
+  // Permission denied is the one failure retrying cannot cure, so it gets
+  // its own banner: what to change, where, in this exact browser — not a
+  // numeric code and not a false "still trying". Retrying after the pilot
+  // flips the setting works without a reload, so the tap stays useful.
+  const locationDenied = locationUnavailable && liveErrorCode === 1
 
   return (
     <div
@@ -744,8 +806,9 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         .map-root .leaflet-control-zoom { border-radius: 8px; }
       `}</style>
       <LiveMap
-        position={centerPosition} zoom={LOCATION_ZOOM}
-        initialCenter={lastView?.center} initialZoom={lastView?.zoom}
+        position={dotPosition} positionStale={dotStale} zoom={LOCATION_ZOOM}
+        initialCenter={lastView?.center ?? staleSeed?.center}
+        initialZoom={lastView ? lastView.zoom : staleSeed?.zoom}
         layer={layer} zoomControlPosition="bottomleft"
       >
         {overlays.breadcrumbs && <BreadcrumbLayer trail={breadcrumbTrail} />}
@@ -835,10 +898,26 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
             border: 'none', textAlign: 'left', width: 'auto',
             boxShadow: 'var(--shadow-sm)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
           }}>
-          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{liveError}</div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginTop: 3 }}>
-            Still trying · tap to retry now
-          </div>
+          {locationDenied ? (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                Location is blocked for AVIARA
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
+                {locationPermissionHelp()}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginTop: 3 }}>
+                Fixed it? Tap here to try again
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{liveError}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginTop: 3 }}>
+                Still trying · tap to retry now
+              </div>
+            </>
+          )}
         </button>
       )}
 
@@ -892,7 +971,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
 
       <FlightPlanBar onRouteChange={setRoute} />
       <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={handleToggleOverlay} />
-      <GpsInfoBar route={route} coords={liveCoords} derived={liveDerived} status={liveStatus} />
+      <GpsInfoBar route={route} coords={liveCoords} derived={liveDerived} status={liveStatus} lastKnown={lastKnown} />
     </div>
   )
 }

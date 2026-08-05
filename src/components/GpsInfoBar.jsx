@@ -60,6 +60,18 @@ const fmtDur = (mins) => {
 }
 const fmtClock = (d) => `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`
 
+// "How old is the position I'm looking at" — the honest companion to the
+// greyed last-known dot on the map. Coarse buckets on purpose: the point
+// is trust calibration, not chronometry.
+const fmtFixAge = (ts) => {
+  const s = (Date.now() - ts) / 1000
+  if (!Number.isFinite(s) || s < 0) return null
+  if (s < 60) return 'just now'
+  if (s < 3600) return `${Math.round(s / 60)} min ago`
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`
+  return `${Math.round(s / 86400)} d ago`
+}
+
 function relBearing(fromLat, fromLon, toLat, toLon) {
   const brg = bearingDeg(fromLat, fromLon, toLat, toLon)
   const dist = haversineNm(fromLat, fromLon, toLat, toLon)
@@ -73,7 +85,7 @@ function relBearing(fromLat, fromLon, toLat, toLon) {
 // running that watch twice on the same screen means two concurrent GPS
 // requests competing for the same hardware, which was a real contributor to
 // the button being slow/unreliable.
-export default function GpsInfoBar({ route, coords, derived, status }) {
+export default function GpsInfoBar({ route, coords, derived, status, lastKnown }) {
   const { fields, toggleField } = useInfoBarFields()
   const [picking, setPicking] = useState(false)
   const [groundElevFt, setGroundElevFt] = useState(null)
@@ -228,8 +240,12 @@ export default function GpsInfoBar({ route, coords, derived, status }) {
           )
         })}
         {status !== 'success' && (
-          <div style={{ padding: '7px 10px', fontSize: 11, color: 'var(--text-tertiary)', alignSelf: 'center' }}>
+          <div style={{ padding: '7px 10px', fontSize: 11, color: 'var(--text-tertiary)', alignSelf: 'center', whiteSpace: 'nowrap' }}>
+            {/* The 1s tick that drives the Zulu clock keeps this age honest
+                too. When a stale fix is on screen (the grey dot), this line
+                is what says how far to trust it. */}
             {status === 'pending' ? 'Finding GPS…' : 'No GPS'}
+            {lastKnown && fmtFixAge(lastKnown.timestamp) ? ` · last fix ${fmtFixAge(lastKnown.timestamp)}` : ''}
           </div>
         )}
       </div>
