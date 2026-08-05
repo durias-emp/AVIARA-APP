@@ -853,7 +853,13 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
   // A fresh watch per mount used to mean this screen always opened cold, no
   // matter how recently it had a real fix; now it usually already knows
   // the position by the time it opens.
-  const { coords: liveCoords, derived: liveDerived, status: liveStatus, error: liveError, errorCode: liveErrorCode, lastKnown, retry: retryLocation } = useHomeLocation()
+  const { coords: rawCoords, derived: liveDerived, status: liveStatus, error: liveError, errorCode: liveErrorCode, lastKnown, stale: fixStale, retry: retryLocation } = useHomeLocation()
+  // A stale fix is not a fix. Everything downstream — the ownship, the
+  // readouts, follow mode, the recorders — reads liveCoords, so gating it
+  // here once means none of them can accidentally treat a position the
+  // aircraft left minutes ago as current. `lastKnown` still carries the
+  // old point for orientation, drawn grey and labelled with its age.
+  const liveCoords = fixStale ? null : rawCoords
   const { layer, setLayer } = useMapLayer()
   const { overlays, toggleOverlay } = useMapOverlays()
   const { trail: breadcrumbTrail, reset: resetBreadcrumbs } = useBreadcrumbTrail({
@@ -1190,6 +1196,23 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
     const t = setTimeout(() => setSlowFix(true), 30000)
     return () => clearTimeout(t)
   }, [liveCoords])
+  // Whether the pilot has folded the GPS card down to a chip. Losing GPS
+  // does not mean losing the map — dead reckoning off the chart is exactly
+  // what a pilot does next, and that needs the screen. So the card is
+  // hideable, and the choice sticks for as long as this outage lasts.
+  // Regaining a fix rearms it, so the NEXT outage introduces itself again
+  // instead of staying silently folded from a decision made an hour ago.
+  const [gpsHelpCollapsed, setGpsHelpCollapsed] = useState(false)
+  const hasFix = !!liveCoords
+  useEffect(() => { if (hasFix) setGpsHelpCollapsed(false) }, [hasFix])
+  // Losing a fix you HAD is worth saying immediately — it means the pilot
+  // just moved to dead reckoning, and making them wait out the slow-fix
+  // timer would be 60 seconds of the app knowing something it hasn't said.
+  // A cold start still waits, because a cold start taking a few seconds is
+  // normal and not news. (Declared here, below slowFix — an earlier
+  // placement above it read the binding in its temporal dead zone and blew
+  // up the whole map at mount.)
+  const gpsBannerVisible = noFixYet && (locationUnavailable || slowFix || fixStale)
   // iOS's Precise Location toggle is invisible to a web app EXCEPT through
   // the numbers: with it off, fixes arrive with ~kilometres of accuracy
   // instead of metres. That signature is detectable, so name the switch
@@ -1360,57 +1383,94 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
           whether anything is still happening, or relaunch the app to force it.
           The banner says what went wrong, that it is still trying, and gives
           them a way to ask for it now. */}
-      {noFixYet && (locationUnavailable || slowFix) && (
+      {/* Collapsed: a chip that says the state and nothing more. A pilot
+          without GPS needs the CHART more than the advice — they're on dead
+          reckoning, and a card covering half the map is the wrong tradeoff.
+          The chip never disappears entirely though: silently hiding a
+          degraded-navigation state is how a pilot forgets they're in one. */}
+      {gpsBannerVisible && gpsHelpCollapsed && (
         <button
-          onClick={retryLocation}
-          aria-label="Retry locating"
+          onClick={() => setGpsHelpCollapsed(false)}
+          aria-label="Show GPS status"
+          style={{
+            position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, zIndex: 500,
+            background: 'var(--bg-card)', borderRadius: 14, padding: '6px 10px',
+            border: 'none', boxShadow: 'var(--shadow-sm)', cursor: 'pointer',
+            WebkitTapHighlightColor: 'transparent',
+            display: 'flex', alignItems: 'center', gap: 6,
+            fontSize: 12, fontWeight: 700, color: 'var(--text)',
+          }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--warn)', flexShrink: 0 }} />
+          {locationDenied ? 'Location blocked' : fixStale ? 'GPS lost' : 'No GPS'}
+          <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>▾</span>
+        </button>
+      )}
+
+      {gpsBannerVisible && !gpsHelpCollapsed && (
+        <div
           style={{
             position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
             background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
-            border: 'none', textAlign: 'left', width: 'auto',
             // With the drawer up, the visible strip can be shorter than the
             // tip list — cap the card at the space that's actually free
             // (above the GPS bar) and scroll inside it, rather than running
             // underneath the bar and the zoom rail.
             maxHeight: 'calc(100% - var(--map-bottom-inset, 0px) - 150px)', overflowY: 'auto',
-            boxShadow: 'var(--shadow-sm)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+            boxShadow: 'var(--shadow-sm)',
           }}>
-          {locationDenied ? (
-            <>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-                Location is blocked for AVIARA
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
-                {locationPermissionHelp()}
-              </div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginTop: 3 }}>
-                Fixed it? Tap here to try again
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                {locationUnavailable ? liveError : 'Still looking for GPS…'}
-              </div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginTop: 3 }}>
-                Still trying · tap to retry now
-              </div>
-              {slowFix && (
-                <div style={{ marginTop: 8, borderTop: '0.5px solid var(--border)', paddingTop: 8 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
-                    Taking a while — what helps
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {locationDenied ? (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                    Location is blocked for AVIARA
                   </div>
-                  {GPS_TIPS.map((tip, i) => (
-                    <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, display: 'flex', gap: 6 }}>
-                      <span style={{ flexShrink: 0 }}>·</span>
-                      <span>{tip}</span>
-                    </div>
-                  ))}
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
+                    {locationPermissionHelp()}
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                  {locationUnavailable ? liveError
+                    : fixStale ? 'GPS signal lost — position below is your last fix'
+                    : 'Still looking for GPS…'}
                 </div>
               )}
-            </>
+            </div>
+            <button
+              onClick={() => setGpsHelpCollapsed(true)}
+              aria-label="Hide GPS help"
+              style={{
+                flexShrink: 0, width: 24, height: 24, borderRadius: 12, border: 'none',
+                background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
+                fontSize: 12, lineHeight: 1, cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+              }}>
+              ▴
+            </button>
+          </div>
+          <button
+            onClick={retryLocation}
+            style={{
+              marginTop: 3, padding: 0, border: 'none', background: 'none', textAlign: 'left',
+              fontSize: 12, fontWeight: 700, color: 'var(--accent)',
+              cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+            }}>
+            {locationDenied ? 'Fixed it? Tap here to try again' : 'Still trying · tap to retry now'}
+          </button>
+          {slowFix && !locationDenied && (
+            <div style={{ marginTop: 8, borderTop: '0.5px solid var(--border)', paddingTop: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+                Taking a while — what helps
+              </div>
+              {GPS_TIPS.map((tip, i) => (
+                <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, display: 'flex', gap: 6 }}>
+                  <span style={{ flexShrink: 0 }}>·</span>
+                  <span>{tip}</span>
+                </div>
+              ))}
+            </div>
           )}
-        </button>
+        </div>
       )}
 
       {/* A fix that exists but is kilometres wide is worse than none if the
