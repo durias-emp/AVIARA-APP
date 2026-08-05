@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { MapContainer, TileLayer, CircleMarker, Marker, Polyline, Polygon, Popup, Tooltip, ZoomControl, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -1191,9 +1192,11 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
       )}
 
       {/* Press-and-hold menu: what can be done with a point on the map.
-          Fixed overlay, same pattern as the GPS bar's field picker — it
-          must cover the drawer too, not just the map strip. */}
-      {pressMenu && (
+          Portaled to <body>: on Home this map lives in a zIndex:0 layer
+          UNDER the drawer, and position:fixed cannot out-z-index its own
+          stacking context — an overlay rendered in place sits behind the
+          drawer no matter what number it wears. */}
+      {pressMenu && createPortal(
         <div
           onClick={() => setPressMenu(null)}
           style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'flex-end' }}>
@@ -1234,15 +1237,17 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
               Cancel
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Naming dialog for a new user waypoint — from press-and-hold or the
           pin-drop button. Blank name = auto WP01…, so "just save where I
           am" is two taps. Save errors (name taken by an airport/VOR/fix)
           render inline; the restriction exists so the route bar never has
-          two meanings for one ident. */}
-      {wptDraft && (
+          two meanings for one ident. Portaled for the same stacking-context
+          reason as the press menu above. */}
+      {wptDraft && createPortal(
         <div
           onClick={() => { if (!wptSaving) { setWptDraft(null); setWptName(''); setWptError(null) } }}
           style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -1293,7 +1298,8 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <FlightPlanBar onRouteChange={setRoute} />
