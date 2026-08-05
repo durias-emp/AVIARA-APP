@@ -14,7 +14,8 @@ import { formatClock } from '../lib/flightTime'
 import { useFlightDetector, DEFAULT_AUTO_DETECT_CONFIG, autoDetectEnabledFrom } from '../hooks/useFlightDetector'
 import { useLogbook } from '../context/Logbook'
 import { useActiveAircraft } from '../context/ActiveAircraft'
-import { get } from '../lib/db'
+import { get, put } from '../lib/db'
+import { submitPirep, listRecentPireps, PIREP_SKY, PIREP_WX, PIREP_WX_LABELS, PIREP_TURB, PIREP_ICING } from '../lib/pireps'
 import { FLTCAT } from '../lib/weather'
 import { getAirports, getAirportDetails, getAuxAerodromes, findAirport } from '../lib/aerodromes'
 import { getUserWaypoints, saveUserWaypoint, removeUserWaypoint, nextAutoName } from '../lib/waypoints'
@@ -672,6 +673,49 @@ function UserWaypointLayer() {
   )
 }
 
+// AVIARA-to-AVIARA PIREPs, refreshed when the layer mounts (toggled on)
+// and every five minutes while it stays on. Urgent reports draw red,
+// routine ones blue; both age out of the query at 12 hours (lib/pireps).
+function PirepLayer() {
+  const [reports, setReports] = useState([])
+  useEffect(() => {
+    let alive = true
+    const load = () => listRecentPireps().then(({ data }) => { if (alive) setReports(data) })
+    load()
+    window.addEventListener('aviara-pireps', load)
+    const t = setInterval(load, 5 * 60 * 1000)
+    return () => { alive = false; clearInterval(t); window.removeEventListener('aviara-pireps', load) }
+  }, [])
+  const age = iso => {
+    const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
+    return m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`
+  }
+  return (
+    <>
+      {reports.map(p => (
+        <CircleMarker key={p.id} center={[p.lat, p.lon]} radius={7}
+          pathOptions={{ color: '#fff', weight: 2, fillColor: p.urgent ? '#dc2626' : '#2563eb', fillOpacity: 0.95 }}>
+          <Popup>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>
+              {p.urgent ? 'URGENT PIREP (UUA)' : 'PIREP (UA)'} · {age(p.created_at)}
+            </div>
+            <div style={{ fontSize: 11, marginTop: 3, lineHeight: 1.5 }}>
+              {p.altitude_ft != null && <div>Altitude: {p.altitude_ft.toLocaleString()} ft</div>}
+              {p.aircraft_type && <div>Aircraft: {p.aircraft_type}</div>}
+              {p.sky && <div>Sky: {p.sky}</div>}
+              {p.wx?.length > 0 && <div>Weather: {p.wx.map(w => PIREP_WX_LABELS[w] || w).join(', ')}</div>}
+              {p.turbulence && <div>Turbulence: {p.turbulence}</div>}
+              {p.icing && <div>Icing: {p.icing}</div>}
+              {p.remarks && <div>Remarks: {p.remarks}</div>}
+            </div>
+            <div style={{ fontSize: 10, color: '#888', marginTop: 4 }}>Shared by an AVIARA pilot — not an FAA PIREP</div>
+          </Popup>
+        </CircleMarker>
+      ))}
+    </>
+  )
+}
+
 // Surfaces Leaflet's contextmenu as "the pilot pressed and held here" (or
 // right-clicked, on desktop — same event). The menu itself is MapView's;
 // this only reports the geographic point.
@@ -777,6 +821,68 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
     const pt = { kind: 'LL', name: fmtAvCoord(p.lat, p.lon), label: null, lat: p.lat, lon: p.lon }
     setRoute(r => (r && r.length ? [...r, pt] : [pt]))
     setPressMenu(null)
+  }
+
+  // UAP: the full report form already exists as its own tool with its own
+  // draft store — the map's job is only to seed a draft with the pressed
+  // location so the pilot finishes it there ("the UAP folder"), not to
+  // clone a 15-field form into a map sheet.
+  const [uapBanner, setUapBanner] = useState(false)
+  async function startUapDraftAt(p) {
+    const now = new Date()
+    await put('uapReports', {
+      id: `uap-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      createdAt: now.toISOString(),
+      date: now.toISOString().slice(0, 10),
+      time: now.toTimeString().slice(0, 5),
+      durationBucket: '', locationText: fmtAvCoord(p.lat, p.lon), lat: p.lat, lon: p.lon, altitudeFt: '',
+      shape: '', motion: '', angularSize: '', color: '', sound: '',
+      witnesses: '', nearbyObjects: '', weatherVisibility: '', description: '',
+      ageRange: '', gender: '', genderOther: '',
+      consent: false,
+    }).catch(() => {})
+    setPressMenu(null)
+    setUapBanner(true)
+    setTimeout(() => setUapBanner(false), 8000)
+  }
+
+  // PIREP: filed from the map, shared with every AVIARA pilot who has the
+  // layer on. Checkbox/radio groups mirror the standard report's element
+  // groups (/SK /WX /TB /IC), constrained to the same vocabulary the DB
+  // enforces.
+  const [pirepDraft, setPirepDraft] = useState(null)   // {lat, lon} → sheet open
+  const [pirep, setPirep] = useState({ urgent: false, altitudeFt: '', aircraftType: '', sky: null, wx: [], turbulence: null, icing: null, remarks: '' })
+  const [pirepError, setPirepError] = useState(null)
+  const [pirepSending, setPirepSending] = useState(false)
+  const [pirepBanner, setPirepBanner] = useState(false)
+  function openPirepAt(p) {
+    setPirep({
+      urgent: false,
+      altitudeFt: liveCoords?.altFt != null ? String(Math.round(liveCoords.altFt)) : '',
+      aircraftType: '', sky: null, wx: [], turbulence: null, icing: null, remarks: '',
+    })
+    setPirepError(null)
+    setPirepDraft(p)
+    setPressMenu(null)
+  }
+  async function sendPirep() {
+    if (!pirepDraft) return
+    setPirepSending(true)
+    setPirepError(null)
+    const { error } = await submitPirep({
+      lat: pirepDraft.lat, lon: pirepDraft.lon,
+      altitude_ft: pirep.altitudeFt ? parseInt(pirep.altitudeFt, 10) : null,
+      aircraft_type: pirep.aircraftType.trim() || null,
+      urgent: pirep.urgent,
+      sky: pirep.sky, wx: pirep.wx, turbulence: pirep.turbulence, icing: pirep.icing,
+      remarks: pirep.remarks.trim() || null,
+    })
+    setPirepSending(false)
+    if (error) { setPirepError(error.message); return }
+    setPirepDraft(null)
+    window.dispatchEvent(new Event('aviara-pireps'))
+    setPirepBanner(true)
+    setTimeout(() => setPirepBanner(false), 6000)
   }
 
   async function saveWaypointDraft() {
@@ -979,6 +1085,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         {overlays.airports && <AirportLayer />}
         {overlays.heliports && <HeliportLayer />}
         {overlays.seaplaneBases && <SeaplaneBaseLayer />}
+        {overlays.pireps && <PirepLayer />}
         <UserWaypointLayer />
         <MapPressCapture onPress={handleMapPress} />
         <LocateRecenter request={recenterRequest} coveredHeight={focusInset ?? bottomInset} />
@@ -1228,6 +1335,24 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
               ➕ Add this point to the route
             </button>
             <button
+              onClick={() => openPirepAt(pressMenu)}
+              style={{
+                display: 'block', width: '100%', padding: '13px 14px', borderRadius: 12, border: 'none',
+                background: 'var(--bg-card)', color: 'var(--text)', fontSize: 14, fontWeight: 700,
+                textAlign: 'left', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', marginBottom: 8,
+              }}>
+              📡 File a PIREP here
+            </button>
+            <button
+              onClick={() => startUapDraftAt(pressMenu)}
+              style={{
+                display: 'block', width: '100%', padding: '13px 14px', borderRadius: 12, border: 'none',
+                background: 'var(--bg-card)', color: 'var(--text)', fontSize: 14, fontWeight: 700,
+                textAlign: 'left', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', marginBottom: 8,
+              }}>
+              🛸 Report a UAP sighting here
+            </button>
+            <button
               onClick={() => setPressMenu(null)}
               style={{
                 display: 'block', width: '100%', padding: '13px 14px', borderRadius: 12, border: 'none',
@@ -1300,6 +1425,139 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
           </div>
         </div>,
         document.body
+      )}
+
+      {/* PIREP form — the standard report's element groups as tap targets.
+          Portaled like the other sheets. Chip groups: sky and severity are
+          single-choice (radio behavior), weather phenomena multi-choice. */}
+      {pirepDraft && createPortal(
+        <div
+          onClick={() => { if (!pirepSending) setPirepDraft(null) }}
+          style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end' }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxHeight: '85vh', overflowY: 'auto', background: 'var(--bg)', borderRadius: '20px 20px 0 0', padding: '16px 18px calc(20px + env(safe-area-inset-bottom, 0px))' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+              File PIREP · {fmtAvCoord(pirepDraft.lat, pirepDraft.lon)}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', margin: '3px 0 12px' }}>
+              Shared with AVIARA pilots who have the PIREPs layer on — not filed with the FAA.
+            </div>
+
+            {[
+              { title: 'Report type', single: true, field: 'urgent', opts: [{ v: false, l: 'UA · Routine' }, { v: true, l: 'UUA · Urgent' }] },
+              { title: 'Sky', single: true, field: 'sky', opts: PIREP_SKY.map(v => ({ v, l: v })) },
+              { title: 'Weather', single: false, field: 'wx', opts: PIREP_WX.map(v => ({ v, l: PIREP_WX_LABELS[v] })) },
+              { title: 'Turbulence', single: true, field: 'turbulence', opts: PIREP_TURB.map(v => ({ v, l: v })) },
+              { title: 'Icing', single: true, field: 'icing', opts: PIREP_ICING.map(v => ({ v, l: v })) },
+            ].map(group => (
+              <div key={group.title} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 6 }}>
+                  {group.title}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {group.opts.map(o => {
+                    const active = group.single
+                      ? pirep[group.field] === o.v
+                      : pirep.wx.includes(o.v)
+                    return (
+                      <button key={String(o.v)}
+                        onClick={() => setPirep(prev => group.single
+                          ? { ...prev, [group.field]: prev[group.field] === o.v && group.field !== 'urgent' ? null : o.v }
+                          : { ...prev, wx: prev.wx.includes(o.v) ? prev.wx.filter(x => x !== o.v) : [...prev.wx, o.v] })}
+                        style={{
+                          padding: '7px 12px', borderRadius: 16, fontSize: 12, fontWeight: 700,
+                          border: active ? 'none' : '1px solid var(--border)',
+                          background: active ? 'var(--accent)' : 'var(--bg-card)',
+                          color: active ? 'var(--accent-fg)' : 'var(--text)',
+                          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+                        }}>
+                        {o.l}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <input
+                value={pirep.altitudeFt}
+                onChange={e => setPirep(prev => ({ ...prev, altitudeFt: e.target.value.replace(/[^\d]/g, '') }))}
+                placeholder="Altitude (ft)" inputMode="numeric"
+                style={{
+                  flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10,
+                  border: '1px solid var(--border)', background: 'var(--bg-card)', outline: 'none',
+                  fontSize: 14, fontWeight: 700, color: 'var(--text)',
+                }} />
+              <input
+                value={pirep.aircraftType}
+                onChange={e => setPirep(prev => ({ ...prev, aircraftType: e.target.value.toUpperCase() }))}
+                placeholder="Aircraft (C172)" autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+                style={{
+                  flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10,
+                  border: '1px solid var(--border)', background: 'var(--bg-card)', outline: 'none',
+                  fontSize: 14, fontWeight: 700, color: 'var(--text)',
+                }} />
+            </div>
+            <input
+              value={pirep.remarks}
+              onChange={e => setPirep(prev => ({ ...prev, remarks: e.target.value }))}
+              placeholder="Remarks (optional)"
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10,
+                border: '1px solid var(--border)', background: 'var(--bg-card)', outline: 'none',
+                fontSize: 14, color: 'var(--text)',
+              }} />
+
+            {pirepError && (
+              <div style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600, marginTop: 8 }}>{pirepError}</div>
+            )}
+            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+              <button
+                onClick={() => setPirepDraft(null)}
+                disabled={pirepSending}
+                style={{
+                  flex: 1, padding: '12px 0', borderRadius: 12, border: 'none',
+                  background: 'var(--bg-card)', color: 'var(--text)', fontSize: 14, fontWeight: 700,
+                  cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+                }}>
+                Cancel
+              </button>
+              <button
+                onClick={sendPirep}
+                disabled={pirepSending}
+                style={{
+                  flex: 1, padding: '12px 0', borderRadius: 12, border: 'none',
+                  background: 'var(--accent)', color: 'var(--accent-fg)', fontSize: 14, fontWeight: 700,
+                  cursor: 'pointer', WebkitTapHighlightColor: 'transparent', opacity: pirepSending ? 0.6 : 1,
+                }}>
+                {pirepSending ? 'Sharing…' : 'Share PIREP'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {uapBanner && (
+        <div style={{
+          position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
+          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
+          fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
+        }}>
+          🛸 UAP draft saved with this location — finish and submit it in Tools → UAP Report.
+        </div>
+      )}
+
+      {pirepBanner && (
+        <div style={{
+          position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
+          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
+          fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
+        }}>
+          📡 PIREP shared — visible to AVIARA pilots with the PIREPs layer on.
+        </div>
       )}
 
       <FlightPlanBar onRouteChange={setRoute} />
