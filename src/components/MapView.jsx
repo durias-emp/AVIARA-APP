@@ -1091,10 +1091,19 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // One button, staged (James's design, after the standalone orientation
+  // button ended up buried under Layers): not following → tap centres you
+  // and follows in the current orientation; already following → each tap
+  // advances North Up → Track Up → Track Up Ahead → back to North Up.
+  // A drag only breaks following, never the cycle position.
   function handleLocate() {
     if (!liveCoords) return
-    setRecenterRequest({ lat: liveCoords.lat, lon: liveCoords.lon })
-    setFollow(true)
+    if (!follow) {
+      setRecenterRequest({ lat: liveCoords.lat, lon: liveCoords.lon })
+      setFollow(true)
+      return
+    }
+    cycleOrientation()
   }
 
   // Foreground flight auto-detection — settings-gated, per Settings.jsx's
@@ -1292,24 +1301,6 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
           style={{ width: 32, height: 30, border: 'none', background: 'var(--bg-card)', color: 'var(--text)', fontSize: 17, fontWeight: 700, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>−</button>
       </div>
 
-      {/* Orientation: North Up → Track Up → Track Up Ahead, cycled. Sits
-          under Locate on the same rail — the two are one habit: orient,
-          then follow. */}
-      <button
-        onClick={cycleOrientation}
-        aria-label="Map orientation"
-        style={{
-          position: 'absolute', right: 12, bottom: 'calc(82px + var(--map-bottom-inset, 0px))', zIndex: 500,
-          transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
-          height: 32, minWidth: 32, padding: '0 8px', borderRadius: 16, border: 'none',
-          background: orientation === 'north' ? 'var(--bg-card)' : 'var(--accent)',
-          color: orientation === 'north' ? 'var(--text)' : 'var(--accent-fg)',
-          fontSize: 11, fontWeight: 800, letterSpacing: '0.03em',
-          boxShadow: 'var(--shadow-sm)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
-        }}>
-        {orientation === 'north' ? 'N↑' : orientation === 'track' ? 'TRK↑' : 'TRK↑▲'}
-      </button>
-
       {/* Drop a pin on the aircraft's own position — one tap on the ramp
           marks the tie-down, the fuel pump, the hole in the fence. Sits
           directly above Locate: both buttons are "do something with where
@@ -1336,24 +1327,32 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
       <button
         onClick={handleLocate}
         disabled={noFixYet}
-        aria-label="Locate me"
+        aria-label="Locate me / cycle orientation"
         style={{
           position: 'absolute', right: 12, bottom: 'calc(122px + var(--map-bottom-inset, 0px))', zIndex: 500,
           transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
-          width: 32, height: 32, borderRadius: '50%', border: 'none',
-          // Accent while following — the button is a mode, not a one-shot.
+          height: 32, minWidth: 32, padding: follow && orientation !== 'north' ? '0 9px' : 0,
+          borderRadius: 16, border: 'none',
+          // Accent while following — the button is a mode, not a one-shot —
+          // and it wears the stage's name in the track modes so the pilot
+          // never has to guess where in the cycle they are.
           background: follow ? 'var(--accent)' : 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: noFixYet ? 'default' : 'pointer', WebkitTapHighlightColor: 'transparent',
           opacity: noFixYet ? 0.55 : 1,
+          fontSize: 11, fontWeight: 800, letterSpacing: '0.03em', color: 'var(--accent-fg)',
         }}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={follow ? 'var(--accent-fg)' : 'var(--text)'} strokeWidth="2.2" strokeLinecap="round">
-          <circle cx="12" cy="12" r="3.5" />
-          <line x1="12" y1="1" x2="12" y2="4.5" />
-          <line x1="12" y1="19.5" x2="12" y2="23" />
-          <line x1="1" y1="12" x2="4.5" y2="12" />
-          <line x1="19.5" y1="12" x2="23" y2="12" />
-        </svg>
+        {follow && orientation === 'track' ? 'TRK↑'
+          : follow && orientation === 'trackAhead' ? 'TRK↑▲'
+          : (
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={follow ? 'var(--accent-fg)' : 'var(--text)'} strokeWidth="2.2" strokeLinecap="round">
+              <circle cx="12" cy="12" r="3.5" />
+              <line x1="12" y1="1" x2="12" y2="4.5" />
+              <line x1="12" y1="19.5" x2="12" y2="23" />
+              <line x1="1" y1="12" x2="4.5" y2="12" />
+              <line x1="19.5" y1="12" x2="23" y2="12" />
+            </svg>
+          )}
       </button>
 
       {/* Tappable. The watch retries on its own every ten seconds now, but a
