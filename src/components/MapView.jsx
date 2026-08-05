@@ -37,18 +37,29 @@ const SATELLITE_BASE = {
   attribution: '&copy; Esri, Maxar, Earthstar Geographics',
 }
 
+// minZoom is a hard floor and it is load-bearing: below minNativeZoom,
+// Leaflet covers the screen with scaled-down copies of the lowest native
+// tiles, and the tile count QUADRUPLES per zoom level of that gap. These
+// are 128px tiles, so at zoom 4 a single phone screen of sectional means
+// thousands of tile images at once (6,336 measured) — a few hundred MB of
+// decoded bitmap, which iOS answers by killing the page outright, no JS
+// error, before first paint. With the map now being the home screen and
+// mounting at zoom 4 whenever there is no GPS fix yet, that was a crash on
+// launch for every fresh install. One zoom level of scale-down is the most
+// the floor allows (tile count merely 4x), which keeps the chart sticky a
+// step past its native range and bounded everywhere else.
 const CHART_LAYERS = {
   sectional: {
     url: 'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Sectional/MapServer/tile/{z}/{y}/{x}',
-    minNativeZoom: 8, maxNativeZoom: 11, maxZoom: 13,
+    minZoom: 6, minNativeZoom: 8, maxNativeZoom: 11, maxZoom: 13,
   },
   ifrlo: {
     url: 'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_AreaLow/MapServer/tile/{z}/{y}/{x}',
-    minNativeZoom: 8, maxNativeZoom: 11, maxZoom: 13,
+    minZoom: 6, minNativeZoom: 8, maxNativeZoom: 11, maxZoom: 13,
   },
   ifrhi: {
     url: 'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_High/MapServer/tile/{z}/{y}/{x}',
-    minNativeZoom: 5, maxNativeZoom: 8, maxZoom: 12,
+    minZoom: 3, minNativeZoom: 5, maxNativeZoom: 8, maxZoom: 12,
   },
 }
 
@@ -77,17 +88,12 @@ export function MapLayers({ layer }) {
           key={layer}
           url={chart.url}
           tileSize={128} zoomOffset={1}
-          // No minZoom floor — real tiles only exist down to minNativeZoom
-          // (a genuine limit of the FAA/Esri tile service), but leaving the
-          // layer free to render below that means Leaflet keeps showing the
-          // lowest native tiles scaled down rather than dropping the chart
-          // entirely, so zooming out to see the whole country/globe never
-          // swaps the chart out for the plain road map underneath — it just
-          // covers less precisely outside the chart's own native range, and
-          // not at all outside its geographic coverage (e.g. a US sectional
-          // over Canada), same as maxNativeZoom already does on the zoomed-in
-          // side.
-          minNativeZoom={chart.minNativeZoom} maxNativeZoom={chart.maxNativeZoom} maxZoom={chart.maxZoom}
+          // The chart stays sticky one zoom level below its native range
+          // (scaled-down native tiles), then hands off to the road base —
+          // see the CHART_LAYERS comment for why the floor cannot be looser
+          // than that: below it, tile count goes exponential and iOS kills
+          // the page on launch.
+          minZoom={chart.minZoom} minNativeZoom={chart.minNativeZoom} maxNativeZoom={chart.maxNativeZoom} maxZoom={chart.maxZoom}
           opacity={0.9}
           attribution='&copy; FAA AIS'
         />
