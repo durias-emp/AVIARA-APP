@@ -2,24 +2,45 @@
 // so ChartLayers.jsx exports components and nothing else (fast refresh stops
 // working for a module that mixes the two).
 
+// `group` splits the chip stack into two columns. One column of twelve would
+// run off the top of the phone and under the airport pill, and the split is
+// not arbitrary: charts are tiled backdrops that mostly replace each other,
+// overlays are things drawn on top that combine freely.
 export const CHARTS = [
-  { key: 'sectional', label: 'SECT', faaOnly: true },
-  { key: 'terrain',   label: 'TERR', faaOnly: false },
-  { key: 'ifrlo',     label: 'LO',   faaOnly: true },
-  { key: 'ifrhi',     label: 'HI',   faaOnly: true },
-  { key: 'airspace',  label: 'ARSP', faaOnly: false },
+  { key: 'sectional', label: 'SECT', faaOnly: true,  group: 'chart' },
+  { key: 'terrain',   label: 'TERR', faaOnly: false, group: 'chart' },
+  { key: 'ifrlo',     label: 'LO',   faaOnly: true,  group: 'chart' },
+  { key: 'ifrhi',     label: 'HI',   faaOnly: true,  group: 'chart' },
+  { key: 'airspace',  label: 'ARSP', faaOnly: false, group: 'chart' },
   // Live traffic. Not a chart: a delayed, incomplete picture of who is
   // transmitting, labelled as such wherever it appears.
-  { key: 'traffic',   label: 'TFC',  faaOnly: false },
+  { key: 'traffic',   label: 'TFC',  faaOnly: false, group: 'overlay' },
   // Temporary flight restrictions. US only in practice: the FAA feed is the
   // source, so the chip is offered everywhere but will simply draw nothing
   // outside its coverage.
-  { key: 'tfr',       label: 'TFR',  faaOnly: true },
+  { key: 'tfr',       label: 'TFR',  faaOnly: true,  group: 'overlay' },
+  // Aerodromes and live weather, drawn as markers rather than tiles. These
+  // are not charts and are not exclusive with them: a pilot turns on the
+  // sectional to see the airspace and Airports to see where the fields are.
+  //
+  // Each carries a zoom floor of its own (see aerodromeLayers.jsx), which is
+  // why they can be offered from a map that is always mounted: below the
+  // floor they draw nothing rather than thousands of markers.
+  { key: 'airports',  label: 'APT',  faaOnly: false, group: 'overlay' },
+  { key: 'heliports', label: 'HELI', faaOnly: false, group: 'overlay' },
+  { key: 'seaplane',  label: 'SEA',  faaOnly: false, group: 'overlay' },
+  // NEXRAD mosaic, US only, and the only layer here that is precipitation
+  // rather than infrastructure.
+  { key: 'radar',     label: 'RAD',  faaOnly: true,  group: 'overlay' },
+  // A dot per reporting station, coloured VFR/MVFR/IFR/LIFR. Reported
+  // conditions, not a forecast.
+  { key: 'fltcat',    label: 'WX',   faaOnly: false, group: 'overlay' },
 ]
 
 export const EMPTY_LAYERS = {
   sectional: false, terrain: false, ifrlo: false, ifrhi: false, airspace: false,
   traffic: false, tfr: false,
+  airports: false, heliports: false, seaplane: false, radar: false, fltcat: false,
 }
 
 // The openAIP tile key, resolved the same way the route planner resolves it:

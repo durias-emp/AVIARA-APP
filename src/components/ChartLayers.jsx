@@ -28,6 +28,11 @@
 import { TileLayer, Polygon, CircleMarker, Popup } from 'react-leaflet'
 import TerrainLayer from '../pages/Checklists/sections/TerrainLayer'
 import { tfrColor } from '../lib/tfr'
+// The marker overlays, shared with the app's other map so both draw the same
+// airports from the same code rather than two copies that drift apart.
+import {
+  AirportLayer, HeliportLayer, SeaplaneBaseLayer, RadarLayer, FlightCategoryLayer,
+} from './aerodromeLayers'
 
 // A transparent 1px PNG. A missing chart tile is a hole in the mosaic, not an
 // error, and the browser's broken-image glyph tiled across the map is worse
@@ -113,5 +118,14 @@ export default function ChartLayers({ layers, openaipKey, tfrData }) {
         opacity={0.9} minZoom={4} maxZoom={17}
         attribution='&copy; <a href="https://www.openaip.net">openAIP</a>' />
     )}
+
+    {/* Radar sits under the aerodrome markers on purpose: it is a tile layer
+        covering whole states, and a field hidden under a precipitation cell is
+        exactly the field the pilot is looking for. */}
+    {layers.radar && <RadarLayer />}
+    {layers.airports && <AirportLayer />}
+    {layers.heliports && <HeliportLayer />}
+    {layers.seaplane && <SeaplaneBaseLayer />}
+    {layers.fltcat && <FlightCategoryLayer />}
   </>)
 }

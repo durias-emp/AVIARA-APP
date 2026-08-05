@@ -770,36 +770,49 @@ export default function MapHome() {
           bottom: sheetOpen
             ? `calc(${SHEET_COLLAPSED_PX}px + var(--safe-bottom) + ${recording ? 132 : 16}px)`
             : 'calc(var(--safe-bottom) + 28px)',
-          display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end',
+          // Two columns, overlays nearest the layers button and charts outboard
+          // of them. One column of twelve ran off the top of the screen and
+          // under the airport pill.
+          display: 'flex', flexDirection: 'row', gap: 8, alignItems: 'flex-end',
           transition: 'bottom 280ms cubic-bezier(0.4,0,0.2,1)',
           // Closed, the chips are still in the DOM so they can animate out;
           // they must not still be tappable.
           pointerEvents: chartsOpen ? 'auto' : 'none',
         }}>
-          {CHARTS.map((c, i) => (
-            <button key={c.key} className="chart-chip" onClick={() => toggleLayer(c.key)} style={{
-              background: layers[c.key] ? 'var(--map-ink)' : 'var(--map-panel)',
-              color: layers[c.key] ? 'var(--map-ink-invert)' : 'var(--map-ink)',
-              border: 'none', borderRadius: 10, cursor: 'pointer',
-              // One width for all of them. Sized to its own label, TFR came out
-              // narrower than ARSP and the column read as a ragged edge rather
-              // than a set of controls.
-              width: CHIP_W, height: CHIP_H,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 11.5, fontWeight: 700, letterSpacing: '0.4px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
-              // Opening, each chip arrives a beat after the one below it, so
-              // the column unrolls upward from the layers button. Closing runs
-              // the other way, top first, so it retracts back into it. The
-              // stagger is what makes it read as one object rather than seven
-              // things that happened to move at once.
-              animation: `${chartsOpen ? 'chipIn' : 'chipOut'} 220ms cubic-bezier(0.34,1.3,0.64,1) both`,
-              animationDelay: chartsOpen
-                ? `${(CHARTS.length - 1 - i) * 28}ms`
-                : `${i * 24}ms`,
-              transition: 'background 160ms, color 160ms',
-            }}>{c.label}</button>
-          ))}
+          {['chart', 'overlay'].map(group => {
+            const col = CHARTS.filter(c => c.group === group)
+            return (
+              <div key={group} style={{
+                display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end',
+              }}>
+                {col.map((c, i) => (
+                  <button key={c.key} className="chart-chip" onClick={() => toggleLayer(c.key)} style={{
+                    background: layers[c.key] ? 'var(--map-ink)' : 'var(--map-panel)',
+                    color: layers[c.key] ? 'var(--map-ink-invert)' : 'var(--map-ink)',
+                    border: 'none', borderRadius: 10, cursor: 'pointer',
+                    // One width for all of them. Sized to its own label, TFR came
+                    // out narrower than ARSP and the column read as a ragged edge
+                    // rather than a set of controls.
+                    width: CHIP_W, height: CHIP_H,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11.5, fontWeight: 700, letterSpacing: '0.4px',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
+                    // Opening, each chip arrives a beat after the one below it, so
+                    // the column unrolls upward from the layers button. Closing runs
+                    // the other way, top first, so it retracts back into it. The
+                    // stagger is what makes it read as one object rather than a
+                    // dozen things that happened to move at once. Both columns run
+                    // off their own index so they unroll together.
+                    animation: `${chartsOpen ? 'chipIn' : 'chipOut'} 220ms cubic-bezier(0.34,1.3,0.64,1) both`,
+                    animationDelay: chartsOpen
+                      ? `${(col.length - 1 - i) * 28}ms`
+                      : `${i * 24}ms`,
+                    transition: 'background 160ms, color 160ms',
+                  }}>{c.label}</button>
+                ))}
+              </div>
+            )
+          })}
         </div>
       )}
 

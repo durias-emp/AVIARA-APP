@@ -1203,9 +1203,11 @@ function PickDestinationMap({ depPos, depIdent, onClose, onPick }) {
           )}
         </button>
 
-        {/* Only the layers this map can actually draw. CHARTS also carries
-            live traffic and TFRs, and neither is wired here: offering a chip
-            that toggles nothing is worse than not offering it. */}
+        {/* Only the layers this map can actually draw. Traffic needs the
+            polling hook and TFRs need their fetched data, and neither is wired
+            here: offering a chip that toggles nothing is worse than not
+            offering it. The aerodrome and radar overlays need neither, so they
+            appear here too, which is the point of this map. */}
         {pickChartsOpen && CHARTS.filter(c => c.key !== 'traffic' && c.key !== 'tfr').map(c => (
           <button key={c.key} onClick={() => togglePick(c.key)} style={{
             width: 56, height: 32, borderRadius: 8, cursor: 'pointer',
