@@ -39,6 +39,18 @@ const CTRL = 52
 const CHIP_W = 62
 const CHIP_H = 38
 
+// The chips, split into two columns of equal height.
+//
+// Balanced rather than split by kind. Grouping charts against overlays gave
+// five and seven, and the seven-tall column is 46px taller: enough to run under
+// the airport pill on a short phone once the stack is pinned to the top. Even
+// columns also read as one block rather than two ragged ones, and the order is
+// preserved left to right, so the charts still come first.
+const CHIP_COLUMNS = (() => {
+  const half = Math.ceil(CHARTS.length / 2)
+  return [CHARTS.slice(0, half), CHARTS.slice(half)]
+})()
+
 // Three resting heights. Collapsed is the handle and the actions; expanded
 // leaves a strip of map above it so it never reads as a takeover; full is a
 // screen in its own right, for reading the logbook rather than glancing at it.
@@ -766,23 +778,31 @@ export default function MapHome() {
           screen: six permanent chips is what a cluttered EFB looks like. */}
       {chartsEverOpened && (
         <div style={{
-          position: 'absolute', right: 14 + CTRL + 12, zIndex: 500,
-          bottom: sheetOpen
-            ? `calc(${SHEET_COLLAPSED_PX}px + var(--safe-bottom) + ${recording ? 132 : 16}px)`
-            : 'calc(var(--safe-bottom) + 28px)',
-          // Two columns, overlays nearest the layers button and charts outboard
-          // of them. One column of twelve ran off the top of the screen and
-          // under the airport pill.
-          display: 'flex', flexDirection: 'row', gap: 8, alignItems: 'flex-end',
-          transition: 'bottom 280ms cubic-bezier(0.4,0,0.2,1)',
+          // Pinned under the airport pill in the top corner rather than floated
+          // off the layers button. Anchored to the top, not the bottom: hung
+          // from the button the tallest column grew up into the pill on a short
+          // phone, and it also sat across the middle of the map, which is the
+          // part a pilot is actually looking at. Growing down from the top
+          // fills the corner that was empty and leaves the centre clear.
+          //
+          // Right edge shared with the controls below, so the stack, the layers
+          // button and the locate button all line up on one edge.
+          position: 'absolute', right: 14, zIndex: 500,
+          top: 'calc(var(--safe-top) + 58px)',
+          display: 'flex', flexDirection: 'row', gap: 8, alignItems: 'flex-start',
+          // Fades out with the rest of the map's chrome when the sheet is
+          // raised. Hung from the button these rode up with it; pinned to the
+          // top they would otherwise sit over the strip of map the expanded
+          // sheet leaves behind.
+          opacity: expanded ? 0 : 1,
+          transition: 'opacity 200ms',
           // Closed, the chips are still in the DOM so they can animate out;
           // they must not still be tappable.
-          pointerEvents: chartsOpen ? 'auto' : 'none',
+          pointerEvents: chartsOpen && !expanded ? 'auto' : 'none',
         }}>
-          {['chart', 'overlay'].map(group => {
-            const col = CHARTS.filter(c => c.group === group)
+          {CHIP_COLUMNS.map((col, ci) => {
             return (
-              <div key={group} style={{
+              <div key={ci} style={{
                 display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end',
               }}>
                 {col.map((c, i) => (
