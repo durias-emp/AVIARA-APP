@@ -2,23 +2,23 @@
 // so ChartLayers.jsx exports components and nothing else (fast refresh stops
 // working for a module that mixes the two).
 
-// `group` splits the chip stack into two columns. One column of twelve would
-// run off the top of the phone and under the airport pill, and the split is
-// not arbitrary: charts are tiled backdrops that mostly replace each other,
-// overlays are things drawn on top that combine freely.
+// Order matters: the chip stack renders this list straight through and wraps
+// it into however many columns the screen has room for, so the charts come
+// first and the overlays follow. Charts are tiled backdrops that mostly
+// replace each other; overlays are drawn on top and combine freely.
 export const CHARTS = [
-  { key: 'sectional', label: 'SECT', faaOnly: true,  group: 'chart' },
-  { key: 'terrain',   label: 'TERR', faaOnly: false, group: 'chart' },
-  { key: 'ifrlo',     label: 'LO',   faaOnly: true,  group: 'chart' },
-  { key: 'ifrhi',     label: 'HI',   faaOnly: true,  group: 'chart' },
-  { key: 'airspace',  label: 'ARSP', faaOnly: false, group: 'chart' },
+  { key: 'sectional', label: 'SECT', faaOnly: true },
+  { key: 'terrain',   label: 'TERR', faaOnly: false },
+  { key: 'ifrlo',     label: 'LO',   faaOnly: true },
+  { key: 'ifrhi',     label: 'HI',   faaOnly: true },
+  { key: 'airspace',  label: 'ARSP', faaOnly: false },
   // Live traffic. Not a chart: a delayed, incomplete picture of who is
   // transmitting, labelled as such wherever it appears.
-  { key: 'traffic',   label: 'TFC',  faaOnly: false, group: 'overlay' },
+  { key: 'traffic',   label: 'TFC',  faaOnly: false },
   // Temporary flight restrictions. US only in practice: the FAA feed is the
   // source, so the chip is offered everywhere but will simply draw nothing
   // outside its coverage.
-  { key: 'tfr',       label: 'TFR',  faaOnly: true,  group: 'overlay' },
+  { key: 'tfr',       label: 'TFR',  faaOnly: true },
   // Aerodromes and live weather, drawn as markers rather than tiles. These
   // are not charts and are not exclusive with them: a pilot turns on the
   // sectional to see the airspace and Airports to see where the fields are.
@@ -26,15 +26,18 @@ export const CHARTS = [
   // Each carries a zoom floor of its own (see aerodromeLayers.jsx), which is
   // why they can be offered from a map that is always mounted: below the
   // floor they draw nothing rather than thousands of markers.
-  { key: 'airports',  label: 'APT',  faaOnly: false, group: 'overlay' },
-  { key: 'heliports', label: 'HELI', faaOnly: false, group: 'overlay' },
-  { key: 'seaplane',  label: 'SEA',  faaOnly: false, group: 'overlay' },
+  { key: 'airports',  label: 'APT',  faaOnly: false },
+  { key: 'heliports', label: 'HELI', faaOnly: false },
+  { key: 'seaplane',  label: 'SEA',  faaOnly: false },
   // NEXRAD mosaic, US only, and the only layer here that is precipitation
   // rather than infrastructure.
-  { key: 'radar',     label: 'RAD',  faaOnly: true,  group: 'overlay' },
+  { key: 'radar',     label: 'RAD',  faaOnly: true },
   // A dot per reporting station, coloured VFR/MVFR/IFR/LIFR. Reported
   // conditions, not a forecast.
-  { key: 'fltcat',    label: 'WX',   faaOnly: false, group: 'overlay' },
+  //
+  // Labelled CAT, not WX. Flight category is what pilots call this, and next
+  // to RAD the generic "weather" read as though one of the two were the other.
+  { key: 'fltcat',    label: 'CAT',  faaOnly: false },
 ]
 
 export const EMPTY_LAYERS = {
