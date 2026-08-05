@@ -30,6 +30,7 @@ import { getAirports } from '../../lib/aerodromes'
 import { loadTfrs } from '../../lib/tfr'
 import useIsDark from '../../hooks/useIsDark'
 import { TEMPLATES } from '../../data/aircraftTemplates'
+import { useActiveAircraft } from '../../context/ActiveAircraft'
 
 const ACCENT = '#FF5A1F'      // the one saturated colour on the screen, so the
                               // action is never ambiguous
@@ -248,9 +249,35 @@ function SizeWatcher({ mapRef, onReady, onMove }) {
 
 export default function MapHome() {
   const navigate = useNavigate()
-  // The active aircraft lives in the 'aircraft' store under 'profile', which is
-  // where the rest of the app reads it from. Not on the pilot profile.
-  const [ac, setAc] = useState(null)
+
+  // The aircraft the pilot is flying today, from the hangar.
+  //
+  // This used to read the 'aircraft' store's 'profile' row directly, back when
+  // an app had exactly one aircraft. It now has a hangar, and its migration
+  // re-keys that row to a generated id and DELETES 'profile'. So the old read
+  // did not go stale, it became impossible to satisfy: the banner said "No
+  // aircraft set" for every pilot who already had one.
+  //
+  // Going through the context rather than reading the store means switching
+  // aircraft in the hangar changes the banner without a reload, which reading
+  // once on mount never did.
+  const { aircraftId, aircraftList } = useActiveAircraft() ?? {}
+  const ac = useMemo(() => {
+    const row = aircraftList?.find(a => a.id === aircraftId)
+    if (!row) return null
+    // The saved row carries identity only: id, registration, fullName, pilot
+    // and Hobbs. The photograph and the book figures live in the template it
+    // was created from, so they are matched back here. Without this the banner
+    // knows the aircraft's name and nothing else, which is why the helicopter
+    // had no picture.
+    //
+    // Forgiving match: a pilot who corrected the spacing or the case of their
+    // aircraft's name should not lose its photograph over it.
+    const norm = (v) => (v ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+    const tpl = TEMPLATES.find(t => norm(t.fullName) === norm(row.fullName))
+    // Saved values win: a pilot who edited a figure meant it.
+    return tpl ? { ...tpl, ...row } : row
+  }, [aircraftId, aircraftList])
 
   const isDark = useIsDark()
 
@@ -374,23 +401,6 @@ export default function MapHome() {
     get('settings', 'openaip_key')
       .then(r => { if (r?.value) setOpenaipKey(r.value) })
       .catch(() => {})
-    // The saved profile carries identity only: id, registration, fullName,
-    // pilot and Hobbs. The photo and the book figures live in the template it
-    // was created from, so they are matched back here. Without this the banner
-    // knew the aircraft's name and nothing else, which is why the helicopter
-    // had no picture.
-    //
-    // Matched on fullName, not id: the profile's id is the IndexedDB key and
-    // is always the string 'profile'.
-    get('aircraft', 'profile').then(p => {
-      if (!p) return setAc(null)
-      // Forgiving match: a pilot who corrected the spacing or the case of
-      // their aircraft's name should not lose its photograph over it.
-      const norm = (v) => (v ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
-      const tpl = TEMPLATES.find(t => norm(t.fullName) === norm(p.fullName))
-      // Saved values win: a pilot who edited a figure meant it.
-      setAc(tpl ? { ...tpl, ...p } : p)
-    }).catch(() => {})
     loadFlights()
     resolveBase()
   }, [])
