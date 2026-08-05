@@ -260,9 +260,9 @@ function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 8 }) {
       const south = b.getSouth(), north = b.getNorth(), west = b.getWest(), east = b.getEast()
       const hits = []
       for (const a of list) {
-        const [ident, lat, lon, name, elevFt, source] = a
+        const [ident, lat, lon, name, elevFt, source, note] = a
         if (lat < south || lat > north || lon < west || lon > east) continue
-        hits.push({ ident, lat, lon, name, elevFt, source })
+        hits.push({ ident, lat, lon, name, elevFt, source, note })
         if (hits.length >= AUX_CAP) break
       }
       setVisible(hits)
@@ -289,8 +289,17 @@ function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 8 }) {
           <strong>{a.ident}</strong>{a.name ? ` — ${a.name}` : ''}
           <br />{kindLabel}
           {a.elevFt != null && <><br />{a.elevFt.toLocaleString()} ft elevation</>}
+          {/* A known problem with a published position is shown on the marker
+              itself. Quietly drawing a pad 25 km from where it is, because the
+              source says so, is the kind of thing a pilot finds out about in
+              the air. */}
+          {a.note && (
+            <><br /><span style={{ color: '#c2410c', fontWeight: 600 }}>{a.note}</span></>
+          )}
           {a.source && (
-            <><br /><span style={{ opacity: 0.7 }}>{a.source} · no ICAO code</span></>
+            <><br /><span style={{ opacity: 0.7 }}>
+              {a.source}{a.name ? '' : ' · no ICAO code'}
+            </span></>
           )}
         </div>
       </Popup>

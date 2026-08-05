@@ -22,6 +22,7 @@
 
 import { bboxOf, crossTrackNm, haversineNm, sampleRoute } from './corridor'
 import { ES_AERODROME_ROWS, ES_HELIPORT_ROWS } from '../data/esAerodromes'
+import { HN_HELIPORT_ROWS } from '../data/hnAerodromes'
 
 // National data that has no upstream builder gets folded in here rather than
 // written into the generated packs, which are rebuilt every 28 days and would
@@ -117,9 +118,14 @@ export async function getAuxAerodromes() {
   const d = (await import('../data/geo/aux_aerodromes.json')).default
   _aux = {
     ...d,
-    // The bundled pack has no heliports anywhere in El Salvador, so without
-    // this the heliport layer draws an empty country.
-    heliports: mergeSupplement(d.heliports, ES_HELIPORT_ROWS),
+    // The bundled pack has no heliports anywhere in El Salvador and five in
+    // Honduras against the AIP's twenty-four, so without this the heliport
+    // layer draws an empty country over one capital and a near-empty one over
+    // another.
+    heliports: mergeSupplement(
+      mergeSupplement(d.heliports, ES_HELIPORT_ROWS),
+      HN_HELIPORT_ROWS,
+    ),
   }
   return _aux
 }
