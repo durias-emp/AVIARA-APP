@@ -478,8 +478,15 @@ function TfrLayer() {
 // wins" design would fire on whatever position already happened to be
 // sitting there before the tap, then ignore the real answer once it
 // actually arrived.
-function LocateRecenter({ request }) {
+function LocateRecenter({ request, coveredHeight = 0 }) {
   const map = useMap()
+  // Read at fire time via a ref, NOT an effect dependency: the drawer
+  // height changes on every drag frame, and re-running this effect on each
+  // of those would replay a stale recenter request every time the drawer
+  // moved. Only a NEW request recenters; the drawer's own movement is
+  // MapFocusOffset's job.
+  const coveredRef = useRef(coveredHeight)
+  coveredRef.current = coveredHeight
   useEffect(() => {
     if (!request) return
     // Pans at the map's own current zoom by default — whatever zoom the
@@ -495,6 +502,15 @@ function LocateRecenter({ request }) {
     // wherever it was. This button exists because "recenter" needs to be
     // certain, not smooth.
     map.setView([request.lat, request.lon], request.zoom ?? map.getZoom(), { animate: false })
+    // "Centre" means the middle of the map the pilot can SEE. With the
+    // drawer up, the container's centre sits at (or under) the drawer's
+    // edge, so shift the view by half the covered height — same convention
+    // as MapFocusOffset, which is also what walks this offset back out
+    // when the drawer closes (its delta bookkeeping is unaffected: this
+    // pan changes the view, not the drawer height it tracks).
+    if (coveredRef.current > 0.5) {
+      map.panBy([0, coveredRef.current / 2], { animate: false })
+    }
   }, [request, map])
   return null
 }
@@ -818,7 +834,7 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         {overlays.airports && <AirportLayer />}
         {overlays.heliports && <HeliportLayer />}
         {overlays.seaplaneBases && <SeaplaneBaseLayer />}
-        <LocateRecenter request={recenterRequest} />
+        <LocateRecenter request={recenterRequest} coveredHeight={focusInset ?? bottomInset} />
         <RoutePreview route={route} />
         <MapFocusOffset coveredHeight={focusInset ?? bottomInset} />
         {onViewChange && <ViewReporter onChange={onViewChange} />}
