@@ -144,10 +144,15 @@ function HomeMap({ metrics }) {
     <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'var(--bg)' }}>
       <MapView
         bottomInset={metrics.live}
-        // Capped at the drawer's open height. Past that the map is completely
-        // covered, so panning it further buys nothing and only means a longer
-        // trip back when the section closes.
-        focusInset={Math.min(metrics.settled, metrics.openHeight || metrics.settled)}
+        // The LIVE height, not the settled one: the map's recentring tracks
+        // the drawer frame by frame during a drag (finger down, 0ms) and
+        // eases over the snap (finger up, 260ms) — see MapFocusOffset. An
+        // earlier version fed the settled height so the map jumped once per
+        // move; James asked for the map to follow the drawer instead.
+        // Still capped at the drawer's open height: past that the map is
+        // completely covered, so panning it further buys nothing and only
+        // means a longer trip back when the section closes.
+        focusInset={Math.min(metrics.live, metrics.openHeight || metrics.live)}
         insetDuration={metrics.dragging ? '0ms' : '260ms'}
         topInset="var(--safe-top)"
         showHomeButton={false}

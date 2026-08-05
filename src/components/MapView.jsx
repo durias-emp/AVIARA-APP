@@ -478,8 +478,15 @@ function TfrLayer() {
 // wins" design would fire on whatever position already happened to be
 // sitting there before the tap, then ignore the real answer once it
 // actually arrived.
-function LocateRecenter({ request }) {
+function LocateRecenter({ request, coveredHeight = 0 }) {
   const map = useMap()
+  // Read at fire time via a ref, NOT an effect dependency: the drawer
+  // height changes on every drag frame, and re-running this effect on each
+  // of those would replay a stale recenter request every time the drawer
+  // moved. Only a NEW request recenters; the drawer's own movement is
+  // MapFocusOffset's job.
+  const coveredRef = useRef(coveredHeight)
+  coveredRef.current = coveredHeight
   useEffect(() => {
     if (!request) return
     // Pans at the map's own current zoom by default — whatever zoom the
@@ -495,6 +502,15 @@ function LocateRecenter({ request }) {
     // wherever it was. This button exists because "recenter" needs to be
     // certain, not smooth.
     map.setView([request.lat, request.lon], request.zoom ?? map.getZoom(), { animate: false })
+    // "Centre" means the middle of the map the pilot can SEE. With the
+    // drawer up, the container's centre sits at (or under) the drawer's
+    // edge, so shift the view by half the covered height — same convention
+    // as MapFocusOffset, which is also what walks this offset back out
+    // when the drawer closes (its delta bookkeeping is unaffected: this
+    // pan changes the view, not the drawer height it tracks).
+    if (coveredRef.current > 0.5) {
+      map.panBy([0, coveredRef.current / 2], { animate: false })
+    }
   }, [request, map])
   return null
 }
@@ -564,10 +580,19 @@ export function ViewReporter({ onChange }) {
 //
 // Panned by the DELTA rather than set absolutely: the pilot may have panned
 // the map themselves since the last change, and jumping to an absolute offset
-// would throw that away. `animate: false` because this runs alongside the
-// drawer's own transition, and two easing curves on the same movement read as
-// the map lagging behind the drawer.
-export function MapFocusOffset({ coveredHeight }) {
+// would throw that away.
+//
+// `coveredHeight` is the drawer's LIVE height, so during a drag this fires
+// every frame with `duration` at 0ms — instant panBy per frame is exactly
+// how Leaflet's own drag handling works, and it is what makes the map feel
+// glued to the drawer instead of jumping once when it settles. When the
+// finger lifts, the drawer snaps to a stop over its own 260ms transition
+// while `coveredHeight` jumps straight to the stop value — so the one
+// remaining delta is panned WITH animation over the same duration, and the
+// map arrives alongside the drawer instead of teleporting ahead of it.
+// (Leaflet's pan easing isn't the drawer's exact bezier; over a quarter of
+// a second the difference isn't readable, and it beats the old jump.)
+export function MapFocusOffset({ coveredHeight, duration = '0ms' }) {
   const map = useMap()
   const applied = useRef(0)
   useEffect(() => {
@@ -575,8 +600,10 @@ export function MapFocusOffset({ coveredHeight }) {
     const delta = want - applied.current
     if (Math.abs(delta) < 0.5) return
     applied.current = want
-    map.panBy([0, delta], { animate: false })
-  }, [coveredHeight, map])
+    const ms = parseFloat(duration) || 0
+    if (ms > 0) map.panBy([0, delta], { animate: true, duration: ms / 1000 })
+    else map.panBy([0, delta], { animate: false })
+  }, [coveredHeight, map, duration])
   return null
 }
 
@@ -626,9 +653,11 @@ function RoutePreview({ route }) {
 // drawer's own transition when it snaps, so the two ease together instead of
 // the controls jumping to the destination the drawer is still travelling to.
 //
-// `focusInset` is the settled height rather than the live one. The map's
-// recentring should happen once per drawer move, not on every frame of a
-// drag.
+// `focusInset` is the drawer's live covered height (capped at its open
+// stop). The map's recentring follows it frame by frame during a drag and
+// eases over `insetDuration` on the snap — see MapFocusOffset for the
+// mechanics and LocateRecenter for how a recenter lands in the middle of
+// the strip this leaves visible.
 export default function MapView({ onViewChange, lastView, bottomInset = 0, focusInset = null, insetDuration = '0ms', topInset = '0px', showHomeButton = true } = {}) {
   // Shared with Home's own map preview via HomeLocationProvider (mounted
   // once around Home, which never unmounts while this screen — an overlay
@@ -818,9 +847,9 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         {overlays.airports && <AirportLayer />}
         {overlays.heliports && <HeliportLayer />}
         {overlays.seaplaneBases && <SeaplaneBaseLayer />}
-        <LocateRecenter request={recenterRequest} />
+        <LocateRecenter request={recenterRequest} coveredHeight={focusInset ?? bottomInset} />
         <RoutePreview route={route} />
-        <MapFocusOffset coveredHeight={focusInset ?? bottomInset} />
+        <MapFocusOffset coveredHeight={focusInset ?? bottomInset} duration={insetDuration} />
         {onViewChange && <ViewReporter onChange={onViewChange} />}
       </LiveMap>
 
