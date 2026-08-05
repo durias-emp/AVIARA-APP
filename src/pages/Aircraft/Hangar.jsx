@@ -12,9 +12,15 @@ import { parseAircraftImport } from '../../lib/aircraftShare'
 // just the detail view for one aircraft id — this is what decides which of
 // list / detail / wizard is on screen, using the active-aircraft context to
 // know how many aircraft exist and which one is selected.
-export default function Hangar() {
+//
+// initialOpenId opens straight into one aircraft's detail rather than the
+// list. The map home's banner uses it: a pilot who taps their own aircraft
+// means "show me this aircraft", not "show me the shelf it sits on". Going
+// back from there still lands on the list, so the rest of the hangar stays
+// one tap away rather than being hidden.
+export default function Hangar({ initialOpenId = null }) {
   const { aircraftList, aircraftId, deletedList, setActiveAircraftId, refreshAircraftList, refreshDeletedList } = useActiveAircraft()
-  const [openId, setOpenId] = useState(null)
+  const [openId, setOpenId] = useState(initialOpenId)
   const [wizardOpen, setWizardOpen] = useState(false)
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
   const [clearing, setClearing] = useState(false)

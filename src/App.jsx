@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { useTheme } from './hooks/useTheme'
 import { PilotProfileProvider, usePilotProfile } from './context/PilotProfile'
 import { ActiveAircraftProvider } from './context/ActiveAircraft'
@@ -43,6 +43,13 @@ const Profile       = lazy(() => import('./pages/Profile/Profile'))
 const SignIn        = lazy(() => import('./pages/SignIn/SignIn'))
 const ResetPassword = lazy(() => import('./pages/SignIn/ResetPassword'))
 
+
+// Reads the id out of the URL so the Hangar can open on that aircraft. A
+// separate component because useParams only works inside a Route element.
+function AircraftDetail() {
+  const { id } = useParams()
+  return <Hangar initialOpenId={id} />
+}
 
 function AppRoutes({ theme }) {
   const { session, loading: authLoading, hydrated, recovery } = useAuth()
@@ -127,6 +134,10 @@ function AppRoutes({ theme }) {
             <Route path="/calc" element={<Calculators />} />
             <Route path="/checklists" element={<Checklists />} />
             <Route path="/aircraft" element={<Hangar />} />
+            {/* Straight to one aircraft's own screen. The map home's banner
+                links here so tapping your aircraft shows your aircraft rather
+                than the list it lives in. */}
+            <Route path="/aircraft/:id" element={<AircraftDetail />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/pilot" element={<Pilot />} />
             <Route path="/logbook" element={<LogbookList />} />

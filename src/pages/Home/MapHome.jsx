@@ -1053,7 +1053,12 @@ export default function MapHome() {
               The performance figures are gone. They belong on the Aircraft
               screen, where a pilot goes to read them; here they turned a
               portrait into a spec sheet. */}
-          <button onClick={() => navigate('/aircraft')} style={{
+          {/* Straight to this aircraft's own screen, not the hangar list.
+              Tapping a picture of your helicopter and landing on a shelf of
+              aircraft is an extra tap to get where you obviously meant. With
+              no aircraft set there is nothing to open, so it falls back to the
+              hangar, which is where you would add one. */}
+          <button onClick={() => navigate(ac?.id ? `/aircraft/${ac.id}` : '/aircraft')} style={{
             display: 'block', width: '100%', textAlign: 'left', padding: 0,
             marginBottom: 20, border: 'none', background: 'none', cursor: 'pointer',
           }}>
