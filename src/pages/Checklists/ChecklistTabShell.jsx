@@ -205,13 +205,22 @@ export default function ChecklistTabShell({
           }
           : { transform: footerHidden ? 'translateY(calc(100% + 24px + var(--safe-bottom)))' : 'translateY(0)' }}
       >
-        <StepTabBar
-          sections={sections}
-          activeIndex={activeIndex}
-          onSelect={onActiveIndexChange}
-          checked={checked}
-          customItems={customItems}
-        />
+        {/* The numbered step menu is dropped inside the drawer.
+            Full screen it costs nothing, but in the drawer it and the buttons
+            below it took 132px off a panel that is already short, which was
+            enough to hide the third of the three cards in the Route group.
+            The panes are swipeable (see onTouchStart above), so this is the
+            one control here that has another way to do its job. The buttons
+            below do not, which is why they stay. */}
+        {!embedded && (
+          <StepTabBar
+            sections={sections}
+            activeIndex={activeIndex}
+            onSelect={onActiveIndexChange}
+            checked={checked}
+            customItems={customItems}
+          />
+        )}
         {completeBar}
       </div>
     </div>

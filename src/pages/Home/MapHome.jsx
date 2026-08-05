@@ -10,7 +10,7 @@
 // What is deliberately NOT borrowed: anything that ranks pilots by speed or
 // altitude. Competing on those is a flight-safety problem, not engagement.
 
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MapContainer, Polyline, CircleMarker, Marker, Tooltip, useMap } from 'react-leaflet'
 import L from 'leaflet'
@@ -47,11 +47,20 @@ const ACCENT = '#FF5A1F'      // the one saturated colour on the screen, so the
 // value is the planner's own, from the preview map in RouteAltitude, because
 // a route that changes colour on its way from one screen to the other reads
 // as a different route.
+// Close enough to see the field rather than the city it is named after.
+//
+// Ten put KRNO somewhere in the middle of greater Reno: correct, and useless.
+// A pilot looking at their home airport wants the runways, their orientation
+// and what is off each end. Fourteen puts about three kilometres across the
+// screen, which is the whole of a large field and the ground around it, and it
+// still reads at a glance on a phone.
+const AIRPORT_ZOOM = 14
 const CTRL = 52
 // One size for every chart chip, so the column has a straight edge instead of
 // stepping in and out with the length of each label.
 const CHIP_W = 62
 const CHIP_H = 38
+const CHIP_GAP = 8
 
 // How much room the right-hand controls need below the chips: two buttons, the
 // gap between them, and a gap above.
@@ -65,7 +74,32 @@ const CTRL_STACK_H = CTRL * 2 + 12 + 10
 // columns, and on a short window the height limit bites first and the wrap
 // balances them itself.
 const CHIP_COL_MAX = 6
-const CHIP_STACK_MAX_H = CHIP_COL_MAX * (CHIP_H + 8) - 8
+const CHIP_STACK_MAX_H = CHIP_COL_MAX * (CHIP_H + CHIP_GAP) - CHIP_GAP
+
+// The exact box a set of chips should occupy in the room available to it.
+//
+// Worked out here rather than left to the browser, because the browsers do not
+// agree. A wrapping column flex box is supposed to shrink-wrap to the width of
+// the columns it produced, and in Chrome it does. WebKit measures the intrinsic
+// width as a single column, so on an iPhone the box came out 62 px wide against
+// the right edge and laid every later column out beyond it, off the side of the
+// screen: six of the twelve layers could not be reached at all.
+//
+// Width is decided first and is never negotiable, because a chip off the side
+// of the screen is a chip that does not exist. Height gives way instead: on a
+// window too short for the columns that fit across it, the stack grows upward
+// past its cap rather than sideways out of reach. Overlapping the airport pill
+// on a very small screen is a blemish; hiding half the layers is a fault.
+function chipStackBox(availH, availW, count) {
+  const fitsAcross = Math.max(1, Math.floor((availW + CHIP_GAP) / (CHIP_W + CHIP_GAP)))
+  const fitsDown = Math.max(1, Math.floor((availH + CHIP_GAP) / (CHIP_H + CHIP_GAP)))
+  const cols = Math.min(fitsAcross, Math.max(1, Math.ceil(count / fitsDown)))
+  const rows = Math.ceil(count / cols)
+  return {
+    width: cols * CHIP_W + (cols - 1) * CHIP_GAP,
+    height: rows * (CHIP_H + CHIP_GAP) - CHIP_GAP,
+  }
+}
 
 // Three resting heights. Collapsed is the handle and the actions; expanded
 // leaves a strip of map above it so it never reads as a takeover; full is a
@@ -113,6 +147,32 @@ const TOOLS = [
   // restyled, along with the filter standing in for Tools.
   { to: '/settings',   icon: '/llaves.png',     label: 'Settings' },
 ]
+
+// The card the map wears: floating above the drawer, panel glass, one radius
+// and one shadow. The recording stats introduced this shape and the actions
+// borrow it verbatim while the flight plan has the drawer, so the two read as
+// one object in two states rather than as two designs that happen to be near
+// each other. It animates in from below rather than appearing, which is what
+// makes it read as arriving rather than as something that was always there
+// and had been missed.
+function FloatingCard({ visible, bottom, children }) {
+  return (
+    <div style={{
+      position: 'absolute', left: 12, right: 12, zIndex: 550, bottom,
+      transform: visible ? 'translateY(0) scale(1)' : 'translateY(16px) scale(0.97)',
+      opacity: visible ? 1 : 0,
+      pointerEvents: visible ? 'auto' : 'none',
+      transition: 'opacity 260ms ease-out, transform 260ms cubic-bezier(0.34,1.2,0.64,1), bottom 380ms cubic-bezier(0.32,0.72,0,1)',
+    }}>
+      <div style={{
+        background: 'var(--map-panel)', backdropFilter: 'blur(20px)',
+        borderRadius: 18, padding: '16px 18px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+      }}>
+        {children}
+      </div>
+    </div>
+  )
+}
 
 // The planned route, on the drawer. The same four figures the planner shows
 // under Calculate Route, in the same words, because a pilot who checked them
@@ -310,6 +370,15 @@ const IconRoute = () => (
   </svg>
 )
 
+// Takes the route planner's place in the action row while the plan is open.
+// Same slot, same size, so the row does not reshuffle as the plan opens and
+// closes: only what the third button does changes.
+const IconClosePlan = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round">
+    <path d="M18 6L6 18M6 6l12 12" />
+  </svg>
+)
+
 // Keeps Leaflet's idea of its own size honest. It measures once and re-measures
 // only on a window resize, so a container that settles late (safe-area insets
 // resolving, the sheet animating) leaves tiles painted for a box the map no
@@ -410,6 +479,21 @@ export default function MapHome() {
   // The scrolling contents, so a drag starting there can ask whether the list
   // is already at its top before deciding who owns the gesture.
   const bodyRef = useRef(null)
+  // The room the chips have, measured rather than recomputed. Its CSS height is
+  // a min() of a constant and a viewport expression that includes the safe-area
+  // inset, and the inset is not a number this side of the stylesheet: on the
+  // phone it is whatever the notch says it is. Measuring is the only way to
+  // know how many chips actually fit, and getting that wrong is what put half
+  // the layers off the side of the screen.
+  //
+  // Safe to measure because the box it observes is sized by the viewport and
+  // the drawer alone. The stack whose size this decides is a child of it, so
+  // nothing here can feed back into what is being measured.
+  const chipAreaRef = useRef(null)
+  // Seeded with a sensible guess rather than zero, so the first painted frame
+  // is already close. A zero width would compute a single column and the stack
+  // would visibly reflow the moment the real measurement landed.
+  const [chipArea, setChipArea] = useState(() => ({ h: CHIP_STACK_MAX_H, w: window.innerWidth - 28 }))
   const [chartsOpen, setChartsOpen] = useState(false)
   // Nothing renders until the layers button is tapped once. Without this the
   // closing animation would play on first paint and the chips would flash in
@@ -457,6 +541,7 @@ export default function MapHome() {
   const [recorder] = useState(() => createRecorder({ onUpdate: setRec }))
 
   const activeCount = Object.values(layers).filter(Boolean).length
+  const chipLayout = chipStackBox(chipArea.h, chipArea.w, CHARTS.length)
 
   // Whether anything is drawn ON the basemap. The FAA rasters and the openAIP
   // airspace are semi-transparent and were drawn for paper: over dark tiles
@@ -536,7 +621,7 @@ export default function MapHome() {
       return
     }
     setBase({ ident: id, lat: hit[1], lon: hit[2] })
-    mapRef.current?.setView([hit[1], hit[2]], 10, { animate: true })
+    mapRef.current?.setView([hit[1], hit[2]], AIRPORT_ZOOM, { animate: true })
   }
 
   // The home airport, from wherever the pilot last set it. The weather card
@@ -617,7 +702,7 @@ export default function MapHome() {
     if (framed.current || !mapRef.current) return
     if (base) {
       framed.current = true
-      mapRef.current.setView([base.lat, base.lon], 10, { animate: false })
+      mapRef.current.setView([base.lat, base.lon], AIRPORT_ZOOM, { animate: false })
       return
     }
     // Wait for the base lookup before letting a fix decide.
@@ -626,6 +711,28 @@ export default function MapHome() {
       mapRef.current.setView([pos.lat, pos.lon], 11, { animate: false })
     }
   }, [base, baseResolved, pos, mapReady])
+
+  // Keep the measurement honest as the window changes: a rotation, the browser
+  // chrome appearing, the sheet opening and closing all move the height the
+  // stack is allowed. ResizeObserver reports the first size on observe(), so
+  // there is no separate initial read.
+  // chartsEverOpened is in the dependencies because the stack is not in the
+  // DOM until the layers button has been pressed once. Observing at mount
+  // found nothing, returned, and never ran again, so the count stayed at the
+  // starting guess of six rows while the box was really tall enough for four:
+  // the chips wrapped into a third column and it hung off the right edge. The
+  // same bug this measurement exists to prevent, arrived at from the other
+  // direction.
+  useLayoutEffect(() => {
+    const el = chipAreaRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => {
+      const { clientHeight: h, clientWidth: w } = entry.target
+      setChipArea(prev => (prev.h === h && prev.w === w ? prev : { h, w }))
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [chartsEverOpened])
 
   // A route planned earlier is still the plan. Restored on mount so the line
   // is on the map when the app is opened the morning after it was drawn, which
@@ -927,6 +1034,47 @@ export default function MapHome() {
     display: 'flex', alignItems: 'center', justifyContent: 'center' }
   const tileLabel = { fontSize: 12, fontWeight: 600, color: 'var(--map-ink)' }
 
+  // Weather, record, and the planner: the three things the drawer is for.
+  // Defined once and rendered in one of two places, because they are the same
+  // three buttons wherever they are standing. While the flight plan has the
+  // drawer they move onto a card floating over the map, so the plan gets the
+  // whole drawer and the actions stay where a thumb can reach them.
+  //
+  // Only the third button changes with the state, and only in what it does:
+  // with the plan open it closes the plan rather than opening one, so the row
+  // never contains a button that would do nothing.
+  const actionRow = (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', gap: 10 }}>
+      <button
+        onClick={() => (base ? setWxDetail(true) : setBasePicker(true))}
+        style={tileBtn}>
+        <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)' }}>
+          <IconWeather />
+        </span>
+        <span style={tileLabel}>Weather</span>
+      </button>
+
+      <button onClick={recording ? stopFlight : startFlight} style={{
+        width: 86, height: 86, borderRadius: '50%', border: 'none', cursor: 'pointer',
+        background: recording ? 'var(--map-ink)' : ACCENT,
+        boxShadow: `0 6px 20px ${recording ? 'rgba(28,28,30,0.3)' : 'rgba(255,90,31,0.38)'}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'background 200ms', flexShrink: 0,
+      }}>
+        {recording
+          ? <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+          : <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M8 5.5v13l11-6.5z" /></svg>}
+      </button>
+
+      <button onClick={planning ? leavePlanner : openPlanner} style={tileBtn}>
+        <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)' }}>
+          {planning ? <IconClosePlan /> : <IconRoute />}
+        </span>
+        <span style={tileLabel}>{planning ? 'Close Plan' : 'Plan Route'}</span>
+      </button>
+    </div>
+  )
+
   return (
     // Fixed to the viewport rather than flowing in the shell: the map is the
     // screen here, and it has to reach every edge including under the status
@@ -1029,24 +1177,19 @@ export default function MapHome() {
       {/* Chart chips, revealed by the layers button rather than always on
           screen: six permanent chips is what a cluttered EFB looks like. */}
       {chartsEverOpened && (
-        <div style={{
-          // Sits directly on top of the layers button, which is the button that
-          // opened it, and shares its right edge so the chips, the layers button
-          // and the locate button all line up.
+        <div ref={chipAreaRef} style={{
+          // The room the chips are allowed, which is a different question from
+          // the shape they take in it. This box claims the space and nothing
+          // else: it is sized entirely by the viewport and the drawer, never by
+          // its contents, which is what makes it safe to measure. The stack
+          // inside is then given exact numbers rather than left to work its own
+          // size out, because that is the part the browsers disagree about.
           //
-          // It grows upward from there. What it must never do is keep growing
-          // past the airport pill, which is what happened when the column count
-          // was fixed at two: on a short screen the first chip ended up above
-          // the top edge, cut off. So the height is capped rather than the
-          // columns counted, and the chips wrap into a third or fourth column
-          // when there is not enough height for two.
-          //
-          // The box is anchored by its right edge and shrink-wraps its content,
-          // so each new column widens it leftward into empty map. That is why
-          // plain wrap works here: it fills left to right, so SECT stays the
-          // top-left chip and the set still reads in order. wrap-reverse also
-          // fits but starts at the right, and the columns then read backwards.
-          position: 'absolute', right: 14, zIndex: 500,
+          // Sits directly on top of the layers button, and shares its right
+          // edge so the chips, the layers button and the locate button all line
+          // up. It grows upward from there, and must never grow past the
+          // airport pill: that is the height cap below.
+          position: 'absolute', left: 14, right: 14, zIndex: 500,
           bottom: `calc(${chipStackBottom})`,
           // Two limits, whichever is smaller. CHIP_STACK_MAX_H keeps the columns
           // even on a tall phone, where unlimited height gave a column of nine
@@ -1054,14 +1197,31 @@ export default function MapHome() {
           // second is the room actually left between the pill and the button,
           // which is what bites on a short screen and makes it wrap instead.
           height: `min(${CHIP_STACK_MAX_H}px, calc(100% - var(--safe-top) - 58px - (${chipStackBottom})))`,
-          display: 'flex', flexDirection: 'column', flexWrap: 'wrap',
-          gap: 8, alignContent: 'flex-start', justifyContent: 'flex-start',
+          display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end',
           // Fades out with the rest of the map's chrome when the sheet is
           // raised. Hung from the button these rode up with it; pinned to the
           // top they would otherwise sit over the strip of map the expanded
           // sheet leaves behind.
           opacity: expanded ? 0 : 1,
           transition: 'opacity 200ms',
+          // The claimed area is most of the map. Only the chips inside it may
+          // take a tap; everything else here has to fall through to the map.
+          pointerEvents: 'none',
+        }}>
+        <div style={{
+          // Exact, both ways. Plain wrap fills left to right, so SECT stays the
+          // top-left chip and the set still reads in order. wrap-reverse also
+          // fits but starts at the right, and the columns then read backwards.
+          //
+          // Left to size itself, this box was wrong on a phone and right on a
+          // desktop: WebKit measures the intrinsic width of a wrapping column
+          // as one column, so it came out 62 px wide against the right edge and
+          // laid every later column out beyond it, off the side of the screen.
+          // Six of the twelve layers could not be reached at all.
+          width: chipLayout.width,
+          height: chipLayout.height,
+          display: 'flex', flexDirection: 'column', flexWrap: 'wrap',
+          gap: CHIP_GAP, alignContent: 'flex-start', justifyContent: 'flex-start',
           // Closed, the chips are still in the DOM so they can animate out;
           // they must not still be tappable.
           pointerEvents: chartsOpen && !expanded ? 'auto' : 'none',
@@ -1094,50 +1254,54 @@ export default function MapHome() {
             }}>{c.label}</button>
           ))}
         </div>
+        </div>
       )}
 
       {/* The numbers, only once there are numbers. Before departure this card
           said 00:00 / 0 / 0.0, which is three lies dressed as instruments and
           a quarter of the screen spent saying nothing. It now arrives with the
           recording and leaves with it. */}
-      <div style={{
-        position: 'absolute', left: 12, right: 12, zIndex: 550,
-        bottom: `calc(${SHEET_COLLAPSED_PX}px + var(--safe-bottom) + 10px)`,
-        transform: recording ? 'translateY(0) scale(1)' : 'translateY(16px) scale(0.97)',
-        opacity: recording ? 1 : 0,
-        pointerEvents: recording ? 'auto' : 'none',
-        transition: 'opacity 260ms ease-out, transform 260ms cubic-bezier(0.34,1.2,0.64,1)',
-      }}>
-        <div style={{
-          background: 'var(--map-panel)', backdropFilter: 'blur(20px)',
-          borderRadius: 18, padding: '16px 18px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
-        }}>
-          <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--map-ink)', marginBottom: 12 }}>
-            {rec?.paused ? 'Paused' : 'Recording'}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 }}>
-            <div style={{ flex: 1, textAlign: 'left' }}>
-              <div style={statBig}>{fmtClock(rec?.elapsedMs ?? 0)}</div>
-              <div style={statFont}>Time</div>
-            </div>
-            <div style={{ flex: 1.2, textAlign: 'center' }}>
-              <div style={{ ...statBig, fontSize: 42, letterSpacing: '-1.4px', lineHeight: 1 }}>
-                {rec?.gsKt != null ? Math.round(rec.gsKt) : '0'}
-              </div>
-              <div style={statFont}>Ground speed (kt)</div>
-            </div>
-            <div style={{ flex: 1, textAlign: 'right' }}>
-              <div style={statBig}>{(rec?.distNm ?? 0).toFixed(1)}</div>
-              <div style={statFont}>Distance (NM)</div>
-            </div>
-          </div>
-          {rec?.error && (
-            <div style={{ marginTop: 10, fontSize: 11.5, color: '#FF3B30', textAlign: 'center', lineHeight: 1.4 }}>
-              {rec.error}
-            </div>
-          )}
+      <FloatingCard
+        visible={recording && !planning}
+        bottom={`calc(${collapsedPx}px + var(--safe-bottom) + 10px)`}>
+        <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--map-ink)', marginBottom: 12 }}>
+          {rec?.paused ? 'Paused' : 'Recording'}
         </div>
-      </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ flex: 1, textAlign: 'left' }}>
+            <div style={statBig}>{fmtClock(rec?.elapsedMs ?? 0)}</div>
+            <div style={statFont}>Time</div>
+          </div>
+          <div style={{ flex: 1.2, textAlign: 'center' }}>
+            <div style={{ ...statBig, fontSize: 42, letterSpacing: '-1.4px', lineHeight: 1 }}>
+              {rec?.gsKt != null ? Math.round(rec.gsKt) : '0'}
+            </div>
+            <div style={statFont}>Ground speed (kt)</div>
+          </div>
+          <div style={{ flex: 1, textAlign: 'right' }}>
+            <div style={statBig}>{(rec?.distNm ?? 0).toFixed(1)}</div>
+            <div style={statFont}>Distance (NM)</div>
+          </div>
+        </div>
+        {rec?.error && (
+          <div style={{ marginTop: 10, fontSize: 11.5, color: '#FF3B30', textAlign: 'center', lineHeight: 1.4 }}>
+            {rec.error}
+          </div>
+        )}
+      </FloatingCard>
+
+      {/* The actions, while the flight plan has the drawer. Same card, same
+          three buttons, moved onto the map so the plan is not paying for them
+          with the top of its own space.
+
+          Not at full screen: there is no map left to float over, and the plan
+          is what the pilot asked to see all of. The row is a drag away, and
+          the drawer's handle is right there. */}
+      <FloatingCard
+        visible={planning && snap === 'plan'}
+        bottom={`calc(${Math.max(0, vh - Y_PLAN)}px + 10px)`}>
+        {actionRow}
+      </FloatingCard>
 
       {/* Traffic legend, and the selected aircraft. Present only while the
           layer is on, because a warning about data that is not on screen is
@@ -1240,62 +1404,41 @@ export default function MapHome() {
               margin: planning ? '0 auto 8px' : '0 auto 14px', cursor: 'pointer',
             }} />
 
-          {/* The three actions step aside while the plan is open. They are what
-              the drawer is for the rest of the time, and the flight plan needs
-              every pixel of a half-height drawer. */}
-          {!planning && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', gap: 10 }}>
-            {/* Weather, opposite the route planner. These are the two things a
-                pilot does before a flight, so they flank the one thing they do
-                during it. The aircraft keeps its place in the tools grid
-                below; it is set once and rarely changed, which is not what a
-                slot on the main surface is for. */}
-            <button
-              onClick={() => (base ? setWxDetail(true) : setBasePicker(true))}
-              style={tileBtn}>
-              <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)' }}>
-                <IconWeather />
-              </span>
-              <span style={tileLabel}>Weather</span>
-            </button>
+          {/* Weather, opposite the route planner. These are the two things a
+              pilot does before a flight, so they flank the one thing they do
+              during it. The aircraft keeps its place in the tools grid below;
+              it is set once and rarely changed, which is not what a slot on
+              the main surface is for.
 
-            <button onClick={recording ? stopFlight : startFlight} style={{
-              width: 86, height: 86, borderRadius: '50%', border: 'none', cursor: 'pointer',
-              background: recording ? 'var(--map-ink)' : ACCENT,
-              boxShadow: `0 6px 20px ${recording ? 'rgba(28,28,30,0.3)' : 'rgba(255,90,31,0.38)'}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'background 200ms',
-            }}>
-              {recording
-                ? <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
-                : <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M8 5.5v13l11-6.5z" /></svg>}
-            </button>
-
-            <button onClick={openPlanner} style={tileBtn}>
-              <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)' }}>
-                <IconRoute />
-              </span>
-              <span style={tileLabel}>Plan Route</span>
-            </button>
-          </div>
-          )}
+              Gone from here entirely while the plan is open: it is on the card
+              floating over the map instead, and the drawer below is the plan
+              and nothing else. Same row, same buttons, one place at a time. */}
+          {!planning && actionRow}
 
           {/* The route, once there is one: what was planned, in the numbers a
               pilot reads off a flight plan, and an X to be rid of it. Sits
               above the actions rather than replacing them, so the record
               button stays where the hand expects it. It is, after all, the
-              route you are about to fly. */}
+              route you are about to fly.
+
+              Not while the plan is open, where the route is the thing being
+              edited a few pixels below and a second copy of its numbers would
+              be one more thing to keep in agreement. */}
           {!planning && route && (
             <RouteSummary route={route} onClear={clearRoute} onEdit={openPlanner} />
           )}
 
-          <div style={{ textAlign: 'center', margin: planning ? '2px 0 6px' : '10px 0 6px', fontSize: 10, color: 'var(--map-ink-faint)' }}>
-            {planning ? (snap === 'full' ? 'Pull down to put the plan away' : 'Pull up for the whole plan · down to put it away')
-              : recording ? 'Recording your track · tap the square to end and log it'
+          {/* No hint line while planning. It is the drawer explaining itself,
+              and the plan needs the height more than it needs the sentence
+              now that Close Plan says out loud what the gesture used to. */}
+          {!planning && (
+          <div style={{ textAlign: 'center', margin: '10px 0 6px', fontSize: 10, color: 'var(--map-ink-faint)' }}>
+            {recording ? 'Recording your track · tap the square to end and log it'
               : snap === 'full' ? 'Reference aid only · Always consult current FAR/AIM'
               : snap === 'expanded' ? 'Keep pulling for the full logbook'
               : 'Pull up for everything else'}
           </div>
+          )}
         </div>
 
         {/* The flight plan itself, filling what is left of the drawer. Mounted
