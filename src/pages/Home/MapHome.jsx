@@ -131,6 +131,10 @@ const SHEET_CONFIRM_VH = 0.62
 // exists to show it, and the pilot has to pull the sheet up to read numbers
 // that were just put there for them.
 const ROUTE_CARD_PX = 96
+// How much of the collapsed drawer the action row is. Taken back off when the
+// row leaves for a card of its own, so the drawer does not keep standing at a
+// height that was measured around buttons that are no longer in it.
+const ACTION_ROW_PX = 86
 // How far a finger must travel before the sheet treats it as a drag rather
 // than a tap. Below this the buttons in the header keep their taps.
 const DRAG_SLOP = 6
@@ -520,10 +524,21 @@ export default function MapHome() {
   // mount, so a route survives the app being closed and reopened, which is
   // what a flight plan made the night before has to do.
   const [route, setRoute] = useState(null)
+  // A route in the drawer sends the actions out of it, onto a card of their
+  // own over the map.
+  //
+  // Stacked in one drawer they made a screen that was mostly buttons: 86px of
+  // record button and two labels above the route it was supposed to be
+  // reporting, so the route came second on its own screen. The flight plan
+  // already makes this division, and the read-back makes it too, so a route on
+  // the drawer now makes it as well: the drawer carries the subject, the card
+  // above carries the actions, and the map stays visible between them.
+  const actionsFloat = !planning && route?.distNm != null
   // The closed drawer's height, which is not one number any more: it stands
-  // taller when it has a route to report. Not while planning, where the
-  // drawer's height is set by the planning stop instead.
-  const collapsedPx = SHEET_COLLAPSED_PX + (route?.distNm != null && !planning ? ROUTE_CARD_PX : 0)
+  // taller when it has a route to report, and shorter by the row that left.
+  // Not while planning, where the drawer's height is set by the planning stop
+  // instead.
+  const collapsedPx = SHEET_COLLAPSED_PX + (actionsFloat ? ROUTE_CARD_PX - ACTION_ROW_PX : 0)
   // The viewport, measured rather than assumed: reading window.innerHeight
   // during render is fine once, but it has to be re-read when the phone is
   // rotated or the browser chrome changes, or every snap point is stale.
@@ -1266,6 +1281,9 @@ export default function MapHome() {
   // never contains a button that would do nothing.
   // compact shrinks the row rather than the card: a fit-content card around an
   // 86px record button is not compact, it is the same card with less padding.
+  // The tile's 92px belongs to its label, so it goes when the label does. Left
+  // on, it padded a fit-content card back out to nearly the full width, which
+  // is a compact card in every respect except the one that was asked for.
   const actionRow = (compact = false) => (
     <div style={{
       display: 'flex', alignItems: 'center',
@@ -1274,7 +1292,7 @@ export default function MapHome() {
     }}>
       <button
         onClick={() => (base ? setWxDetail(true) : setBasePicker(true))}
-        style={tileBtn}>
+        style={{ ...tileBtn, ...(compact ? { width: 38 } : null) }}>
         <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)',
           ...(compact ? { width: 38, height: 38 } : null) }}>
           <IconWeather />
@@ -1295,7 +1313,8 @@ export default function MapHome() {
           : <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M8 5.5v13l11-6.5z" /></svg>}
       </button>
 
-      <button onClick={planning ? leavePlanner : openPlanner} style={tileBtn}>
+      <button onClick={planning ? leavePlanner : openPlanner}
+        style={{ ...tileBtn, ...(compact ? { width: 38 } : null) }}>
         <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)',
           ...(compact ? { width: 38, height: 38 } : null) }}>
           {planning ? <IconClosePlan /> : <IconRoute />}
@@ -1541,18 +1560,31 @@ export default function MapHome() {
         )}
       </FloatingCard>
 
-      {/* The actions, while the flight plan has the drawer. Same card, same
-          three buttons, moved onto the map so the plan is not paying for them
-          with the top of its own space.
+      {/* The actions, whenever the drawer has something of its own to say:
+          the flight plan, the read-back, or a route on the collapsed drawer.
+          Same card, same three buttons, moved onto the map so the subject is
+          not paying for them with the top of its own space.
 
-          Not at full screen: there is no map left to float over, and the plan
-          is what the pilot asked to see all of. The row is a drag away, and
-          the drawer's handle is right there. */}
+          One card rather than three, so it slides between the three heights
+          instead of one disappearing and another arriving in a different
+          place.
+
+          Not at full screen, and not while the drawer is expanded: there is no
+          map left to float over, and the drawer is what the pilot asked to see
+          all of. The row goes back inside it there. */}
       <FloatingCard
-        visible={planning && (snap === 'plan' || snap === 'confirm')}
-        compact={confirmRoute}
-        bottom={`calc(${Math.max(0, vh - (confirmRoute ? Y_CONFIRM : Y_PLAN))}px + 10px)`}>
-        {actionRow(confirmRoute)}
+        visible={planning ? (snap === 'plan' || snap === 'confirm') : (actionsFloat && snap === 'collapsed')}
+        // Compact everywhere except the planner, whose stop is fixed at half
+        // the screen whether or not the card above it is wide. The other two
+        // are sitting on a drawer that is only as tall as its contents, so the
+        // narrower card is the difference between seeing the map and not.
+        compact={!planning || confirmRoute}
+        bottom={planning
+          ? `calc(${Math.max(0, vh - (confirmRoute ? Y_CONFIRM : Y_PLAN))}px + 10px)`
+          // Above the drawer, and above the recording stats when those are out
+          // too, rather than on top of them.
+          : `calc(${collapsedPx}px + var(--safe-bottom) + ${recording ? 132 : 0}px + 10px)`}>
+        {actionRow(!planning || confirmRoute)}
       </FloatingCard>
 
       {/* Traffic legend, and the selected aircraft. Present only while the
@@ -1662,10 +1694,15 @@ export default function MapHome() {
               it is set once and rarely changed, which is not what a slot on
               the main surface is for.
 
-              Gone from here entirely while the plan is open: it is on the card
-              floating over the map instead, and the drawer below is the plan
-              and nothing else. Same row, same buttons, one place at a time. */}
-          {!planning && actionRow()}
+              Gone from here while the plan is open, and gone while a route is
+              on the collapsed drawer: it is on the card floating over the map
+              instead, and the drawer below is the subject and nothing else.
+              Same row, same buttons, one place at a time.
+
+              It comes back once the drawer is pulled up, because from there
+              the card would be behind it and the record button has to stay
+              reachable from the screen the pilot is actually on. */}
+          {!planning && !(actionsFloat && snap === 'collapsed') && actionRow()}
 
           {/* A route exists, so the drawer says so. It was taken out as a
               duplicate of the read-back, which was right while the read-back
