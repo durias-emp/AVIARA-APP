@@ -3559,7 +3559,13 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 MEAs and the airspace structure, and hiding it made the map
                 depend on a setting that has nothing to do with what you can
                 look at. The rules decide which layer opens by default, not
-                which ones exist. */}
+                which ones exist.
+
+                These belong to the map directly below them. In the drawer that
+                map is gone, and the fullscreen map carries the same six chips
+                on the same toggleLayer and the same state, so a second row
+                here would be switching layers on nothing the pilot can see. */}
+            {!plannerHost?.embedded && (
             <div style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
               {[
                 { id: 'sectional', label: 'Sectional' },
@@ -3578,6 +3584,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 }}>{l.label}</button>
               ))}
             </div>
+            )}
 
             {layers.tfr && tfrLoading && (
               <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 6 }}>Loading TFRs…</div>
@@ -3613,7 +3620,27 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                 onPeak: openMountains, peakFocused, pickMode, refitNonce, onDrop: openDropPicker, onDragInsert, onWaypointDrop, moveWaypoint, removeWaypoint, depPos: route.depPos, destPos: route.destPos }
 
               return (<>
-                {/* Inline map */}
+                {/* Inline map, on the screen that has no other one.
+                    In the map home's drawer there is already a map, directly
+                    above this, drawing this same route: a preview of it here
+                    is the same line twice, and it costs 240 px of a panel that
+                    is short to begin with. The chart buttons above stay,
+                    because they choose what the fullscreen map opens with, and
+                    the fullscreen map is not a duplicate of anything. It is
+                    where waypoints are dragged and dropped and where a field
+                    along the route is tapped for its details. */}
+                {plannerHost?.embedded ? (
+                  <button
+                    onClick={() => { setMapFlyTarget(null); setMapClear(false); setMapFS(true) }}
+                    style={{
+                      width: '100%', padding: '9px 0', borderRadius: 9,
+                      background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
+                      fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    }}>
+                    <span style={{ fontSize: 13 }}>⤢</span> Open route map
+                  </button>
+                ) : (
                 <div style={{ borderRadius: 10, overflow: 'hidden', height: 240, position: 'relative', cursor: 'pointer' }}
                   onClick={() => { setMapFlyTarget(null); setMapClear(false); setMapFS(true) }}>
                   <MapContainer center={route.depPos} zoom={10}
@@ -3632,6 +3659,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                   <AirportLabels dep={dep} dest={dest} depPos={route.depPos} destPos={route.destPos}
                     onFlyTo={pos => setMapFlyTarget({ lat: pos[0], lon: pos[1], zoom: 10, _t: Date.now() })} />
                 </div>
+                )}
 
                 {/* Fullscreen modal */}
                 {/* Portal to <body>: the tab track above has a CSS transform,

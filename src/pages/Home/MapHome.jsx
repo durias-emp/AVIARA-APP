@@ -16,6 +16,7 @@ import { MapContainer, Polyline, CircleMarker, Marker, Tooltip, useMap } from 'r
 import L from 'leaflet'
 import ChartLayers, { Basemap } from '../../components/ChartLayers'
 import { CHARTS, EMPTY_LAYERS, resolveOpenaipKey } from '../../components/chartDefs'
+import DropPointPopup from '../../components/DropPointPopup'
 // Route styling lives in one place now, shared with the planner and its
 // preview map: three copies of a hex is how the three drifted apart.
 import { ROUTE_COLOR, ROUTE_OPACITY, ROUTE_WEIGHT } from '../../components/mapStyle'
@@ -370,6 +371,27 @@ const IconRoute = () => (
   </svg>
 )
 
+// How far the thing under the finger has already been scrolled.
+//
+// The drawer used to ask its own list, which was right while its own list was
+// the only thing in it. The flight plan brought its own scrollers, one per
+// section, and none of them is that list: asking the wrong element returned
+// zero, the drawer read every gesture as "starting from the top" and took the
+// ones that belonged to the plan. Walking up from whatever was actually
+// touched finds the right scroller in both cases, and 0 for a target that has
+// no scroller above it, which is the honest answer.
+function scrollTopUnder(target) {
+  let el = target instanceof Element ? target : null
+  while (el && el !== document.body) {
+    if (el.scrollHeight > el.clientHeight) {
+      const overflowY = getComputedStyle(el).overflowY
+      if (overflowY === 'auto' || overflowY === 'scroll') return el.scrollTop
+    }
+    el = el.parentElement
+  }
+  return 0
+}
+
 // Takes the route planner's place in the action row while the plan is open.
 // Same slot, same size, so the row does not reshuffle as the plan opens and
 // closes: only what the third button does changes.
@@ -476,9 +498,6 @@ export default function MapHome() {
   const [viewportH, setViewportH] = useState(() => window.innerHeight)
   const [dragY, setDragY] = useState(null)      // live offset while a finger is down
   const drag = useRef(null)
-  // The scrolling contents, so a drag starting there can ask whether the list
-  // is already at its top before deciding who owns the gesture.
-  const bodyRef = useRef(null)
   // The room the chips have, measured rather than recomputed. Its CSS height is
   // a min() of a constant and a viewport expression that includes the safe-area
   // inset, and the inset is not a number this side of the stylesheet: on the
@@ -755,6 +774,35 @@ export default function MapHome() {
     return [route.depPos, ...mid, route.destPos]
   }, [route])
 
+  // The same points as routeLine, in the shape the drop popup wants them.
+  const routeWpts = useMemo(
+    () => routeLine.map(([lat, lon]) => ({ lat, lon })),
+    [routeLine],
+  )
+
+  // A point held on the map, put into the plan.
+  //
+  // The waypoint is inserted into the leg it is nearest, and the figures the
+  // planner derived are dropped in the same write. Distance, course and
+  // magnetic variation all describe the route as it was before this point
+  // existed, and a distance that no longer matches the line drawn over it is
+  // worse than no distance: it is a wrong number wearing the planner's
+  // authority. The planner recomputes them the moment it is opened.
+  const addDroppedWaypoint = useCallback(async ({ lat, lon, seg }) => {
+    setRoute(prev => {
+      if (!prev?.depPos || !prev?.destPos) return prev
+      const wpts = [...(prev.wpts ?? [])]
+      // seg counts legs from 1, and leg 1 begins at departure, so the index
+      // into the middle waypoints is one less again.
+      const at = seg == null ? wpts.length : Math.max(0, Math.min(wpts.length, seg - 1))
+      wpts.splice(at, 0, { lat, lon, name: null })
+      const next = { ...prev, wpts, needsRecalc: true }
+      for (const stale of ['distNm', 'trueCourse', 'magCourse', 'magVar']) delete next[stale]
+      put('settings', { key: 'route', ...next }).catch(() => {})
+      return next
+    })
+  }, [])
+
   // Frame a new route once. The plan is what the map is being looked at for
   // the moment one exists, so it takes the camera from the base framing above
   // rather than being drawn somewhere off the edge of a map still centred on
@@ -940,9 +988,9 @@ export default function MapHome() {
   // the list, which the header never does.
   function onDragStart(e, fromBody = false) {
     drag.current = {
-      startY: e.clientY, fromY: restY, moved: false,
+      startY: e.clientY, startX: e.clientX, fromY: restY, moved: false,
       t0: Date.now(), lastY: restY, captured: false,
-      fromBody, atTop: (bodyRef.current?.scrollTop ?? 0) <= 0,
+      fromBody, atTop: scrollTopUnder(e.target) <= 0,
     }
   }
   const onBodyDragStart = (e) => onDragStart(e, true)
@@ -951,6 +999,15 @@ export default function MapHome() {
     if (!d) return
     const dy = e.clientY - d.startY
     if (!d.moved) {
+      // Sideways belongs to whatever is underneath. The flight plan swipes
+      // between its five sections, and a sheet that lurched every time the
+      // pilot moved from Route to Performance would be unusable. Decided on
+      // the first movement that clears the slop, so a gesture is claimed once
+      // and does not change its mind halfway.
+      if (d.fromBody && Math.abs(e.clientX - d.startX) > Math.abs(dy)) {
+        drag.current = null
+        return
+      }
       if (Math.abs(dy) < DRAG_SLOP) return       // still a tap
       // A drag that began over the contents only takes the sheet when there
       // is nothing to scroll in the direction it is going: at full height the
@@ -1089,6 +1146,15 @@ export default function MapHome() {
         )}
         <Basemap dark={darkBasemap} />
         <ChartLayers layers={layers} openaipKey={openaipKey} tfrData={tfrData} />
+        {/* Hold anywhere for the coordinates of that spot, and to put it in
+            the route. Same component the planner's map uses. A long press
+            rather than a tap, because a tap has to stay free for panning and
+            for tapping a traffic target. */}
+        <DropPointPopup
+          waypoints={routeWpts}
+          canAdd={routeLine.length > 1}
+          onAdd={addDroppedWaypoint}
+        />
         {/* The plan, under the track rather than over it: where both exist,
             what was actually flown is the one that has to be readable. */}
         {routeLine.length > 1 && (
@@ -1446,24 +1512,41 @@ export default function MapHome() {
             planner and its Leaflet previews rather than leaving them running
             under a map that is already drawing one. */}
         {planning && (
-          <Suspense fallback={
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 12, color: 'var(--map-ink-faint)' }}>
-              Opening the flight plan…
-            </div>
-          }>
-            <Planner embedded onClose={leavePlanner} onRouteCalculated={onRouteCalculated} />
-          </Suspense>
+          <div
+            onPointerDown={onBodyDragStart} onPointerMove={onDragMove}
+            onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
+            style={{
+              flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
+              // Half open, the plan is dragged rather than read: a finger
+              // anywhere on it takes the drawer to full screen, which is the
+              // only way up other than the handle, and the handle is a target
+              // the size of a fingernail. pan-x keeps the sideways swipe
+              // between sections while taking vertical away from the browser,
+              // because a native scroll and a sheet drag cannot both have it.
+              //
+              // Full screen it hands vertical back, so the plan scrolls the way
+              // any long page does, and only a pull down from the very top
+              // returns the drawer. The drawer's own list has always worked
+              // this way; this is the same bargain, kept in the same words.
+              touchAction: snap === 'full' ? 'pan-y' : 'pan-x',
+            }}>
+            <Suspense fallback={
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 12, color: 'var(--map-ink-faint)' }}>
+                Opening the flight plan…
+              </div>
+            }>
+              <Planner embedded onClose={leavePlanner} onRouteCalculated={onRouteCalculated} />
+            </Suspense>
+          </div>
         )}
 
         {/* Everything else. Scrolls inside the sheet once expanded; inert while
             collapsed so a swipe there moves the sheet instead of the list.
-            Gone entirely while planning: the planner scrolls and swipes on its
-            own, and these drag handlers would take every one of those gestures
-            and move the drawer with them instead. */}
+            Gone entirely while planning, where the plan itself is what fills
+            the drawer and carries the same handlers. */}
         {!planning && (
         <div
-          ref={bodyRef}
           onPointerDown={onBodyDragStart} onPointerMove={onDragMove}
           onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
           style={{
