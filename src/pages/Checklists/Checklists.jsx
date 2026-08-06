@@ -301,7 +301,15 @@ function ChecklistDetail({ checklist, onBack, embedded = false, onRouteCalculate
         // every card, the tokens are remapped here and the whole subtree
         // follows: same components, drawer palette. This is the one place
         // that has to know the planner can live in two different rooms.
-        '--bg': 'transparent',
+        // NOT transparent, however much it looks like it should be. --bg is
+        // used as a FOREGROUND colour in five places, in the pattern
+        // `background: var(--text); color: var(--bg)`, which is how the app
+        // draws a filled button. Transparent turned Calculate Route into a
+        // white pill with invisible ink on it. --map-ink-invert is by
+        // definition the colour that contrasts with --map-ink, so it is the
+        // right value for both jobs. Nothing paints a surface with it here
+        // because the root's own background is set transparent directly.
+        '--bg': 'var(--map-ink-invert)',
         '--bg-grouped': 'transparent',
         '--bg-card': 'var(--map-fill-soft)',
         '--bg-card-2': 'var(--map-fill)',
