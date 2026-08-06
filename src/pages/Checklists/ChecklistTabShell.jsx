@@ -51,7 +51,6 @@ export default function ChecklistTabShell({
   const onActiveChangeFns = useMemo(() => sections.map((_, i) => (v) => {
     setPaneOpen(prev => (prev[i] === v ? prev : prev.map((p, pi) => (pi === i ? v : p))))
   }), [sections])
-  const footerHidden = paneOpen[activeIndex] ?? false
 
   // The footer (tab bar + action buttons) is position:fixed to the real
   // viewport bottom, immune to any dvh/ancestor-height mismatch. Panes pad
@@ -181,17 +180,13 @@ export default function ChecklistTabShell({
         </div>
       </div>
 
-      {/* The step bar never leaves. Working inside an expanded card used to
-          slide this whole footer away, which meant the only way back to
-          another step was to collapse whatever you had open first — the
-          navigation disappeared exactly when you wanted to navigate.
-          Switching steps has to be available at all times.
-
-          The action row still yields: "+ Add Step" and "Complete Flight
-          Plan" are about the plan as a whole, not about the card being
-          filled in, so they stand down while one is open and give the room
-          back. Panes re-pad from the measured footer height, so the space
-          is genuinely handed over rather than just hidden under. */}
+      {/* Fixed and identical on every step. This footer used to slide away
+          whenever a card was open, and a later pass kept the tab bar but
+          still hid the action row — both were the same mistake in
+          different sizes: chrome that comes and goes teaches a pilot to
+          look for it rather than to use it. The steps are independent and
+          this is only navigation, so it does not react to what is open
+          inside a pane. */}
       <div ref={footerRef} className="fixed-footer-bar">
         <StepTabBar
           sections={sections}
@@ -200,7 +195,7 @@ export default function ChecklistTabShell({
           checked={checked}
           customItems={customItems}
         />
-        {!footerHidden && completeBar}
+        {completeBar}
       </div>
     </div>
   )
