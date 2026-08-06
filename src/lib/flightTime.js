@@ -39,9 +39,13 @@ export function entryDurationMs(entry) {
 // until coming to rest. Labelling both "recorded" and leaving it there would
 // put two different quantities in one column, which is how logbooks stop being
 // trustworthy.
+// The label names WHERE it came from, because that is what a pilot scanning
+// the FDR is sorting by; the detail keeps WHAT was measured, which is the
+// distinction that must not get lost — mixing air time and flight time in
+// one column is how a logbook stops being trustworthy.
 export const RECORDING_KINDS = {
-  auto:  { label: 'Air time',    detail: 'Detected from movement' },
-  timer: { label: 'Flight time', detail: 'Timed by you' },
+  auto:  { label: 'Auto detect',   detail: 'Air time — detected from movement' },
+  timer: { label: 'Manual record', detail: 'Flight time — timed by you' },
 }
 export function recordingKind(entry) {
   return RECORDING_KINDS[entry?.source] ?? { label: 'Recorded', detail: 'Source unknown' }
