@@ -24,6 +24,7 @@ import { recommendCruise, fmtAlt } from '../../../lib/cruiseAdvisor'
 import { parseAircraftPerf } from '../../../lib/climbPerf'
 import CrossSection from './CrossSection'
 import DropPicker from './DropPicker'
+import { resolveHomeIdent } from '../../../lib/homeBase'
 import TerrainLayer from './TerrainLayer'
 import AerodromePopup from './AerodromePopup'
 import { fetchBriefing } from '../../../lib/altitudeBrief'
@@ -1860,7 +1861,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
   // Restore saved route on mount; fall back to homeAirport for the FROM field
   useEffect(() => {
-    get('settings', 'route').then(r => {
+    get('settings', 'route').catch(() => null).then(r => {
       if (r?.depPos && r?.destPos) {
         if (r.dep) { setDep(r.dep); setDepVal(true) }
         if (r.dest) { setDest(r.dest); setDestVal(true) }
@@ -1885,9 +1886,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         if (r.mc != null) setCourse(String(r.mc))
         if (r.cruiseAlt != null) setSelectedAlt(r.cruiseAlt)
         if (r.etd) { setEtd(r.etd); setEtdPinned(true) }
-        if (!r.dep) get('settings', 'homeAirport').then(h => { if (h?.value) { setDep(h.value); setDepVal(true) } })
+        if (!r.dep) resolveHomeIdent().then(id => { if (id) { setDep(id); setDepVal(true) } })
       } else {
-        get('settings', 'homeAirport').then(h => { if (h?.value) { setDep(h.value); setDepVal(true) } })
+        resolveHomeIdent().then(id => { if (id) { setDep(id); setDepVal(true) } })
       }
     })
   }, [])

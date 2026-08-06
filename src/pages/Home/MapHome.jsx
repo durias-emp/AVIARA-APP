@@ -31,6 +31,7 @@ import WeatherRibbon from '../../components/WeatherRibbon'
 import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecorder'
 import { put, get, getAll, del } from '../../lib/db'
 import { getAirports } from '../../lib/aerodromes'
+import { resolveHomeIdent } from '../../lib/homeBase'
 import { loadTfrs } from '../../lib/tfr'
 import useIsDark from '../../hooks/useIsDark'
 import { TEMPLATES } from '../../data/aircraftTemplates'
@@ -649,10 +650,12 @@ export default function MapHome() {
   // explicit choice wins.
   async function resolveBase() {
     try {
-      const row = await get('settings', 'homeAirport').catch(() => null)
       const pilot = await get('settings', 'pilot').catch(() => null)
       if (pilot) setUnits(pilot)
-      const ident = (row?.value || pilot?.homeAirport || '').trim().toUpperCase()
+      // Shared with the route planner, which used to read only the explicit
+      // setting and so showed an empty FROM for a pilot whose base lived on
+      // their profile. One answer, one place.
+      const ident = await resolveHomeIdent()
       if (!ident) return
       const airports = await getAirports()
       // [ident, lat, lon, class]
