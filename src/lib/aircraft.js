@@ -13,21 +13,63 @@ export function newAircraftId() {
   return `aircraft-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
+// Is this the same aeroplane as the legacy row, already migrated?
+//
+// Registration decides it where there is one: it is unique to an airframe and
+// it is what a pilot would call the aircraft. Where there is none, the model
+// name is all there is to go on. Two genuinely different aircraft sharing both
+// a blank registration and a name would be treated as one, which is a far
+// smaller problem than the one this prevents.
+function sameAirframe(a, b) {
+  const norm = (v) => (v ?? '').toString().trim().toUpperCase()
+  const regA = norm(a.registration), regB = norm(b.registration)
+  if (regA || regB) return regA === regB
+  return norm(a.fullName) === norm(b.fullName)
+}
+
 // One-time re-key of the legacy single-aircraft row ('profile') to a real
-// per-aircraft id. Idempotent — a no-op once the 'profile' row is gone.
-// Runs on every load (see resolveActiveAircraftId) so it also catches the
-// case where a cloud restore lands a legacy row after the app already
-// checked once.
+// per-aircraft id.
+//
+// Two things made this duplicate rather than migrate, and the hangar filled
+// with copies of one aeroplane, two more on every launch.
+//
+// It ran twice at once. The provider resolves the active aircraft on mount and
+// again when cloud hydration finishes, and both calls read 'profile' before
+// either had deleted it, so both created a row. That is what produced them in
+// pairs. inFlight makes concurrent callers share one migration.
+//
+// And it ran again on the next launch, because a cloud restore lands the
+// legacy row back in the store after it was deleted here. Deleting it a second
+// time is right; copying it a second time is not, so an already-migrated
+// airframe is recognised and the stale row is simply dropped.
+let inFlight = null
+
 export async function migrateLegacyAircraft() {
-  const legacy = await get('aircraft', 'profile')
-  if (!legacy) return null
-  const id = newAircraftId()
-  await put('aircraft', { ...legacy, id })
-  await del('aircraft', 'profile')
-  // del() doesn't trigger a cloud push on its own (only put() does) — without
-  // this the cloud blob would still carry the stale 'profile'-keyed row.
-  await pushToCloud('aircraft').catch(() => {})
-  return id
+  if (inFlight) return inFlight
+  inFlight = (async () => {
+    const legacy = await get('aircraft', 'profile')
+    if (!legacy) return null
+
+    const existing = (await getAll('aircraft'))
+      .filter(a => a.id !== 'profile' && !isDeleted(a))
+    const already = existing.find(a => sameAirframe(a, legacy))
+    if (already) {
+      // Migrated on an earlier run and handed back by the cloud. Drop the
+      // stale row rather than making a second aeroplane out of it.
+      await del('aircraft', 'profile')
+      await pushToCloud('aircraft').catch(() => {})
+      return already.id
+    }
+
+    const id = newAircraftId()
+    await put('aircraft', { ...legacy, id })
+    await del('aircraft', 'profile')
+    // del() doesn't trigger a cloud push on its own (only put() does) — without
+    // this the cloud blob would still carry the stale 'profile'-keyed row.
+    await pushToCloud('aircraft').catch(() => {})
+    return id
+  })().finally(() => { inFlight = null })
+  return inFlight
 }
 
 export async function setActiveAircraftId(id) {
