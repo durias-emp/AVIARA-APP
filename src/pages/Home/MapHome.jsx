@@ -539,9 +539,21 @@ export default function MapHome() {
   // the drawer now makes it as well: the drawer carries the subject, the card
   // above carries the actions, and the map stays visible between them.
   const actionsFloat = !planning && route?.distNm != null
-  // The viewport, measured rather than assumed: reading window.innerHeight
-  // during render is fine once, but it has to be re-read when the phone is
-  // rotated or the browser chrome changes, or every snap point is stale.
+  // The height every stop is a fraction of, measured off the shell itself
+  // rather than read from window.innerHeight.
+  //
+  // The keyboard is why. Opening it collapses innerHeight from 793 to 390 on
+  // the phone (measured, in the web clip) while the shell, which is
+  // position:fixed, keeps its 793: fixed positioning resolves against a
+  // containing block the keyboard does not touch. So every stop and the
+  // planner's own column were being sized to 390 inside a box that was still
+  // 793, which put the plan in the top quarter of the drawer and left the
+  // rest of the screen as bare drawer. Tapping the destination field turned
+  // the app black.
+  //
+  // Measuring the box the drawer actually lives in cannot disagree with it.
+  // Rotation still moves it, because rotation really does change the box.
+  const shellRef = useRef(null)
   const [viewportH, setViewportH] = useState(() => window.innerHeight)
   const [dragY, setDragY] = useState(null)      // live offset while a finger is down
   const drag = useRef(null)
@@ -650,13 +662,60 @@ export default function MapHome() {
     return () => cancel(id)
   }, [])
 
+  // The same events as before, and a different answer to them.
+  //
+  // The events are still the window's, because they are the only ones that
+  // arrive: a ResizeObserver on the shell was tried first and never fired
+  // once, since a position:fixed box sized by inset does not report viewport
+  // changes to one. What changed is where the number comes from. The listener
+  // measures the shell rather than reading window.innerHeight, so a keyboard
+  // that collapses innerHeight to 390 while the shell stays 793 produces no
+  // change at all, and a rotation, which really does resize the shell,
+  // produces one.
   useEffect(() => {
-    const onResize = () => setViewportH(window.innerHeight)
-    window.addEventListener('resize', onResize)
-    window.visualViewport?.addEventListener('resize', onResize)
+    const read = () => {
+      const h = Math.round(shellRef.current?.getBoundingClientRect().height ?? 0)
+      // Zero between layouts. Taking it would put every stop at the top of
+      // the screen.
+      if (h > 0) setViewportH(h)
+    }
+    read()
+    window.addEventListener('resize', read)
+    window.addEventListener('orientationchange', read)
+    window.visualViewport?.addEventListener('resize', read)
     return () => {
-      window.removeEventListener('resize', onResize)
-      window.visualViewport?.removeEventListener('resize', onResize)
+      window.removeEventListener('resize', read)
+      window.removeEventListener('orientationchange', read)
+      window.visualViewport?.removeEventListener('resize', read)
+    }
+  }, [])
+
+  // How much of the shell the keyboard is sitting on top of.
+  //
+  // The shell's own height minus the visual viewport's, which is the one
+  // number iOS reports honestly here: with the keyboard up the phone said
+  // innerHeight 390, visualViewport 390, and a fixed box still 793. The
+  // difference is the keyboard, and it is the only thing the drawer should
+  // react to when a field is tapped.
+  const [kbInset, setKbInset] = useState(0)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const read = () => {
+      const shell = shellRef.current?.getBoundingClientRect().height ?? 0
+      if (!shell) return
+      // Rounded away below a few pixels: browser chrome and the address bar
+      // produce small differences that are not a keyboard, and lifting the
+      // drawer for those would be a twitch on every scroll.
+      const inset = Math.round(shell - vv.height)
+      setKbInset(inset > 24 ? inset : 0)
+    }
+    read()
+    vv.addEventListener('resize', read)
+    vv.addEventListener('scroll', read)
+    return () => {
+      vv.removeEventListener('resize', read)
+      vv.removeEventListener('scroll', read)
     }
   }, [])
 
@@ -1122,7 +1181,17 @@ export default function MapHome() {
   // One line each way now that a stop is a number: where the drawer is
   // resting, and where it is actually drawn once a finger is on it.
   const restY = stopY(vh, snap)
-  const y = dragY != null ? dragY : restY
+  // The keyboard does not move the shell, so it cannot be allowed to move the
+  // stops, but it does cover the bottom of it. The drawer rises by exactly
+  // what is covered, never past the top of the screen, so the field being
+  // typed into stays in the part of the shell still visible. Without this the
+  // stops are right and the plan sits entirely behind the keyboard.
+  const liftedY = Math.max(0, restY - kbInset)
+  const y = dragY != null ? dragY : liftedY
+  // What is left of the shell once the keyboard has taken its share. The
+  // planner's column is sized from this rather than from the full height, or
+  // it runs down behind the keyboard and takes its buttons with it.
+  const visibleH = vh - kbInset
 
   // Declared below restY rather than with the other map effects: it reads it,
   // and a const cannot be read before it is initialised. Placed above, the
@@ -1350,7 +1419,7 @@ export default function MapHome() {
     // screen here, and it has to reach every edge including under the status
     // bar and the home indicator. body is the containing block, which is what
     // makes this land on the real screen bottom.
-    <div style={{ position: 'fixed', inset: 0, background: 'var(--bg)', overflow: 'hidden' }}>
+    <div ref={shellRef} style={{ position: 'fixed', inset: 0, background: 'var(--bg)', overflow: 'hidden' }}>
       <MapContainer center={INITIAL_CENTER} zoom={10} zoomControl={false} attributionControl={false}
         style={{ height: '100%', width: '100%' }}>
         <SizeWatcher mapRef={mapRef} onReady={onMapReady} onMove={setMapCentre} />
@@ -1684,7 +1753,10 @@ export default function MapHome() {
           moment it lands. */}
       <div style={{
         display: 'flex', flexDirection: 'column', minHeight: 0,
-        height: planning ? `${Math.max(0, vh - restY)}px` : '100%',
+        // Measured from where the drawer is drawn to where the keyboard
+        // starts, so a lifted drawer gets the taller column it has earned
+        // rather than one still sized for the stop it left.
+        height: planning ? `${Math.max(0, visibleH - liftedY)}px` : '100%',
       }}>
 
         {/* The grab area: handle and actions. Dragging anywhere on this moves
