@@ -45,34 +45,34 @@ about the United States.
 **Nothing here is optional and none of it can be deferred until after launch.
 It gets more expensive the more you build on top of it.**
 
-### 1.1 Licensing audit of every data source — BLOCKER
+### 1.1 Licensing audit of every data source (BLOCKER)
 
 The app calls twenty or so external services. Each one has terms, and "it has
 a free tier" is not the same as "I may sell a product built on it".
 
-- [ ] **openAIP (airspace layer)** — believed **CC BY-NC-SA**. The
+- [ ] **openAIP (airspace layer)**: believed **CC BY-NC-SA**. The
       **NonCommercial** clause means the moment you charge for the app you are
       in breach. The **ShareAlike** clause may also force you to license
       derivatives the same way. This is the single biggest legal blocker in
       the codebase. Options: buy a commercial licence from openAIP, replace
       the layer with the national AIP airspace you are already collecting, or
       drop it. **Decide this before writing another feature on top of it.**
-- [ ] **Open-Meteo** — free tier is non-commercial. Needs a paid plan.
-- [ ] **CARTO basemaps** — free tier has request limits and commercial terms.
-- [ ] **adsb.lol (live traffic)** — ODbL 1.0, commercial use permitted with
+- [ ] **Open-Meteo**: free tier is non-commercial. Needs a paid plan.
+- [ ] **CARTO basemaps**: free tier has request limits and commercial terms.
+- [ ] **adsb.lol (live traffic)**: ODbL 1.0, commercial use permitted with
       attribution. Already attributed in the payload and rendered. **This one
       is fine**, keep it that way.
-- [ ] **Iowa Environmental Mesonet (NEXRAD radar)** — public but confirm
+- [ ] **Iowa Environmental Mesonet (NEXRAD radar)**: public but confirm
       attribution and acceptable use.
-- [ ] **FAA sources** (charts, TFR, NOTAM, eCFR) — US government works, but
+- [ ] **FAA sources** (charts, TFR, NOTAM, eCFR): US government works, but
       confirm the ArcGIS tile services' terms of use separately from the data.
-- [ ] **OurAirports** — public domain. Fine.
-- [ ] **National AIP data (AAC El Salvador, AHAC Honduras)** — LAWYER. State
+- [ ] **OurAirports**: public domain. Fine.
+- [ ] **National AIP data (AAC El Salvador, AHAC Honduras)**: LAWYER. State
       aeronautical publications are often Crown or state copyright.
       Redistributing them in a commercial product may need permission. Ask the
       authorities directly; they are usually approachable and it is a chance
       to build the relationship you will want later.
-- [ ] **OpenAI** — commercial use is fine, but confirm data handling: what
+- [ ] **OpenAI**: commercial use is fine, but confirm data handling: what
       pilot data leaves the device, and does the privacy policy say so.
 - [ ] Write the findings into `legal/DATA_SOURCES.md`, one row per source:
       licence, commercial status, attribution required, where it appears in
@@ -93,10 +93,10 @@ a free tier" is not the same as "I may sell a product built on it".
 
 ### 1.3 Terms, privacy and the disclaimer that has to hold
 
-- [ ] **Terms of Service** — LAWYER. Must include limitation of liability,
+- [ ] **Terms of Service**: LAWYER. Must include limitation of liability,
       "not for navigation" / supplemental-use-only language, and no warranty
       of data accuracy.
-- [ ] **Privacy policy** — `legal/PRIVACY_POLICY.md` exists. Have it reviewed
+- [ ] **Privacy policy**: `legal/PRIVACY_POLICY.md` exists. Have it reviewed
       against what the app actually collects now: position, flight tracks,
       logbook, and anything sent to OpenAI.
 - [ ] Confirm the **"Reference aid only, always consult current FAR/AIM"**
@@ -128,7 +128,7 @@ The app works. That is not the same as being ready for strangers.
       throws takes the whole screen to blank white, with no message and no
       way back. This happened during development and is exactly what a pilot
       must never see. Add one at the route level with a "reload" action.
-- [ ] **iOS standalone white screen** — long-standing and unresolved. May be
+- [ ] **iOS standalone white screen**: long-standing and unresolved. May be
       the rewrite bug above; verify after fixing it.
 
 ### 2.2 Things that do not exist yet and need to
