@@ -1054,9 +1054,10 @@ export default function MapHome() {
 
   // ── The planner, opened and closed in place ──────────────────────────
   function openPlanner() {
+    // 50 is both "on screen" and "the planner's stop", so one call does what
+    // used to take two: raising a hidden drawer and moving it to the plan.
     setSnap(50)
     setPlanning(true)
-    setSnap(50)
   }
 
   function leavePlanner() {
@@ -1254,7 +1255,11 @@ export default function MapHome() {
     const shifted = dy - Math.sign(dy) * DRAG_SLOP
     // Clamped, with no rubber band past either end: a sheet that can be pulled
     // past its stops feels broken rather than playful on a control surface.
-    const next = Math.min(stopY(vh, 30), Math.max(stopY(vh, 100), d.fromY + shifted))
+    //
+    // The planner's ceiling is its own stop. It is not allowed above 50 at all,
+    // so the finger stops there rather than travelling on to a height the
+    // release would only undo.
+    const next = Math.min(stopY(vh, 30), Math.max(stopY(vh, planning ? 50 : 100), d.fromY + shifted))
     d.lastY = next
     setDragY(next)
   }
@@ -1279,16 +1284,21 @@ export default function MapHome() {
 
     // Past the trigger the sheet commits to full whatever the gesture was.
     // Dragging that far is unambiguous, and snapping back from there would
-    // feel like the sheet fighting the hand.
-    if (d.lastY <= stopY(vh, SHEET_FULL_TRIGGER)) { setSnap(100); return }
+    // feel like the sheet fighting the hand. Not while planning, which has no
+    // 100 to commit to.
+    if (!planning && d.lastY <= stopY(vh, SHEET_FULL_TRIGGER)) { setSnap(100); return }
 
-    // With the planner in the drawer the ladder is shorter, 50 and 100 only:
-    // there is no reading to do at 30 with a form open, and 80 buries the map
-    // the plan is being drawn across. There is a third outcome instead. Pulled
-    // down far enough, the plan is put away, which costs nothing to do by
-    // accident: every field writes itself to storage as it is filled in, and
-    // Plan Route comes back to exactly the same place.
-    const ladder = planning ? [50, 100] : SHEET_STOPS
+    // The planner has one stop, 50, and no way up from it. Half the screen is
+    // the plan and half is the map the route is being drawn across, and a plan
+    // that can cover the whole chart stops being a plan drawn on anything. The
+    // room it used to find by going to full screen it now finds by the step
+    // being read getting the drawer to itself.
+    //
+    // The other outcome is downward: pulled down far enough the plan is put
+    // away, which costs nothing to do by accident, because every field writes
+    // itself to storage as it is filled in and Plan Route comes back to
+    // exactly the same place.
+    const ladder = planning ? [50] : SHEET_STOPS
 
     if (planning && (d.lastY > (stopY(vh, 50) + stopY(vh, 30)) / 2
       || (flick && !up && snap === 50))) {
@@ -1620,17 +1630,22 @@ export default function MapHome() {
           all of. The row goes back inside it there. */}
       <FloatingCard
         visible={planning ? (snap === (confirmRoute ? 80 : 50)) : (actionsFloat && snap === 30)}
-        // Compact everywhere except the planner, whose stop is fixed at half
-        // the screen whether or not the card above it is wide. The other two
-        // are sitting on a drawer that is only as tall as its contents, so the
-        // narrower card is the difference between seeing the map and not.
-        compact={!planning || confirmRoute}
+        // Compact wherever it floats, with no exception for the planner.
+        //
+        // The planner kept the wide card on the argument that its stop is fixed
+        // at half the screen whether or not the card above it is wide, so the
+        // width cost nothing. It does not: the planner's half is the half a
+        // route is being drawn across, and a full-width slab with two labels on
+        // it was taking a third of what was left to look at. The other two read
+        // as one object moving between heights, and this one read as a
+        // different card arriving.
+        compact
         bottom={planning
           ? `${vh - stopY(vh, confirmRoute ? 80 : 50) + 10}px`
           // Above the drawer, and above the recording stats when those are out
           // too, rather than on top of them.
           : `${restPx + (recording ? 132 : 0) + 10}px`}>
-        {actionRow(!planning || confirmRoute)}
+        {actionRow(true)}
       </FloatingCard>
 
       {/* Traffic legend, and the selected aircraft. Present only while the
@@ -1724,9 +1739,10 @@ export default function MapHome() {
           }}>
           <div
             onClick={() => {
-              // While planning, the handle toggles between the two stops the
-              // planner has rather than the two the drawer normally has.
-              if (planning) { setSnap(s2 => (s2 === 50 ? 100 : 50)); return }
+              // Nothing to toggle while planning: the planner has one stop.
+              // Tapping the handle used to take it to full screen, which is
+              // the thing the plan is no longer allowed to do.
+              if (planning) return
               setSnap(s2 => (s2 === 30 ? 80 : 30))
             }}
             style={{
@@ -1871,7 +1887,11 @@ export default function MapHome() {
                 width: '100%', padding: '13px 0', borderRadius: 12, border: 'none',
                 background: ACCENT, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
               }}>Looks right</button>
-              <button onClick={() => { setConfirmRoute(false) }} style={{
+              {/* Down to the planner's own stop as well as into the planner.
+                  The read-back stands at 80 and the plan is never allowed
+                  above 50, so leaving the stop behind would open the planner
+                  at a height it cannot be dragged back to. */}
+              <button onClick={() => { setConfirmRoute(false); setSnap(50) }} style={{
                 marginTop: 8, width: '100%', padding: '13px 0', borderRadius: 12, border: 'none',
                 background: 'var(--map-fill)', color: 'var(--map-ink)', fontSize: 14,
                 fontWeight: 700, cursor: 'pointer',
