@@ -414,15 +414,6 @@ export function deepMerge(base, overrides) {
 const WARN_DAYS_DEFAULT = 30
 const WARN_HOURS_DEFAULT = 10 // hrs before an hour-based inspection is "expiring"
 
-const ARROW_DOCS = [
-  { key: 'crew',      label: 'C: Crew documents (license · photo ID · medical)', far: FAR.crewDocs },
-  { key: 'airworth',  label: 'A: Certificate of Airworthiness',                  far: FAR.airworthCert },
-  { key: 'reg',       label: 'R: Certificate of Registration',                   far: FAR.registration },
-  { key: 'radio',     label: 'R: Radio License (FCC / international)',            far: null },
-  { key: 'oplim',     label: 'O: Operating Limitations (AFM / POH)',             far: FAR.opLimitations },
-  { key: 'wb',        label: 'W: Weight &amp; Balance data',                     far: FAR.weightBalance },
-  { key: 'insurance', label: 'Insurance current',                                  far: null },
-]
 
 // Inspections with calendar-month expiry
 const INSPECTIONS = [
@@ -1608,7 +1599,6 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
   // Airworthiness: worst status across docs + inspections
   const airworthy = currencyData?.airworthy ?? {}
   const airworthyDocs = airworthy.docs ?? {}
-  const docsComplete = ARROW_DOCS.filter(d => !d.key.includes('insurance')).every(d => airworthyDocs[d.key])
   const inspStatuses = INSPECTIONS
     .map(i => {
       if (i.unit === 'hours') return statusFromHours(airworthy[i.key], profile.hobbsTime, WARN_HOURS_DEFAULT)
@@ -1620,8 +1610,11 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
     const rank = { expired: 3, expiring: 2, unknown: 1, valid: 0 }
     return (rank[s.status] ?? 0) > (rank[worst.status] ?? 0) ? s : worst
   }, { status: inspStatuses.length === 0 ? 'incomplete' : 'valid' })
-  const airworthyStatus = !docsComplete ? 'incomplete'
-    : worstInsp.status === 'expired' ? 'expired'
+  // Inspections alone decide this now. The CARROW documents used to gate it
+  // too, but that list moved to the flight plan — whether the papers are in
+  // the aeroplane today is a question about today's flight, not about the
+  // aeroplane's maintenance state.
+  const airworthyStatus = worstInsp.status === 'expired' ? 'expired'
     : worstInsp.status === 'expiring' ? 'expiring'
     : worstInsp.status === 'incomplete' ? 'incomplete'
     : 'valid'
@@ -1874,18 +1867,6 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
         <Section title="Airworthiness">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: -6 }}>
             <AirworthinessBadge status={airworthyStatus} />
-          </div>
-
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
-              Documents: CARROW
-            </div>
-            <div style={{ background: 'var(--bg-card-2)', borderRadius: 10, overflow: 'hidden' }}>
-              {ARROW_DOCS.map(doc => (
-                <CheckRowSimple key={doc.key} checked={!!airworthyDocs[doc.key]}
-                  onChange={v => patchAirworthyDocs(doc.key, v)} label={doc.label} far={doc.far} />
-              ))}
-            </div>
           </div>
 
           <div>
