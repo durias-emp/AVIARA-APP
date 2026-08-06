@@ -485,6 +485,11 @@ export default function MapHome() {
   // map keeps showing what the route is being drawn across. /checklists still
   // exists and still works; this is the way in, not the only way.
   const [planning, setPlanning] = useState(false)
+  // A route set by tapping the chart, waiting to be read back. Set when the
+  // tap happens rather than when the calculation lands: the callback that
+  // carries the result fires from inside the planner's own mount, and hanging
+  // this off it meant the panel never appeared.
+  const [confirmRoute, setConfirmRoute] = useState(false)
   // The calculated route: drawn on the map, summarised on the collapsed
   // drawer, and cleared by the X on that card. Read back from IndexedDB on
   // mount, so a route survives the app being closed and reopened, which is
@@ -493,7 +498,7 @@ export default function MapHome() {
   // The closed drawer's height, which is not one number any more: it stands
   // taller when it has a route to report. Not while planning, where the
   // drawer's height is set by the planning stop instead.
-  const collapsedPx = SHEET_COLLAPSED_PX + (route && !planning ? ROUTE_CARD_PX : 0)
+  const collapsedPx = SHEET_COLLAPSED_PX + (route && !planning && !confirmRoute ? ROUTE_CARD_PX : 0)
   // The viewport, measured rather than assumed: reading window.innerHeight
   // during render is fine once, but it has to be re-read when the phone is
   // rotated or the browser chrome changes, or every snap point is stale.
@@ -833,6 +838,7 @@ export default function MapHome() {
       value: id || null,
       lat, lon,
     }).catch(() => {})
+    setConfirmRoute(true)
     setPlanning(true)
     setSnap('plan')
   }, [])
@@ -985,7 +991,11 @@ export default function MapHome() {
   function onRouteCalculated(calculated) {
     setRoute(calculated)
     setPlanning(false)
-    setSnap('collapsed')
+    // A route the pilot typed and calculated themselves needs no read-back:
+    // they were watching the numbers as they made them. One that came from a
+    // tap on the chart does, which is what confirmRoute is already tracking.
+    if (!confirmRoute) setSnap('collapsed')
+    else setSnap('expanded')
   }
 
   // Forget the route: off the map, off the drawer, out of storage. Deleted
@@ -1519,7 +1529,7 @@ export default function MapHome() {
           moment it lands. */}
       <div style={{
         display: 'flex', flexDirection: 'column', minHeight: 0,
-        height: planning ? `${Math.max(0, vh - restY)}px` : '100%',
+        height: (planning || confirmRoute) ? `${Math.max(0, vh - restY)}px` : '100%',
       }}>
 
         {/* The grab area: handle and actions. Dragging anywhere on this moves
@@ -1546,7 +1556,7 @@ export default function MapHome() {
             }}
             style={{
               width: 40, height: 5, borderRadius: 3, background: 'var(--map-hairline)',
-              margin: planning ? '0 auto 8px' : '0 auto 14px', cursor: 'pointer',
+              margin: (planning || confirmRoute) ? '0 auto 8px' : '0 auto 14px', cursor: 'pointer',
             }} />
 
           {/* Weather, opposite the route planner. These are the two things a
@@ -1569,7 +1579,10 @@ export default function MapHome() {
               Not while the plan is open, where the route is the thing being
               edited a few pixels below and a second copy of its numbers would
               be one more thing to keep in agreement. */}
-          {!planning && route && (
+          {/* Not while confirming: the panel below is the same route, read
+              back larger, and two copies of one flight in one drawer invites
+              the question of which one is current. */}
+          {!planning && !confirmRoute && route && (
             <RouteSummary route={route} onClear={clearRoute} onEdit={openPlanner} />
           )}
 
@@ -1626,7 +1639,58 @@ export default function MapHome() {
             collapsed so a swipe there moves the sheet instead of the list.
             Gone entirely while planning, where the plan itself is what fills
             the drawer and carries the same handlers. */}
-        {!planning && (
+        {/* The route, filling the drawer to be checked before it is flown.
+            A destination chosen by tapping a chart is the one most easily
+            picked by accident, so it is read back at a size worth reading
+            rather than tucked into the summary strip. */}
+        {!planning && confirmRoute && (
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 20px 20px' }}>
+            {route?.distNm == null ? (
+              <div style={{ fontSize: 12.5, color: 'var(--map-ink-dim)', padding: '10px 0' }}>
+                Working out the route&#8230;
+              </div>
+            ) : (<>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.6px',
+                color: 'var(--map-ink-faint)', textTransform: 'uppercase' }}>
+                Confirm the flight
+              </div>
+              <div style={{ marginTop: 10, fontSize: 20, fontWeight: 800, letterSpacing: '-0.4px',
+                color: 'var(--map-ink)', lineHeight: 1.3, wordBreak: 'break-word' }}>
+                {route.dep} <span style={{ color: 'var(--map-ink-faint)' }}>&#8594;</span> {route.dest}
+              </div>
+              <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                {[
+                  [`${route.distNm} NM`, 'DISTANCE'],
+                  [`${route.mc}\u00B0`, 'MAGNETIC COURSE'],
+                  [`${route.tc}\u00B0`, 'TRUE COURSE'],
+                  [`${route.magVar > 0 ? '+' : ''}${route.magVar}\u00B0`, 'VARIATION'],
+                ].map(([v, l]) => (
+                  <div key={l}>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--map-ink)',
+                      letterSpacing: '-0.5px', fontVariantNumeric: 'tabular-nums' }}>{v}</div>
+                    <div style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--map-ink-faint)',
+                      letterSpacing: '0.4px', marginTop: 2 }}>{l}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 18, fontSize: 11.5, color: 'var(--map-ink-dim)', lineHeight: 1.45 }}>
+                A straight line from the departure. It does not account for
+                airspace, terrain or wind. Open the plan to work those.
+              </div>
+              <button onClick={() => { setConfirmRoute(false); setSnap('collapsed') }} style={{
+                marginTop: 18, width: '100%', padding: '13px 0', borderRadius: 12, border: 'none',
+                background: ACCENT, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              }}>Looks right</button>
+              <button onClick={() => { setConfirmRoute(false); openPlanner() }} style={{
+                marginTop: 8, width: '100%', padding: '13px 0', borderRadius: 12, border: 'none',
+                background: 'var(--map-fill)', color: 'var(--map-ink)', fontSize: 14,
+                fontWeight: 700, cursor: 'pointer',
+              }}>Open the plan</button>
+            </>)}
+          </div>
+        )}
+
+        {!planning && !confirmRoute && (
         <div
           onPointerDown={onBodyDragStart} onPointerMove={onDragMove}
           onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
