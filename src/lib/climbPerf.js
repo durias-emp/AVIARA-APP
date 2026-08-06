@@ -54,6 +54,19 @@ const DEFAULTS = {
   'helicopter':   { rocFpm: 1000, ceilingFt: 12000, hCritFt: 8000 },
 }
 
+// The figures an altitude recommendation actually rests on. Ranking one
+// altitude above another is an arithmetic comparison of time and fuel, and
+// every term in it comes from these — so if any is a class average rather
+// than the pilot's own number, the ranking is a comparison of our guesses,
+// not of their aeroplane. The advice is withheld in that case rather than
+// labelled; see recommendCruise's weather-only path.
+export const REQUIRED_PERF = ['roc', 'ceiling', 'burnCruise', 'burnClimb', 'climbSpeed']
+
+export function missingPerfFigures(perf) {
+  if (!perf) return [...REQUIRED_PERF, 'cruiseSpeed']
+  return REQUIRED_PERF.filter(k => perf.assumed?.[k])
+}
+
 // profile: the IndexedDB aircraft/profile record.
 // Returns null only when there is no usable cruise speed at all, without that
 // the whole model is guesswork and the caller should say so instead.
@@ -119,6 +132,9 @@ export function parseAircraftPerf(profile) {
   const rocRaw = rocFromChart ?? num(profile.perf?.roc)
   const ceilRaw = num(profile.perf?.ceiling)
   const burnClimbRaw = num(profile.burnRate?.climb)
+  // Vy as published, not a fraction of cruise. The 0.85 factor below is a
+  // stand-in for an aircraft whose climb speed nobody has entered.
+  const climbSpeedRaw = num(profile.vspeeds?.vy)
 
   return {
     tasKt,
@@ -129,6 +145,7 @@ export function parseAircraftPerf(profile) {
     burnCruiseGph,
     burnClimbGph: burnClimbRaw ?? (burnCruiseGph ? burnCruiseGph * 1.25 : 0),
     rocFpm: rocRaw ?? def.rocFpm,
+    climbSpeedKt: climbSpeedRaw ?? tasKt * CLIMB_SPEED_FACTOR,
     serviceCeilingFt: ceilRaw ?? def.ceilingFt,
     hCritFt: def.hCritFt,
     klass,
@@ -137,6 +154,7 @@ export function parseAircraftPerf(profile) {
       ceiling: ceilRaw == null,
       burnClimb: burnClimbRaw == null,
       burnCruise: burnCruiseGph === 0,
+      climbSpeed: climbSpeedRaw == null,
     },
     // Which figures came from the pilot's own POH charts rather than from a
     // typed field or a class default. Lets the UI distinguish "your book says
@@ -187,7 +205,11 @@ export function climbTo(perf, fromFt, toFt, hwKt = 0) {
   const minutes = (hAbs / perf.rocFpm) * Math.log((hAbs - fromFt) / (hAbs - toFt))
   if (!Number.isFinite(minutes) || minutes <= 0) return null
 
-  const midTas = tasAt(perf, (fromFt + toFt) / 2) * CLIMB_SPEED_FACTOR
+  // Published Vy when the pilot gave one; otherwise the fraction-of-cruise
+  // stand-in, which parseAircraftPerf has already flagged as assumed.
+  const midTas = perf.assumed?.climbSpeed === false && perf.climbSpeedKt
+    ? perf.climbSpeedKt
+    : tasAt(perf, (fromFt + toFt) / 2) * CLIMB_SPEED_FACTOR
   return {
     minutes,
     gallons: (minutes / 60) * perf.burnClimbGph,

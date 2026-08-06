@@ -1478,6 +1478,95 @@ function RouteWaypoints({ waypoints, onDrop, onDragInsert, onWaypointDrop, moveW
 // Every figure here is the engine's own. The score breakdown IS the reasons
 // list, so nothing shown can drift from what was actually computed. What was
 // unavailable or assumed is stated rather than quietly folded in.
+const PERF_LABELS = {
+  roc: 'climb rate',
+  ceiling: 'service ceiling',
+  burnCruise: 'cruise fuel burn',
+  burnClimb: 'climb fuel burn',
+  climbSpeed: 'climb speed (Vy)',
+  cruiseSpeed: 'cruise speed',
+}
+
+/* ── What the app can honestly say about altitude when it does not know the
+   aeroplane. Ranking altitudes means comparing time and fuel, and without
+   the pilot's own figures that comparison runs on class averages — a
+   recommendation that looks specific while resting on a guess. So this
+   reports the air instead: the band the weather and the rules leave open,
+   and the freezing levels, stated as facts for the pilot to judge. ── */
+function WeatherOnlyAdvice({ advice }) {
+  const { range, freezingFt, missingPerf = [], permitted = [], flightRules, ceilingKnown } = advice
+  const ft = n => `${Math.round(n).toLocaleString()} ft`
+  const missing = missingPerf.map(k => PERF_LABELS[k] || k)
+  const iced = permitted.filter(p => p.ice?.severity)
+  const rough = permitted.filter(p => p.turb?.severity)
+
+  return (
+    <div style={{
+      borderRadius: 10, background: 'var(--bg-card-2)', padding: '11px 13px', marginBottom: 10,
+      border: '0.5px solid var(--border)',
+    }}>
+      <div style={{ fontSize: 13, fontWeight: 700 }}>Weather only, no altitude picked</div>
+      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.5 }}>
+        Choosing between altitudes is a time and fuel comparison, and this aircraft is
+        missing {missing.join(', ')}. Rather than rank them on class averages, here is
+        what the weather and the rules allow.
+      </div>
+
+      {range ? (
+        <div style={{ marginTop: 9 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em' }}>
+            {range.lowFt === range.highFt ? ft(range.lowFt) : `${ft(range.lowFt)} – ${ft(range.highFt)}`}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.5 }}>
+            {permitted.length === 1 ? 'The only altitude' : `${permitted.length} altitudes`} clear of terrain,
+            airspace and the oxygen rules
+            {flightRules === 'VFR' ? ', with §91.155 cloud clearance held vertically' : ''}.
+            Anything ruled out is listed with its reason below.
+            {!ceilingKnown && ' The top of the band is the weather, not this aircraft. ' +
+              'No service ceiling is on file, so none was applied.'}
+          </div>
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, color: 'var(--warn)', marginTop: 9, lineHeight: 1.5 }}>
+          No altitude in the hemispheric list is clear. Reasons are on each one below.
+        </div>
+      )}
+
+      {freezingFt && (
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.5 }}>
+          <strong style={{ color: 'var(--text)' }}>Freezing level</strong>{' '}
+          {freezingFt.minFt === freezingFt.maxFt
+            ? ft(freezingFt.minFt)
+            : `${ft(freezingFt.minFt)} to ${ft(freezingFt.maxFt)}`} along the route.
+          Visible moisture at or above it is where ice lives.
+        </div>
+      )}
+
+      {(iced.length > 0 || rough.length > 0) && (
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6, lineHeight: 1.5 }}>
+          {iced.length > 0 && (
+            <div>
+              <strong style={{ color: 'var(--text)' }}>Icing</strong>{' '}
+              forecast at {iced.map(p => ft(p.altFt)).join(', ')}.
+            </div>
+          )}
+          {rough.length > 0 && (
+            <div>
+              <strong style={{ color: 'var(--text)' }}>Turbulence</strong>{' '}
+              forecast at {rough.map(p => ft(p.altFt)).join(', ')}.
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.5 }}>
+        Enter {missing.join(', ')} on the aircraft's page and this becomes a ranked
+        recommendation with time and fuel for each altitude.
+      </div>
+    </div>
+  )
+}
+
 function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick, brief, briefBusy, onBrief }) {
   if (busy && !advice) {
     return (
@@ -1489,6 +1578,8 @@ function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick, brief, brie
     )
   }
   if (!advice) return null
+
+  if (advice.status === 'weather-only') return <WeatherOnlyAdvice advice={advice} />
 
   if (advice.status === 'no-legal-altitude') {
     return (
