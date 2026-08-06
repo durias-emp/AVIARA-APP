@@ -107,11 +107,34 @@ export function IconWrench({ size = 24 }) {
   )
 }
 
+// Eight-tooth gear, generated rather than hand-drawn: the previous path was
+// a hand-transcribed copy of a stock icon with malformed arcs (and a stray
+// horizontal-line command mid-path), which rendered as a lump at the 22px
+// the Settings card actually uses. Every point here is a polar coordinate
+// off one centre, so the teeth are identical by construction — 18° tips,
+// 16° valleys, tip radius 10.15 leaving room for the 1.5 stroke inside the
+// 24-unit box.
 export function IconGear({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V19.9a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H4.1a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H10a1.7 1.7 0 0 0 1.04-1.56V4.1a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V10a1.7 1.7 0 0 0 1.56 1.04h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.56 1.04z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+      <path
+        d="M10.41 1.97A10.15 10.15 0 0 1 13.59 1.97L13.90 4.64A7.6 7.6 0 0 1 15.86 5.45L17.97 3.79A10.15 10.15 0 0 1 20.21 6.03L18.55 8.14A7.6 7.6 0 0 1 19.36 10.10L22.03 10.41A10.15 10.15 0 0 1 22.03 13.59L19.36 13.90A7.6 7.6 0 0 1 18.55 15.86L20.21 17.97A10.15 10.15 0 0 1 17.97 20.21L15.86 18.55A7.6 7.6 0 0 1 13.90 19.36L13.59 22.03A10.15 10.15 0 0 1 10.41 22.03L10.10 19.36A7.6 7.6 0 0 1 8.14 18.55L6.03 20.21A10.15 10.15 0 0 1 3.79 17.97L5.45 15.86A7.6 7.6 0 0 1 4.64 13.90L1.97 13.59A10.15 10.15 0 0 1 1.97 10.41L4.64 10.10A7.6 7.6 0 0 1 5.45 8.14L3.79 6.03A10.15 10.15 0 0 1 6.03 3.79L8.14 5.45A7.6 7.6 0 0 1 10.10 4.64Z"
+        stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+      <circle cx="12" cy="12" r="3.4" stroke="currentColor" strokeWidth="1.5"/>
+    </svg>
+  )
+}
+
+// Atom — nucleus plus three electron shells at 60° to each other. Ellipses
+// with a rotate transform rather than paths, so the three orbits are the
+// same shape by construction and stay perfectly symmetric at any size.
+export function IconAtom({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <ellipse cx="12" cy="12" rx="10.2" ry="4.1" stroke="currentColor" strokeWidth="1.5"/>
+      <ellipse cx="12" cy="12" rx="10.2" ry="4.1" stroke="currentColor" strokeWidth="1.5" transform="rotate(60 12 12)"/>
+      <ellipse cx="12" cy="12" rx="10.2" ry="4.1" stroke="currentColor" strokeWidth="1.5" transform="rotate(120 12 12)"/>
+      <circle cx="12" cy="12" r="2.1" fill="currentColor"/>
     </svg>
   )
 }

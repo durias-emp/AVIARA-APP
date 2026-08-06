@@ -19,7 +19,7 @@ import ToolsMenu from '../../components/ToolsMenu'
 import { AirportScene, PilotArt, HangarArt, FlightPlanArt } from '../../components/HomeHeroArt'
 import HeroLabel, { HERO_LABEL_WIDTH } from '../../components/HeroLabel'
 import { HomeLocationProvider } from '../../context/HomeLocation'
-import { IconWrench, IconGear, IconFriends } from '../../components/Icons'
+import { IconAtom, IconGear, IconFriends } from '../../components/Icons'
 import Checklists from '../Checklists/Checklists'
 import Hangar     from '../Aircraft/Hangar'
 import Settings   from '../Settings/Settings'
@@ -819,7 +819,7 @@ export default function Home() {
             {/* ── Tools / Settings ── */}
             <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <ModuleCard section="tools"    onOpen={openCard} Icon={IconWrench} label="Tools" />
+                <ModuleCard section="tools"    onOpen={openCard} Icon={IconAtom}   label="Tools" />
                 <ModuleCard section="settings" onOpen={openCard} Icon={IconGear}   label="Settings" />
               </div>
             </div>
