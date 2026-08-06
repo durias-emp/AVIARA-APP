@@ -14,7 +14,7 @@ import { OverlayCloseContext } from '../../context/OverlayClose'
 import { BackOverrideContext } from '../../context/BackOverride'
 import { useSwipeBack } from '../../hooks/useSwipeBack'
 import MapView from '../../components/MapView'
-import AirportInfo from '../../components/AirportInfo'
+import AirportInfo, { HOME_AIRPORT_EVENT } from '../../components/AirportInfo'
 import ToolsMenu from '../../components/ToolsMenu'
 import { HomeLocationProvider } from '../../context/HomeLocation'
 import { IconAtom, IconGear, IconFriends, IconRunways, IconHangar, IconHelmet, IconRoute, IconSky } from '../../components/Icons'
@@ -430,10 +430,16 @@ function AirportsHeroCard({ onOpen }) {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    get('settings', 'homeAirport').then(row => {
+    const load = (firstRun = false) => get('settings', 'homeAirport').then(row => {
       if (row?.value) setIcao(row.value)
-      else setPicker(true)
+      else if (firstRun) setPicker(true)
     })
+    load(true)
+    // Home base can now be changed from the Airports section; without this
+    // the card would keep showing the old field for the rest of the session.
+    const onChanged = () => load(false)
+    window.addEventListener(HOME_AIRPORT_EVENT, onChanged)
+    return () => window.removeEventListener(HOME_AIRPORT_EVENT, onChanged)
   }, [])
 
   useEffect(() => {
