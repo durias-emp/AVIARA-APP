@@ -16,10 +16,11 @@ import { useSwipeBack } from '../../hooks/useSwipeBack'
 import MapView from '../../components/MapView'
 import AirportInfo from '../../components/AirportInfo'
 import ToolsMenu from '../../components/ToolsMenu'
-import { AirportScene, PilotArt, HangarArt, FlightPlanArt } from '../../components/HomeHeroArt'
-import HeroLabel, { HERO_LABEL_WIDTH } from '../../components/HeroLabel'
 import { HomeLocationProvider } from '../../context/HomeLocation'
-import { IconAtom, IconGear, IconFriends } from '../../components/Icons'
+import { IconAtom, IconGear, IconFriends, IconRunways, IconHangar, IconHelmet, IconRoute, IconSky } from '../../components/Icons'
+import { useAuth } from '../../context/AuthContext'
+import { hasUnreadMessages } from '../../lib/messages'
+import { haversineNm } from '../../lib/geo'
 import Checklists from '../Checklists/Checklists'
 import Hangar     from '../Aircraft/Hangar'
 import Settings   from '../Settings/Settings'
@@ -32,6 +33,65 @@ import Pilot      from '../Pilot/Pilot'
 // with no scrolling, on the shortest phones the app supports.
 const HERO_HEIGHT = 64
 const ROW_GAP = 8
+
+/* ── The card shell every home row now shares ──────────────────────────
+   Replaces five separate illustrated cards (painted airport scene, hangar,
+   pilot, flight-plan desk, gradient) and their sideways labels. Those read
+   as five unrelated posters; this reads as one instrument panel.
+
+   Black with a hairline white border on purpose: over a map that is
+   sometimes bright sectional and sometimes dark satellite, a black card is
+   legible against both, and the hairline is what keeps its edge visible
+   when the map behind it happens to be dark too.
+
+   Fixed left half — glyph, then label — so the eye finds the same thing in
+   the same place on every row. Everything live goes right, where the rows
+   are free to differ. ── */
+const CARD_BG = '#0d0d0f'
+const CARD_BORDER = '1px solid rgba(255,255,255,0.18)'
+
+function HeroCard({ Icon, label, sublabel, right, onOpen, ariaLabel }) {
+  return (
+    <div style={{ padding: `${ROW_GAP}px 18px 0` }}>
+      <div onClick={onOpen} role="button" tabIndex={0} aria-label={ariaLabel}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen() } }}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 11,
+          height: HERO_HEIGHT, boxSizing: 'border-box', padding: '0 14px',
+          borderRadius: 16, background: CARD_BG, border: CARD_BORDER,
+          cursor: 'pointer', WebkitTapHighlightColor: 'transparent', overflow: 'hidden',
+        }}>
+        <span style={{ color: '#fff', display: 'flex', flexShrink: 0 }}><Icon size={22} /></span>
+        <span style={{ minWidth: 0, flexShrink: 0 }}>
+          <span style={{
+            display: 'block', fontSize: 15, fontWeight: 700, color: '#fff',
+            letterSpacing: '-0.2px', whiteSpace: 'nowrap',
+          }}>{label}</span>
+          {sublabel && (
+            <span style={{ display: 'block', fontSize: 10.5, color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>
+              {sublabel}
+            </span>
+          )}
+        </span>
+        <span style={{
+          marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 9,
+          minWidth: 0, justifyContent: 'flex-end',
+        }}>{right}</span>
+      </div>
+    </div>
+  )
+}
+
+// Flight category, as a pill. Same colours the Airports page uses.
+function CatPill({ cat }) {
+  if (!cat) return null
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 800, letterSpacing: '0.05em', color: '#fff',
+      background: cat.color, padding: '2px 7px', borderRadius: 20, flexShrink: 0,
+    }}>{cat.label}</span>
+  )
+}
 
 /* ── Module card — compact horizontal row, matches the hero buttons'
    height so the bottom row lines up with everything above it. ── */
@@ -46,9 +106,12 @@ function ModuleCard({ section, onOpen, Icon, label }) {
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
       style={{
       cursor: 'pointer',
-      background: 'var(--bg-card)',
+      // Same black + hairline as the hero rows above. These two used to be
+      // themed cards, which meant a light theme put two white buttons at
+      // the bottom of a column of black ones.
+      background: CARD_BG,
+      border: CARD_BORDER,
       borderRadius: 16,
-      boxShadow: 'var(--shadow-sm)',
       display: 'flex',
       alignItems: 'center',
       gap: 10,
@@ -58,11 +121,11 @@ function ModuleCard({ section, onOpen, Icon, label }) {
       minWidth: 0,
       WebkitTapHighlightColor: 'transparent',
     }}>
-      <span style={{ color: 'var(--text)', display: 'flex', flexShrink: 0 }}>
+      <span style={{ color: '#fff', display: 'flex', flexShrink: 0 }}>
         <Icon size={22} />
       </span>
       <div style={{
-        fontSize: 14, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px',
+        fontSize: 14, fontWeight: 700, color: '#fff', letterSpacing: '-0.2px',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>
         {label}
@@ -72,53 +135,45 @@ function ModuleCard({ section, onOpen, Icon, label }) {
 }
 
 /* ── Hangar card ──────────────────────────────────────────── */
-function HangarCard({ aircraftImage, aircraftCount = 0, onOpen }) {
+function HangarCard({ aircraftImage, activeAircraft, aircraftCount = 0, onOpen }) {
   const empty = aircraftCount === 0
+  const tail = activeAircraft?.tail || activeAircraft?.registration || activeAircraft?.name || null
 
   function handleClick() {
     onOpen('aircraft')
   }
 
   return (
-    <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div onClick={handleClick} role="button" tabIndex={0} aria-label={empty ? 'Add aircraft' : 'Open hangar'}
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
-        style={{
-        position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
-        boxShadow: 'var(--shadow-sm)',
-        height: HERO_HEIGHT, boxSizing: 'border-box',
-        cursor: 'pointer',
-        WebkitTapHighlightColor: 'transparent',
-      }}>
-        {empty ? (
-          <div style={{
-            position: 'absolute', inset: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            background: 'var(--bg-card-2)',
-          }}>
-            <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent)', lineHeight: 1 }}>+</span>
-            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Add Aircraft</span>
-          </div>
-        ) : aircraftImage ? (
-          <img src={aircraftImage} alt="" style={{
-            position: 'absolute', inset: 0,
-            width: '100%', height: '100%',
-            objectFit: 'cover', objectPosition: 'center',
-          }} />
+    <HeroCard
+      Icon={IconHangar}
+      label="Hangar"
+      sublabel={empty ? 'No aircraft yet' : tail}
+      onOpen={handleClick}
+      ariaLabel={empty ? 'Add aircraft' : 'Open hangar'}
+      right={
+        empty ? (
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', whiteSpace: 'nowrap' }}>+ Add</span>
         ) : (
-          <HangarArt />
-        )}
-
-        {!empty && (
-          <div style={{
-            position: 'absolute', inset: 0, zIndex: 0,
-            background: 'linear-gradient(108deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.3) 55%, rgba(0,0,0,0.05) 100%)',
-          }} />
-        )}
-
-        {!empty && <HeroLabel>Hangar</HeroLabel>}
-      </div>
-    </div>
+          <>
+            {aircraftImage && (
+              <img src={aircraftImage} alt="" style={{
+                width: 46, height: 32, objectFit: 'cover', borderRadius: 7,
+                border: '1px solid rgba(255,255,255,0.22)', flexShrink: 0,
+              }} />
+            )}
+            {/* Airworthiness at a glance. Grey until there is something to
+                report: maintenance due dates are not modelled yet, and a
+                green dot for data the app does not have would be the same
+                lie the pilot's medical dot deliberately avoids. */}
+            <span title="Maintenance status — not tracked yet" style={{
+              width: 9, height: 9, borderRadius: '50%', flexShrink: 0,
+              background: 'rgba(255,255,255,0.28)',
+              boxShadow: '0 0 0 1.5px rgba(255,255,255,0.18)',
+            }} />
+          </>
+        )
+      }
+    />
   )
 }
 
@@ -139,7 +194,7 @@ function HangarCard({ aircraftImage, aircraftCount = 0, onOpen }) {
 // move rather than on every frame of a drag. The drag flag zeroes the
 // controls' transition so they track a finger exactly, and restores it so they
 // ease alongside the drawer when it snaps instead of arriving first.
-function HomeMap({ metrics }) {
+function HomeMap({ metrics, onRouteChange }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'var(--bg)' }}>
       <MapView
@@ -155,6 +210,7 @@ function HomeMap({ metrics }) {
         focusInset={Math.min(metrics.live, metrics.openHeight || metrics.live)}
         insetDuration={metrics.dragging ? '0ms' : '260ms'}
         topInset="var(--safe-top)"
+        onRouteChange={onRouteChange}
         showHomeButton={false}
       />
     </div>
@@ -447,93 +503,85 @@ function AirportsHeroCard({ onOpen }) {
   // model estimate stands in, so it doesn't show a sunny scene in a storm.
   const condition = resolved?.type ?? sky.type
 
+  // "Airports" stays the label so the column of rows reads as a list of
+  // sections; the ICAO belongs with the weather it describes, at the head
+  // of the live cluster on the right.
   return (
-    <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div onClick={handleClick} role="button" tabIndex={0} aria-label="Open airports"
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
-        style={{
-        position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
-        boxShadow: 'var(--shadow-sm)',
-        height: HERO_HEIGHT, boxSizing: 'border-box',
-        cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
-      }}>
-        <AirportScene condition={condition} />
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 0,
-          background: 'linear-gradient(108deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.2) 55%, rgba(0,0,0,0.04) 100%)',
-        }} />
-        <HeroLabel>Airports</HeroLabel>
-
-        <div style={{
-          position: 'relative', zIndex: 1, height: '100%',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: `0 14px 0 ${HERO_LABEL_WIDTH + 14}px`, boxSizing: 'border-box',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <span style={{ fontSize: 16, fontWeight: 800, color: '#fff', fontFamily: 'monospace', letterSpacing: '0.06em' }}>
-              {icao}
-            </span>
-            {cat && (
-              <span style={{
-                fontSize: 9, fontWeight: 800, letterSpacing: '0.05em', color: '#fff',
-                background: cat.color, padding: '2px 7px', borderRadius: 20,
-                boxShadow: `0 1px 4px ${cat.color}66`, flexShrink: 0,
-              }}>{cat.label}</span>
-            )}
-          </div>
-
-          <div style={{ textAlign: 'right', fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.85)', lineHeight: 1.5, flexShrink: 0 }}>
-            {wx?.metar ? (
-              <>
-                <div>{parseTemp(wx.metar, units)} · {parseWind(wx.metar, units)}</div>
-                <div style={{ color: 'rgba(255,255,255,0.65)' }}>{parseVisib(wx.metar, units)} vis</div>
-              </>
-            ) : area ? (
-              // A field with no station still gets numbers, from the model at
-              // its own coordinates. There is no flight-category pill on this
-              // path — `cat` stays null without a published one — so the card
-              // never asserts VFR on the strength of a forecast. The Airports
-              // page carries the full "not observed here" labelling; this is
-              // the summary that sends you there.
-              <>
-                <div>{areaTemp(area, units)} · {areaWind(area, units)}</div>
-                <div style={{ color: 'rgba(255,255,255,0.55)' }}>{areaVis(area, units)} · forecast</div>
-              </>
-            ) : (
-              <span style={{ color: 'rgba(255,255,255,0.65)' }}>{loading ? 'Loading…' : '—'}</span>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+    <HeroCard
+      Icon={IconRunways}
+      label="Airports"
+      onOpen={handleClick}
+      ariaLabel="Open airports"
+      right={
+        <>
+          <span style={{
+            fontSize: 13, fontWeight: 800, color: '#fff', fontFamily: 'monospace',
+            letterSpacing: '0.04em', flexShrink: 0,
+          }}>{icao}</span>
+          <span style={{ color: '#fff', display: 'flex', flexShrink: 0, opacity: 0.95 }}>
+            <IconSky type={condition} size={21} />
+          </span>
+          <CatPill cat={cat} />
+          <span style={{
+            fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.82)',
+            whiteSpace: 'nowrap', flexShrink: 0, fontVariantNumeric: 'tabular-nums',
+          }}>
+            {wx?.metar
+              ? `${parseTemp(wx.metar, units)} · ${parseWind(wx.metar, units)}`
+              // A field with no station of its own still gets numbers, from
+              // the model at its coordinates. No category pill on this path
+              // (`cat` stays null without a published METAR), so the card
+              // never asserts VFR on the strength of a forecast.
+              : area ? `${areaTemp(area, units)} · ${areaWind(area, units)}`
+              : loading ? 'Loading…' : '—'}
+          </span>
+        </>
+      }
+    />
   )
 }
 
 /* ── Flight Planning card ─────────────────────────────────── */
-function FlightPlanCard({ onOpen }) {
+function FlightPlanCard({ route, onOpen }) {
 
   function handleClick() {
     onOpen('checklists')
   }
 
+  // The active plan, straight from the map's route bar. Distance is summed
+  // across the legs rather than measured origin-to-destination, so a route
+  // that doglegs reads longer than the straight line — which is the number
+  // that matters. No ETE: that needs a groundspeed this card has no honest
+  // source for on the ground.
+  const legs = route?.length >= 2 ? route : null
+  const totalNm = legs
+    ? legs.slice(1).reduce((sum, wp, i) => sum + haversineNm(legs[i].lat, legs[i].lon, wp.lat, wp.lon), 0)
+    : 0
+
   return (
-    <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div onClick={handleClick} role="button" tabIndex={0} aria-label="Open flight planning"
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
-        style={{
-        position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
-        boxShadow: 'var(--shadow-sm)',
-        height: HERO_HEIGHT, boxSizing: 'border-box',
-        cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
-      }}>
-        <FlightPlanArt />
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 0,
-          background: 'linear-gradient(108deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.16) 55%, rgba(0,0,0,0.02) 100%)',
-        }} />
-        <HeroLabel>FPL</HeroLabel>
-      </div>
-    </div>
+    <HeroCard
+      Icon={IconRoute}
+      label="FPL"
+      sublabel={legs ? `${legs.length} fixes` : null}
+      onOpen={handleClick}
+      ariaLabel="Open flight planning"
+      right={legs ? (
+        <span style={{ textAlign: 'right', lineHeight: 1.35, minWidth: 0 }}>
+          <span style={{
+            display: 'block', fontSize: 12, fontWeight: 700, color: '#fff',
+            fontFamily: 'monospace', letterSpacing: '0.04em',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {legs[0].name} → {legs[legs.length - 1].name}
+          </span>
+          <span style={{ display: 'block', fontSize: 11, color: 'rgba(255,255,255,0.6)', fontVariantNumeric: 'tabular-nums' }}>
+            {totalNm.toFixed(0)} NM
+          </span>
+        </span>
+      ) : (
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap' }}>No active route</span>
+      )}
+    />
   )
 }
 
@@ -549,31 +597,43 @@ function FlightPlanCard({ onOpen }) {
    so a quick painted background beats investing in custom art for a
    shape that's still expected to change. ── */
 function DiscoverCard({ onOpen }) {
+  const { user } = useAuth()
+  const [unread, setUnread] = useState(0)
+
+  // Polled on mount and whenever the app regains focus, matching how
+  // hasUnreadMessages is already used elsewhere: a standing realtime
+  // subscription just to paint a badge is the first step toward a
+  // notification system this pass is not building.
+  useEffect(() => {
+    if (!user?.id) { setUnread(0); return }
+    let alive = true
+    const load = () => hasUnreadMessages(user.id)
+      .then(({ count }) => { if (alive) setUnread(count ?? 0) })
+      .catch(() => {})
+    load()
+    window.addEventListener('focus', load)
+    return () => { alive = false; window.removeEventListener('focus', load) }
+  }, [user?.id])
 
   function handleClick() {
     onOpen('discover')
   }
 
   return (
-    <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div onClick={handleClick} role="button" tabIndex={0} aria-label="Open friends"
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
-        style={{
-        position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
-        boxShadow: 'var(--shadow-sm)',
-        height: HERO_HEIGHT, boxSizing: 'border-box',
-        background: 'linear-gradient(108deg, #2563eb 0%, #7c3aed 55%, #ec4899 100%)',
-        cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
-      }}>
+    <HeroCard
+      Icon={IconFriends}
+      label="Social"
+      onOpen={handleClick}
+      ariaLabel="Open social"
+      right={unread > 0 ? (
         <span style={{
-          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-          zIndex: 1, color: 'rgba(255,255,255,0.9)', display: 'flex',
-        }}>
-          <IconFriends size={30} />
-        </span>
-        <HeroLabel>Friends</HeroLabel>
-      </div>
-    </div>
+          minWidth: 20, height: 20, padding: '0 6px', borderRadius: 10,
+          background: 'var(--danger)', color: '#fff',
+          fontSize: 11, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>{unread > 99 ? '99+' : unread}</span>
+      ) : null}
+    />
   )
 }
 
@@ -620,38 +680,24 @@ function PilotRow({ currencyCards, onOpen }) {
   }
 
   return (
-    <div style={{ padding: `${ROW_GAP}px 18px 0`}}>
-      <div onClick={handleClick} role="button" tabIndex={0} aria-label="Open pilot"
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
-        style={{ textDecoration: 'none' }}>
-        <div style={{
-          position: 'relative', overflow: 'hidden', borderRadius: 20, isolation: 'isolate',
-          boxShadow: 'var(--shadow-sm)',
-          height: HERO_HEIGHT, boxSizing: 'border-box',
-          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+    <HeroCard
+      Icon={IconHelmet}
+      label="Pilot"
+      onOpen={handleClick}
+      ariaLabel="Open pilot"
+      right={
+        <span style={{
+          display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3,
+          fontSize: 11, fontWeight: 700, color: '#fff', lineHeight: 1,
         }}>
-          <PilotArt />
-          <div style={{
-            position: 'absolute', inset: 0, zIndex: 0,
-            background: 'linear-gradient(108deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.2) 55%, rgba(0,0,0,0.04) 100%)',
-          }} />
-          <HeroLabel>Pilot</HeroLabel>
-
-          <div style={{
-            position: 'absolute', top: 0, bottom: 0, right: 14, zIndex: 1,
-            display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3,
-            fontSize: 11, fontWeight: 700, color: '#fff', lineHeight: 1,
-            textShadow: '0 1px 2px rgba(0,0,0,0.45)',
-          }}>
-            <StatusLine label="Currency" status={currencyCards?.current.status} />
-            <StatusLine label="Medical"  status={currencyCards?.valid.status} />
-            <div style={{ textAlign: 'right', fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontVariantNumeric: 'tabular-nums' }}>
-              TT: {totalHours.toFixed(1)}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+          <StatusLine label="Currency" status={currencyCards?.current.status} />
+          <StatusLine label="Medical"  status={currencyCards?.valid.status} />
+          <span style={{ textAlign: 'right', fontWeight: 600, color: 'rgba(255,255,255,0.7)', fontVariantNumeric: 'tabular-nums' }}>
+            TT: {totalHours.toFixed(1)}
+          </span>
+        </span>
+      }
+    />
   )
 }
 
@@ -703,6 +749,9 @@ export default function Home() {
   // 'peek' | 'open' | 'full'. Only opening a section ever reaches 'full'.
   const [drawerStop, setDrawerStop] = useState('open')
   const [drawerMetrics, setDrawerMetrics] = useState({ live: 0, settled: 0, dragging: false, openHeight: 0 })
+  // The route typed into the map's own flight-plan bar, lifted here so the
+  // FPL card can show it. The map remains where a route is created.
+  const [activeRoute, setActiveRoute] = useState(null)
   const handleDrawerHeight = useCallback(m => setDrawerMetrics(m), [])
 
   const activeAircraft = aircraftList?.find(a => a.id === aircraftId)
@@ -791,16 +840,16 @@ export default function Home() {
 
   function renderRow(key) {
     if (key === 'airports') return <AirportsHeroCard key={key} onOpen={openCard} />
-    if (key === 'hangar')   return <HangarCard key={key} aircraftImage={aircraftImage} aircraftCount={aircraftList?.length ?? 0} onOpen={openCard} />
+    if (key === 'hangar')   return <HangarCard key={key} aircraftImage={aircraftImage} activeAircraft={activeAircraft} aircraftCount={aircraftList?.length ?? 0} onOpen={openCard} />
     if (key === 'pilot')    return <PilotRow key={key} currencyCards={currencyCards} onOpen={openCard} />
-    if (key === 'flight')   return <FlightPlanCard key={key} onOpen={openCard} />
+    if (key === 'flight')   return <FlightPlanCard key={key} route={activeRoute} onOpen={openCard} />
     if (key === 'discover') return <DiscoverCard key={key} onOpen={openCard} />
     return null
   }
 
   return (
     <HomeLocationProvider>
-      <HomeMap metrics={drawerMetrics} />
+      <HomeMap metrics={drawerMetrics} onRouteChange={setActiveRoute} />
 
       <HomeDrawer
         stop={drawerStop}

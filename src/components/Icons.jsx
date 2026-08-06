@@ -125,6 +125,154 @@ export function IconGear({ size = 24 }) {
   )
 }
 
+// One glyph for the whole sky, keyed to WeatherAnimation's condition types
+// (clear / few / scattered / broken / overcast / rain / snow / storm / fog).
+// The Airports card used to carry a full painted scene; a pilot glancing at
+// a home screen wants to know "sun, cloud, or wet", and one symbol answers
+// that faster than an illustration does.
+export function IconSky({ type = 'clear', size = 22 }) {
+  const s = { stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none' }
+  const cloud = <path d="M7.4 18.4h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+  const sunSmall = (
+    <>
+      <circle cx="8.6" cy="7.8" r="3" {...s} />
+      <path d="M8.6 2.6v1.4M8.6 11.6v1.4M3.4 7.8h1.4M12.4 7.8h1.4M4.9 4.1l1 1M11.3 10.5l1 1M12.3 4.1l-1 1M5.9 10.5l-1 1" {...s} />
+    </>
+  )
+  switch (type) {
+    case 'clear':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="4.6" {...s} />
+          <path d="M12 3.2v2.2M12 18.6v2.2M3.2 12h2.2M18.6 12h2.2M5.8 5.8l1.6 1.6M16.6 16.6l1.6 1.6M18.2 5.8l-1.6 1.6M7.4 16.6l-1.6 1.6" {...s} />
+        </svg>
+      )
+    case 'few': case 'scattered':
+      return <svg width={size} height={size} viewBox="0 0 24 24" fill="none">{sunSmall}{cloud}</svg>
+    case 'broken': case 'overcast':
+      return <svg width={size} height={size} viewBox="0 0 24 24" fill="none">{cloud}</svg>
+    case 'rain':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M7.4 15.4h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+          <path d="M8.6 18.2l-.8 2.4M12 18.2l-.8 2.4M15.4 18.2l-.8 2.4" {...s} />
+        </svg>
+      )
+    case 'snow':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M7.4 15.4h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+          <path d="M8.4 19.2h.02M11.9 20.4h.02M15.4 19.2h.02" {...s} strokeWidth="2.4" />
+        </svg>
+      )
+    case 'storm':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M7.4 14.6h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+          <path d="M12.8 16.4l-2.4 3.4h2.6l-1.4 2.6" {...s} />
+        </svg>
+      )
+    case 'fog':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M7.4 13.6h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+          <path d="M5.4 17h13M7.4 20.2h9" {...s} />
+        </svg>
+      )
+    default:
+      return <svg width={size} height={size} viewBox="0 0 24 24" fill="none">{cloud}</svg>
+  }
+}
+
+/* ── Home card glyphs ──────────────────────────────────────────────────
+   One line weight (1.6), one 24-unit box, no fills except where a shape
+   reads better solid. They sit at 22px on a black card, so anything more
+   detailed than this turns to mush — the restraint is the design. ── */
+
+// Crossed runways — the way a field is drawn on a chart. An earlier version
+// was a control tower, which at 22px read as a candle.
+//
+// Each runway is a pair of parallel edges, so four lines in total: the strip
+// shape is what makes it a runway rather than a plus sign. Angles are
+// deliberately not 90° apart — real fields cross at odd angles, and the
+// asymmetry is what stops it reading as a crosshair.
+export function IconRunways({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+      {/* long runway, NNE/SSW */}
+      <path d="M8.2 21.2 12.6 3.1M11.6 21.9 16 3.8" />
+      {/* crossing runway, WNW/ESE */}
+      <path d="M2.9 9.9 20.4 13.3M2.5 12.1 20 15.5" />
+    </svg>
+  )
+}
+
+// Hangar: pitched roof, walls, door. An earlier version used a rounded
+// arch, which read as a tunnel — a peak is what makes it a building.
+export function IconHangar({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1.9 12.1 12 5.1l10.1 7" />
+      <path d="M3.9 10.7v9.8M20.1 10.7v9.8" />
+      <path d="M1.6 20.5h20.8" />
+      {/* The door is what separates a hangar from a house: it spans almost
+          the whole frontage, because an aeroplane has to fit through it. */}
+      <path d="M6.6 20.5v-6.6h10.8v6.6" />
+    </svg>
+  )
+}
+
+// The Pilot mark: the project's own logo (public/pilot-helmet.png, from
+// brand/pqrh-logo-source.jpeg), not a redrawing of it. Two attempts to
+// letter it as line art both drifted off-brand, which is the argument for
+// using the asset itself.
+//
+// Same treatment as the Pilot artwork in HomeHeroArt: the source is dark
+// engraving on cream, so inverting it would reverse every tone and turn the
+// pale goggle lenses dark. Instead the image drives a luminance mask over a
+// flat currentColor fill, keeping the drawing's own tonal sense. The
+// transfer curve is steep so the cream ground goes to zero and the card
+// shows through rather than carrying a pale rectangle.
+//
+// The window into the source (x 44, y 12, 60.9 x 60 in the original's
+// units) is the helmet's own box — that crop is also how the "PQRH"
+// wordmark below it gets dropped. Those numbers are mapped into this
+// 24-unit box by LOGO_SCALE; keep them in step with HomeHeroArt if the
+// crop ever moves.
+export function IconHelmet({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      {/* Leather flying helmet, front on: the dome, ear flaps tapering in
+          toward the chin, and the goggles. Proportioned so the lenses sit
+          clear of both the dome line and the flaps — an earlier pass had
+          all three touching and the result read as headphones. */}
+      <path d="M4.1 13.4a7.9 7.9 0 0 1 15.8 0" />
+      <path d="M4.1 13.4v2.4c0 1.6 1.1 2.9 2.6 3.2M19.9 13.4v2.4c0 1.6-1.1 2.9-2.6 3.2" />
+      <circle cx="9.1" cy="13.1" r="2.2" />
+      <circle cx="14.9" cy="13.1" r="2.2" />
+      <path d="M11.3 13.1h1.4" />
+    </svg>
+  )
+}
+
+// A three-fix route: departure, a turning point, destination. Scalene on
+// purpose — an equilateral triangle reads as a warning sign or a play
+// button, while uneven legs read as a route someone actually planned.
+export function IconRoute({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4.6 19.2 9.9 5.2M9.9 5.2 20.1 12.4" strokeDasharray="2.5 2.3" />
+      <circle cx="4.6" cy="19.2" r="2.1" fill="currentColor" stroke="none" />
+      <circle cx="9.9" cy="5.2" r="2.1" fill="currentColor" stroke="none" />
+      <circle cx="20.1" cy="12.4" r="2.1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 // Atom — nucleus plus three electron shells at 60° to each other. Ellipses
 // with a rotate transform rather than paths, so the three orbits are the
 // same shape by construction and stay perfectly symmetric at any size.
