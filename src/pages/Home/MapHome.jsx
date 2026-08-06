@@ -524,11 +524,6 @@ export default function MapHome() {
   // map keeps showing what the route is being drawn across. /checklists still
   // exists and still works; this is the way in, not the only way.
   const [planning, setPlanning] = useState(false)
-  // A route set by tapping the chart, waiting to be read back. Set when the
-  // tap happens rather than when the calculation lands: the callback that
-  // carries the result fires from inside the planner's own mount, and hanging
-  // this off it meant the panel never appeared.
-  const [confirmRoute, setConfirmRoute] = useState(false)
   // The calculated route: drawn on the map, summarised on the collapsed
   // drawer, and cleared by the X on that card. Read back from IndexedDB on
   // mount, so a route survives the app being closed and reopened, which is
@@ -894,51 +889,28 @@ export default function MapHome() {
     //
     // The record saved is the same shape the planner saves, so Open the plan
     // restores it as its own: fields prefilled, line drawn, no recalculation.
+    // Straight to the route on the drawer. There was a read-back between the
+    // two, a full-height card of the same four figures with a Looks right
+    // under them, and it was a screen asking a pilot to confirm something they
+    // had just done deliberately. The card below says the same thing in the
+    // same words, the line is drawn across the map behind it, and the X on it
+    // is the disagreement. Nothing was being checked that this does not show.
     const destId = (ident ?? '').trim().toUpperCase()
-    setRoute(null)                  // the panel shows "Working out the route"
-    setConfirmRoute(true)
-    setPlanning(true)
-    setSnap(80)
-
-    // Go and look at the place that was just picked.
-    //
-    // The question the read-back answers is "is this the right field", and the
-    // map is half of that answer: a heliport chosen from a chart covered in
-    // heliports is worth seeing up close before the numbers are believed.
-    // Framing the whole route instead puts both ends in view and the field
-    // itself a dot at one end of it, which reads as a flight rather than as a
-    // destination. The route gets its framing the moment the read-back is
-    // accepted, when the flight is what is being looked at.
-    //
-    // Centred in the strip the drawer leaves, not in the map: the drawer is
-    // about to stand at nearly two thirds of the screen, and the middle of the
-    // map is behind it. Leaflet centres on the whole container, so the point
-    // is offset by half of what the drawer covers to land in the middle of
-    // what is actually visible.
-    //
-    // Measured from window rather than from the render's own figures: this
-    // runs from a callback that was built on the first render, and the height
-    // it closed over then is not the height now.
-    const map = mapRef.current
-    if (map) {
-      // The camera is now the pilot's, so the opening framing stops waiting
-      // for a fix to move it out from under them.
-      framed.current = true
-      const vhNow = window.innerHeight
-      const hidden = vhNow - stopY(vhNow, 80)
-      // Never zooms out. A pilot already looking closely at a field asked for
-      // that view, and pulling back to a fixed level would undo it.
-      const z = Math.max(map.getZoom(), AIRPORT_ZOOM)
-      map.setView(map.unproject(map.project([lat, lon], z).add([0, hidden / 2]), z), z,
-        { animate: false })
-    }
+    setRoute(null)
+    setPlanning(false)
+    setSnap(30)
+    // The camera is the pilot's from here, so the opening framing stops
+    // waiting for a fix to move it out from under them. Where it goes is the
+    // framing effect's business: it fits the whole route into the strip the
+    // drawer leaves, which is the picture the card is describing.
+    framed.current = true
 
     const depId = await resolveHomeIdent()
     const depApt = depId ? await findAirport(depId) : null
     if (!depApt) {
-      // No home base to fly from, so there is nothing to read back. The
-      // planner opens instead, where the pilot can type a departure.
-      setConfirmRoute(false)
+      // No home base to fly from, so there is no route to draw. The planner
+      // opens instead, where the pilot can type a departure.
+      openPlanner()
       return
     }
     const calculated = await computeDirectRoute(
@@ -1162,13 +1134,6 @@ export default function MapHome() {
   // stands: only a different route moves the camera again.
   useEffect(() => {
     if (!mapRef.current || routeLine.length < 2) return
-    // Not while the route is being read back. There the map is showing the
-    // field that was just picked, close up, because that is what is being
-    // confirmed. Framing the whole route then would pull the camera off it
-    // about a second later, when the declination comes back and the numbers
-    // land. Accepting the read-back drops confirmRoute, this runs, and the
-    // flight gets its framing at the moment the flight becomes the subject.
-    if (confirmRoute) return
     const key = JSON.stringify(routeLine)
     if (fittedRoute.current === key) return
     fittedRoute.current = key
@@ -1191,7 +1156,7 @@ export default function MapHome() {
       // half-second glide.
       animate: false,
     })
-  }, [routeLine, mapReady, vh, restY, confirmRoute])
+  }, [routeLine, mapReady, vh, restY])
 
   // Corners square off as the sheet approaches the top, rather than snapping
   // from rounded to square at the end of the animation. Interpolated over the
@@ -1629,7 +1594,7 @@ export default function MapHome() {
           map left to float over, and the drawer is what the pilot asked to see
           all of. The row goes back inside it there. */}
       <FloatingCard
-        visible={planning ? (snap === (confirmRoute ? 80 : 50)) : (actionsFloat && snap === 30)}
+        visible={planning ? (snap === 50) : (actionsFloat && snap === 30)}
         // Compact wherever it floats, with no exception for the planner.
         //
         // The planner kept the wide card on the argument that its stop is fixed
@@ -1641,7 +1606,7 @@ export default function MapHome() {
         // different card arriving.
         compact
         bottom={planning
-          ? `${vh - stopY(vh, confirmRoute ? 80 : 50) + 10}px`
+          ? `${vh - stopY(vh, 50) + 10}px`
           // Above the drawer, and above the recording stats when those are out
           // too, rather than on top of them.
           : `${restPx + (recording ? 132 : 0) + 10}px`}>
@@ -1719,7 +1684,7 @@ export default function MapHome() {
           moment it lands. */}
       <div style={{
         display: 'flex', flexDirection: 'column', minHeight: 0,
-        height: (planning || confirmRoute) ? `${Math.max(0, vh - restY)}px` : '100%',
+        height: planning ? `${Math.max(0, vh - restY)}px` : '100%',
       }}>
 
         {/* The grab area: handle and actions. Dragging anywhere on this moves
@@ -1747,7 +1712,7 @@ export default function MapHome() {
             }}
             style={{
               width: 40, height: 5, borderRadius: 3, background: 'var(--map-hairline)',
-              margin: (planning || confirmRoute) ? '0 auto 8px' : '0 auto 14px', cursor: 'pointer',
+              margin: planning ? '0 auto 8px' : '0 auto 14px', cursor: 'pointer',
             }} />
 
           {/* Weather, opposite the route planner. These are the two things a
@@ -1767,17 +1732,18 @@ export default function MapHome() {
           {!planning && !(actionsFloat && snap === 30) && actionRow()}
 
           {/* A route exists, so the drawer says so. It was taken out as a
-              duplicate of the read-back, which was right while the read-back
-              was on screen and wrong afterwards: the line stayed drawn across
-              the map with nothing in the drawer naming it.
+              only thing that says what the line across the map is. Tapping it
+              opens the plan, which is the one place with more to say about the
+              route than these four figures, and the X is how a route is
+              disagreed with.
 
-              Not while planning or while the read-back is up, where the same
-              route is already the subject of everything below. */}
-          {!planning && !confirmRoute && route?.distNm != null && (
+              Not while planning, where the same route is already the subject
+              of everything below. */}
+          {!planning && route?.distNm != null && (
             <RouteSummary
               route={route}
               onClear={clearRoute}
-              onOpen={() => { setConfirmRoute(true); setPlanning(true); setSnap(80) }} />
+              onOpen={openPlanner} />
           )}
 
           {/* No hint line while planning. It is the drawer explaining itself,
@@ -1799,7 +1765,7 @@ export default function MapHome() {
             only while planning, so leaving it is what unmounts the megabyte of
             planner and its Leaflet previews rather than leaving them running
             under a map that is already drawing one. */}
-        {planning && !confirmRoute && (
+        {planning && (
           <div
             onPointerDown={onBodyDragStart} onPointerMove={onDragMove}
             onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
@@ -1833,84 +1799,7 @@ export default function MapHome() {
             collapsed so a swipe there moves the sheet instead of the list.
             Gone entirely while planning, where the plan itself is what fills
             the drawer and carries the same handlers. */}
-        {/* The route, filling the drawer to be checked before it is flown.
-            A destination chosen by tapping a chart is the one most easily
-            picked by accident, so it is read back at a size worth reading
-            rather than tucked into the summary strip. */}
-        {planning && confirmRoute && (
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          <div style={{
-            flex: 1, minHeight: 0, overflowY: 'auto',
-            // Its own card, inset from the sheet, so the actions above sit on a
-            // separate surface rather than sharing one long panel with the
-            // read-back. Same shape the planner makes when it opens here.
-            margin: '2px 12px 0', padding: '16px 16px 18px',
-            background: 'var(--map-fill-soft)', borderRadius: 18,
-          }}>
-            {route?.distNm == null ? (
-              <div style={{ fontSize: 12.5, color: 'var(--map-ink-dim)', padding: '10px 0' }}>
-                Working out the route&#8230;
-              </div>
-            ) : (<>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.6px',
-                color: 'var(--map-ink-faint)', textTransform: 'uppercase' }}>
-                Confirm the flight
-              </div>
-              <div style={{ marginTop: 10, fontSize: 20, fontWeight: 800, letterSpacing: '-0.4px',
-                color: 'var(--map-ink)', lineHeight: 1.3, wordBreak: 'break-word' }}>
-                {route.dep} <span style={{ color: 'var(--map-ink-faint)' }}>&#8594;</span> {route.dest}
-              </div>
-              <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                {[
-                  [`${route.distNm} NM`, 'DISTANCE'],
-                  [`${route.mc}\u00B0`, 'MAGNETIC COURSE'],
-                  [`${route.tc}\u00B0`, 'TRUE COURSE'],
-                  [`${route.magVar > 0 ? '+' : ''}${route.magVar}\u00B0`, 'VARIATION'],
-                ].map(([v, l]) => (
-                  <div key={l}>
-                    <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--map-ink)',
-                      letterSpacing: '-0.5px', fontVariantNumeric: 'tabular-nums' }}>{v}</div>
-                    <div style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--map-ink-faint)',
-                      letterSpacing: '0.4px', marginTop: 2 }}>{l}</div>
-                  </div>
-                ))}
-              </div>
-            </>)}
-          </div>
-          {/* Below the scroller, not inside it. A long destination pushed the
-              confirm off the bottom of the drawer, and the one control this
-              panel exists for must never be the one you have to go looking
-              for. */}
-          {route?.distNm != null && (
-            <div style={{ flexShrink: 0, padding: '12px 12px calc(var(--safe-bottom) + 12px)' }}>
-              <button onClick={() => { setConfirmRoute(false); setPlanning(false); setSnap(30) }} style={{
-                width: '100%', padding: '13px 0', borderRadius: 12, border: 'none',
-                background: ACCENT, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
-              }}>Looks right</button>
-              {/* Down to the planner's own stop as well as into the planner.
-                  The read-back stands at 80 and the plan is never allowed
-                  above 50, so leaving the stop behind would open the planner
-                  at a height it cannot be dragged back to. */}
-              <button onClick={() => { setConfirmRoute(false); setSnap(50) }} style={{
-                marginTop: 8, width: '100%', padding: '13px 0', borderRadius: 12, border: 'none',
-                background: 'var(--map-fill)', color: 'var(--map-ink)', fontSize: 14,
-                fontWeight: 700, cursor: 'pointer',
-              }}>Open the plan</button>
-              {/* The X on the old summary card was the only way to be rid of a
-                  route. That card is gone, so the action moves here rather than
-                  disappearing with it. */}
-              <button onClick={() => { clearRoute(); setConfirmRoute(false); setPlanning(false); setSnap(30) }}
-                style={{
-                  marginTop: 10, width: '100%', padding: '10px 0', borderRadius: 12,
-                  border: 'none', background: 'none', color: 'var(--map-ink-faint)',
-                  fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-                }}>Discard this route</button>
-            </div>
-          )}
-          </div>
-        )}
-
-        {!planning && !confirmRoute && (
+        {!planning && (
         <div
           onPointerDown={onBodyDragStart} onPointerMove={onDragMove}
           onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
