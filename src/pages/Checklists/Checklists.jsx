@@ -255,8 +255,14 @@ function ChecklistDetail({ checklist, onBack }) {
     // depends on everything above it. position:fixed depends on nothing.
     // The body's safe-area padding doesn't reach a fixed child, so the top
     // inset is re-applied here; the fixed footer already handles the bottom.
+    // Top starts below the drawer's grab handle when this is hosted in the
+    // drawer (Home publishes --drawer-handle); inset:0 covered the handle,
+    // which made the drawer impossible to drag to full height from inside a
+    // section. Falls back to 0 when this renders as its own route, where
+    // there is no handle to clear.
     <div style={{
-      position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
+      position: 'fixed', top: 'var(--drawer-handle, 0px)', left: 0, right: 0, bottom: 0,
+      display: 'flex', flexDirection: 'column',
       paddingTop: 'var(--safe-top)', background: 'var(--bg)',
     }}>
       {/* Header */}

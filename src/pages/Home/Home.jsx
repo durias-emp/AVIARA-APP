@@ -362,7 +362,15 @@ function HomeDrawer({ stop, onStopChange, sectionOpen, onHeightChange, children 
         ? 'height 260ms cubic-bezier(0.32, 0.72, 0, 1), border-radius 200ms ease'
         : 'none',
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
-      touchAction: 'none',
+      // Published so a section pinning itself with position:fixed can start
+      // BELOW the grab handle instead of on top of it — see the handle's own
+      // note, and Checklists.jsx which reads this.
+      '--drawer-handle': `${DRAWER_PEEK}px`,
+      // touch-action lives on the handle alone, not here. Setting it on the
+      // whole drawer disabled touch scrolling for everything inside it: a
+      // section taller than the drawer could not be scrolled on a phone at
+      // all, which is how the flight-plan type picker ended up with its
+      // third option stranded below the fold.
       // Sections pin their own chrome with position:fixed — Discover's Home
       // button and tab bar, the Checklists pane's inset:0. Against the
       // viewport that chrome escapes the drawer and lands on the map. A
@@ -386,6 +394,14 @@ function HomeDrawer({ stop, onStopChange, sectionOpen, onHeightChange, children 
           height: DRAWER_PEEK, flexShrink: 0, cursor: 'grab',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           WebkitTapHighlightColor: 'transparent',
+          // Sections pin their chrome with position:fixed, which the drawer's
+          // transform scopes to the drawer's own box — so an inset:0 pane
+          // covered this strip and the handle became ungrabbable. That is why
+          // a section could not be dragged to full height: the target was
+          // there, just buried. Positioned and raised so it always wins.
+          position: 'relative', zIndex: 2,
+          // Needed here so a drag on the handle doesn't also scroll the page.
+          touchAction: 'none',
         }}>
         <div style={{ width: 38, height: 4, borderRadius: 2, background: 'var(--text-secondary)', opacity: 0.4 }} />
       </div>
