@@ -1127,7 +1127,6 @@ export default function MapView({ onViewChange, onRouteChange, lastView, bottomI
   })
   const { addEntry } = useLogbook()
   const { aircraftId: activeAircraftId } = useActiveAircraft()
-  const [flightSavedBanner, setFlightSavedBanner] = useState(false)
 
   // The pilot's own clock. Stopping it hands back a finished flight, which is
   // logged here rather than in the hook because this is the screen that knows
@@ -1162,14 +1161,12 @@ export default function MapView({ onViewChange, onRouteChange, lastView, bottomI
   }
   useEffect(() => {
     if (detectState !== 'done' || !detectedDraft) return
-    // Never silently commits a finished entry — it lands tagged pendingReview
-    // so the Hangar's Flight History (sub-phase 3) surfaces it for the pilot
-    // to confirm/edit before it's a real logbook record.
+    // Filed, not announced. It still lands tagged pendingReview rather
+    // than being committed as a logbook record behind the pilot's back —
+    // silence about the recording is not silence about the bookkeeping,
+    // and Pilot → Debriefs is where they accept or discard it.
     addEntry({ ...detectedDraft, aircraftId: activeAircraftId ?? null, source: 'auto', pendingReview: true })
-      .then(() => {
-        setFlightSavedBanner(true)
-        setTimeout(() => setFlightSavedBanner(false), 6000)
-      })
+      .catch(() => {})
     resetDetector()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detectState, detectedDraft])
@@ -1489,23 +1486,21 @@ export default function MapView({ onViewChange, onRouteChange, lastView, bottomI
         </div>
       )}
 
-      {detectState === 'recording' && (
-        <div style={{
-          position: 'absolute', top: 68, left: 12, right: 12, zIndex: 500,
-          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
-          fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--danger)', flexShrink: 0 }} />
-          Flight detected — recording
-        </div>
-      )}
+      {/* Auto-detect says nothing. It used to announce itself with a
+          recording banner over the map, which is an interruption the pilot
+          never asked for — they didn't start it, and there is nothing to
+          decide. It records and files the result in the FDR (Pilot →
+          Debriefs) for review on the ground, which is when a debrief is
+          any use anyway. The manual timer still speaks, because the pilot
+          started that one and is owed an answer. */}
 
-      {/* Only shown when the lock could NOT be taken. Confirming that the
-          screen will stay on is noise; warning that it will not is the thing a
-          pilot can act on — set Auto-Lock to Never before pushing the throttle
-          up, rather than discovering a five-minute track afterwards. */}
-      {(flightTimer.running || detectState === 'recording') && !screenAwake && (
+      {/* Only shown when the lock could NOT be taken, and only for the
+          manual timer: the pilot deliberately started that recording, so a
+          warning that the screen will cut it short is something they can
+          act on. Auto-detect stays silent even here — warning about a
+          recording the pilot doesn't know exists would be a strange way to
+          tell them it exists. */}
+      {flightTimer.running && !screenAwake && (
         <div style={{
           position: 'absolute', top: 'calc(68px + var(--map-top-inset, 0px))', left: 12, right: 12, zIndex: 500,
           background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
@@ -1523,17 +1518,7 @@ export default function MapView({ onViewChange, onRouteChange, lastView, bottomI
           background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
           fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
         }}>
-          Flight timed — {timedFlightBanner.clock} ({timedFlightBanner.hours.toFixed(1)} h). Review it in the logbook.
-        </div>
-      )}
-
-      {flightSavedBanner && (
-        <div style={{
-          position: 'absolute', top: 68, left: 12, right: 12, zIndex: 500,
-          background: 'var(--bg-card)', borderRadius: 14, padding: '10px 14px',
-          fontSize: 13, color: 'var(--text)', boxShadow: 'var(--shadow-sm)',
-        }}>
-          Flight saved — review it in the Hangar's Flight History
+          Flight timed — {timedFlightBanner.clock} ({timedFlightBanner.hours.toFixed(1)} h). It's in Pilot → Debriefs.
         </div>
       )}
 
