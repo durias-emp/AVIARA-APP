@@ -895,6 +895,39 @@ export default function MapHome() {
     setPlanning(true)
     setSnap('confirm')
 
+    // Go and look at the place that was just picked.
+    //
+    // The question the read-back answers is "is this the right field", and the
+    // map is half of that answer: a heliport chosen from a chart covered in
+    // heliports is worth seeing up close before the numbers are believed.
+    // Framing the whole route instead puts both ends in view and the field
+    // itself a dot at one end of it, which reads as a flight rather than as a
+    // destination. The route gets its framing the moment the read-back is
+    // accepted, when the flight is what is being looked at.
+    //
+    // Centred in the strip the drawer leaves, not in the map: the drawer is
+    // about to stand at nearly two thirds of the screen, and the middle of the
+    // map is behind it. Leaflet centres on the whole container, so the point
+    // is offset by half of what the drawer covers to land in the middle of
+    // what is actually visible.
+    //
+    // Measured from window rather than from the render's own figures: this
+    // runs from a callback that was built on the first render, and the height
+    // it closed over then is not the height now.
+    const map = mapRef.current
+    if (map) {
+      // The camera is now the pilot's, so the opening framing stops waiting
+      // for a fix to move it out from under them.
+      framed.current = true
+      const vhNow = window.innerHeight
+      const hidden = vhNow - Math.round(vhNow * (1 - SHEET_CONFIRM_VH))
+      // Never zooms out. A pilot already looking closely at a field asked for
+      // that view, and pulling back to a fixed level would undo it.
+      const z = Math.max(map.getZoom(), AIRPORT_ZOOM)
+      map.setView(map.unproject(map.project([lat, lon], z).add([0, hidden / 2]), z), z,
+        { animate: false })
+    }
+
     const depId = await resolveHomeIdent()
     const depApt = depId ? await findAirport(depId) : null
     if (!depApt) {
@@ -1121,6 +1154,13 @@ export default function MapHome() {
   // stands: only a different route moves the camera again.
   useEffect(() => {
     if (!mapRef.current || routeLine.length < 2) return
+    // Not while the route is being read back. There the map is showing the
+    // field that was just picked, close up, because that is what is being
+    // confirmed. Framing the whole route then would pull the camera off it
+    // about a second later, when the declination comes back and the numbers
+    // land. Accepting the read-back drops confirmRoute, this runs, and the
+    // flight gets its framing at the moment the flight becomes the subject.
+    if (confirmRoute) return
     const key = JSON.stringify(routeLine)
     if (fittedRoute.current === key) return
     fittedRoute.current = key
@@ -1143,7 +1183,7 @@ export default function MapHome() {
       // half-second glide.
       animate: false,
     })
-  }, [routeLine, mapReady, vh, restY])
+  }, [routeLine, mapReady, vh, restY, confirmRoute])
 
   // Corners square off as the sheet approaches the top, rather than snapping
   // from rounded to square at the end of the animation. Interpolated over the
