@@ -361,6 +361,12 @@ function Notams({ icao, result }) {
   )
 }
 
+// Saved airports and the home-base change event. Both keys live in the
+// settings store, which is already covered by the cloud backup, so
+// favourites follow the pilot to a new device for free.
+export const FAVOURITES_KEY = 'favouriteAirports'
+export const HOME_AIRPORT_EVENT = 'aviara-home-airport'
+
 export default function AirportInfo() {
   const { profile } = usePilotProfile()
   const units = profile ?? {}
@@ -385,11 +391,16 @@ export default function AirportInfo() {
   // sub-views.
   useBackOverride(openChart ? () => setOpenChart(null) : null)
 
+  const [favourites, setFavourites] = useState([])
+  const [homeIcao, setHomeIcao] = useState(null)
+
   useEffect(() => {
     get('settings', 'lastAirportLookup').then(row => {
       if (row?.value) setIcao(row.value)
       else setPickerOpen(true)
     })
+    get('settings', FAVOURITES_KEY).then(row => setFavourites(row?.list ?? []))
+    get('settings', 'homeAirport').then(row => setHomeIcao(row?.value ?? null))
   }, [])
 
   useEffect(() => {
@@ -403,8 +414,15 @@ export default function AirportInfo() {
     })
   }, [icao])
 
+  // Guarded, because switching fields fast enough makes the responses race:
+  // the previous airport's lookup can land after the new one's and overwrite
+  // it, leaving the new ident in the header above the old field's name and
+  // weather. Seen while testing favourites — CYYZ in the header, Muskoka's
+  // name underneath. Every other async effect in this file already carries
+  // this guard; this one did not.
   useEffect(() => {
     if (!icao) return
+    let cancelled = false
     setLoading(true)
     setInfo(null)
     setWx(null)
@@ -413,6 +431,7 @@ export default function AirportInfo() {
       getAirports().then(list => list.find(a => a[0] === icao) ?? null),
       loadWeather(icao).catch(() => null),
     ]).then(([hit, wxResult]) => {
+      if (cancelled) return
       if (hit) {
         const [ident, lat, lon, cls, name] = hit
         setInfo({ ident, lat, lon, cls, name })
@@ -422,6 +441,7 @@ export default function AirportInfo() {
       setWx(wxResult)
       setLoading(false)
     })
+    return () => { cancelled = true }
   }, [icao])
 
   // Airspace class the field itself sits in — live B/C/D lookup (same FAA
@@ -488,6 +508,29 @@ export default function AirportInfo() {
     put('settings', { key: 'lastAirportLookup', value: id })
   }
 
+  // Favourites and home base both live in the settings store, so they ride
+  // the existing cloud backup and follow the pilot to a new device without
+  // any new plumbing.
+  function toggleFavourite() {
+    if (!icao) return
+    setFavourites(prev => {
+      const next = prev.includes(icao) ? prev.filter(x => x !== icao) : [...prev, icao]
+      put('settings', { key: FAVOURITES_KEY, list: next }).catch(() => {})
+      return next
+    })
+  }
+
+  function setAsHomeAirport() {
+    if (!icao) return
+    setHomeIcao(icao)
+    put('settings', { key: 'homeAirport', value: icao })
+      // Home's airport card and the flight plan's departure default both
+      // read this key once on mount. Without a nudge they would keep
+      // showing the old field until something else remounted them.
+      .then(() => window.dispatchEvent(new Event(HOME_AIRPORT_EVENT)))
+      .catch(() => {})
+  }
+
   const details = icao ? airportDetails[icao] : null
 
   // A station on the field under a different identifier is this airport's
@@ -535,6 +578,71 @@ export default function AirportInfo() {
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', flexShrink: 0 }}>Change</span>
         </div>
       </div>
+
+      {/* What can be done with the field currently on screen. Both actions
+          are about THIS airport, so they sit directly under its name rather
+          than in a settings screen somewhere else. */}
+      {icao && (
+        <div style={{ padding: '12px 20px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={toggleFavourite}
+            aria-label={favourites.includes(icao) ? 'Remove from favourites' : 'Add to favourites'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 12px', borderRadius: 20, cursor: 'pointer',
+              border: favourites.includes(icao) ? 'none' : '1px solid var(--border)',
+              background: favourites.includes(icao) ? 'var(--accent)' : 'var(--bg-card)',
+              color: favourites.includes(icao) ? 'var(--accent-fg)' : 'var(--text)',
+              fontSize: 12, fontWeight: 700, WebkitTapHighlightColor: 'transparent',
+            }}>
+            {favourites.includes(icao) ? '★' : '☆'} {favourites.includes(icao) ? 'Saved' : 'Save'}
+          </button>
+
+          {homeIcao === icao ? (
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 12px', borderRadius: 20,
+              background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
+              fontSize: 12, fontWeight: 700,
+            }}>⌂ Home airport</span>
+          ) : (
+            <button
+              onClick={setAsHomeAirport}
+              style={{
+                padding: '7px 12px', borderRadius: 20, cursor: 'pointer',
+                border: '1px solid var(--border)', background: 'var(--bg-card)',
+                color: 'var(--text)', fontSize: 12, fontWeight: 700,
+                WebkitTapHighlightColor: 'transparent',
+              }}>⌂ Set home airport</button>
+          )}
+        </div>
+      )}
+
+      {/* Saved fields, one tap away. Home is pinned first and marked, since
+          it is the one a pilot reaches for most and is not necessarily
+          saved as a favourite too. */}
+      {(favourites.length > 0 || homeIcao) && (
+        <div style={{
+          padding: '10px 20px 0', display: 'flex', gap: 8,
+          overflowX: 'auto', WebkitOverflowScrolling: 'touch',
+        }}>
+          {[...(homeIcao ? [homeIcao] : []), ...favourites.filter(f => f !== homeIcao)].map(id => (
+            <button
+              key={id}
+              onClick={() => selectAirport(id)}
+              style={{
+                flexShrink: 0, padding: '6px 12px', borderRadius: 20, cursor: 'pointer',
+                border: id === icao ? '1px solid var(--accent)' : '1px solid var(--border)',
+                background: id === icao ? 'var(--accent)' : 'var(--bg-card)',
+                color: id === icao ? 'var(--accent-fg)' : 'var(--text)',
+                fontSize: 12, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.04em',
+                WebkitTapHighlightColor: 'transparent',
+              }}>
+              {id === homeIcao ? '⌂ ' : ''}{id}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={{ padding: '16px 18px 40px' }}>
         {icao && (

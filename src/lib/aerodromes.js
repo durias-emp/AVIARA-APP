@@ -160,3 +160,28 @@ export async function analyzeAerodromes(waypoints, { withinNm = null, limit = 20
     lengthNm: Math.round(lengthNm),
   }
 }
+
+// Airports carry a size tier in column 3: 0 small (private strips, farm
+// airparks), 1 medium, 2 large. "Major" here means tier 1 or better —
+// somewhere a light aircraft could actually depart from, with the ~29k
+// private strips excluded. Tier 2 alone would be too strict: it would send
+// a pilot sitting at a perfectly good regional field to an international
+// one a hundred miles away.
+export const MAJOR_TIER = 1
+
+export async function nearestMajorAirport(lat, lon) {
+  const list = await getAirports()
+  if (!list) return null
+  let best = null
+  let bestD = Infinity
+  for (const [ident, alat, alon, tier, name] of list) {
+    if ((tier ?? 0) < MAJOR_TIER) continue
+    // Cheap squared distance for the scan — only the winner is measured
+    // properly by the caller if it needs a real number.
+    const dLat = alat - lat
+    const dLon = (alon - lon) * Math.cos((lat * Math.PI) / 180)
+    const d = dLat * dLat + dLon * dLon
+    if (d < bestD) { bestD = d; best = { icao: ident, lat: alat, lon: alon, tier, name } }
+  }
+  return best
+}

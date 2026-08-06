@@ -181,11 +181,18 @@ export default function ChecklistTabShell({
         </div>
       </div>
 
-      <div
-        ref={footerRef}
-        className="fixed-footer-bar"
-        style={{ transform: footerHidden ? 'translateY(calc(100% + 24px + var(--safe-bottom)))' : 'translateY(0)' }}
-      >
+      {/* The step bar never leaves. Working inside an expanded card used to
+          slide this whole footer away, which meant the only way back to
+          another step was to collapse whatever you had open first — the
+          navigation disappeared exactly when you wanted to navigate.
+          Switching steps has to be available at all times.
+
+          The action row still yields: "+ Add Step" and "Complete Flight
+          Plan" are about the plan as a whole, not about the card being
+          filled in, so they stand down while one is open and give the room
+          back. Panes re-pad from the measured footer height, so the space
+          is genuinely handed over rather than just hidden under. */}
+      <div ref={footerRef} className="fixed-footer-bar">
         <StepTabBar
           sections={sections}
           activeIndex={activeIndex}
@@ -193,7 +200,7 @@ export default function ChecklistTabShell({
           checked={checked}
           customItems={customItems}
         />
-        {completeBar}
+        {!footerHidden && completeBar}
       </div>
     </div>
   )
