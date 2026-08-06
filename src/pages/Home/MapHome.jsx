@@ -103,38 +103,39 @@ function chipStackBox(availH, availW, count) {
   }
 }
 
-// Three resting heights. Collapsed is the handle and the actions; expanded
-// leaves a strip of map above it so it never reads as a takeover; full is a
-// screen in its own right, for reading the logbook rather than glancing at it.
+// Where the drawer can rest, named by how much of the screen it covers.
 //
-// FULL_TRIGGER is where dragging stops being "open the sheet" and becomes
-// "open the screen": past three quarters of the way up, the sheet commits to
-// full and its corners square off against the device's own.
-const SHEET_COLLAPSED_PX = 178
-const SHEET_EXPANDED_VH = 0.82
-const SHEET_FULL_TRIGGER = 0.75
+//    0   off the screen entirely
+//   30   where it opens, and where it comes back to
+//   50   half and half: the flight plan, drawn across the map it needs
+//   80   the route read-back, tools, the recent flights
+//  100   a screen of its own, for reading the logbook rather than glancing
+//
+// The number is the name. One vocabulary for the code and for talking about
+// it, so "the read-back sits at 80" needs no translating in either direction.
+//
+// The read-back is at 80 and not at 50 for one reason: at 50 the labels under
+// TRUE COURSE and VARIATION are cut off by the bottom of the card. A course
+// figure with nothing naming it is worse than no figure, because there is no
+// telling true from magnetic by looking.
+//
+// Fractions of the viewport, not pixels, for two reasons. A stop then means
+// the same thing on every screen; and a stop is a position rather than a
+// measurement of whatever happens to be inside it. The resting stop used to be
+// 178px of measured contents plus two correction constants for the pieces that
+// came and went, which is three numbers describing one height and three places
+// to be wrong.
+const SHEET_STOPS = [30, 50, 80, 100]
+// Where the drawer commits to full whatever the gesture was. Above the 80 stop
+// rather than below it, or every drag that reached 80 would be taken as a
+// drag for 100 and the stop would be unreachable by hand.
+const SHEET_FULL_TRIGGER = 90
 const SHEET_RADIUS = 22
-// Where the drawer rests while the flight plan is open in it: half the screen
-// each, map above and planner below, so the route can be watched as it is
-// typed. It is tight, and deliberately so. The planner's own tab bar and
-// action row take about a third of the space this leaves, and the answer to
-// that is the drag up to full screen rather than a taller resting stop that
-// would push the map out of the picture the planner exists to be seen against.
-const SHEET_PLAN_VH = 0.5
-// Where the drawer rests while a route is being read back. Taller than the
-// planner's stop because these figures must not fold: a course cut off
-// mid-digit is worse than no course. Shorter than expanded because the line on
-// the map behind them is half of what is being confirmed.
-const SHEET_CONFIRM_VH = 0.62
-// How much taller the collapsed drawer stands while it is carrying a route.
-// Without it the card lands below the fold, hidden by the very drawer that
-// exists to show it, and the pilot has to pull the sheet up to read numbers
-// that were just put there for them.
-const ROUTE_CARD_PX = 96
-// How much of the collapsed drawer the action row is. Taken back off when the
-// row leaves for a card of its own, so the drawer does not keep standing at a
-// height that was measured around buttons that are no longer in it.
-const ACTION_ROW_PX = 86
+
+// Distance from the top of the screen to the top of the drawer, for a stop.
+// Stops are how much is covered and this is where the edge lands, so the two
+// are complements: 100 is at the top of the screen, 0 is below the bottom.
+const stopY = (vh, stop) => Math.round(vh * (1 - stop / 100))
 // How far a finger must travel before the sheet treats it as a drag rather
 // than a tap. Below this the buttons in the header keep their taps.
 const DRAG_SLOP = 6
@@ -503,12 +504,21 @@ export default function MapHome() {
   const isDark = useIsDark()
 
   const [layers, setLayers] = useState(EMPTY_LAYERS)
-  const [sheetOpen, setSheetOpen] = useState(true)
-  // The sheet has two resting heights: the actions alone, and everything the
-  // app can do. Dragging between them is how the rest of the app is reached
-  // now that the home screen is a map, so it has to feel like a sheet rather
-  // than a button that swaps screens.
-  const [snap, setSnap] = useState('collapsed')   // collapsed | plan | expanded | full
+  // Which stop the drawer is resting at, as one of the numbers above.
+  // Dragging between them is how the rest of the app is reached now that the
+  // home screen is a map, so it has to feel like a sheet rather than a button
+  // that swaps screens.
+  //
+  // 0 is one of the stops rather than a separate open/closed flag, because it
+  // is one: the arrow button hides the drawer, and hiding it is a glance at
+  // the map rather than a change of screen.
+  const [snap, setSnap] = useState(30)
+  const sheetOpen = snap !== 0
+  // Where a hidden drawer comes back to. Whatever it was doing before it was
+  // put away, since putting it away was about seeing the map, not about
+  // abandoning the drawer's contents.
+  const lastStop = useRef(30)
+  useEffect(() => { if (snap !== 0) lastStop.current = snap }, [snap])
   // Planning happens here now, not on a screen of its own. Plan Route raises
   // the drawer to the 'plan' stop and fills it with the flight plan, so the
   // map keeps showing what the route is being drawn across. /checklists still
@@ -534,11 +544,6 @@ export default function MapHome() {
   // the drawer now makes it as well: the drawer carries the subject, the card
   // above carries the actions, and the map stays visible between them.
   const actionsFloat = !planning && route?.distNm != null
-  // The closed drawer's height, which is not one number any more: it stands
-  // taller when it has a route to report, and shorter by the row that left.
-  // Not while planning, where the drawer's height is set by the planning stop
-  // instead.
-  const collapsedPx = SHEET_COLLAPSED_PX + (actionsFloat ? ROUTE_CARD_PX - ACTION_ROW_PX : 0)
   // The viewport, measured rather than assumed: reading window.innerHeight
   // during render is fine once, but it has to be re-read when the phone is
   // rotated or the browser chrome changes, or every snap point is stale.
@@ -624,7 +629,7 @@ export default function MapHome() {
   // question as what theme the app is in. Anything drawn on top of the map has
   // to contrast with this, not with the sheet.
   const darkBasemap = isDark && !chartOverBasemap
-  const expanded = snap !== 'collapsed'
+  const expanded = snap > 30
 
   // Warm the planner while the pilot is looking at the map.
   //
@@ -893,7 +898,7 @@ export default function MapHome() {
     setRoute(null)                  // the panel shows "Working out the route"
     setConfirmRoute(true)
     setPlanning(true)
-    setSnap('confirm')
+    setSnap(80)
 
     // Go and look at the place that was just picked.
     //
@@ -920,7 +925,7 @@ export default function MapHome() {
       // for a fix to move it out from under them.
       framed.current = true
       const vhNow = window.innerHeight
-      const hidden = vhNow - Math.round(vhNow * (1 - SHEET_CONFIRM_VH))
+      const hidden = vhNow - stopY(vhNow, 80)
       // Never zooms out. A pilot already looking closely at a field asked for
       // that view, and pulling back to a fixed level would undo it.
       const z = Math.max(map.getZoom(), AIRPORT_ZOOM)
@@ -1049,14 +1054,14 @@ export default function MapHome() {
 
   // ── The planner, opened and closed in place ──────────────────────────
   function openPlanner() {
-    setSheetOpen(true)
+    setSnap(50)
     setPlanning(true)
-    setSnap('plan')
+    setSnap(50)
   }
 
   function leavePlanner() {
     setPlanning(false)
-    setSnap('collapsed')
+    setSnap(30)
     // Reset inside the planner deletes the saved route, and this held its own
     // copy in state, so the line stayed on the map after the plan behind it
     // was gone. Re-read on the way out: storage is what actually decides
@@ -1072,7 +1077,7 @@ export default function MapHome() {
   function onRouteCalculated(calculated) {
     setRoute(calculated)
     setPlanning(false)
-    setSnap('collapsed')
+    setSnap(30)
   }
 
 
@@ -1110,18 +1115,28 @@ export default function MapHome() {
   // down with a temporal dead zone error.
   const gestureHint = recording
     ? 'Recording your track · tap the square to end and log it'
-    : snap === 'expanded' ? 'Keep pulling for the full logbook'
-    : snap === 'collapsed' ? 'Pull up for everything else'
+    : snap === 30 ? 'Pull up for everything else'
+    : snap === 50 || snap === 80 ? 'Keep pulling for the full logbook'
     : ''
   const track = rec?.track?.map(p => [p.lat, p.lon]) ?? []
+
+  // The viewport, and how much of it the drawer covers at rest. Declared here
+  // rather than with the rest of the sheet geometry below because the chip
+  // stack reads it, and a const cannot be read above its own line.
+  const vh = viewportH
+  const restPx = vh - stopY(vh, 30)
 
   // Where the bottom of the chip stack sits: clear of the sheet, then clear of
   // the two map controls, so the chips rest on top of the layers button that
   // opens them. Kept as a bare expression rather than a finished calc() because
   // it is used twice, once as an offset and once subtracted from the available
   // height, and calc() nests but does not concatenate.
+  //
+  // No safe-area term any more. The resting height is a fraction of the
+  // viewport, and the viewport already ends at the bottom of the screen, so
+  // the inset is inside the 30 rather than added to it.
   const chipStackBottom = sheetOpen
-    ? `${collapsedPx}px + var(--safe-bottom) + ${recording ? 132 : 16}px + ${CTRL_STACK_H}px`
+    ? `${restPx}px + ${recording ? 132 : 16}px + ${CTRL_STACK_H}px`
     : `var(--safe-bottom) + 28px + ${CTRL_STACK_H}px`
 
   // The sheet is always the full height of the screen and is moved down out of
@@ -1131,17 +1146,9 @@ export default function MapHome() {
   //
   // y is the distance from the top of the screen to the top of the sheet, so
   // 0 is full screen and larger numbers are further down.
-  const vh = viewportH
-  const Y_FULL = 0
-  const Y_EXPANDED = Math.round(vh * (1 - SHEET_EXPANDED_VH))
-  const Y_PLAN = Math.round(vh * (1 - SHEET_PLAN_VH))
-  const Y_CONFIRM = Math.round(vh * (1 - SHEET_CONFIRM_VH))
-  const Y_COLLAPSED = Math.max(0, vh - collapsedPx)
-  const restY = snap === 'full' ? Y_FULL
-    : snap === 'expanded' ? Y_EXPANDED
-    : snap === 'plan' ? Y_PLAN
-    : snap === 'confirm' ? Y_CONFIRM
-    : Y_COLLAPSED
+  // One line each way now that a stop is a number: where the drawer is
+  // resting, and where it is actually drawn once a finger is on it.
+  const restY = stopY(vh, snap)
   const y = dragY != null ? dragY : restY
 
   // Declared below restY rather than with the other map effects: it reads it,
@@ -1188,7 +1195,7 @@ export default function MapHome() {
   // Corners square off as the sheet approaches the top, rather than snapping
   // from rounded to square at the end of the animation. Interpolated over the
   // last stretch only, so it reads as the sheet meeting the screen edge.
-  const radius = Math.round(SHEET_RADIUS * Math.min(1, y / Math.max(1, Y_EXPANDED)))
+  const radius = Math.round(SHEET_RADIUS * Math.min(1, y / Math.max(1, stopY(vh, 80))))
 
   // Pointer events with capture, not touch or mouse handlers. Pulling the
   // sheet up moves the finger off the header almost immediately, and without
@@ -1234,7 +1241,7 @@ export default function MapHome() {
       // back to the sheet. Below full height there is no scrolling to lose,
       // so the whole drawer moves as one object, which is what a sheet that
       // shows a photograph should do.
-      if (d.fromBody && snap === 'full' && !(d.atTop && dy > 0)) {
+      if (d.fromBody && snap === 100 && !(d.atTop && dy > 0)) {
         drag.current = null
         return
       }
@@ -1247,7 +1254,7 @@ export default function MapHome() {
     const shifted = dy - Math.sign(dy) * DRAG_SLOP
     // Clamped, with no rubber band past either end: a sheet that can be pulled
     // past its stops feels broken rather than playful on a control surface.
-    const next = Math.min(Y_COLLAPSED, Math.max(Y_FULL, d.fromY + shifted))
+    const next = Math.min(stopY(vh, 30), Math.max(stopY(vh, 100), d.fromY + shifted))
     d.lastY = next
     setDragY(next)
   }
@@ -1273,33 +1280,32 @@ export default function MapHome() {
     // Past the trigger the sheet commits to full whatever the gesture was.
     // Dragging that far is unambiguous, and snapping back from there would
     // feel like the sheet fighting the hand.
-    if (d.lastY <= vh * (1 - SHEET_FULL_TRIGGER)) { setSnap('full'); return }
+    if (d.lastY <= stopY(vh, SHEET_FULL_TRIGGER)) { setSnap(100); return }
 
-    // With the planner in the drawer there are only two stops, half and full,
-    // and a third outcome: pulled down far enough, the plan is put away. That
-    // costs nothing to do by accident. Every field writes itself to storage as
-    // it is filled in, and Plan Route comes back to exactly the same place.
-    if (planning) {
-      if (d.lastY > (Y_PLAN + Y_COLLAPSED) / 2 || (flick && !up && snap === 'plan')) {
-        leavePlanner()
-        return
-      }
-      setSnap(Math.abs(d.lastY - Y_FULL) < Math.abs(d.lastY - Y_PLAN) ? 'full' : 'plan')
+    // With the planner in the drawer the ladder is shorter, 50 and 100 only:
+    // there is no reading to do at 30 with a form open, and 80 buries the map
+    // the plan is being drawn across. There is a third outcome instead. Pulled
+    // down far enough, the plan is put away, which costs nothing to do by
+    // accident: every field writes itself to storage as it is filled in, and
+    // Plan Route comes back to exactly the same place.
+    const ladder = planning ? [50, 100] : SHEET_STOPS
+
+    if (planning && (d.lastY > (stopY(vh, 50) + stopY(vh, 30)) / 2
+      || (flick && !up && snap === 50))) {
+      leavePlanner()
       return
     }
 
+    // Flicks move one rung in the direction of travel, so a hard pull from 30
+    // does not skip the two useful stops in the middle on its way to 100.
     if (flick) {
-      // Flicks move one stop in the direction of travel, so a hard pull from
-      // collapsed does not skip past the useful middle stop to full screen.
-      setSnap(up
-        ? (snap === 'collapsed' ? 'expanded' : 'full')
-        : (snap === 'full' ? 'expanded' : 'collapsed'))
+      const i = Math.max(0, ladder.indexOf(snap))
+      setSnap(ladder[Math.min(ladder.length - 1, Math.max(0, i + (up ? 1 : -1)))])
       return
     }
-    // Otherwise the nearest stop wins.
-    const stops = [['full', Y_FULL], ['expanded', Y_EXPANDED], ['collapsed', Y_COLLAPSED]]
-    setSnap(stops.reduce((best, s2) =>
-      Math.abs(d.lastY - s2[1]) < Math.abs(d.lastY - best[1]) ? s2 : best)[0])
+    // Otherwise the nearest rung wins.
+    setSnap(ladder.reduce((best, s2) =>
+      Math.abs(d.lastY - stopY(vh, s2)) < Math.abs(d.lastY - stopY(vh, best)) ? s2 : best))
   }
 
   const statFont = { fontSize: 11, fontWeight: 600, color: 'var(--map-ink-dim)', letterSpacing: '0.2px' }
@@ -1445,7 +1451,7 @@ export default function MapHome() {
           map home has to keep doing that, or weather becomes something you go
           looking for rather than something you are told. */}
       <div style={{ position: 'absolute', top: 'calc(var(--safe-top) + 10px)', left: 14, zIndex: 501 }}>
-        <Ctrl onClick={() => setSheetOpen(o => !o)} title={sheetOpen ? 'Hide panel' : 'Show panel'} size={46}>
+        <Ctrl onClick={() => setSnap(s2 => (s2 === 0 ? lastStop.current : 0))} title={sheetOpen ? 'Hide panel' : 'Show panel'} size={46}>
           <IconArrow up={!sheetOpen} />
         </Ctrl>
       </div>
@@ -1472,7 +1478,7 @@ export default function MapHome() {
       <div style={{
         position: 'absolute', right: 14, zIndex: 500,
         bottom: sheetOpen
-          ? `calc(${SHEET_COLLAPSED_PX}px + var(--safe-bottom) + ${recording ? 132 : 16}px)`
+          ? `${restPx + (recording ? 132 : 16)}px`
           : 'calc(var(--safe-bottom) + 28px)',
         display: 'flex', flexDirection: 'column', gap: 12,
         transition: 'bottom 280ms cubic-bezier(0.4,0,0.2,1), opacity 200ms',
@@ -1573,7 +1579,7 @@ export default function MapHome() {
           recording and leaves with it. */}
       <FloatingCard
         visible={recording && !planning}
-        bottom={`calc(${collapsedPx}px + var(--safe-bottom) + 10px)`}>
+        bottom={`${restPx + 10}px`}>
         <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--map-ink)', marginBottom: 12 }}>
           {rec?.paused ? 'Paused' : 'Recording'}
         </div>
@@ -1613,17 +1619,17 @@ export default function MapHome() {
           map left to float over, and the drawer is what the pilot asked to see
           all of. The row goes back inside it there. */}
       <FloatingCard
-        visible={planning ? (snap === 'plan' || snap === 'confirm') : (actionsFloat && snap === 'collapsed')}
+        visible={planning ? (snap === (confirmRoute ? 80 : 50)) : (actionsFloat && snap === 30)}
         // Compact everywhere except the planner, whose stop is fixed at half
         // the screen whether or not the card above it is wide. The other two
         // are sitting on a drawer that is only as tall as its contents, so the
         // narrower card is the difference between seeing the map and not.
         compact={!planning || confirmRoute}
         bottom={planning
-          ? `calc(${Math.max(0, vh - (confirmRoute ? Y_CONFIRM : Y_PLAN))}px + 10px)`
+          ? `${vh - stopY(vh, confirmRoute ? 80 : 50) + 10}px`
           // Above the drawer, and above the recording stats when those are out
           // too, rather than on top of them.
-          : `calc(${collapsedPx}px + var(--safe-bottom) + ${recording ? 132 : 0}px + 10px)`}>
+          : `${restPx + (recording ? 132 : 0) + 10}px`}>
         {actionRow(!planning || confirmRoute)}
       </FloatingCard>
 
@@ -1634,7 +1640,7 @@ export default function MapHome() {
       {layers.traffic && !expanded && (
         <div style={{
           position: 'absolute', left: 14, zIndex: 520,
-          bottom: `calc(${SHEET_COLLAPSED_PX}px + var(--safe-bottom) + ${recording ? 132 : 16}px)`,
+          bottom: `${restPx + (recording ? 132 : 16)}px`,
           transition: 'bottom 280ms cubic-bezier(0.4,0,0.2,1)',
         }}>
           {selected ? (
@@ -1712,7 +1718,7 @@ export default function MapHome() {
             // At full screen the sheet is under the status bar, so it has to
             // clear the notch itself. Below that the map is up there and this
             // padding would just be a gap.
-            paddingTop: snap === 'full' ? 'calc(var(--safe-top) + 10px)' : 10,
+            paddingTop: snap === 100 ? 'calc(var(--safe-top) + 10px)' : 10,
             paddingLeft: 18, paddingRight: 18,
             transition: 'padding-top 380ms cubic-bezier(0.32,0.72,0,1)',
           }}>
@@ -1720,8 +1726,8 @@ export default function MapHome() {
             onClick={() => {
               // While planning, the handle toggles between the two stops the
               // planner has rather than the two the drawer normally has.
-              if (planning) { setSnap(s2 => (s2 === 'plan' ? 'full' : 'plan')); return }
-              setSnap(s2 => (s2 === 'collapsed' ? 'expanded' : 'collapsed'))
+              if (planning) { setSnap(s2 => (s2 === 50 ? 100 : 50)); return }
+              setSnap(s2 => (s2 === 30 ? 80 : 30))
             }}
             style={{
               width: 40, height: 5, borderRadius: 3, background: 'var(--map-hairline)',
@@ -1742,7 +1748,7 @@ export default function MapHome() {
               It comes back once the drawer is pulled up, because from there
               the card would be behind it and the record button has to stay
               reachable from the screen the pilot is actually on. */}
-          {!planning && !(actionsFloat && snap === 'collapsed') && actionRow()}
+          {!planning && !(actionsFloat && snap === 30) && actionRow()}
 
           {/* A route exists, so the drawer says so. It was taken out as a
               duplicate of the read-back, which was right while the read-back
@@ -1755,7 +1761,7 @@ export default function MapHome() {
             <RouteSummary
               route={route}
               onClear={clearRoute}
-              onOpen={() => { setConfirmRoute(true); setPlanning(true); setSnap('confirm') }} />
+              onOpen={() => { setConfirmRoute(true); setPlanning(true); setSnap(80) }} />
           )}
 
           {/* No hint line while planning. It is the drawer explaining itself,
@@ -1794,7 +1800,7 @@ export default function MapHome() {
               // any long page does, and only a pull down from the very top
               // returns the drawer. The drawer's own list has always worked
               // this way; this is the same bargain, kept in the same words.
-              touchAction: snap === 'full' ? 'pan-y' : 'pan-x',
+              touchAction: snap === 100 ? 'pan-y' : 'pan-x',
             }}>
             <Suspense fallback={
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1861,7 +1867,7 @@ export default function MapHome() {
               for. */}
           {route?.distNm != null && (
             <div style={{ flexShrink: 0, padding: '12px 12px calc(var(--safe-bottom) + 12px)' }}>
-              <button onClick={() => { setConfirmRoute(false); setPlanning(false); setSnap('collapsed') }} style={{
+              <button onClick={() => { setConfirmRoute(false); setPlanning(false); setSnap(30) }} style={{
                 width: '100%', padding: '13px 0', borderRadius: 12, border: 'none',
                 background: ACCENT, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
               }}>Looks right</button>
@@ -1873,7 +1879,7 @@ export default function MapHome() {
               {/* The X on the old summary card was the only way to be rid of a
                   route. That card is gone, so the action moves here rather than
                   disappearing with it. */}
-              <button onClick={() => { clearRoute(); setConfirmRoute(false); setPlanning(false); setSnap('collapsed') }}
+              <button onClick={() => { clearRoute(); setConfirmRoute(false); setPlanning(false); setSnap(30) }}
                 style={{
                   marginTop: 10, width: '100%', padding: '10px 0', borderRadius: 12,
                   border: 'none', background: 'none', color: 'var(--map-ink-faint)',
@@ -1893,8 +1899,8 @@ export default function MapHome() {
           // Scrolls only once the sheet is at full height. Below that there is
           // more sheet to open than list to read, so the gesture belongs to
           // the sheet and a scroller here would swallow it.
-          overflowY: snap === 'full' ? 'auto' : 'hidden',
-          touchAction: snap === 'full' ? 'pan-y' : 'none',
+          overflowY: snap === 100 ? 'auto' : 'hidden',
+          touchAction: snap === 100 ? 'pan-y' : 'none',
           WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
           padding: '6px 18px calc(var(--safe-bottom) + 24px)',
           opacity: expanded ? 1 : 0,
@@ -1975,7 +1981,7 @@ export default function MapHome() {
 
           <div style={{ marginTop: 22, fontSize: 11, fontWeight: 700, letterSpacing: '0.6px',
             color: 'var(--map-ink-faint)', textTransform: 'uppercase' }}>
-            {snap === 'full' ? `Logbook · ${flights.length}` : 'Recent flights'}
+            {snap === 100 ? `Logbook · ${flights.length}` : 'Recent flights'}
           </div>
           {flights.length === 0 ? (
             <div style={{ marginTop: 10, padding: '22px 16px', borderRadius: 16,
@@ -1990,7 +1996,7 @@ export default function MapHome() {
               {/* Collapsed the sheet shows a handful; at full screen it is the
                   whole logbook, which is the reason for having a full screen
                   at all. */}
-              {(snap === 'full' ? flights : flights.slice(0, 4)).map(f => (
+              {(snap === 100 ? flights : flights.slice(0, 4)).map(f => (
                 <ActivityCard key={f.id} flight={f} />
               ))}
             </div>
