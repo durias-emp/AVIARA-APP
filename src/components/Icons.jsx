@@ -224,23 +224,14 @@ export function IconHangar({ size = 24 }) {
   )
 }
 
-// The Pilot mark: the project's own logo (public/pilot-helmet.png, from
-// brand/pqrh-logo-source.jpeg), not a redrawing of it. Two attempts to
-// letter it as line art both drifted off-brand, which is the argument for
-// using the asset itself.
+// The Pilot mark, drawn rather than reproduced.
 //
-// Same treatment as the Pilot artwork in HomeHeroArt: the source is dark
-// engraving on cream, so inverting it would reverse every tone and turn the
-// pale goggle lenses dark. Instead the image drives a luminance mask over a
-// flat currentColor fill, keeping the drawing's own tonal sense. The
-// transfer curve is steep so the cream ground goes to zero and the card
-// shows through rather than carrying a pale rectangle.
-//
-// The window into the source (x 44, y 12, 60.9 x 60 in the original's
-// units) is the helmet's own box — that crop is also how the "PQRH"
-// wordmark below it gets dropped. Those numbers are mapped into this
-// 24-unit box by LOGO_SCALE; keep them in step with HomeHeroArt if the
-// crop ever moves.
+// A pass at rendering the real logo here (public/pilot-helmet.png, through
+// the luminance mask HomeHeroArt uses) was reverted: the source is a
+// photograph of a fine engraving, and at 22px its linework averages into a
+// grey mass that the mask turns into a filled square. Detailed artwork
+// cannot survive icon size — use the PNG at card size or larger, and this
+// line-art stand-in wherever a glyph is needed.
 export function IconHelmet({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
