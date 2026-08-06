@@ -775,7 +775,19 @@ export default function MapHome() {
       value: id || null,
       lat, lon,
     }).catch(() => {})
-    setConfirmRoute(true)
+    // NOT setting confirmRoute. The read-back panel is still here and still
+    // works, but nothing triggers it, because it cannot yet be reached safely.
+    //
+    // The calculation happens inside RouteAltitude, which only mounts when the
+    // Route and Altitude card is opened. Showing the confirmation hid the
+    // planner, so that card could never be opened, so the calculation never
+    // ran and the panel sat on "Working out the route" with no way out. Hiding
+    // the planner is what broke it and mounting it hidden does not help: the
+    // card still has to be opened by hand.
+    //
+    // Setting a destination therefore opens the planner as it always did. The
+    // panel is dormant until the handover can calculate without the planner's
+    // UI being on screen, which is the real fix and is worth doing properly.
     setPlanning(true)
     setSnap('plan')
   }, [])
@@ -1567,12 +1579,18 @@ export default function MapHome() {
             only while planning, so leaving it is what unmounts the megabyte of
             planner and its Leaflet previews rather than leaving them running
             under a map that is already drawing one. */}
-        {planning && !confirmRoute && (
+        {/* Mounted whenever planning, including while the confirmation is up.
+            The planner is what calculates the route, so swapping it out for the
+            confirmation left nothing to do the work and the panel sat on
+            "Working out the route" forever. It is hidden instead, still running
+            behind the read-back it is producing. */}
+        {planning && (
           <div
             onPointerDown={onBodyDragStart} onPointerMove={onDragMove}
             onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
             style={{
-              flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
+              flex: 1, minHeight: 0,
+              display: confirmRoute ? 'none' : 'flex', flexDirection: 'column',
               // Half open, the plan is dragged rather than read: a finger
               // anywhere on it takes the drawer to full screen, which is the
               // only way up other than the handle, and the handle is a target
