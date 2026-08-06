@@ -19,7 +19,7 @@ import { CHARTS, EMPTY_LAYERS, resolveOpenaipKey } from '../../components/chartD
 import DropPointPopup from '../../components/DropPointPopup'
 // Route styling lives in one place now, shared with the planner and its
 // preview map: three copies of a hex is how the three drifted apart.
-import { ROUTE_COLOR, ROUTE_OPACITY, ROUTE_WEIGHT } from '../../components/mapStyle'
+import { ACCENT, accentAlpha, ROUTE_COLOR, ROUTE_OPACITY, ROUTE_WEIGHT } from '../../components/mapStyle'
 import ActivityCard from '../../components/ActivityCard'
 import TrafficLayer from '../../components/TrafficLayer'
 import TrafficLegend from '../../components/TrafficLegend'
@@ -43,8 +43,6 @@ import { useActiveAircraft } from '../../context/ActiveAircraft'
 // share one chunk rather than making three copies of a megabyte and a half.
 const Planner = lazy(() => import('../Checklists/Checklists'))
 
-const ACCENT = '#FF5A1F'      // the one saturated colour on the screen, so the
-                              // action is never ambiguous
 // The planned route, drawn to be told apart from the recorded track at a
 // glance: the track is the accent orange, so the plan is violet. The exact
 // value is the planner's own, from the preview map in RouteAltitude, because
@@ -1199,7 +1197,7 @@ export default function MapHome() {
       <button onClick={recording ? stopFlight : startFlight} style={{
         width: 86, height: 86, borderRadius: '50%', border: 'none', cursor: 'pointer',
         background: recording ? 'var(--map-ink)' : ACCENT,
-        boxShadow: `0 6px 20px ${recording ? 'rgba(28,28,30,0.3)' : 'rgba(255,90,31,0.38)'}`,
+        boxShadow: `0 6px 20px ${recording ? 'rgba(28,28,30,0.3)' : accentAlpha(0.38)}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         transition: 'background 200ms', flexShrink: 0,
       }}>

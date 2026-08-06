@@ -26,4 +26,13 @@ export const ROUTE_WEIGHT = 4
 // The one saturated colour on the screen, so an action is never ambiguous.
 // Shared rather than redeclared: the map home, the sheet and the map popups
 // all reach for it, and three copies of a hex is how they drift apart.
-export const ACCENT = '#FF5A1F'
+export const ACCENT = '#8B008B'
+
+// The same colour at an opacity, for the glow under the record button. Derived
+// rather than written out again: it was a second hardcoded rgba of the orange
+// and stayed orange when the accent changed, leaving a magenta button with an
+// orange halo.
+export const accentAlpha = (a) => {
+  const n = parseInt(ACCENT.slice(1), 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`
+}

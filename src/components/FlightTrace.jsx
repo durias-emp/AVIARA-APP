@@ -1,3 +1,4 @@
+import { ACCENT } from './mapStyle'
 // A flight's ground track, drawn as a shape.
 //
 // Deliberately an SVG of the track alone rather than a map thumbnail. A map
@@ -39,7 +40,7 @@ function fit(pts, w, h) {
   ])
 }
 
-export default function FlightTrace({ track, width = 300, height = 118, color = '#FF5A1F' }) {
+export default function FlightTrace({ track, width = 300, height = 118, color = ACCENT }) {
   const usable = Array.isArray(track) && track.length > 1
 
   if (!usable) {

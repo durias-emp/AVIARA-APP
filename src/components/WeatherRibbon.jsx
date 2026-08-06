@@ -18,13 +18,14 @@ import {
 } from '../lib/weather'
 import WeatherDetailOverlay from './WeatherDetailOverlay'
 import AirportPickerModal from './AirportPickerModal'
+// The app's one saturated colour, shared so it changes in one place
+// rather than four.
+import { ACCENT } from './mapStyle'
 
 // Conditions age. A METAR is issued hourly and a pilot reading a two-hour-old
 // observation as current is exactly the failure this app exists to prevent, so
 // staleness is shown rather than hidden.
 const STALE_MS = 75 * 60 * 1000
-// The app's highlight colour, the same one the record button uses.
-const ACCENT = '#FF5A1F'
 
 export default function WeatherRibbon({
   icao, units = {}, style, onChangeAirport,
