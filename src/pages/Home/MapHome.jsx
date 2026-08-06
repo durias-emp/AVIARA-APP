@@ -121,6 +121,11 @@ const SHEET_RADIUS = 22
 // that is the drag up to full screen rather than a taller resting stop that
 // would push the map out of the picture the planner exists to be seen against.
 const SHEET_PLAN_VH = 0.5
+// Where the drawer rests while a route is being read back. Taller than the
+// planner's stop because these figures must not fold: a course cut off
+// mid-digit is worse than no course. Shorter than expanded because the line on
+// the map behind them is half of what is being confirmed.
+const SHEET_CONFIRM_VH = 0.62
 // How much taller the collapsed drawer stands while it is carrying a route.
 // Without it the card lands below the fold, hidden by the very drawer that
 // exists to show it, and the pilot has to pull the sheet up to read numbers
@@ -157,18 +162,30 @@ const TOOLS = [
 // each other. It animates in from below rather than appearing, which is what
 // makes it read as arriving rather than as something that was always there
 // and had been missed.
-function FloatingCard({ visible, bottom, children }) {
+// compact takes the airport pill's proportions: hugging its contents rather
+// than spanning the screen, tighter corners, a lighter shadow. The pill and
+// this then read as a matched pair at the top and bottom of the map, and the
+// map either side of it comes back instead of being covered by card holding
+// nothing.
+function FloatingCard({ visible, bottom, compact = false, children }) {
   return (
     <div style={{
-      position: 'absolute', left: 12, right: 12, zIndex: 550, bottom,
+      position: 'absolute', zIndex: 550, bottom,
+      ...(compact
+        ? { left: 0, right: 0, display: 'flex', justifyContent: 'center' }
+        : { left: 12, right: 12 }),
       transform: visible ? 'translateY(0) scale(1)' : 'translateY(16px) scale(0.97)',
       opacity: visible ? 1 : 0,
       pointerEvents: visible ? 'auto' : 'none',
       transition: 'opacity 260ms ease-out, transform 260ms cubic-bezier(0.34,1.2,0.64,1), bottom 380ms cubic-bezier(0.32,0.72,0,1)',
     }}>
       <div style={{
-        background: 'var(--map-panel)', backdropFilter: 'blur(20px)',
-        borderRadius: 18, padding: '16px 18px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+        background: 'var(--map-panel)',
+        backdropFilter: compact ? 'blur(14px)' : 'blur(20px)',
+        borderRadius: compact ? 16 : 18,
+        padding: compact ? '9px 14px' : '16px 18px',
+        boxShadow: compact ? '0 2px 10px rgba(0,0,0,0.18)' : '0 4px 20px rgba(0,0,0,0.12)',
+        ...(compact ? { width: 'fit-content', maxWidth: 'calc(100vw - 24px)' } : null),
       }}>
         {children}
       </div>
@@ -523,6 +540,7 @@ export default function MapHome() {
   // Safe to measure because the box it observes is sized by the viewport and
   // the drawer alone. The stack whose size this decides is a child of it, so
   // nothing here can feed back into what is being measured.
+  const fittedRoute = useRef(null)
   const chipAreaRef = useRef(null)
   // Seeded with a sensible guess rather than zero, so the first painted frame
   // is already close. A zero width would compute a single column and the stack
@@ -860,7 +878,7 @@ export default function MapHome() {
     setRoute(null)                  // the panel shows "Working out the route"
     setConfirmRoute(true)
     setPlanning(true)
-    setSnap('plan')
+    setSnap('confirm')
 
     const depId = await resolveHomeIdent()
     const depApt = depId ? await findAirport(depId) : null
@@ -905,33 +923,6 @@ export default function MapHome() {
     })
   }, [])
 
-  // Frame a new route once. The plan is what the map is being looked at for
-  // the moment one exists, so it takes the camera from the base framing above
-  // rather than being drawn somewhere off the edge of a map still centred on
-  // home. Keyed on the route's own endpoints, so panning away afterwards
-  // stands: only a different route moves the camera again.
-  const fittedRoute = useRef(null)
-  useEffect(() => {
-    if (!mapRef.current || routeLine.length < 2) return
-    const key = JSON.stringify(routeLine)
-    if (fittedRoute.current === key) return
-    fittedRoute.current = key
-    framed.current = true
-    mapRef.current.fitBounds(L.latLngBounds(routeLine), {
-      // The drawer covers the bottom of the map, so the route is fitted into
-      // what is actually visible above it rather than into the whole map, on
-      // which the destination would sit behind the card describing it.
-      paddingTopLeft: [40, 40],
-      paddingBottomRight: [40, SHEET_COLLAPSED_PX + ROUTE_CARD_PX + 40],
-      // Not animated, and not for want of polish. Flying the camera to a route
-      // restored at mount left the basemap blank: Leaflet ran the zoom
-      // animation and never fetched tiles for where it landed, so the line was
-      // drawn over nothing at all. Cutting straight to the framing loads them
-      // every time. A map with no map on it is not a trade worth making for a
-      // half-second glide.
-      animate: false,
-    })
-  }, [routeLine, mapReady])
 
   // The pilot's own position marker, in the shape of what they fly. The
   // top-down silhouette is the one that reads as an aircraft on a map; the
@@ -1096,12 +1087,48 @@ export default function MapHome() {
   const Y_FULL = 0
   const Y_EXPANDED = Math.round(vh * (1 - SHEET_EXPANDED_VH))
   const Y_PLAN = Math.round(vh * (1 - SHEET_PLAN_VH))
+  const Y_CONFIRM = Math.round(vh * (1 - SHEET_CONFIRM_VH))
   const Y_COLLAPSED = Math.max(0, vh - collapsedPx)
   const restY = snap === 'full' ? Y_FULL
     : snap === 'expanded' ? Y_EXPANDED
     : snap === 'plan' ? Y_PLAN
+    : snap === 'confirm' ? Y_CONFIRM
     : Y_COLLAPSED
   const y = dragY != null ? dragY : restY
+
+  // Declared below restY rather than with the other map effects: it reads it,
+  // and a const cannot be read before it is initialised. Placed above, the
+  // dependency array alone took the whole home screen to a blank page.
+  // Frame a new route once. The plan is what the map is being looked at for
+  // the moment one exists, so it takes the camera from the base framing above
+  // rather than being drawn somewhere off the edge of a map still centred on
+  // home. Keyed on the route's own endpoints, so panning away afterwards
+  // stands: only a different route moves the camera again.
+  useEffect(() => {
+    if (!mapRef.current || routeLine.length < 2) return
+    const key = JSON.stringify(routeLine)
+    if (fittedRoute.current === key) return
+    fittedRoute.current = key
+    framed.current = true
+    mapRef.current.fitBounds(L.latLngBounds(routeLine), {
+      // The drawer covers the bottom of the map, so the route is fitted into
+      // what is actually visible above it rather than into the whole map, on
+      // which the destination would sit behind the card describing it.
+      paddingTopLeft: [40, 40],
+      // Measured from where the drawer is actually resting rather than
+      // assumed to be the collapsed height. While a route is being confirmed
+      // the drawer stands more than twice as tall, and fitting to the
+      // collapsed figure put the far end of the route behind it.
+      paddingBottomRight: [40, Math.max(0, vh - restY) + 40],
+      // Not animated, and not for want of polish. Flying the camera to a route
+      // restored at mount left the basemap blank: Leaflet ran the zoom
+      // animation and never fetched tiles for where it landed, so the line was
+      // drawn over nothing at all. Cutting straight to the framing loads them
+      // every time. A map with no map on it is not a trade worth making for a
+      // half-second glide.
+      animate: false,
+    })
+  }, [routeLine, mapReady, vh, restY])
 
   // Corners square off as the sheet approaches the top, rather than snapping
   // from rounded to square at the end of the animation. Interpolated over the
@@ -1237,19 +1264,27 @@ export default function MapHome() {
   // Only the third button changes with the state, and only in what it does:
   // with the plan open it closes the plan rather than opening one, so the row
   // never contains a button that would do nothing.
-  const actionRow = (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', gap: 10 }}>
+  // compact shrinks the row rather than the card: a fit-content card around an
+  // 86px record button is not compact, it is the same card with less padding.
+  const actionRow = (compact = false) => (
+    <div style={{
+      display: 'flex', alignItems: 'center',
+      justifyContent: compact ? 'center' : 'space-around',
+      gap: compact ? 18 : 10,
+    }}>
       <button
         onClick={() => (base ? setWxDetail(true) : setBasePicker(true))}
         style={tileBtn}>
-        <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)' }}>
+        <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)',
+          ...(compact ? { width: 38, height: 38 } : null) }}>
           <IconWeather />
         </span>
-        <span style={tileLabel}>Weather</span>
+        {!compact && <span style={tileLabel}>Weather</span>}
       </button>
 
       <button onClick={recording ? stopFlight : startFlight} style={{
-        width: 86, height: 86, borderRadius: '50%', border: 'none', cursor: 'pointer',
+        width: compact ? 52 : 86, height: compact ? 52 : 86,
+        borderRadius: '50%', border: 'none', cursor: 'pointer',
         background: recording ? 'var(--map-ink)' : ACCENT,
         boxShadow: `0 6px 20px ${recording ? 'rgba(28,28,30,0.3)' : accentAlpha(0.38)}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1261,10 +1296,11 @@ export default function MapHome() {
       </button>
 
       <button onClick={planning ? leavePlanner : openPlanner} style={tileBtn}>
-        <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)' }}>
+        <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)',
+          ...(compact ? { width: 38, height: 38 } : null) }}>
           {planning ? <IconClosePlan /> : <IconRoute />}
         </span>
-        <span style={tileLabel}>{planning ? 'Close Plan' : 'Plan Route'}</span>
+        {!compact && <span style={tileLabel}>{planning ? 'Close Plan' : 'Plan Route'}</span>}
       </button>
     </div>
   )
@@ -1513,9 +1549,10 @@ export default function MapHome() {
           is what the pilot asked to see all of. The row is a drag away, and
           the drawer's handle is right there. */}
       <FloatingCard
-        visible={planning && snap === 'plan'}
-        bottom={`calc(${Math.max(0, vh - Y_PLAN)}px + 10px)`}>
-        {actionRow}
+        visible={planning && (snap === 'plan' || snap === 'confirm')}
+        compact={confirmRoute}
+        bottom={`calc(${Math.max(0, vh - (confirmRoute ? Y_CONFIRM : Y_PLAN))}px + 10px)`}>
+        {actionRow(confirmRoute)}
       </FloatingCard>
 
       {/* Traffic legend, and the selected aircraft. Present only while the
@@ -1628,7 +1665,7 @@ export default function MapHome() {
               Gone from here entirely while the plan is open: it is on the card
               floating over the map instead, and the drawer below is the plan
               and nothing else. Same row, same buttons, one place at a time. */}
-          {!planning && actionRow}
+          {!planning && actionRow()}
 
           {/* A route exists, so the drawer says so. It was taken out as a
               duplicate of the read-back, which was right while the read-back
@@ -1641,7 +1678,7 @@ export default function MapHome() {
             <RouteSummary
               route={route}
               onClear={clearRoute}
-              onOpen={() => { setConfirmRoute(true); setPlanning(true); setSnap('plan') }} />
+              onOpen={() => { setConfirmRoute(true); setPlanning(true); setSnap('confirm') }} />
           )}
 
           {/* No hint line while planning. It is the drawer explaining itself,
