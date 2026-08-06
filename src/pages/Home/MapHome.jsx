@@ -937,6 +937,20 @@ export default function MapHome() {
   }
 
   const recording = rec != null
+
+  // What the drawer is telling the pilot to do next, which is nothing once it
+  // is already all the way open. Empty means the line is not rendered at all,
+  // rather than rendered blank and still taking its margins.
+  //
+  // Declared here rather than up with the other route derivations: it reads
+  // `recording`, which is defined on the line above, and a const cannot be
+  // read before it is initialised. Putting it earlier took the whole screen
+  // down with a temporal dead zone error.
+  const gestureHint = recording
+    ? 'Recording your track · tap the square to end and log it'
+    : snap === 'expanded' ? 'Keep pulling for the full logbook'
+    : snap === 'collapsed' ? 'Pull up for everything else'
+    : ''
   const track = rec?.track?.map(p => [p.lat, p.lon]) ?? []
 
   // Where the bottom of the chip stack sits: clear of the sheet, then clear of
@@ -1497,12 +1511,14 @@ export default function MapHome() {
           {/* No hint line while planning. It is the drawer explaining itself,
               and the plan needs the height more than it needs the sentence
               now that Close Plan says out loud what the gesture used to. */}
-          {!planning && (
+          {/* Only the lines about the gesture live here, under the thing the
+              gesture acts on. The reference-aid notice used to take this slot
+              at full screen, which put a standing disclaimer in the one place
+              reserved for telling the pilot what to do next. It now sits at
+              the bottom of the list, where a footnote belongs. */}
+          {!planning && gestureHint && (
           <div style={{ textAlign: 'center', margin: '10px 0 6px', fontSize: 10, color: 'var(--map-ink-faint)' }}>
-            {recording ? 'Recording your track · tap the square to end and log it'
-              : snap === 'full' ? 'Reference aid only · Always consult current FAR/AIM'
-              : snap === 'expanded' ? 'Keep pulling for the full logbook'
-              : 'Pull up for everything else'}
+            {gestureHint}
           </div>
           )}
         </div>
@@ -1656,6 +1672,17 @@ export default function MapHome() {
               ))}
             </div>
           )}
+
+          {/* The standing notice, at the foot of everything rather than under
+              the buttons. It is a footnote, not an instruction: it is true all
+              the time, so it belongs where a pilot arrives at the end of the
+              drawer, not in the line that tells them what to do next. */}
+          <div style={{
+            textAlign: 'center', margin: '26px 0 4px', fontSize: 10,
+            color: 'var(--map-ink-faint)',
+          }}>
+            Reference aid only · Always consult current FAR/AIM
+          </div>
         </div>
         )}
       </div>
