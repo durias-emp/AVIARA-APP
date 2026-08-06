@@ -51,7 +51,13 @@ export default function ChecklistTabShell({
   const onActiveChangeFns = useMemo(() => sections.map((_, i) => (v) => {
     setPaneOpen(prev => (prev[i] === v ? prev : prev.map((p, pi) => (pi === i ? v : p))))
   }), [sections])
-  const footerHidden = paneOpen[activeIndex] ?? false
+  // Hiding the footer while a card is open earns room back only where the
+  // footer is an opaque bar floating over the content, which is the full
+  // screen case. In the drawer it is transparent and in flow, so hiding it
+  // buys nothing and leaves a band of bare drawer under the card: a hard
+  // horizontal edge where the card's fill stops, which reads as the drawer
+  // being cut in half rather than as empty space.
+  const footerHidden = embedded ? false : (paneOpen[activeIndex] ?? false)
 
   // The footer (tab bar + action buttons) is position:fixed to the real
   // viewport bottom, immune to any dvh/ancestor-height mismatch. Panes pad
