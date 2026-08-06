@@ -998,8 +998,10 @@ export default function MapHome() {
     // A route the pilot typed and calculated themselves needs no read-back:
     // they were watching the numbers as they made them. One that came from a
     // tap on the chart does, which is what confirmRoute is already tracking.
-    if (!confirmRoute) setSnap('collapsed')
-    else setSnap('expanded')
+    // 'plan' rather than 'expanded': this is about as much content as the
+    // planner shows, and the taller stop left a screen of empty drawer
+    // under it.
+    setSnap(confirmRoute ? 'plan' : 'collapsed')
   }
 
   // Forget the route: off the map, off the drawer, out of storage. Deleted
@@ -1656,7 +1658,15 @@ export default function MapHome() {
             picked by accident, so it is read back at a size worth reading
             rather than tucked into the summary strip. */}
         {!planning && confirmRoute && (
-          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 20px 20px' }}>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{
+            flex: 1, minHeight: 0, overflowY: 'auto',
+            // Its own card, inset from the sheet, so the actions above sit on a
+            // separate surface rather than sharing one long panel with the
+            // read-back. Same shape the planner makes when it opens here.
+            margin: '2px 12px 0', padding: '16px 16px 18px',
+            background: 'var(--map-fill-soft)', borderRadius: 18,
+          }}>
             {route?.distNm == null ? (
               <div style={{ fontSize: 12.5, color: 'var(--map-ink-dim)', padding: '10px 0' }}>
                 Working out the route&#8230;
@@ -1689,8 +1699,16 @@ export default function MapHome() {
                 A straight line from the departure. It does not account for
                 airspace, terrain or wind. Open the plan to work those.
               </div>
+            </>)}
+          </div>
+          {/* Below the scroller, not inside it. A long destination pushed the
+              confirm off the bottom of the drawer, and the one control this
+              panel exists for must never be the one you have to go looking
+              for. */}
+          {route?.distNm != null && (
+            <div style={{ flexShrink: 0, padding: '12px 12px calc(var(--safe-bottom) + 12px)' }}>
               <button onClick={() => { setConfirmRoute(false); setSnap('collapsed') }} style={{
-                marginTop: 18, width: '100%', padding: '13px 0', borderRadius: 12, border: 'none',
+                width: '100%', padding: '13px 0', borderRadius: 12, border: 'none',
                 background: ACCENT, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
               }}>Looks right</button>
               <button onClick={() => { setConfirmRoute(false); openPlanner() }} style={{
@@ -1698,7 +1716,8 @@ export default function MapHome() {
                 background: 'var(--map-fill)', color: 'var(--map-ink)', fontSize: 14,
                 fontWeight: 700, cursor: 'pointer',
               }}>Open the plan</button>
-            </>)}
+            </div>
+          )}
           </div>
         )}
 
