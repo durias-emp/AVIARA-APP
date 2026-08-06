@@ -12,7 +12,8 @@ import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expan
 import { sampleRoute } from '../../../lib/corridor'
 import { analyzeTerrain, MOUNTAIN_FT } from '../../../lib/terrain'
 import { analyzeWater } from '../../../lib/water'
-import { analyzeAerodromes, findAirport } from '../../../lib/aerodromes'
+import { analyzeAerodromes, findAirport, nearestMajorAirport } from '../../../lib/aerodromes'
+import { readStoredFix } from '../../../hooks/useLiveLocation'
 import { analyzeAirspace } from '../../../lib/airspace'
 import { recommendCruise, fmtAlt } from '../../../lib/cruiseAdvisor'
 import { parseAircraftPerf } from '../../../lib/climbPerf'
@@ -1677,6 +1678,10 @@ function AirportLabels({ dep, dest, depPos, destPos, onFlyTo }) {
 }
 
 /* ── Altitude + Route calculator ─────────────────────────────── */
+// How far from home the pilot has to be before the departure field stops
+// assuming home base. 100nm is a flight, not a drive to the airport.
+const DEPARTURE_HOME_RADIUS_NM = 100
+
 export function AltitudeItem({ item, isChecked, onToggle }) {
   const [open, setOpen]           = useState(false)
   const [course, setCourse]       = useState('')
@@ -1716,6 +1721,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   }, [aircraftId])
 
   // Route inputs
+  // Read once at mount, not subscribed: this only decides what a blank
+  // departure field starts as. Live position comes from the shared watch
+  // when this is hosted under Home; the stored last fix covers the case
+  // where it is not, and is good enough for "which airport is near me".
+  const livePos = useRef(readStoredFix())
   const [dep, setDep]              = useState('')
   const [depValidated, setDepVal]  = useState(false)
   const [depChecking, setDepChk]   = useState(false)
@@ -1794,8 +1804,29 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   const changeDep = v => { endpointChanging(v, dep); setDep(v) }
   const changeDest = v => { endpointChanging(v, dest); setDest(v) }
 
+  // Where a blank FROM field starts. Home base normally — but a pilot who
+  // has flown somewhere is not departing from home, and typing over a wrong
+  // default is worse than having none. So once they are more than
+  // DEPARTURE_HOME_RADIUS_NM from home, the nearest real airport to where
+  // they actually are wins instead.
+  //
+  // Deliberately never fills the destination. There is no honest guess for
+  // where someone is going, and a wrong one has to be noticed before it can
+  // be corrected.
+  async function defaultDeparture(pos) {
+    const home = (await get('settings', 'homeAirport'))?.value ?? null
+    if (!pos) return home
+    if (home) {
+      const h = await findAirport(home)
+      if (h && haversineNm(pos.lat, pos.lon, h.lat, h.lon) <= DEPARTURE_HOME_RADIUS_NM) return home
+    }
+    const near = await nearestMajorAirport(pos.lat, pos.lon)
+    return near?.icao ?? home
+  }
+
   // Restore saved route on mount; fall back to homeAirport for the FROM field
   useEffect(() => {
+    const pos = livePos.current
     get('settings', 'route').then(r => {
       if (r?.depPos && r?.destPos) {
         if (r.dep) { setDep(r.dep); setDepVal(true) }
@@ -1821,9 +1852,9 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
         if (r.mc != null) setCourse(String(r.mc))
         if (r.cruiseAlt != null) setSelectedAlt(r.cruiseAlt)
         if (r.etd) { setEtd(r.etd); setEtdPinned(true) }
-        if (!r.dep) get('settings', 'homeAirport').then(h => { if (h?.value) { setDep(h.value); setDepVal(true) } })
+        if (!r.dep) defaultDeparture(pos).then(d => { if (d) { setDep(d); setDepVal(true) } })
       } else {
-        get('settings', 'homeAirport').then(h => { if (h?.value) { setDep(h.value); setDepVal(true) } })
+        defaultDeparture(pos).then(d => { if (d) { setDep(d); setDepVal(true) } })
       }
     })
   }, [])
@@ -3024,7 +3055,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                   onChange={e => { changeDep(e.target.value.toUpperCase()); setDepErr(null) }}
                   onKeyDown={e => e.key === 'Enter' && validateDep()}
                   onBlur={() => dep.trim().length >= 3 && validateDep()}
-                  placeholder="KMIA"
+                  placeholder="ICAO"
                   maxLength={4}
                   className={`icao-input${depError ? ' icao-input--error' : ''}`}
                   style={{
@@ -3083,7 +3114,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
                   onChange={e => { changeDest(e.target.value.toUpperCase()); setDestErr(null) }}
                   onKeyDown={e => e.key === 'Enter' && validateDest()}
                   onBlur={() => dest.trim().length >= 3 && validateDest()}
-                  placeholder="MGGT"
+                  placeholder="ICAO"
                   maxLength={4}
                   className={`icao-input${destError ? ' icao-input--error' : ''}`}
                   style={{

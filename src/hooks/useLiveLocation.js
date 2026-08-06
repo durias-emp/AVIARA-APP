@@ -35,7 +35,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // time to be the map's mount view.
 const LAST_FIX_KEY = 'aviara.lastFix'
 
-function readStoredFix() {
+// Exported so code that only needs "roughly where is this pilot" — the
+// flight plan's departure default, for one — can ask without mounting a
+// watch or requiring the location provider to be above it in the tree.
+export function readStoredFix() {
   try {
     const f = JSON.parse(localStorage.getItem(LAST_FIX_KEY))
     if (f && Number.isFinite(f.lat) && Number.isFinite(f.lon) && Number.isFinite(f.timestamp)) return f
