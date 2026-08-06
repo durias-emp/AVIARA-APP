@@ -196,64 +196,6 @@ export function AircraftItem({ item, isChecked, onToggle }) {
   }
 
   // Maintenance date/hours input row
-  const MaintRow = ({ id, label, placeholder, unit }) => {
-    const storageKey = `ac_maint_${id}`
-    const done = checkedIds.has(id)
-    const fromCurrency = isCurrencyCompleted(id)
-    return (
-      <div style={{ padding: '10px 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: fromCurrency ? 0 : 6 }}>
-          {!fromCurrency && (
-            <button onClick={() => toggleSub(id)} style={{
-              background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0,
-              display: 'flex', alignItems: 'center',
-            }}>
-              <div style={{
-                width: 16, height: 16, borderRadius: 4,
-                background: done ? 'var(--accent)' : 'transparent',
-                border: `1.5px solid ${done ? 'var(--accent)' : 'var(--border-strong)'}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                transition: 'all 0.18s',
-              }}>
-                {done && (
-                  <svg width={10} height={10} viewBox="0 0 12 12" fill="none">
-                    <polyline points="2,6 5,9 10,3" stroke="var(--accent-fg)" strokeWidth="1.8"
-                      strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
-              </div>
-            </button>
-          )}
-          <span style={{
-            fontSize: 13, fontWeight: 500, color: done || fromCurrency ? 'var(--text)' : 'var(--text-tertiary)', flex: 1,
-            transition: 'color 0.18s',
-          }}>{label}</span>
-          {fromCurrency && (
-            <div style={{
-              fontSize: 10, fontWeight: 700, color: '#fff',
-              background: 'var(--ok)', borderRadius: 20,
-              padding: '3px 10px', flexShrink: 0,
-            }}>Completed</div>
-          )}
-        </div>
-        {!fromCurrency && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input
-              defaultValue={localStorage.getItem(storageKey) || ''}
-              onChange={e => localStorage.setItem(storageKey, e.target.value)}
-              placeholder={placeholder}
-              style={{
-                flex: 1, background: 'var(--bg-card-2)', borderRadius: 8, padding: '7px 10px', fontSize: 16, color: 'var(--text)',
-                fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box',
-              }}
-            />
-            {unit && <span style={{ fontSize: 10, color: 'var(--text-tertiary)', flexShrink: 0 }}>{unit}</span>}
-          </div>
-        )}
-      </div>
-    )
-  }
-
   const subIds = [
     'ac-crew','ac-airworth','ac-reg','ac-radio','ac-oplim','ac-wb',
     'ac-annual','ac-100hr','ac-oil','ac-ads','ac-elt','ac-xpdr','ac-pitot',
@@ -308,36 +250,30 @@ export function AircraftItem({ item, isChecked, onToggle }) {
         <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.2px' }}>Checklist</span>
       </div>
 
-      {/* Documents: Aircraft Documents Onboard */}
+      {/* Documents: CARROW. This is the per-flight question — are the papers
+          in the aircraft today — so it belongs here rather than in the
+          aircraft's own record. The Hangar used to carry a second copy of
+          this same list; that one is gone, and 'Insurance current' came
+          across with it so nothing was lost in the move. */}
       <GroupRowComp
         title="Aircraft Documents Onboard"
-        ids={['ac-crew','ac-airworth','ac-reg','ac-radio','ac-oplim','ac-wb']}
+        ids={['ac-crew','ac-airworth','ac-reg','ac-radio','ac-oplim','ac-wb','ac-insurance']}
         isCurrencyCompleted={isCurrencyCompleted} checkedIds={checkedIds}>
 
-        <CheckRow id="ac-crew"     label="C: Crew documents (license · photo ID · medical)" far />
-        <CheckRow id="ac-airworth" label="A: Certificate of Airworthiness" far />
-        <CheckRow id="ac-reg"      label="R: Certificate of Registration" far />
-        <CheckRow id="ac-radio"    label="R: Radio License (FCC / international)" far />
-        <CheckRow id="ac-oplim"    label="O: Operating Limitations (AFM / POH)" far />
-        <CheckRow id="ac-wb"       label="W: Weight &amp; Balance data" far />
+        <CheckRow id="ac-crew"      label="C: Crew documents (license · photo ID · medical)" far />
+        <CheckRow id="ac-airworth"  label="A: Certificate of Airworthiness" far />
+        <CheckRow id="ac-reg"       label="R: Certificate of Registration" far />
+        <CheckRow id="ac-radio"     label="R: Radio License (FCC / international)" far />
+        <CheckRow id="ac-oplim"     label="O: Operating Limitations (AFM / POH)" far />
+        <CheckRow id="ac-wb"        label="W: Weight & Balance data" far />
+        <CheckRow id="ac-insurance" label="Insurance current" />
       </GroupRowComp>
 
-      {/* Airworthiness */}
-      <GroupRowComp
-        title="Airworthiness"
-        ids={['ac-ads','ac-annual','ac-100hr','ac-oil','ac-elt','ac-xpdr','ac-pitot']}
-        isCurrencyCompleted={isCurrencyCompleted} checkedIds={checkedIds}>
-
-        <MaintRow id="ac-annual" label="Annual Inspection"               placeholder="e.g. 2025-12-01" unit="due date" />
-        <MaintRow id="ac-100hr" label="100-hr Inspection"                placeholder="e.g. 1842.3"     unit="due hrs" />
-        <MaintRow id="ac-oil"   label="Oil Change"                       placeholder="e.g. 1820.0"     unit="due hrs" />
-        <MaintRow id="ac-elt"   label="ELT Battery"                      placeholder="e.g. 2026-03-01" unit="exp date" />
-        <MaintRow id="ac-xpdr"  label="Transponder (24-mo)"              placeholder="e.g. 2026-06-01" unit="due date" />
-        <MaintRow id="ac-pitot" label="Pitot-Static / Altimeter (24-mo)" placeholder="e.g. 2026-06-01" unit="due date" />
-        <div style={{ padding: '4px 0' }}>
-          <CheckRow id="ac-ads" label="Airworthiness Directives reviewed" />
-        </div>
-      </GroupRowComp>
+      {/* The maintenance block that used to sit here — annual, 100-hr, oil,
+          ELT, transponder, pitot-static, ADs — now lives in the Hangar with
+          the aircraft it describes. Due dates are a property of the
+          aeroplane, not of today's flight, and the Hangar's copy is the one
+          that persists and feeds the IM AIRWORTHY status. */}
 
       {/* Fuel & Equipment */}
       <GroupRowComp
