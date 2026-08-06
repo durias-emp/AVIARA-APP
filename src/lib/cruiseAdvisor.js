@@ -21,7 +21,7 @@
 import { bearing, haversineNm, sampleRoute } from './corridor'
 import { loadAtmosphere, atAltitude } from './atmosphere'
 import { analyzeHazards, worstAt } from './hazards'
-import { parseAircraftPerf, legEconomics, headwindComponent } from './climbPerf'
+import { parseAircraftPerf, legEconomics, headwindComponent, missingPerfFigures } from './climbPerf'
 
 const MOUNTAIN_FT = 5000
 const CLOUD_SOLID = 60          // % cover at which a level counts as IMC
@@ -87,13 +87,21 @@ function cloudAlong(atmo, altFt) {
 // says so rather than implying the whole rule was checked.
 function vfrCloudConflict(atmo, altFt) {
   if (atmo?.status !== 'ok') return null
-  const below = altFt < 10000 ? 500 : 1000
-  const above = 1000
+  // §91.155 distances are stated from the aircraft to the cloud, so they map
+  // onto the opposite side when you search for cloud around an altitude: the
+  // rule "stay 500 ft below cloud" forbids cloud in the 500 ft ABOVE you, and
+  // "stay 1,000 ft above cloud" forbids cloud in the 1,000 ft BELOW you. An
+  // earlier version had these the right way up as requirements and the wrong
+  // way round as a search window, which let VFR sit 700 ft over a solid deck.
+  const reqBelowCloud = altFt < 10000 ? 500 : 1000   // clearance under a deck
+  const reqAboveCloud = 1000                          // clearance over a deck
+  const lowFt = altFt - reqAboveCloud
+  const highFt = altFt + reqBelowCloud
   let hits = 0
   for (const col of atmo.columns) {
     let inCloud = false
     for (const lv of col) {
-      if (lv.altFt >= altFt - below && lv.altFt <= altFt + above && (lv.cloudPct ?? 0) >= CLOUD_SOLID) {
+      if (lv.altFt > lowFt && lv.altFt < highFt && (lv.cloudPct ?? 0) >= CLOUD_SOLID) {
         inCloud = true
         break
       }
@@ -136,6 +144,11 @@ export async function recommendCruise(waypoints, {
   }
 
   const perf = parseAircraftPerf(aircraft)
+  // Which of the numbers a ranking rests on are missing. Any at all and this
+  // reports the weather and stops short of a recommendation — see the
+  // weather-only return below.
+  const missingPerf = missingPerfFigures(perf)
+  const canRank = missingPerf.length === 0
   const maxAlt = Math.max(...candidateAlts)
   const atmo = await loadAtmosphere(wps, { departAtISO, maxAltFt: maxAlt, timeoutMs })
   // Hazards do not depend on the winds. Official G-AIRMET icing and
@@ -156,6 +169,7 @@ export async function recommendCruise(waypoints, {
 
   const floor = terrainFloor(terrain, flightRules)
   const scored = []
+  const permitted = []
   const rejected = []
 
   for (const altFt of candidateAlts) {
@@ -171,16 +185,18 @@ export async function recommendCruise(waypoints, {
         label: `Terrain. ${terrain.maxFt.toLocaleString()} ft peak needs ${fmtAlt(floor)}`,
       })
     }
-    if (perf && altFt > perf.serviceCeilingFt) {
-      gates.push({
-        label: `Above the ${perf.serviceCeilingFt.toLocaleString()} ft service ceiling`,
-        assumed: perf.assumed.ceiling,
-      })
+    // Only the pilot's own ceiling closes an altitude off. A class-average
+    // ceiling would rule out perfectly good altitudes in the name of an
+    // aeroplane nobody described — a guess wearing the clothes of a limit.
+    if (perf && !perf.assumed.ceiling && altFt > perf.serviceCeilingFt) {
+      gates.push({ label: `Above the ${perf.serviceCeilingFt.toLocaleString()} ft service ceiling` })
     }
 
     const wind = windAlong(atmo, altFt)
     const hwKt = wind?.hwKt ?? 0
-    const econ = perf ? legEconomics(perf, altFt, distNm, hwKt, fieldElevFt) : null
+    // "Not worth the climb" is a time-and-fuel verdict. On assumed figures it
+    // is our arithmetic, not theirs, so it does not get to reject an altitude.
+    const econ = canRank && perf ? legEconomics(perf, altFt, distNm, hwKt, fieldElevFt) : null
     if (econ && !econ.reachable) {
       gates.push({ label: `Not worth it on ${Math.round(distNm)} NM. ${econ.reason}` })
     }
@@ -231,6 +247,19 @@ export async function recommendCruise(waypoints, {
 
     if (gates.length) {
       rejected.push({ altFt, gates })
+      continue
+    }
+
+    // Nothing below this point is weather: it is time, fuel and ceiling
+    // margin, all of which need the aircraft's own figures. Without them the
+    // altitude is recorded as weather-permissible and left unranked.
+    if (!canRank) {
+      permitted.push({
+        altFt,
+        cloud: cloudAlong(atmo, altFt),
+        ice: worstAt(hazards.icing, altFt),
+        turb: worstAt(hazards.turbulence, altFt),
+      })
       continue
     }
 
@@ -297,6 +326,36 @@ export async function recommendCruise(waypoints, {
       altFt, score, reasons, econ, wind, cloud, ice, turb,
       oatC: cloud?.tempC ?? null,
     })
+  }
+
+  if (!canRank) {
+    // Freezing level is stated rather than judged: it is a fact about the air
+    // that a pilot weighs against their own aircraft and their own limits.
+    const freezing = atmo.status === 'ok'
+      ? atmo.surface.map(s => s.freezingFt).filter(f => f != null)
+      : []
+    const alts = permitted.map(p => p.altFt)
+    return {
+      status: 'weather-only',
+      flightRules,
+      ceilingKnown: !!perf && !perf.assumed.ceiling,
+      missingPerf,
+      permitted,
+      // A band, not a pick. Every altitude in here cleared the same factual
+      // gates; choosing between them is what the missing figures were for.
+      range: alts.length ? { lowFt: Math.min(...alts), highFt: Math.max(...alts) } : null,
+      freezingFt: freezing.length
+        ? { minFt: Math.round(Math.min(...freezing)), maxFt: Math.round(Math.max(...freezing)) }
+        : null,
+      rejected,
+      atmosphere: atmo.status === 'ok'
+        ? { model: atmo.model, hourISO: atmo.hourISO, samples: atmo.samples.length,
+            stale: atmo.stale ?? false, ageMin: atmo.ageMin ?? null }
+        : { status: atmo.status },
+      hazards,
+      degraded,
+      distNm,
+    }
   }
 
   if (!scored.length) {
