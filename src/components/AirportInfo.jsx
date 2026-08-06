@@ -405,13 +405,16 @@ export default function AirportInfo() {
 
   useEffect(() => {
     if (!icao) return
+    let cancelled = false
     setOpenChart(null)
     if (!isUSIdent(icao)) { setProcedures(null); return }
     setProcedures(undefined)
     Promise.all([getProcedures(icao), getProceduresCycle()]).then(([data, cycle]) => {
+      if (cancelled) return
       setProcedures(data)
       setProceduresCycle(cycle)
     })
+    return () => { cancelled = true }
   }, [icao])
 
   // Guarded, because switching fields fast enough makes the responses race:

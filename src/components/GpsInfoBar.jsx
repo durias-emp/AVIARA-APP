@@ -111,8 +111,14 @@ export default function GpsInfoBar({ route, coords, derived, status, lastKnown }
     const moved = !last || haversineNm(coords.lat, coords.lon, last[0], last[1]) > 2
     if (!moved) return
     lastLookupPos.current = [coords.lat, coords.lon]
+    // Guarded: these are four independent network lookups keyed on where the
+    // aircraft was when they started. In flight that position keeps moving,
+    // so a slow answer can land after a newer one and put the nearest field
+    // or altimeter setting for two miles back on screen as if it were
+    // current.
+    let cancelled = false
 
-    getGroundElevationFt(coords.lat, coords.lon).then(setGroundElevFt).catch(() => {})
+    getGroundElevationFt(coords.lat, coords.lon).then(v => { if (!cancelled) setGroundElevFt(v) }).catch(() => {})
 
     const pad = 0.6
     fetch(`/api/awc?path=metar&format=json&bbox=${coords.lat - pad},${coords.lon - pad},${coords.lat + pad},${coords.lon + pad}`)
@@ -125,7 +131,7 @@ export default function GpsInfoBar({ route, coords, derived, status, lastKnown }
           const d = haversineNm(coords.lat, coords.lon, m.lat, m.lon)
           if (d < bestD) { bestD = d; best = { icao: m.icaoId, inHg: m.altim / 33.8639 } }
         }
-        if (best) setNearestBaro(best)
+        if (best && !cancelled) setNearestBaro(best)
       }).catch(() => {})
 
     getAirports().then(list => {
@@ -134,10 +140,14 @@ export default function GpsInfoBar({ route, coords, derived, status, lastKnown }
         const d = haversineNm(coords.lat, coords.lon, lat, lon)
         if (d < bestD) { bestD = d; best = { ident, lat, lon } }
       }
-      if (best) setNearestApt(best)
+      if (best && !cancelled) setNearestApt(best)
     }).catch(() => {})
 
-    findNearestNavaid(coords.lat, coords.lon).then(hit => { if (hit) setNearestNavaid(hit) }).catch(() => {})
+    findNearestNavaid(coords.lat, coords.lon)
+      .then(hit => { if (hit && !cancelled) setNearestNavaid(hit) })
+      .catch(() => {})
+
+    return () => { cancelled = true }
   }, [coords?.lat, coords?.lon])
 
   const dest = route && route.length >= 2 ? route[route.length - 1] : null
