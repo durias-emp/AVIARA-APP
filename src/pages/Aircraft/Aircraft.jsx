@@ -10,7 +10,7 @@ import { SegControl } from '../../components/SegControl'
 import ConfirmModal from '../../components/ConfirmModal'
 import { deleteAircraft } from '../../lib/aircraft'
 import { buildAircraftExport, exportFileName } from '../../lib/aircraftShare'
-import { CHART_TYPES, createEmptyChart, normalizeUserPerfChart, validatePerfChart, pickRandomVerificationCells } from '../../lib/aircraftPerf'
+import { CHART_TYPES, createEmptyChart, normalizeUserPerfChart, validatePerfChart, pickRandomVerificationCells, getPerfChart, interpolateChart } from '../../lib/aircraftPerf'
 import WBSetupSection from './WBSetupSection'
 import PerfChartEditor from './PerfChartEditor'
 
@@ -1945,6 +1945,11 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
           </>)}
         </Section>
 
+        {/* Calculates only from the charts above — see PerformanceCalculator */}
+        <Section title="Performance Calculator">
+          <PerformanceCalculator profile={profile} />
+        </Section>
+
         {/* Performance */}
         {isHelicopter ? (
           <Section title="Performance">
@@ -2110,6 +2115,97 @@ function HeroBadge({ label, value }) {
     }}>
       <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</span>
       <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace' }}>{value}</span>
+    </div>
+  )
+}
+
+
+/* ── Performance Calculator ────────────────────────────────────────────────
+   Reads the pilot's own POH charts and interpolates between the numbers they
+   entered. It computes nothing it cannot source: no chart means no answer, and
+   inputs outside the chart's axes are refused rather than extrapolated, because
+   a takeoff distance invented past the end of a table is exactly the number a
+   pilot must not be handed.
+   ── */
+function PerformanceCalculator({ profile }) {
+  const [type, setType] = useState('takeoff')
+  const [x, setX] = useState('')
+  const [y, setY] = useState('')
+
+  const meta = CHART_TYPES[type]
+  const chart = getPerfChart(profile, type)
+  const xNum = x.trim() === '' ? null : parseFloat(x)
+  const yNum = y.trim() === '' ? null : parseFloat(y)
+  const bothEntered = xNum != null && !isNaN(xNum) && yNum != null && !isNaN(yNum)
+  const result = chart && bothEntered ? interpolateChart(chart, xNum, yNum) : null
+
+  const range = axis => axis?.values?.length
+    ? `${axis.values[0]} – ${axis.values[axis.values.length - 1]}${axis.unit ? ' ' + axis.unit : ''}`
+    : null
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {Object.keys(CHART_TYPES).map(t => {
+          const has = !!getPerfChart(profile, t)
+          return (
+            <button key={t} onClick={() => { setType(t); setX(''); setY('') }} style={{
+              padding: '7px 12px', borderRadius: 20, cursor: 'pointer',
+              border: type === t ? 'none' : '1px solid var(--border)',
+              background: type === t ? 'var(--accent)' : 'var(--bg-card-2)',
+              color: type === t ? 'var(--accent-fg)' : has ? 'var(--text)' : 'var(--text-tertiary)',
+              fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+            }}>
+              {CHART_TYPES[t].label}
+            </button>
+          )
+        })}
+      </div>
+
+      {!chart ? (
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+          No {meta.label.toLowerCase()} chart entered for this aircraft yet. Add it under
+          Performance Charts and this will calculate from your own POH figures.
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Field label={`${meta.axis1.label}${meta.axis1.unit ? ` (${meta.axis1.unit})` : ''}`}
+              value={x} onChange={setX} placeholder={range(chart.axis1) ?? ''} />
+            <Field label={`${meta.axis2.label}${meta.axis2.unit ? ` (${meta.axis2.unit})` : ''}`}
+              value={y} onChange={setY} placeholder={range(chart.axis2) ?? ''} />
+          </div>
+
+          {result ? (
+            <div style={{ background: 'var(--bg-card-2)', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {meta.outputs.map(o => (
+                <div key={o.key} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{o.label}</span>
+                  <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
+                    {Math.round(result[o.key])}<span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginLeft: 4 }}>{o.unit}</span>
+                  </span>
+                </div>
+              ))}
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5, borderTop: '0.5px solid var(--border)', paddingTop: 8 }}>
+                Interpolated from your {meta.label.toLowerCase()} chart
+                {chart.baselineWeight ? ` at ${chart.baselineWeight} lb` : ''}
+                {chart.source ? ` · ${chart.source}` : ''}. Apply your own corrections for
+                wind, runway surface and slope.
+              </div>
+            </div>
+          ) : bothEntered ? (
+            <div style={{ fontSize: 13, color: 'var(--warn)', lineHeight: 1.5 }}>
+              Outside the range this chart covers ({meta.axis1.label} {range(chart.axis1)},
+              {' '}{meta.axis2.label} {range(chart.axis2)}), or a needed cell is blank.
+              No value is shown rather than one guessed past the end of the table.
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+              Enter both values to calculate.
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }
