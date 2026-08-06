@@ -444,9 +444,14 @@ function AirportsHeroCard({ onOpen }) {
 
   useEffect(() => {
     if (!icao) return
+    let cancelled = false
     setLoading(true)
-    get('weather', icao).then(cached => { if (cached) setWx(cached) })
-    loadWeather(icao).then(setWx).catch(() => {}).finally(() => setLoading(false))
+    get('weather', icao).then(cached => { if (!cancelled && cached) setWx(cached) })
+    loadWeather(icao)
+      .then(w => { if (!cancelled) setWx(w) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [icao])
 
   // A great many fields publish no METAR — that is the whole reason the

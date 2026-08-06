@@ -105,10 +105,12 @@ export function NotamSection({ icao, CheckRow }) {
     if (!workerUrl || !icao || icao === 'XXXX') return
     setLoading(true)
     setError(null)
+    let cancelled = false
     fetch(`${workerUrl.replace(/\/$/, '')}?icao=${icao}`)
       .then(r => r.json())
-      .then(data => { setNotams(data?.items || []); setLoading(false) })
-      .catch(() => { setError('Could not reach the NOTAM worker. Check the URL'); setLoading(false) })
+      .then(data => { if (!cancelled) { setNotams(data?.items || []); setLoading(false) } })
+      .catch(() => { if (!cancelled) { setError('Could not reach the NOTAM worker. Check the URL'); setLoading(false) } })
+    return () => { cancelled = true }
   }, [workerUrl, icao])
 
   const saveUrl = () => {
@@ -298,21 +300,26 @@ export function AirportItem({ item, isChecked, onToggle }) {
 
   useEffect(() => {
     if (!open || !viewIcao) return
+    let cancelled = false
     proxyJSON(awcUrl('metar', { ids: viewIcao, format: 'json', hours: '3' }))
       .then(data => {
+        if (cancelled) return
         const m = Array.isArray(data) ? data[0] : null
         if (m?.wdir != null && m?.wspd != null) setAptWind({ dir: m.wdir, spd: m.wspd })
       })
       .catch(() => {})
+    return () => { cancelled = true }
   }, [open, viewIcao])
 
   useEffect(() => {
     if (!open || !viewIcao) return
     setAptLoading(true)
     setAptError(null)
+    let cancelled = false
     lookupAirport(viewIcao)
-      .then(d => { setAptData(d); setAptLoading(false) })
-      .catch(() => { setAptError('Airport data unavailable'); setAptLoading(false) })
+      .then(d => { if (!cancelled) { setAptData(d); setAptLoading(false) } })
+      .catch(() => { if (!cancelled) { setAptError('Airport data unavailable'); setAptLoading(false) } })
+    return () => { cancelled = true }
   }, [open, viewIcao])
 
 
