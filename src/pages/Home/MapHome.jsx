@@ -1698,10 +1698,6 @@ export default function MapHome() {
                   </div>
                 ))}
               </div>
-              <div style={{ marginTop: 18, fontSize: 11.5, color: 'var(--map-ink-dim)', lineHeight: 1.45 }}>
-                A straight line from the departure. It does not account for
-                airspace, terrain or wind. Open the plan to work those.
-              </div>
             </>)}
           </div>
           {/* Below the scroller, not inside it. A long destination pushed the
