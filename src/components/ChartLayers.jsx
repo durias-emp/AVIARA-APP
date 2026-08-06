@@ -59,7 +59,7 @@ export function Basemap({ dark = false }) {
   )
 }
 
-export default function ChartLayers({ layers, openaipKey, tfrData, onAddToRoute }) {
+export default function ChartLayers({ layers, openaipKey, tfrData, onSetDestination, onAddWaypoint }) {
   return (<>
     {layers.sectional && (
       <TileLayer url={`${FAA}/VFR_Sectional/MapServer/tile/{z}/{y}/{x}`}
@@ -123,11 +123,12 @@ export default function ChartLayers({ layers, openaipKey, tfrData, onAddToRoute 
         covering whole states, and a field hidden under a precipitation cell is
         exactly the field the pilot is looking for. */}
     {layers.radar && <RadarLayer />}
-    {/* onAddToRoute is optional: the planner's own pick-a-point map passes
-        nothing, because there the tap already means something else. */}
-    {layers.airports && <AirportLayer onAddToRoute={onAddToRoute} />}
-    {layers.heliports && <HeliportLayer onAddToRoute={onAddToRoute} />}
-    {layers.seaplane && <SeaplaneBaseLayer onAddToRoute={onAddToRoute} />}
+    {/* Both handlers are optional. The planner's own pick-a-point map passes
+        neither, because there a tap already means something else, and
+        onAddWaypoint is absent until a route exists to add one to. */}
+    {layers.airports && <AirportLayer onSetDestination={onSetDestination} onAddWaypoint={onAddWaypoint} />}
+    {layers.heliports && <HeliportLayer onSetDestination={onSetDestination} onAddWaypoint={onAddWaypoint} />}
+    {layers.seaplane && <SeaplaneBaseLayer onSetDestination={onSetDestination} onAddWaypoint={onAddWaypoint} />}
     {layers.fltcat && <FlightCategoryLayer />}
   </>)
 }

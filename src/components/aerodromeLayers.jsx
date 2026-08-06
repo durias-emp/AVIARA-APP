@@ -17,6 +17,7 @@ import { TileLayer, CircleMarker, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { FLTCAT } from '../lib/weather'
 import { getAirports, getAirportDetails, getAuxAerodromes } from '../lib/aerodromes'
+import { ACCENT } from './mapStyle'
 
 // The three parts every field popup is made of.
 //
@@ -65,25 +66,42 @@ function PopupSource({ text, noIcao }) {
   )
 }
 
-// The one action a pilot wants from a field they just tapped: go there.
+// What a pilot can do with a field they just tapped.
 //
-// The caller decides what "add" means, because only it knows whether a route
-// already exists. All this knows is which field was tapped and what it is
-// called, and that a field with an identifier should travel by its
-// identifier: a route filed as 30NV is one that can be read back, and one
-// filed as a pair of coordinates is not.
-function AddToRoute({ onAdd, ident, name, lat, lon }) {
-  if (!onAdd) return null
+// Two actions, and only one of them is always possible. Setting the
+// destination works from a cold start, so it is the primary and wears the
+// accent. Adding a waypoint needs a route to add it to, so it only appears
+// once one exists: an action that cannot work is worse than an absent one,
+// because the pilot has to press it to find out.
+//
+// The identifier travels with the position. A route filed as 30NV can be read
+// back to a controller and a pair of coordinates cannot, but heliports live in
+// a different pack from airports, so the position is what makes it resolvable
+// at all.
+function PopupActions({ onSetDestination, onAddWaypoint, ident, name, lat, lon }) {
+  if (!onSetDestination && !onAddWaypoint) return null
+  const payload = { ident, name, lat, lon }
+  const base = {
+    width: '100%', padding: '9px 12px', borderRadius: 9, border: 'none',
+    fontSize: 13, fontWeight: 700, cursor: 'pointer',
+  }
   return (
-    <button
-      onClick={(e) => { e.stopPropagation(); onAdd({ ident, name, lat, lon }) }}
-      style={{
-        marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 8,
-        border: 'none', background: '#0a84ff', color: '#fff',
-        fontSize: 13, fontWeight: 700, cursor: 'pointer',
-      }}>
-      + Add to route
-    </button>
+    <div style={{ marginTop: 9, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {onSetDestination && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onSetDestination(payload) }}
+          style={{ ...base, background: ACCENT, color: '#fff' }}>
+          Set as destination
+        </button>
+      )}
+      {onAddWaypoint && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onAddWaypoint(payload) }}
+          style={{ ...base, background: 'var(--map-fill)', color: 'var(--map-ink)' }}>
+          Add as waypoint
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -206,7 +224,7 @@ function airportIcon(color, size) {
   return icon
 }
 
-export function AirportLayer({ onAddToRoute }) {
+export function AirportLayer({ onSetDestination, onAddWaypoint }) {
   const map = useMap()
   const [airports, setAirports] = useState(null)
   const [details, setDetails] = useState(null)
@@ -278,8 +296,8 @@ export function AirportLayer({ onAddToRoute }) {
                 are a national authority's list, not the bundled pack, and the
                 name is a name rather than an ICAO code. */}
             <PopupSource text={a.source} noIcao={!!a.source} />
-            <AddToRoute onAdd={onAddToRoute} ident={a.ident} name={a.name}
-              lat={a.lat} lon={a.lon} />
+            <PopupActions onSetDestination={onSetDestination} onAddWaypoint={onAddWaypoint}
+              ident={a.ident} name={a.name} lat={a.lat} lon={a.lon} />
           </div>
         </Popup>
       </Marker>
@@ -310,7 +328,7 @@ const AUX_CAP = 400
 // `zoom < 0`, which is false forever — so the default silently turned the
 // limit off entirely. Seaplane bases were declared without the prop and drew
 // 400 markers across the whole country at world zoom.
-function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 8, onAddToRoute }) {
+function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 8, onSetDestination, onAddWaypoint }) {
   const map = useMap()
   const [list, setList] = useState(null)
   const [visible, setVisible] = useState([])
@@ -370,17 +388,17 @@ function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 8, onAddToRoute
             </div>
           )}
           <PopupSource text={a.source} noIcao={!!a.source && !a.name} />
-          <AddToRoute onAdd={onAddToRoute} ident={a.ident} name={a.name}
-            lat={a.lat} lon={a.lon} />
+          <PopupActions onSetDestination={onSetDestination} onAddWaypoint={onAddWaypoint}
+            ident={a.ident} name={a.name} lat={a.lat} lon={a.lon} />
         </div>
       </Popup>
     </Marker>
   ))
 }
 
-export function HeliportLayer({ onAddToRoute }) {
-  return <AuxAerodromeLayer onAddToRoute={onAddToRoute} dataKey="heliports" icon={HELIPORT_ICON} kindLabel="Heliport" minZoom={8} />
+export function HeliportLayer(props) {
+  return <AuxAerodromeLayer {...props} dataKey="heliports" icon={HELIPORT_ICON} kindLabel="Heliport" minZoom={8} />
 }
-export function SeaplaneBaseLayer({ onAddToRoute }) {
-  return <AuxAerodromeLayer onAddToRoute={onAddToRoute} dataKey="seaplaneBases" icon={SEAPLANE_ICON} kindLabel="Seaplane base" minZoom={8} />
+export function SeaplaneBaseLayer(props) {
+  return <AuxAerodromeLayer {...props} dataKey="seaplaneBases" icon={SEAPLANE_ICON} kindLabel="Seaplane base" minZoom={8} />
 }

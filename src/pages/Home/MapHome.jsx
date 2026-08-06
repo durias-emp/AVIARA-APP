@@ -31,6 +31,7 @@ import WeatherRibbon from '../../components/WeatherRibbon'
 import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecorder'
 import { put, get, getAll, del } from '../../lib/db'
 import { getAirports } from '../../lib/aerodromes'
+import { crossTrackNm } from '../../lib/corridor'
 import { resolveHomeIdent } from '../../lib/homeBase'
 import { loadTfrs } from '../../lib/tfr'
 import useIsDark from '../../hooks/useIsDark'
@@ -836,6 +837,33 @@ export default function MapHome() {
     setSnap('plan')
   }, [])
 
+  // The same field, added to the plan rather than replacing where it ends.
+  //
+  // Named by its identifier, so a plan reads KRNO, NV78, KSFO rather than
+  // three coordinates. Inserted into the leg it is nearest, and the planner's
+  // derived figures are dropped in the same write for the same reason a
+  // dropped point drops them: a distance describing the route before this
+  // point existed is a wrong number wearing the planner's authority.
+  const addFieldAsWaypoint = useCallback(({ ident, lat, lon }) => {
+    const name = (ident ?? '').trim().toUpperCase() || null
+    setRoute(prev => {
+      if (!prev?.depPos || !prev?.destPos) return prev
+      const wpts = [...(prev.wpts ?? [])]
+      let seg = null, best = Infinity
+      const line = [prev.depPos, ...wpts.map(w => [w.lat, w.lon]), prev.destPos]
+      for (let i = 0; i < line.length - 1; i++) {
+        const d = crossTrackNm(lat, lon, line[i], line[i + 1])
+        if (d < best) { best = d; seg = i + 1 }
+      }
+      const at = Math.max(0, Math.min(wpts.length, (seg ?? wpts.length + 1) - 1))
+      wpts.splice(at, 0, { lat, lon, name })
+      const next = { ...prev, wpts, needsRecalc: true }
+      for (const stale of ['distNm', 'trueCourse', 'magCourse', 'magVar']) delete next[stale]
+      put('settings', { key: 'route', ...next }).catch(() => {})
+      return next
+    })
+  }, [])
+
   // Frame a new route once. The plan is what the map is being looked at for
   // the moment one exists, so it takes the camera from the base framing above
   // rather than being drawn somewhere off the edge of a map still centred on
@@ -1193,7 +1221,10 @@ export default function MapHome() {
         )}
         <Basemap dark={darkBasemap} />
         <ChartLayers layers={layers} openaipKey={openaipKey} tfrData={tfrData}
-          onAddToRoute={addFieldToRoute} />
+          onSetDestination={addFieldToRoute}
+          // Only offered once there is a route to add to. Without one there is
+          // no leg to insert into and nothing the action could mean.
+          onAddWaypoint={routeLine.length > 1 ? addFieldAsWaypoint : undefined} />
         {/* Hold anywhere for the coordinates of that spot, and to put it in
             the route. Same component the planner's map uses. A long press
             rather than a tap, because a tap has to stay free for panning and

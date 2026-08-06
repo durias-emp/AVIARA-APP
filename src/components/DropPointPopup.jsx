@@ -13,6 +13,7 @@ import { useRef, useState } from 'react'
 import { CircleMarker, Popup, useMapEvents } from 'react-leaflet'
 import { fmtAvCoord } from '../lib/geo'
 import { crossTrackNm } from '../lib/corridor'
+import { ACCENT } from './mapStyle'
 
 // waypoints: the current route, if there is one. Used only to work out which
 //            leg a new point belongs in. Omit it and `seg` comes back null.
@@ -68,7 +69,7 @@ export default function DropPointPopup({ waypoints = [], canAdd = true, onAdd, t
 
   return (<>
     <CircleMarker center={[pt.lat, pt.lon]} radius={7}
-      pathOptions={{ color: '#fff', weight: 2.5, fillColor: '#0a84ff', fillOpacity: 1 }} />
+      pathOptions={{ color: '#fff', weight: 2.5, fillColor: ACCENT, fillOpacity: 1 }} />
     <Popup position={[pt.lat, pt.lon]} offset={[0, -6]} closeButton={false} autoPan={false}>
       <div style={{
         textAlign: 'center', minWidth: 176,
@@ -98,8 +99,8 @@ export default function DropPointPopup({ waypoints = [], canAdd = true, onAdd, t
         )}
         {canAdd && (
           <button onClick={addHere} style={{
-            marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 8, border: 'none',
-            background: '#0a84ff', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            marginTop: 8, width: '100%', padding: '9px 12px', borderRadius: 9, border: 'none',
+            background: ACCENT, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
           }}>
             {addLabel}
           </button>

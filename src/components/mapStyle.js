@@ -22,3 +22,8 @@ export const ROUTE_COLOR = '#FF00FF'
 // actually see, so they belong together.
 export const ROUTE_OPACITY = 0.85
 export const ROUTE_WEIGHT = 4
+
+// The one saturated colour on the screen, so an action is never ambiguous.
+// Shared rather than redeclared: the map home, the sheet and the map popups
+// all reach for it, and three copies of a hex is how they drift apart.
+export const ACCENT = '#FF5A1F'
