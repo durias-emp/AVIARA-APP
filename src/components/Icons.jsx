@@ -125,6 +125,125 @@ export function IconGear({ size = 24 }) {
   )
 }
 
+// One glyph for the whole sky, keyed to WeatherAnimation's condition types
+// (clear / few / scattered / broken / overcast / rain / snow / storm / fog).
+// The Airports card used to carry a full painted scene; a pilot glancing at
+// a home screen wants to know "sun, cloud, or wet", and one symbol answers
+// that faster than an illustration does.
+export function IconSky({ type = 'clear', size = 22 }) {
+  const s = { stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none' }
+  const cloud = <path d="M7.4 18.4h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+  const sunSmall = (
+    <>
+      <circle cx="8.6" cy="7.8" r="3" {...s} />
+      <path d="M8.6 2.6v1.4M8.6 11.6v1.4M3.4 7.8h1.4M12.4 7.8h1.4M4.9 4.1l1 1M11.3 10.5l1 1M12.3 4.1l-1 1M5.9 10.5l-1 1" {...s} />
+    </>
+  )
+  switch (type) {
+    case 'clear':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="4.6" {...s} />
+          <path d="M12 3.2v2.2M12 18.6v2.2M3.2 12h2.2M18.6 12h2.2M5.8 5.8l1.6 1.6M16.6 16.6l1.6 1.6M18.2 5.8l-1.6 1.6M7.4 16.6l-1.6 1.6" {...s} />
+        </svg>
+      )
+    case 'few': case 'scattered':
+      return <svg width={size} height={size} viewBox="0 0 24 24" fill="none">{sunSmall}{cloud}</svg>
+    case 'broken': case 'overcast':
+      return <svg width={size} height={size} viewBox="0 0 24 24" fill="none">{cloud}</svg>
+    case 'rain':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M7.4 15.4h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+          <path d="M8.6 18.2l-.8 2.4M12 18.2l-.8 2.4M15.4 18.2l-.8 2.4" {...s} />
+        </svg>
+      )
+    case 'snow':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M7.4 15.4h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+          <path d="M8.4 19.2h.02M11.9 20.4h.02M15.4 19.2h.02" {...s} strokeWidth="2.4" />
+        </svg>
+      )
+    case 'storm':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M7.4 14.6h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+          <path d="M12.8 16.4l-2.4 3.4h2.6l-1.4 2.6" {...s} />
+        </svg>
+      )
+    case 'fog':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M7.4 13.6h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+          <path d="M5.4 17h13M7.4 20.2h9" {...s} />
+        </svg>
+      )
+    default:
+      return <svg width={size} height={size} viewBox="0 0 24 24" fill="none">{cloud}</svg>
+  }
+}
+
+/* ── Home card glyphs ──────────────────────────────────────────────────
+   One line weight (1.6), one 24-unit box, no fills except where a shape
+   reads better solid. They sit at 22px on a black card, so anything more
+   detailed than this turns to mush — the restraint is the design. ── */
+
+// Control tower. Reads as "airport" faster than a runway or a plane does:
+// a plane means flight, a tower means the field.
+export function IconTower({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2.2v2.4" />
+      <path d="M8.4 7.2h7.2l-1 4.2H9.4z" />
+      <path d="M9.4 11.4 8.2 20.6M14.6 11.4l1.2 9.2" />
+      <path d="M6.8 20.8h10.4" />
+    </svg>
+  )
+}
+
+// Hangar: the arch and the door opening. Two shapes, nothing else.
+export function IconHangar({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.2 20.4v-8.2a8.8 8.8 0 0 1 17.6 0v8.2" />
+      <path d="M2.2 20.4h19.6" />
+      <path d="M8.4 20.4v-4.6a3.6 3.6 0 0 1 7.2 0v4.6" />
+    </svg>
+  )
+}
+
+// Aviator goggles — the shape the Pilot card's artwork was always built
+// around, and the closest thing the app has to a mark of its own. An
+// earlier version drew the whole helmet (dome, ear flaps, lenses); at 22px
+// the dome collided with the lenses and the result read as a blob. Two
+// lenses, a bridge and the strap stubs survive that size.
+export function IconHelmet({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3.4" y="8.4" width="7.2" height="7.2" rx="2.8" />
+      <rect x="13.4" y="8.4" width="7.2" height="7.2" rx="2.8" />
+      <path d="M10.6 12h2.8" />
+      <path d="M3.4 10.9H1.8M20.6 10.9h1.6" />
+    </svg>
+  )
+}
+
+// Point-to-point route: two fixes and the leg between them.
+export function IconRoute({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="5.4" cy="18.6" r="2.2" />
+      <circle cx="18.6" cy="5.4" r="2.2" />
+      <path d="M7.2 16.8 16.8 7.2" strokeDasharray="2.6 2.4" />
+    </svg>
+  )
+}
+
 // Atom — nucleus plus three electron shells at 60° to each other. Ellipses
 // with a rotate transform rather than paths, so the three orbits are the
 // same shape by construction and stay perfectly symmetric at any size.
