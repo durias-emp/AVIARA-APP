@@ -181,73 +181,6 @@ function FloatingCard({ visible, bottom, children }) {
 //
 // Magnetic course gets the emphasis: it is the one you actually fly. True
 // course and variation are underneath it as the working, not as headline
-// figures competing with it.
-function RouteSummary({ route, onClear, onEdit }) {
-  const stat = { display: 'flex', flexDirection: 'column', gap: 2 }
-  const statValue = { fontSize: 17, fontWeight: 800, color: 'var(--map-ink)', letterSpacing: '-0.3px', fontVariantNumeric: 'tabular-nums' }
-  const statLabel = { fontSize: 9, fontWeight: 600, color: 'var(--map-ink-faint)', letterSpacing: '0.4px' }
-
-  return (
-    <div style={{
-      background: 'var(--map-fill)', borderRadius: 14, padding: '10px 12px', marginTop: 12,
-      display: 'flex', alignItems: 'center', gap: 12,
-    }}>
-      {/* The whole card reopens the plan. The X is the only thing on it that
-          does not, so it is given its own hit area away from the numbers. */}
-      <button
-        onClick={onEdit}
-        style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0,
-          cursor: 'pointer', textAlign: 'left' }}>
-        <div style={{
-          fontSize: 13, fontWeight: 700, color: 'var(--map-ink)', marginBottom: 7,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {route.dep} <span style={{ color: 'var(--map-ink-faint)', fontWeight: 600 }}>→</span> {route.dest}
-        </div>
-        <div style={{ display: 'flex', gap: 20 }}>
-          <div style={stat}>
-            <span style={statValue}>{route.distNm}<span style={{ fontSize: 11, fontWeight: 600, marginLeft: 2 }}>NM</span></span>
-            <span style={statLabel}>DISTANCE</span>
-          </div>
-          <div style={stat}>
-            <span style={statValue}>{route.mc}°</span>
-            <span style={statLabel}>MAG COURSE</span>
-          </div>
-          {/* Only if the planner actually produced them. A route restored from
-              an older version of this record has the first two and not always
-              the rest, and a blank figure on a flight plan is worse than none. */}
-          {route.tc != null && (
-            <div style={stat}>
-              <span style={{ ...statValue, fontSize: 14, color: 'var(--map-ink-dim)' }}>{route.tc}°</span>
-              <span style={statLabel}>TRUE</span>
-            </div>
-          )}
-          {route.magVar != null && (
-            <div style={stat}>
-              <span style={{ ...statValue, fontSize: 14, color: 'var(--map-ink-dim)' }}>
-                {parseFloat(route.magVar) >= 0 ? '+' : ''}{route.magVar}°
-              </span>
-              <span style={statLabel}>VAR</span>
-            </div>
-          )}
-        </div>
-      </button>
-
-      <button
-        onClick={onClear}
-        aria-label="Clear route"
-        style={{
-          width: 30, height: 30, borderRadius: '50%', border: 'none', flexShrink: 0,
-          background: 'var(--map-panel)', color: 'var(--map-ink-dim)', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-          <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
-        </svg>
-      </button>
-    </div>
-  )
-}
 
 // One tapped aircraft. Deliberately sparse: this is a reference readout, and
 // padding it with fields the feed reports unreliably would suggest more
@@ -496,7 +429,7 @@ export default function MapHome() {
   // The closed drawer's height, which is not one number any more: it stands
   // taller when it has a route to report. Not while planning, where the
   // drawer's height is set by the planning stop instead.
-  const collapsedPx = SHEET_COLLAPSED_PX + (route && !planning && !confirmRoute ? ROUTE_CARD_PX : 0)
+  const collapsedPx = SHEET_COLLAPSED_PX
   // The viewport, measured rather than assumed: reading window.innerHeight
   // during render is fine once, but it has to be re-read when the phone is
   // rotated or the browser chrome changes, or every snap point is stale.
@@ -1587,21 +1520,13 @@ export default function MapHome() {
               and nothing else. Same row, same buttons, one place at a time. */}
           {!planning && actionRow}
 
-          {/* The route, once there is one: what was planned, in the numbers a
-              pilot reads off a flight plan, and an X to be rid of it. Sits
-              above the actions rather than replacing them, so the record
-              button stays where the hand expects it. It is, after all, the
-              route you are about to fly.
+          {/* No summary strip. Setting a destination brings up the
+              confirmation, which is that route read back properly, and a
+              second smaller copy of it living permanently in the drawer was
+              the thing the owner never wanted to see.
 
-              Not while the plan is open, where the route is the thing being
-              edited a few pixels below and a second copy of its numbers would
-              be one more thing to keep in agreement. */}
-          {/* Not while confirming: the panel below is the same route, read
-              back larger, and two copies of one flight in one drawer invites
-              the question of which one is current. */}
-          {!planning && !confirmRoute && route && (
-            <RouteSummary route={route} onClear={clearRoute} onEdit={openPlanner} />
-          )}
+              Clearing a route now lives in the planner's Reset rather than on
+              an X attached to a card that no longer exists. */}
 
           {/* No hint line while planning. It is the drawer explaining itself,
               and the plan needs the height more than it needs the sentence
@@ -1715,6 +1640,15 @@ export default function MapHome() {
                 background: 'var(--map-fill)', color: 'var(--map-ink)', fontSize: 14,
                 fontWeight: 700, cursor: 'pointer',
               }}>Open the plan</button>
+              {/* The X on the old summary card was the only way to be rid of a
+                  route. That card is gone, so the action moves here rather than
+                  disappearing with it. */}
+              <button onClick={() => { clearRoute(); setConfirmRoute(false); setPlanning(false); setSnap('collapsed') }}
+                style={{
+                  marginTop: 10, width: '100%', padding: '10px 0', borderRadius: 12,
+                  border: 'none', background: 'none', color: 'var(--map-ink-faint)',
+                  fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                }}>Discard this route</button>
             </div>
           )}
           </div>
