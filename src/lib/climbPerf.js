@@ -10,6 +10,8 @@
 // Nothing is silently invented: any value that had to be inferred is listed in
 // `assumed` so the UI can say which numbers are the pilot's and which are ours.
 
+import { getPerfChart, interpolateChart } from './aircraftPerf'
+
 const ISA_LAPSE = 6.87535e-6      // per foot, standard atmosphere
 const DESCENT_FPM = 500           // comfortable, unpressurised, ears intact
 const CLIMB_SPEED_FACTOR = 0.85   // Vy is slower than cruise
@@ -55,16 +57,66 @@ const DEFAULTS = {
 // profile: the IndexedDB aircraft/profile record.
 // Returns null only when there is no usable cruise speed at all, without that
 // the whole model is guesswork and the caller should say so instead.
+// ISA temperature at a pressure altitude, in °C.
+function isaTempC(altFt) {
+  return 15 - 1.98 * (altFt / 1000)
+}
+
+function clamp(v, values) {
+  if (!values?.length) return null
+  return Math.min(Math.max(v, values[0]), values[values.length - 1])
+}
+
+// Rate of climb straight off the pilot's own climb chart, read at the lowest
+// altitude the chart covers and the ISA temperature for that altitude — the
+// same condition a book "best rate of climb" figure is quoted at. Null when
+// there is no chart, or when the chart does not reach that corner: this
+// never extrapolates to manufacture a number.
+function chartRocFpm(profile) {
+  const chart = getPerfChart(profile, 'climb')
+  if (!chart) return null
+  const baseAlt = chart.axis1.values[0]
+  const temp = clamp(isaTempC(baseAlt), chart.axis2.values)
+  const hit = interpolateChart(chart, baseAlt, temp)
+  return hit?.value ?? null
+}
+
+// TAS and fuel flow from the cruise chart, read at the power setting the
+// pilot says they actually cruise at. Without that setting there is nothing
+// honest to read: the chart's second axis IS the power setting, and picking
+// one on their behalf would invent the fuel figure the whole leg economy
+// rests on.
+function chartCruise(profile, refAltFt) {
+  const chart = getPerfChart(profile, 'cruise')
+  if (!chart) return null
+  const setting = num(profile.cruiseSetting)
+  if (setting == null) return null
+  const alt = clamp(refAltFt, chart.axis1.values)
+  const pow = clamp(setting, chart.axis2.values)
+  const hit = interpolateChart(chart, alt, pow)
+  if (!hit) return null
+  return { tasKt: hit.tas ?? null, ffGph: hit.ff ?? null }
+}
+
 export function parseAircraftPerf(profile) {
   if (!profile) return null
-  const tasKt = num(profile.vspeeds?.cruise)
+
+  // The cruise chart is consulted first — it is the pilot's own POH data,
+  // where the stored speed and burn fields are numbers typed once. Reference
+  // altitude has to be guessed before the class is known, so this uses the
+  // piston figure; a turbine's chart is clamped to its own axis anyway.
+  const chartCr = chartCruise(profile, 7000)
+
+  const tasKt = chartCr?.tasKt ?? num(profile.vspeeds?.cruise)
   if (!tasKt) return null
 
-  const burnCruiseGph = num(profile.burnRate?.cruise) ?? 0
+  const burnFromChart = chartCr?.ffGph ?? null
+  const burnCruiseGph = burnFromChart ?? num(profile.burnRate?.cruise) ?? 0
   const klass = classify(tasKt, burnCruiseGph, profile.category)
   const def = DEFAULTS[klass]
 
-  const rocRaw = num(profile.perf?.roc)
+  const rocFromChart = chartRocFpm(profile)
+  const rocRaw = rocFromChart ?? num(profile.perf?.roc)
   const ceilRaw = num(profile.perf?.ceiling)
   const burnClimbRaw = num(profile.burnRate?.climb)
 
@@ -84,6 +136,15 @@ export function parseAircraftPerf(profile) {
       roc: rocRaw == null,
       ceiling: ceilRaw == null,
       burnClimb: burnClimbRaw == null,
+      burnCruise: burnCruiseGph === 0,
+    },
+    // Which figures came from the pilot's own POH charts rather than from a
+    // typed field or a class default. Lets the UI distinguish "your book says
+    // this" from "we had to fall back".
+    fromChart: {
+      roc: rocFromChart != null,
+      tas: chartCr?.tasKt != null,
+      burnCruise: burnFromChart != null,
     },
   }
 }

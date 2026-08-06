@@ -1758,6 +1758,13 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
                 onChange={v => patch('fuel', 'total', v)} placeholder="e.g. 56 USG" />
               <Field label="Fuel usable" value={profile.fuel?.usable ?? ''}
                 onChange={v => patch('fuel', 'usable', v)} placeholder="e.g. 53 USG" />
+              {/* Which column of the cruise chart this aircraft is actually
+                  flown at. Without it the app would have to pick a power
+                  setting on the pilot's behalf to read fuel flow out of the
+                  chart, and inventing a power setting inside fuel planning
+                  is not the app's decision to make. */}
+              <Field label="Normal cruise setting" value={profile.cruiseSetting ?? ''}
+                onChange={v => patch(null, 'cruiseSetting', v)} placeholder="e.g. 65 or 2400" />
             </div>
             <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
               {(profile.fuel?.tanks ?? []).map(t => (
@@ -2163,10 +2170,24 @@ function PerformanceCalculator({ profile }) {
       </div>
 
       {!chart ? (
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-          No {meta.label.toLowerCase()} chart entered for this aircraft yet. Add it under
-          Performance Charts and this will calculate from your own POH figures.
-        </div>
+        // Shown, but inert. The rule is that a performance figure with no POH
+        // data behind it is not calculated at all — not estimated, not filled
+        // from a class average — so the fields stay visible and disabled and
+        // say plainly what is missing.
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, opacity: 0.45, pointerEvents: 'none' }}>
+            <Field label={`${meta.axis1.label}${meta.axis1.unit ? ` (${meta.axis1.unit})` : ''}`} value="" onChange={() => {}} placeholder="—" />
+            <Field label={`${meta.axis2.label}${meta.axis2.unit ? ` (${meta.axis2.unit})` : ''}`} value="" onChange={() => {}} placeholder="—" />
+          </div>
+          <div style={{
+            background: 'var(--bg-card-2)', borderRadius: 10, padding: '12px 14px',
+            fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5,
+          }}>
+            <strong style={{ color: 'var(--text)' }}>{meta.label} POH information is missing.</strong>
+            {' '}Enter this chart under Performance Charts and the calculation becomes
+            available. Nothing is estimated in the meantime.
+          </div>
+        </>
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
