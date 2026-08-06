@@ -442,6 +442,16 @@ function FarLink({ far }) {
 // database (SBs are manufacturer-proprietary, unlike ADs), so this points to
 // a search rather than guessing at a specific vendor portal URL that could
 // go stale or be wrong.
+// FAA Dynamic Regulatory System — the authoritative AD library. A search
+// URL rather than an inline result list on purpose: applicability turns on
+// serial number and configuration, which a title keyword match cannot
+// decide, and an answer that looks authoritative while being a guess is
+// worse than a link to the registry that actually knows.
+function adSearchUrl(make, model) {
+  const q = encodeURIComponent([make, model].filter(Boolean).join(' ').trim() || 'airworthiness directive')
+  return `https://drs.faa.gov/browse/ADFRAWD/doctypeDetails?modalDetails=true&searchQuery=${q}`
+}
+
 function sbSearchUrl(make) {
   const q = encodeURIComponent(`${make} aircraft service bulletins`)
   return `https://www.google.com/search?q=${q}`
@@ -456,11 +466,6 @@ function sbSearchUrl(make) {
 // token (e.g. "King Air 350i" is filed under "350", "172S" under "172"). 
 // searching with the suffix attached reliably returns zero results. Strips
 // a letter (or letter+digit, e.g. "G6") tail off the last numeric token.
-function simplifyModel(model) {
-  if (!model) return null
-  const stripped = model.trim().replace(/(\d)[A-Za-z]+$/, '$1').replace(/\s+[A-Za-z]\d*$/, '')
-  return stripped !== model.trim() ? stripped : null
-}
 
 async function fetchAdDocuments(term, signal) {
   const params = new URLSearchParams({
@@ -476,109 +481,6 @@ async function fetchAdDocuments(term, signal) {
   return data.results ?? []
 }
 
-function AdSbLookup({ make, model, year }) {
-  const [results, setResults] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [broadened, setBroadened] = useState(false)
-
-  useEffect(() => {
-    if (!make?.trim()) return
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    setBroadened(false)
-
-    const signal = AbortSignal.timeout(10000)
-    const m = make.trim()
-    const modelTrimmed = model?.trim() || null
-    const yr = year != null && String(year).trim() ? String(year).trim() : null
-
-    // Try, in priority order, stopping at the first query that returns hits so
-    // the pilot always sees something useful:
-    //   make+model+year -> make+model -> make+numeric-core model -> make alone.
-    // Year goes FIRST only as an optional refinement. AD titles almost never
-    // contain the model year (a 2024 AD can apply to a 1978 airframe), so a
-    // year-qualified search usually returns nothing and we fall straight back
-    // to the make/model results. It can only add precision, never zero them out.
-    async function run() {
-      const modelAttempts = [modelTrimmed, simplifyModel(modelTrimmed), null]
-        .filter((v, i, arr) => arr.indexOf(v) === i)
-      const terms = []
-      if (yr && modelTrimmed) terms.push(`${m} ${modelTrimmed} ${yr} Airworthiness Directive`)
-      for (const a of modelAttempts) terms.push(`${m}${a ? ' ' + a : ''} Airworthiness Directive`)
-
-      for (let i = 0; i < terms.length; i++) {
-        const docs = await fetchAdDocuments(terms[i], signal)
-        if (cancelled) return
-        if (docs.length > 0 || i === terms.length - 1) {
-          setResults(docs)
-          setBroadened(i > 0)
-          return
-        }
-      }
-    }
-
-    run()
-      .catch(() => { if (!cancelled) setError('Could not reach the Federal Register. Check your connection and try again.') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [make, model, year])
-
-  if (!make?.trim()) {
-    return (
-      <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-        Enter this aircraft's Make above to look up AD notices and Service Bulletin resources.
-      </div>
-    )
-  }
-
-  return (
-    <>
-      <div>
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
-          Airworthiness Directive Notices
-        </div>
-        {loading && <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Searching the Federal Register…</div>}
-        {error && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{error}</div>}
-        {!loading && !error && results?.length === 0 && (
-          <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>No matching AD notices found by title search.</div>
-        )}
-        {!loading && !error && results?.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {results.map(r => (
-              <a key={r.document_number} href={r.html_url} target="_blank" rel="noreferrer" style={{
-                display: 'block', background: 'var(--bg-card-2)', borderRadius: 10,
-                padding: '11px 12px', textDecoration: 'none',
-              }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.35 }}>{r.title}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{fmtDate(r.publication_date)}</div>
-              </a>
-            ))}
-          </div>
-        )}
-        <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 8, lineHeight: 1.5 }}>
-          Title/keyword search only, not an applicability check. Verify with the FAA's DRS or your A&amp;P/IA.
-        </div>
-      </div>
-
-      <div>
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
-          Service Bulletins
-        </div>
-        <a href={sbSearchUrl(make)} target="_blank" rel="noreferrer" style={{
-          display: 'block', background: 'var(--bg-card-2)', borderRadius: 10,
-          padding: '11px 12px', textDecoration: 'none',
-        }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Search {make} Service Bulletins</span>
-        </a>
-        <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 8, lineHeight: 1.5 }}>
-          No centralized SB database exists. This searches for the right manufacturer portal.
-        </div>
-      </div>
-    </>
-  )
-}
 
 function AirworthinessBadge({ status }) {
   const map = {
@@ -1807,7 +1709,12 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
         </Section>
 
         {/* Dimensions */}
-        <Section title="Dimensions">
+        {/* Dimensions and Capacities: the aeroplane's fixed numbers in one
+            place — how big it is, how much it holds, how heavy it may be,
+            and the speeds the POH publishes. All specification figures, as
+            opposed to anything that has to be calculated for a given day,
+            which now lives with the performance charts. */}
+        <Section title="Dimensions and Capacities">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <Field label="Length" value={profile.dimensions?.length ?? ''}
               onChange={v => patch('dimensions', 'length', v)} placeholder="e.g. 27 ft 2 in" />
@@ -1837,32 +1744,76 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
             <Chip label="+ Add dimension" onClick={() => patch('dimensions', 'extra',
               [...(profile.dimensions?.extra ?? []), { id: 'dim-' + Date.now(), label: '', value: '' }])} />
           </div>
-        </Section>
 
-        {/* Airworthiness Directives & Service Bulletins */}
-        <Section title="Airworthiness Directives & Service Bulletins">
-          <AdSbLookup make={profile.make} model={profile.model} year={profile.year} />
-
-          {/* AD compliance log. Filled from the aircraft's logbook AD record */}
-          <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
-              AD Compliance Log
+          <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+              Weights and Fuel
             </div>
-            {(currencyData?.airworthy?.ads ?? []).length === 0 && (
-              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-                Add ADs from your aircraft's logbook AD-compliance record to track recurring inspections and due dates.
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <Field label="MTOW" value={profile.weights?.mtow ?? ''}
+                onChange={v => patch('weights', 'mtow', v)} placeholder="e.g. 2,550 lb" />
+              <Field label="Fuel type" value={profile.fuel?.type ?? ''}
+                onChange={v => patch('fuel', 'type', v)} placeholder="100LL / Jet-A" />
+              <Field label="Fuel total" value={profile.fuel?.total ?? ''}
+                onChange={v => patch('fuel', 'total', v)} placeholder="e.g. 56 USG" />
+              <Field label="Fuel usable" value={profile.fuel?.usable ?? ''}
+                onChange={v => patch('fuel', 'usable', v)} placeholder="e.g. 53 USG" />
+            </div>
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {(profile.fuel?.tanks ?? []).map(t => (
+                <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <MiniInput value={t.label} onChange={v => patch('fuel', 'tanks',
+                    (profile.fuel?.tanks ?? []).map(x => x.id === t.id ? { ...x, label: v } : x))} placeholder="Tank" />
+                  <MiniInput value={t.value} onChange={v => patch('fuel', 'tanks',
+                    (profile.fuel?.tanks ?? []).map(x => x.id === t.id ? { ...x, value: v } : x))} placeholder="e.g. 26 USG" />
+                  <RemoveButton onClick={() => patch('fuel', 'tanks',
+                    (profile.fuel?.tanks ?? []).filter(x => x.id !== t.id))} />
+                </div>
+              ))}
+              <Chip label="+ Add tank" onClick={() => patch('fuel', 'tanks',
+                [...(profile.fuel?.tanks ?? []), { id: 'tank-' + Date.now(), label: '', value: '' }])} />
+            </div>
+          </div>
+
+          <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: 14 }}>
+          {isHelicopter ? (
+            <>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+              Speeds (knots)
+            </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <VSpeed label="Vne  Never exceed" value={profile.vspeeds?.vne ?? ''} onChange={v => patch('vspeeds', 'vne', v)} />
+                <VSpeed label="Vy   Best climb" value={profile.vspeeds?.vy ?? ''} onChange={v => patch('vspeeds', 'vy', v)} />
+                <VSpeed label="Vx   Best angle" value={profile.vspeeds?.vx ?? ''} onChange={v => patch('vspeeds', 'vx', v)} />
+                <VSpeed label="Autorotation" value={profile.vspeeds?.auto ?? ''} onChange={v => patch('vspeeds', 'auto', v)} />
+                <VSpeed label="Cruise TAS" value={profile.vspeeds?.cruise ?? ''} onChange={v => patch('vspeeds', 'cruise', v)} />
               </div>
-            )}
-            {(currencyData?.airworthy?.ads ?? []).map(ad => (
-              <ADRow key={ad.id} ad={ad} currentHobbs={profile.hobbsTime}
-                onChange={(key, v) => updateAD(ad.id, key, v)} onRemove={() => removeAD(ad.id)} />
-            ))}
-            <div>
-              <Chip label="+ Add AD" onClick={addAD} accent />
+            </>
+          ) : (
+            <>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+              V-Speeds (knots)
             </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <VSpeed label="Vs  Stall clean" value={profile.vspeeds?.vs ?? ''} onChange={v => patch('vspeeds', 'vs', v)} />
+                <VSpeed label="Vso Stall flaps" value={profile.vspeeds?.vs0 ?? ''} onChange={v => patch('vspeeds', 'vs0', v)} />
+                <VSpeed label="Vr  Rotation" value={profile.vspeeds?.vr ?? ''} onChange={v => patch('vspeeds', 'vr', v)} />
+                <VSpeed label="Vx  Best angle" value={profile.vspeeds?.vx ?? ''} onChange={v => patch('vspeeds', 'vx', v)} />
+                <VSpeed label="Vy  Best rate" value={profile.vspeeds?.vy ?? ''} onChange={v => patch('vspeeds', 'vy', v)} />
+                <VSpeed label="Vg  Best glide" value={profile.vspeeds?.vg ?? ''} onChange={v => patch('vspeeds', 'vg', v)} />
+                <VSpeed label="Va  Manoeuvring" value={profile.vspeeds?.va ?? ''} onChange={v => patch('vspeeds', 'va', v)} />
+                <VSpeed label="Vfe Flap extend" value={profile.vspeeds?.vfe ?? ''} onChange={v => patch('vspeeds', 'vfe', v)} />
+                <VSpeed label="Vno Max struct." value={profile.vspeeds?.vno ?? ''} onChange={v => patch('vspeeds', 'vno', v)} />
+                <VSpeed label="Vne Never exceed" value={profile.vspeeds?.vne ?? ''} onChange={v => patch('vspeeds', 'vne', v)} />
+                <VSpeed label="Vref Approach" value={profile.vspeeds?.vref ?? ''} onChange={v => patch('vspeeds', 'vref', v)} />
+                <VSpeed label="Cruise TAS" value={profile.vspeeds?.cruise ?? ''} onChange={v => patch('vspeeds', 'cruise', v)} />
+              </div>
+            </>
+          )}
           </div>
         </Section>
 
+        {/* Airworthiness Directives & Service Bulletins */}
         {/* Airworthiness */}
         <Section title="Airworthiness">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: -6 }}>
@@ -1886,6 +1837,64 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
                 <CheckRowSimple checked={!!airworthyDocs.ads} onChange={v => patchAirworthyDocs('ads', v)}
                   label="Airworthiness Directives" far={FAR.ads} padding="10px 0" />
               </div>
+            </div>
+          </div>
+
+          {/* ADs and SBs sit at the bottom of Airworthiness, where they
+              belong, and the search is now just a link out. The old inline
+              lookup queried the Federal Register and matched on title text,
+              which is a keyword search dressed up as an answer — it cannot
+              tell you whether an AD applies to your serial number, and
+              looking authoritative about that is worse than sending you to
+              the registry that can. The compliance log stays: those are the
+              pilot's own records, with recurrence and due tracking. */}
+          <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Airworthiness Directives &amp; Service Bulletins
+            </div>
+            <a
+              href={adSearchUrl(profile.make, profile.model)}
+              target="_blank" rel="noreferrer"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                padding: '11px 13px', borderRadius: 'var(--r-sm)', textDecoration: 'none',
+                background: 'var(--bg-card-2)', color: 'var(--accent)', fontSize: 14, fontWeight: 600,
+              }}>
+              <span>Search FAA Dynamic Regulatory System</span>
+              <span aria-hidden="true">↗</span>
+            </a>
+            <a
+              href={sbSearchUrl(profile.make)}
+              target="_blank" rel="noreferrer"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                padding: '11px 13px', borderRadius: 'var(--r-sm)', textDecoration: 'none',
+                background: 'var(--bg-card-2)', color: 'var(--accent)', fontSize: 14, fontWeight: 600,
+              }}>
+              <span>Search manufacturer service bulletins</span>
+              <span aria-hidden="true">↗</span>
+            </a>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+              Applicability depends on serial number and configuration — confirm with the FAA registry or your A&amp;P.
+            </div>
+          </div>
+
+          {/* AD compliance log. Filled from the aircraft's logbook AD record */}
+          <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
+              AD Compliance Log
+            </div>
+            {(currencyData?.airworthy?.ads ?? []).length === 0 && (
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+                Add ADs from your aircraft's logbook AD-compliance record to track recurring inspections and due dates.
+              </div>
+            )}
+            {(currencyData?.airworthy?.ads ?? []).map(ad => (
+              <ADRow key={ad.id} ad={ad} currentHobbs={profile.hobbsTime}
+                onChange={(key, v) => updateAD(ad.id, key, v)} onRemove={() => removeAD(ad.id)} />
+            ))}
+            <div>
+              <Chip label="+ Add AD" onClick={addAD} accent />
             </div>
           </div>
         </Section>
@@ -1936,36 +1945,6 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
           </>)}
         </Section>
 
-        {/* V-Speeds */}
-        {isHelicopter ? (
-          <Section title="Speeds (knots)">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <VSpeed label="Vne  Never exceed" value={profile.vspeeds?.vne ?? ''} onChange={v => patch('vspeeds', 'vne', v)} />
-              <VSpeed label="Vy   Best climb" value={profile.vspeeds?.vy ?? ''} onChange={v => patch('vspeeds', 'vy', v)} />
-              <VSpeed label="Vx   Best angle" value={profile.vspeeds?.vx ?? ''} onChange={v => patch('vspeeds', 'vx', v)} />
-              <VSpeed label="Autorotation" value={profile.vspeeds?.auto ?? ''} onChange={v => patch('vspeeds', 'auto', v)} />
-              <VSpeed label="Cruise TAS" value={profile.vspeeds?.cruise ?? ''} onChange={v => patch('vspeeds', 'cruise', v)} />
-            </div>
-          </Section>
-        ) : (
-          <Section title="V-Speeds (knots)">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <VSpeed label="Vs  Stall clean" value={profile.vspeeds?.vs ?? ''} onChange={v => patch('vspeeds', 'vs', v)} />
-              <VSpeed label="Vso Stall flaps" value={profile.vspeeds?.vs0 ?? ''} onChange={v => patch('vspeeds', 'vs0', v)} />
-              <VSpeed label="Vr  Rotation" value={profile.vspeeds?.vr ?? ''} onChange={v => patch('vspeeds', 'vr', v)} />
-              <VSpeed label="Vx  Best angle" value={profile.vspeeds?.vx ?? ''} onChange={v => patch('vspeeds', 'vx', v)} />
-              <VSpeed label="Vy  Best rate" value={profile.vspeeds?.vy ?? ''} onChange={v => patch('vspeeds', 'vy', v)} />
-              <VSpeed label="Vg  Best glide" value={profile.vspeeds?.vg ?? ''} onChange={v => patch('vspeeds', 'vg', v)} />
-              <VSpeed label="Va  Manoeuvring" value={profile.vspeeds?.va ?? ''} onChange={v => patch('vspeeds', 'va', v)} />
-              <VSpeed label="Vfe Flap extend" value={profile.vspeeds?.vfe ?? ''} onChange={v => patch('vspeeds', 'vfe', v)} />
-              <VSpeed label="Vno Max struct." value={profile.vspeeds?.vno ?? ''} onChange={v => patch('vspeeds', 'vno', v)} />
-              <VSpeed label="Vne Never exceed" value={profile.vspeeds?.vne ?? ''} onChange={v => patch('vspeeds', 'vne', v)} />
-              <VSpeed label="Vref Approach" value={profile.vspeeds?.vref ?? ''} onChange={v => patch('vspeeds', 'vref', v)} />
-              <VSpeed label="Cruise TAS" value={profile.vspeeds?.cruise ?? ''} onChange={v => patch('vspeeds', 'cruise', v)} />
-            </div>
-          </Section>
-        )}
-
         {/* Performance */}
         {isHelicopter ? (
           <Section title="Performance">
@@ -1980,57 +1959,33 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
                 onChange={v => patch('perf', 'hoverOGE', v)} placeholder="e.g. 6,800 ft DA" />
             </div>
           </Section>
-        ) : (
-          <Section title="Performance (sea level / std day)">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <Field label="T/O ground roll" value={profile.perf?.toRoll ?? ''}
-                onChange={v => patch('perf', 'toRoll', v)} placeholder="e.g. 960 ft" />
-              <Field label="T/O over 50 ft" value={profile.perf?.to50ft ?? ''}
-                onChange={v => patch('perf', 'to50ft', v)} placeholder="e.g. 1,630 ft" />
-              <Field label="Ldg ground roll" value={profile.perf?.ldgRoll ?? ''}
-                onChange={v => patch('perf', 'ldgRoll', v)} placeholder="e.g. 575 ft" />
-              <Field label="Ldg over 50 ft" value={profile.perf?.ldg50ft ?? ''}
-                onChange={v => patch('perf', 'ldg50ft', v)} placeholder="e.g. 1,335 ft" />
-              <Field label="Rate of climb (best, SL/std day)" value={profile.perf?.roc ?? ''}
-                onChange={v => patch('perf', 'roc', v)} placeholder="e.g. 700 fpm" />
-            </div>
-          </Section>
-        )}
+        ) : null}
 
-        {/* Fuel */}
-        <Section title="Fuel">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <Field label="Total" value={profile.fuel?.total ?? ''}
-              onChange={v => patch('fuel', 'total', v)} placeholder="e.g. 56 USG" />
-            <Field label="Usable" value={profile.fuel?.usable ?? ''}
-              onChange={v => patch('fuel', 'usable', v)} placeholder="e.g. 53 USG" />
-            <Field label="Type" value={profile.fuel?.type ?? ''}
-              onChange={v => patch('fuel', 'type', v)} placeholder="100LL / Jet-A" />
-            <Field label="Climb burn" value={profile.burnRate?.climb ?? ''}
-              onChange={v => patch('burnRate', 'climb', v)} placeholder="e.g. 10 GPH" />
-            <Field label="Cruise burn" value={profile.burnRate?.cruise ?? ''}
-              onChange={v => patch('burnRate', 'cruise', v)} placeholder="e.g. 8.5 GPH" />
-          </div>
-        </Section>
-
-        {/* Notes */}
-        <Section title="Notes">
+        {/* Notes: a plain box, not a collapsible section. It is one field
+            with no structure to reveal, and hiding a scratchpad behind a
+            tap is how it stops being used. */}
+        <div style={{
+          background: 'var(--bg-card)', borderRadius: 'var(--r-lg)',
+          boxShadow: 'var(--shadow-sm)', padding: '15px 16px',
+          display: 'flex', flexDirection: 'column', gap: 10,
+        }}>
+          <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.2px', color: 'var(--text)' }}>
+            Notes
+          </span>
           <textarea
             value={profile.notes ?? ''}
             onChange={e => patch(null, 'notes', e.target.value)}
             placeholder="Any additional notes about this aircraft…"
-            rows={3}
+            rows={4}
             style={{
-              width: '100%', resize: 'none',
+              width: '100%', boxSizing: 'border-box', resize: 'vertical',
               padding: '11px 13px', borderRadius: 'var(--r-sm)',
-              border: 'none',
-              background: 'var(--bg-card-2)',
+              border: 'none', background: 'var(--bg-card-2)',
               color: 'var(--text)', fontSize: 15,
-              fontFamily: 'inherit', lineHeight: 1.5,
-              outline: 'none',
+              fontFamily: 'inherit', lineHeight: 1.5, outline: 'none',
             }}
           />
-        </Section>
+        </div>
 
         {/* Manage */}
         <Section title="Manage Aircraft">
