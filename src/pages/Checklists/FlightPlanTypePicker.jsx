@@ -30,7 +30,15 @@ function OptionButton({ label, onClick }) {
 // doesn't hand down as much room as expected.
 export default function FlightPlanTypePicker({ onComplete }) {
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '4px 20px 24px', gap: 16 }}>
+    // Scrolls when it has to. The buttons have a 160px floor each, so in a
+    // short container — the drawer at its half-open stop — the three of them
+    // cannot fit, and without this the last one ("Local") simply sat below
+    // the fold with no way to reach it.
+    <div style={{
+      flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0,
+      overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+      padding: '4px 20px 24px', gap: 16,
+    }}>
       {OPTIONS.map(o => (
         <OptionButton
           key={o.key}
