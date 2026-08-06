@@ -189,16 +189,21 @@ export function IconSky({ type = 'clear', size = 22 }) {
    reads better solid. They sit at 22px on a black card, so anything more
    detailed than this turns to mush — the restraint is the design. ── */
 
-// Control tower. Reads as "airport" faster than a runway or a plane does:
-// a plane means flight, a tower means the field.
-export function IconTower({ size = 24 }) {
+// Crossed runways — the way a field is drawn on a chart. An earlier version
+// was a control tower, which at 22px read as a candle.
+//
+// Each runway is a pair of parallel edges, so four lines in total: the strip
+// shape is what makes it a runway rather than a plus sign. Angles are
+// deliberately not 90° apart — real fields cross at odd angles, and the
+// asymmetry is what stops it reading as a crosshair.
+export function IconRunways({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2.2v2.4" />
-      <path d="M8.4 7.2h7.2l-1 4.2H9.4z" />
-      <path d="M9.4 11.4 8.2 20.6M14.6 11.4l1.2 9.2" />
-      <path d="M6.8 20.8h10.4" />
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+      {/* long runway, NNE/SSW */}
+      <path d="M8.2 21.2 12.6 3.1M11.6 21.9 16 3.8" />
+      {/* crossing runway, WNW/ESE */}
+      <path d="M2.9 9.9 20.4 13.3M2.5 12.1 20 15.5" />
     </svg>
   )
 }
@@ -215,31 +220,64 @@ export function IconHangar({ size = 24 }) {
   )
 }
 
-// Aviator goggles — the shape the Pilot card's artwork was always built
-// around, and the closest thing the app has to a mark of its own. An
-// earlier version drew the whole helmet (dome, ear flaps, lenses); at 22px
-// the dome collided with the lenses and the result read as a blob. Two
-// lenses, a bridge and the strap stubs survive that size.
+// The Pilot mark: the project's own logo (public/pilot-helmet.png, from
+// brand/pqrh-logo-source.jpeg), not a redrawing of it. Two attempts to
+// letter it as line art both drifted off-brand, which is the argument for
+// using the asset itself.
+//
+// Same treatment as the Pilot artwork in HomeHeroArt: the source is dark
+// engraving on cream, so inverting it would reverse every tone and turn the
+// pale goggle lenses dark. Instead the image drives a luminance mask over a
+// flat currentColor fill, keeping the drawing's own tonal sense. The
+// transfer curve is steep so the cream ground goes to zero and the card
+// shows through rather than carrying a pale rectangle.
+//
+// The window into the source (x 44, y 12, 60.9 x 60 in the original's
+// units) is the helmet's own box — that crop is also how the "PQRH"
+// wordmark below it gets dropped. Those numbers are mapped into this
+// 24-unit box by LOGO_SCALE; keep them in step with HomeHeroArt if the
+// crop ever moves.
+const LOGO_SCALE = 24 / 60.9
 export function IconHelmet({ size = 24 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3.4" y="8.4" width="7.2" height="7.2" rx="2.8" />
-      <rect x="13.4" y="8.4" width="7.2" height="7.2" rx="2.8" />
-      <path d="M10.6 12h2.8" />
-      <path d="M3.4 10.9H1.8M20.6 10.9h1.6" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <defs>
+        <filter id="ic-pilot-ink" x="0" y="0" width="100%" height="100%">
+          <feColorMatrix type="saturate" values="0" />
+          <feComponentTransfer>
+            <feFuncR type="table" tableValues="1 1 1 0.95 0.85 0.65 0.42 0.2 0.05 0 0" />
+            <feFuncG type="table" tableValues="1 1 1 0.95 0.85 0.65 0.42 0.2 0.05 0 0" />
+            <feFuncB type="table" tableValues="1 1 1 0.95 0.85 0.65 0.42 0.2 0.05 0 0" />
+          </feComponentTransfer>
+        </filter>
+        <mask id="ic-pilot-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+          <image
+            href="/pilot-helmet.png"
+            x={(13.89 - 44) * LOGO_SCALE}
+            y={(-13.64 - 12) * LOGO_SCALE}
+            width={121.8 * LOGO_SCALE}
+            height={121.8 * LOGO_SCALE}
+            filter="url(#ic-pilot-ink)"
+            preserveAspectRatio="none"
+          />
+        </mask>
+      </defs>
+      <rect x="0" y="0" width="24" height="24" fill="currentColor" mask="url(#ic-pilot-mask)" />
     </svg>
   )
 }
 
-// Point-to-point route: two fixes and the leg between them.
+// A three-fix route: departure, a turning point, destination. Scalene on
+// purpose — an equilateral triangle reads as a warning sign or a play
+// button, while uneven legs read as a route someone actually planned.
 export function IconRoute({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="5.4" cy="18.6" r="2.2" />
-      <circle cx="18.6" cy="5.4" r="2.2" />
-      <path d="M7.2 16.8 16.8 7.2" strokeDasharray="2.6 2.4" />
+      <path d="M4.6 19.2 9.9 5.2 20.1 12.4Z" />
+      <circle cx="4.6" cy="19.2" r="2.1" fill="currentColor" stroke="none" />
+      <circle cx="9.9" cy="5.2" r="2.1" fill="currentColor" stroke="none" />
+      <circle cx="20.1" cy="12.4" r="2.1" fill="currentColor" stroke="none" />
     </svg>
   )
 }

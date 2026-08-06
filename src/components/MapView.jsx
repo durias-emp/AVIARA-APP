@@ -846,7 +846,7 @@ function RoutePreview({ route }) {
 // eases over `insetDuration` on the snap — see MapFocusOffset for the
 // mechanics and LocateRecenter for how a recenter lands in the middle of
 // the strip this leaves visible.
-export default function MapView({ onViewChange, lastView, bottomInset = 0, focusInset = null, insetDuration = '0ms', topInset = '0px', showHomeButton = true } = {}) {
+export default function MapView({ onViewChange, onRouteChange, lastView, bottomInset = 0, focusInset = null, insetDuration = '0ms', topInset = '0px', showHomeButton = true } = {}) {
   // Shared with Home's own map preview via HomeLocationProvider (mounted
   // once around Home, which never unmounts while this screen — an overlay
   // on top of Home — is open) rather than starting a separate watch here.
@@ -1799,7 +1799,10 @@ export default function MapView({ onViewChange, lastView, bottomInset = 0, focus
         </div>
       )}
 
-      <FlightPlanBar onRouteChange={setRoute} />
+      {/* The route is reported upward as well as kept locally: Home's
+          FPL card shows the active plan, and this bar is where a plan
+          comes from. */}
+      <FlightPlanBar onRouteChange={r => { setRoute(r); onRouteChange?.(r) }} />
       <MapLayersMenu layer={layer} setLayer={setLayer} layerOptions={LAYER_OPTIONS} overlays={overlays} toggleOverlay={handleToggleOverlay} />
       <GpsInfoBar route={route} coords={liveCoords} derived={liveDerived} status={liveStatus} lastKnown={lastKnown} />
     </div>

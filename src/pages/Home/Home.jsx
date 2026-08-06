@@ -17,9 +17,10 @@ import MapView from '../../components/MapView'
 import AirportInfo from '../../components/AirportInfo'
 import ToolsMenu from '../../components/ToolsMenu'
 import { HomeLocationProvider } from '../../context/HomeLocation'
-import { IconAtom, IconGear, IconFriends, IconTower, IconHangar, IconHelmet, IconRoute, IconSky } from '../../components/Icons'
+import { IconAtom, IconGear, IconFriends, IconRunways, IconHangar, IconHelmet, IconRoute, IconSky } from '../../components/Icons'
 import { useAuth } from '../../context/AuthContext'
 import { hasUnreadMessages } from '../../lib/messages'
+import { haversineNm } from '../../lib/geo'
 import Checklists from '../Checklists/Checklists'
 import Hangar     from '../Aircraft/Hangar'
 import Settings   from '../Settings/Settings'
@@ -193,7 +194,7 @@ function HangarCard({ aircraftImage, activeAircraft, aircraftCount = 0, onOpen }
 // move rather than on every frame of a drag. The drag flag zeroes the
 // controls' transition so they track a finger exactly, and restores it so they
 // ease alongside the drawer when it snaps instead of arriving first.
-function HomeMap({ metrics }) {
+function HomeMap({ metrics, onRouteChange }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'var(--bg)' }}>
       <MapView
@@ -209,6 +210,7 @@ function HomeMap({ metrics }) {
         focusInset={Math.min(metrics.live, metrics.openHeight || metrics.live)}
         insetDuration={metrics.dragging ? '0ms' : '260ms'}
         topInset="var(--safe-top)"
+        onRouteChange={onRouteChange}
         showHomeButton={false}
       />
     </div>
@@ -506,7 +508,7 @@ function AirportsHeroCard({ onOpen }) {
   // the field you're actually looking at.
   return (
     <HeroCard
-      Icon={IconTower}
+      Icon={IconRunways}
       label={icao}
       onOpen={handleClick}
       ariaLabel="Open airports"
@@ -536,20 +538,45 @@ function AirportsHeroCard({ onOpen }) {
 }
 
 /* ── Flight Planning card ─────────────────────────────────── */
-function FlightPlanCard({ onOpen }) {
+function FlightPlanCard({ route, onOpen }) {
 
   function handleClick() {
     onOpen('checklists')
   }
 
-  // Right side deliberately empty for now — see the options in the commit
-  // message. Better an honest gap than a decorative number.
+  // The active plan, straight from the map's route bar. Distance is summed
+  // across the legs rather than measured origin-to-destination, so a route
+  // that doglegs reads longer than the straight line — which is the number
+  // that matters. No ETE: that needs a groundspeed this card has no honest
+  // source for on the ground.
+  const legs = route?.length >= 2 ? route : null
+  const totalNm = legs
+    ? legs.slice(1).reduce((sum, wp, i) => sum + haversineNm(legs[i].lat, legs[i].lon, wp.lat, wp.lon), 0)
+    : 0
+
   return (
     <HeroCard
       Icon={IconRoute}
       label="FPL"
+      sublabel={legs ? `${legs.length} fixes` : null}
       onOpen={handleClick}
       ariaLabel="Open flight planning"
+      right={legs ? (
+        <span style={{ textAlign: 'right', lineHeight: 1.35, minWidth: 0 }}>
+          <span style={{
+            display: 'block', fontSize: 12, fontWeight: 700, color: '#fff',
+            fontFamily: 'monospace', letterSpacing: '0.04em',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {legs[0].name} → {legs[legs.length - 1].name}
+          </span>
+          <span style={{ display: 'block', fontSize: 11, color: 'rgba(255,255,255,0.6)', fontVariantNumeric: 'tabular-nums' }}>
+            {totalNm.toFixed(0)} NM
+          </span>
+        </span>
+      ) : (
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap' }}>No active route</span>
+      )}
     />
   )
 }
@@ -718,6 +745,9 @@ export default function Home() {
   // 'peek' | 'open' | 'full'. Only opening a section ever reaches 'full'.
   const [drawerStop, setDrawerStop] = useState('open')
   const [drawerMetrics, setDrawerMetrics] = useState({ live: 0, settled: 0, dragging: false, openHeight: 0 })
+  // The route typed into the map's own flight-plan bar, lifted here so the
+  // FPL card can show it. The map remains where a route is created.
+  const [activeRoute, setActiveRoute] = useState(null)
   const handleDrawerHeight = useCallback(m => setDrawerMetrics(m), [])
 
   const activeAircraft = aircraftList?.find(a => a.id === aircraftId)
@@ -808,14 +838,14 @@ export default function Home() {
     if (key === 'airports') return <AirportsHeroCard key={key} onOpen={openCard} />
     if (key === 'hangar')   return <HangarCard key={key} aircraftImage={aircraftImage} activeAircraft={activeAircraft} aircraftCount={aircraftList?.length ?? 0} onOpen={openCard} />
     if (key === 'pilot')    return <PilotRow key={key} currencyCards={currencyCards} onOpen={openCard} />
-    if (key === 'flight')   return <FlightPlanCard key={key} onOpen={openCard} />
+    if (key === 'flight')   return <FlightPlanCard key={key} route={activeRoute} onOpen={openCard} />
     if (key === 'discover') return <DiscoverCard key={key} onOpen={openCard} />
     return null
   }
 
   return (
     <HomeLocationProvider>
-      <HomeMap metrics={drawerMetrics} />
+      <HomeMap metrics={drawerMetrics} onRouteChange={setActiveRoute} />
 
       <HomeDrawer
         stop={drawerStop}
