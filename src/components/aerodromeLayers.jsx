@@ -18,6 +18,53 @@ import L from 'leaflet'
 import { FLTCAT } from '../lib/weather'
 import { getAirports, getAirportDetails, getAuxAerodromes } from '../lib/aerodromes'
 
+// The three parts every field popup is made of.
+//
+// Shared so an airport and a heliport read the same way, and so the sizes
+// live in one place. The identifier is the headline because it is what a
+// pilot says on the radio and types into a plan; the full name is context
+// underneath it rather than a continuation of the same line, which is what
+// the old "IDENT — Name" form made it.
+function PopupHead({ title, subtitle }) {
+  return (
+    <>
+      <div style={{
+        fontSize: 19, fontWeight: 800, letterSpacing: '-0.3px',
+        color: 'var(--map-ink)', lineHeight: 1.15,
+      }}>{title}</div>
+      {subtitle && (
+        <div style={{
+          fontSize: 12, color: 'var(--map-ink-dim)', marginTop: 2, lineHeight: 1.3,
+        }}>{subtitle}</div>
+      )}
+    </>
+  )
+}
+
+// One fact per line. Stacked rather than run together with separators: these
+// are unrelated figures, and a dot or a dash between them implies they belong
+// to each other.
+function PopupFacts({ rows }) {
+  const shown = rows.filter(Boolean)
+  if (!shown.length) return null
+  return (
+    <div style={{ marginTop: 7, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {shown.map((r, i) => (
+        <div key={i} style={{ fontSize: 12, color: 'var(--map-ink)' }}>{r}</div>
+      ))}
+    </div>
+  )
+}
+
+function PopupSource({ text, noIcao }) {
+  if (!text) return null
+  return (
+    <div style={{ marginTop: 7, fontSize: 10.5, color: 'var(--map-ink-faint)', lineHeight: 1.3 }}>
+      {text}{noIcao ? ' · no ICAO code' : ''}
+    </div>
+  )
+}
+
 // The one action a pilot wants from a field they just tapped: go there.
 //
 // The caller decides what "add" means, because only it knows whether a route
@@ -220,18 +267,17 @@ export function AirportLayer({ onAddToRoute }) {
       <Marker key={`${a.ident}-${a.lat}-${a.lon}`} position={[a.lat, a.lon]}
         icon={airportIcon(color, size)}>
         <Popup>
-          <div style={{ fontSize: 12, lineHeight: 1.5 }}>
-            <strong>{a.ident}</strong>{a.name ? ` — ${a.name}` : ''}
-            <br />
-            {hasTower == null ? 'Tower status unknown' : hasTower ? 'Towered' : 'Non-towered'}
-            {longestRwy && <><br />{longestRwy[2].toLocaleString()} ft {longestRwy[3]}</>}
-            {a.elevFt != null && <><br />{a.elevFt.toLocaleString()} ft elevation</>}
+          <div style={{ minWidth: 176 }}>
+            <PopupHead title={a.ident} subtitle={a.name} />
+            <PopupFacts rows={[
+              hasTower == null ? 'Tower status unknown' : hasTower ? 'Towered' : 'Non-towered',
+              longestRwy ? `${longestRwy[2].toLocaleString()} ft ${longestRwy[3]}` : null,
+              a.elevFt != null ? `${a.elevFt.toLocaleString()} ft elevation` : null,
+            ]} />
             {/* Where a figure comes from travels with the figure. These rows
                 are a national authority's list, not the bundled pack, and the
                 name is a name rather than an ICAO code. */}
-            {a.source && (
-              <><br /><span style={{ opacity: 0.7 }}>{a.source} · no ICAO code</span></>
-            )}
+            <PopupSource text={a.source} noIcao={!!a.source} />
             <AddToRoute onAdd={onAddToRoute} ident={a.ident} name={a.name}
               lat={a.lat} lon={a.lon} />
           </div>
@@ -305,26 +351,25 @@ function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 8, onAddToRoute
     // idents and 1 seaplane base ident collide in the current pack.
     <Marker key={`${a.ident}-${a.lat}-${a.lon}`} position={[a.lat, a.lon]} icon={icon}>
       <Popup>
-        <div style={{ fontSize: 12, lineHeight: 1.5 }}>
-          {/* The name is only appended when there is one to append. The
-              national rows merged in by lib/aerodromes.js have no separate
-              name, because the name IS the identifier: they have no ICAO
-              code, and this used to render a dangling em dash. */}
-          <strong>{a.ident}</strong>{a.name ? ` — ${a.name}` : ''}
-          <br />{kindLabel}
-          {a.elevFt != null && <><br />{a.elevFt.toLocaleString()} ft elevation</>}
+        <div style={{ minWidth: 176 }}>
+          {/* The subtitle only renders when there is one. The national rows
+              merged in by lib/aerodromes.js have no separate name, because the
+              name IS the identifier: they have no ICAO code. */}
+          <PopupHead title={a.ident} subtitle={a.name} />
+          <PopupFacts rows={[
+            kindLabel,
+            a.elevFt != null ? `${a.elevFt.toLocaleString()} ft elevation` : null,
+          ]} />
           {/* A known problem with a published position is shown on the marker
               itself. Quietly drawing a pad 25 km from where it is, because the
               source says so, is the kind of thing a pilot finds out about in
               the air. */}
           {a.note && (
-            <><br /><span style={{ color: '#c2410c', fontWeight: 600 }}>{a.note}</span></>
+            <div style={{ marginTop: 6, fontSize: 11.5, fontWeight: 600, color: '#c2410c' }}>
+              {a.note}
+            </div>
           )}
-          {a.source && (
-            <><br /><span style={{ opacity: 0.7 }}>
-              {a.source}{a.name ? '' : ' · no ICAO code'}
-            </span></>
-          )}
+          <PopupSource text={a.source} noIcao={!!a.source && !a.name} />
           <AddToRoute onAdd={onAddToRoute} ident={a.ident} name={a.name}
             lat={a.lat} lon={a.lon} />
         </div>

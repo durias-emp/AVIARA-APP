@@ -798,7 +798,15 @@ export default function MapHome() {
       // seg counts legs from 1, and leg 1 begins at departure, so the index
       // into the middle waypoints is one less again.
       const at = seg == null ? wpts.length : Math.max(0, Math.min(wpts.length, seg - 1))
-      wpts.splice(at, 0, { lat, lon, name: null })
+      // A point held on open ground has no name, so it gets one. Numbered from
+      // the highest already in the route rather than from the count, so
+      // deleting WPT1 does not hand its name to the next point added and leave
+      // two different places called the same thing in one flight plan.
+      const highest = wpts.reduce((max, w) => {
+        const n = /^WPT(\d+)$/.exec(w?.name ?? '')
+        return n ? Math.max(max, Number(n[1])) : max
+      }, 0)
+      wpts.splice(at, 0, { lat, lon, name: `WPT${highest + 1}` })
       const next = { ...prev, wpts, needsRecalc: true }
       for (const stale of ['distNm', 'trueCourse', 'magCourse', 'magVar']) delete next[stale]
       put('settings', { key: 'route', ...next }).catch(() => {})

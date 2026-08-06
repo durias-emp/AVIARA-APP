@@ -71,16 +71,31 @@ export default function DropPointPopup({ waypoints = [], canAdd = true, onAdd, t
       pathOptions={{ color: '#fff', weight: 2.5, fillColor: '#0a84ff', fillOpacity: 1 }} />
     <Popup position={[pt.lat, pt.lon]} offset={[0, -6]} closeButton={false} autoPan={false}>
       <div style={{
-        textAlign: 'center', minWidth: 168,
+        textAlign: 'center', minWidth: 176,
         // Inline, because it has to beat every stylesheet: the popup opens
         // under a finger that is still held down, and without these iOS turns
         // that press into a text selection of the coordinates, complete with
         // handles, loupe and a Copy bar.
         userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
       }}>
-        <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, letterSpacing: '0.3px' }}>
+        {/* Monospaced and sized to be read once, out loud, off a moving
+            screen. Slightly smaller than a field's identifier because a
+            coordinate is longer and wraps otherwise. */}
+        <div style={{
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+          fontWeight: 700, fontSize: 15, letterSpacing: '0.2px',
+          color: 'var(--map-ink)', lineHeight: 1.25,
+        }}>
           {fmtAvCoord(pt.lat, pt.lon)}
         </div>
+        {/* What it will be called once it is in the plan. A point on open
+            ground has no name, so the plan gives it one, and saying so here
+            means the name does not appear from nowhere afterwards. */}
+        {canAdd && (
+          <div style={{ fontSize: 11, color: 'var(--map-ink-faint)', marginTop: 3 }}>
+            Adds as the next WPT
+          </div>
+        )}
         {canAdd && (
           <button onClick={addHere} style={{
             marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 8, border: 'none',

@@ -893,3 +893,39 @@ input[type="number"]::-webkit-outer-spin-button {
   --map-hairline:    rgba(255,255,255,0.18);
   --map-ink-invert:  #1c1c1e;
 }
+
+/* ── Map popups ───────────────────────────────────────────────
+   Leaflet ships its popup as a white box with a white tip and a dark
+   sans-serif, which is correct for a light chart and wrong for everything
+   else this app draws. On the dark basemap it was the brightest thing on
+   the screen, which at night is exactly what a pilot does not want.
+
+   Themed from the map tokens rather than the app's card tokens, because a
+   popup sits on top of map imagery and has to hold up over both a dark
+   basemap and a pale sectional, which the ordinary surfaces never do. The
+   tip is coloured too: leaving it behind is what makes a themed popup look
+   like it has a white thorn stuck in it. */
+.leaflet-popup-content-wrapper {
+  background: var(--map-panel-solid);
+  color: var(--map-ink);
+  border-radius: 14px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.18), 0 10px 30px rgba(0,0,0,0.22);
+}
+.leaflet-popup-tip {
+  background: var(--map-panel-solid);
+  box-shadow: none;
+}
+.leaflet-popup-content {
+  margin: 12px 14px;
+  line-height: 1.35;
+}
+/* Leaflet's close button is a grey serif multiplication sign. */
+.leaflet-container a.leaflet-popup-close-button {
+  color: var(--map-ink-faint);
+  font-size: 18px;
+  padding: 6px 7px 0 0;
+}
+.leaflet-container a.leaflet-popup-close-button:hover {
+  color: var(--map-ink);
+  background: transparent;
+}
