@@ -13,16 +13,19 @@ import { useRef, useState } from 'react'
 import { CircleMarker, Popup, useMapEvents } from 'react-leaflet'
 import { fmtAvCoord } from '../lib/geo'
 import { crossTrackNm } from '../lib/corridor'
+import PopupActions from './PopupActions'
 import { ACCENT } from './mapStyle'
 
 // waypoints: the current route, if there is one. Used only to work out which
 //            leg a new point belongs in. Omit it and `seg` comes back null.
-// canAdd:    whether to offer the button at all. The coordinate readout is
-//            useful on its own, so the popup still opens without it.
-// onAdd:     ({ lat, lon, seg }) => void
+// Either action may be omitted, and the popup still opens: the coordinate
+// readout is useful on its own, which is most of why a pilot holds a finger
+// on a chart in the first place.
+// onSetDestination: ({ ident, lat, lon }) => void
+// onAddWaypoint:    ({ ident, lat, lon, seg }) => void
 // tapToAdd:  a plain tap places the point too. For a map that was opened to
 //            choose somewhere, where the pilot has already said what they want.
-export default function DropPointPopup({ waypoints = [], canAdd = true, onAdd, tapToAdd = false, addLabel = '+ Add to route' }) {
+export default function DropPointPopup({ waypoints = [], onSetDestination, onAddWaypoint, tapToAdd = false }) {
   const [pt, setPt] = useState(null)
   const ignoreNextClick = useRef(false)
 
@@ -53,7 +56,9 @@ export default function DropPointPopup({ waypoints = [], canAdd = true, onAdd, t
 
   if (!pt) return null
 
-  function addHere() {
+  // The nearest leg, worked out once and handed to whichever action was
+  // pressed. A destination ignores it; a waypoint needs it.
+  function nearestSeg() {
     let seg = null
     if (waypoints.length >= 2) {
       let best = Infinity
@@ -63,7 +68,17 @@ export default function DropPointPopup({ waypoints = [], canAdd = true, onAdd, t
         if (d < best) { best = d; seg = i + 1 }
       }
     }
-    onAdd?.({ lat: pt.lat, lon: pt.lon, seg })
+    return seg
+  }
+
+  // The coordinate itself is the identifier for a destination. calcRoute
+  // parses this format back into a position, so a plan ending on open ground
+  // still says where that is rather than inventing a name for it. A waypoint
+  // is given WPT1, WPT2 by the caller instead, because a route reads better
+  // as KRNO, WPT1, KSFO than with a coordinate in the middle of the line.
+  const payload = { ident: fmtAvCoord(pt.lat, pt.lon), lat: pt.lat, lon: pt.lon }
+  const run = (fn, withSeg) => {
+    fn({ ...payload, seg: withSeg ? nearestSeg() : null })
     setPt(null)
   }
 
@@ -92,19 +107,15 @@ export default function DropPointPopup({ waypoints = [], canAdd = true, onAdd, t
         {/* What it will be called once it is in the plan. A point on open
             ground has no name, so the plan gives it one, and saying so here
             means the name does not appear from nowhere afterwards. */}
-        {canAdd && (
+        {onAddWaypoint && (
           <div style={{ fontSize: 11, color: 'var(--map-ink-faint)', marginTop: 3 }}>
             Adds as the next WPT
           </div>
         )}
-        {canAdd && (
-          <button onClick={addHere} style={{
-            marginTop: 8, width: '100%', padding: '9px 12px', borderRadius: 9, border: 'none',
-            background: ACCENT, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-          }}>
-            {addLabel}
-          </button>
-        )}
+        <PopupActions
+          onSetDestination={onSetDestination ? () => run(onSetDestination, false) : undefined}
+          onAddWaypoint={onAddWaypoint ? () => run(onAddWaypoint, true) : undefined}
+          {...payload} />
       </div>
     </Popup>
   </>)

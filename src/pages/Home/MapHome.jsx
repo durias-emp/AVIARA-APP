@@ -1231,8 +1231,8 @@ export default function MapHome() {
             for tapping a traffic target. */}
         <DropPointPopup
           waypoints={routeWpts}
-          canAdd={routeLine.length > 1}
-          onAdd={addDroppedWaypoint}
+          onSetDestination={addFieldToRoute}
+          onAddWaypoint={routeLine.length > 1 ? addDroppedWaypoint : undefined}
         />
         {/* The plan, under the track rather than over it: where both exist,
             what was actually flown is the one that has to be readable. */}
