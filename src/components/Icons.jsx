@@ -208,14 +208,18 @@ export function IconRunways({ size = 24 }) {
   )
 }
 
-// Hangar: the arch and the door opening. Two shapes, nothing else.
+// Hangar: pitched roof, walls, door. An earlier version used a rounded
+// arch, which read as a tunnel — a peak is what makes it a building.
 export function IconHangar({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3.2 20.4v-8.2a8.8 8.8 0 0 1 17.6 0v8.2" />
-      <path d="M2.2 20.4h19.6" />
-      <path d="M8.4 20.4v-4.6a3.6 3.6 0 0 1 7.2 0v4.6" />
+      <path d="M1.9 12.1 12 5.1l10.1 7" />
+      <path d="M3.9 10.7v9.8M20.1 10.7v9.8" />
+      <path d="M1.6 20.5h20.8" />
+      {/* The door is what separates a hangar from a house: it spans almost
+          the whole frontage, because an aeroplane has to fit through it. */}
+      <path d="M6.6 20.5v-6.6h10.8v6.6" />
     </svg>
   )
 }
@@ -237,32 +241,19 @@ export function IconHangar({ size = 24 }) {
 // wordmark below it gets dropped. Those numbers are mapped into this
 // 24-unit box by LOGO_SCALE; keep them in step with HomeHeroArt if the
 // crop ever moves.
-const LOGO_SCALE = 24 / 60.9
 export function IconHelmet({ size = 24 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <defs>
-        <filter id="ic-pilot-ink" x="0" y="0" width="100%" height="100%">
-          <feColorMatrix type="saturate" values="0" />
-          <feComponentTransfer>
-            <feFuncR type="table" tableValues="1 1 1 0.95 0.85 0.65 0.42 0.2 0.05 0 0" />
-            <feFuncG type="table" tableValues="1 1 1 0.95 0.85 0.65 0.42 0.2 0.05 0 0" />
-            <feFuncB type="table" tableValues="1 1 1 0.95 0.85 0.65 0.42 0.2 0.05 0 0" />
-          </feComponentTransfer>
-        </filter>
-        <mask id="ic-pilot-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
-          <image
-            href="/pilot-helmet.png"
-            x={(13.89 - 44) * LOGO_SCALE}
-            y={(-13.64 - 12) * LOGO_SCALE}
-            width={121.8 * LOGO_SCALE}
-            height={121.8 * LOGO_SCALE}
-            filter="url(#ic-pilot-ink)"
-            preserveAspectRatio="none"
-          />
-        </mask>
-      </defs>
-      <rect x="0" y="0" width="24" height="24" fill="currentColor" mask="url(#ic-pilot-mask)" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      {/* Leather flying helmet, front on: the dome, ear flaps tapering in
+          toward the chin, and the goggles. Proportioned so the lenses sit
+          clear of both the dome line and the flaps — an earlier pass had
+          all three touching and the result read as headphones. */}
+      <path d="M4.1 13.4a7.9 7.9 0 0 1 15.8 0" />
+      <path d="M4.1 13.4v2.4c0 1.6 1.1 2.9 2.6 3.2M19.9 13.4v2.4c0 1.6-1.1 2.9-2.6 3.2" />
+      <circle cx="9.1" cy="13.1" r="2.2" />
+      <circle cx="14.9" cy="13.1" r="2.2" />
+      <path d="M11.3 13.1h1.4" />
     </svg>
   )
 }
@@ -274,7 +265,7 @@ export function IconRoute({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4.6 19.2 9.9 5.2 20.1 12.4Z" />
+      <path d="M4.6 19.2 9.9 5.2M9.9 5.2 20.1 12.4" strokeDasharray="2.5 2.3" />
       <circle cx="4.6" cy="19.2" r="2.1" fill="currentColor" stroke="none" />
       <circle cx="9.9" cy="5.2" r="2.1" fill="currentColor" stroke="none" />
       <circle cx="20.1" cy="12.4" r="2.1" fill="currentColor" stroke="none" />

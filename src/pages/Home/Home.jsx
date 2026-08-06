@@ -503,17 +503,21 @@ function AirportsHeroCard({ onOpen }) {
   // model estimate stands in, so it doesn't show a sunny scene in a storm.
   const condition = resolved?.type ?? sky.type
 
-  // The ICAO is the label here: the tower glyph already says "airport", so
-  // spending the label on the word would waste the one line that can carry
-  // the field you're actually looking at.
+  // "Airports" stays the label so the column of rows reads as a list of
+  // sections; the ICAO belongs with the weather it describes, at the head
+  // of the live cluster on the right.
   return (
     <HeroCard
       Icon={IconRunways}
-      label={icao}
+      label="Airports"
       onOpen={handleClick}
       ariaLabel="Open airports"
       right={
         <>
+          <span style={{
+            fontSize: 13, fontWeight: 800, color: '#fff', fontFamily: 'monospace',
+            letterSpacing: '0.04em', flexShrink: 0,
+          }}>{icao}</span>
           <span style={{ color: '#fff', display: 'flex', flexShrink: 0, opacity: 0.95 }}>
             <IconSky type={condition} size={21} />
           </span>
