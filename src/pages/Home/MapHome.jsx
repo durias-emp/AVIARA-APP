@@ -781,6 +781,12 @@ export default function MapHome() {
     return [route.depPos, ...mid, route.destPos]
   }, [route])
 
+  // Which identifiers the route is already labelling on the map, so nothing
+  // else labels the same point a second time.
+  const routeEndLabels = useMemo(() => new Set(
+    routeLine.length > 1 ? [route?.dep, route?.dest].filter(Boolean) : [],
+  ), [routeLine.length, route?.dep, route?.dest])
+
   // The same points as routeLine, in the shape the drop popup wants them.
   const routeWpts = useMemo(
     () => routeLine.map(([lat, lon]) => ({ lat, lon })),
@@ -1272,9 +1278,17 @@ export default function MapHome() {
             one-pager use, so all three agree. */}
         {base?.lat != null && (
           <Marker position={[base.lat, base.lon]} icon={baseIcon} interactive={false}>
-            <Tooltip permanent direction="top" offset={[0, -14]} className="home-base-label">
-              {base.ident}
-            </Tooltip>
+            {/* The label is dropped when the route already carries it. Flying
+                from home means the departure marker and the home marker are the
+                same place with the same name, and both were labelling it: two
+                copies of KRNO four pixels apart, which reads as a rendering
+                fault rather than as emphasis. The aircraft mark stays either
+                way, so home is still marked as home. */}
+            {!routeEndLabels.has(base.ident) && (
+              <Tooltip permanent direction="top" offset={[0, -14]} className="home-base-label">
+                {base.ident}
+              </Tooltip>
+            )}
           </Marker>
         )}
         {pos && (
