@@ -9,7 +9,7 @@ import ChartLayers, { Basemap } from '../../../components/ChartLayers'
 import { CHARTS, EMPTY_LAYERS, resolveOpenaipKey } from '../../../components/chartDefs'
 import { ROUTE_COLOR, ROUTE_OPACITY, ROUTE_WEIGHT } from '../../../components/mapStyle'
 import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
-import { get, put } from '../../../lib/db'
+import { get, put, del } from '../../../lib/db'
 import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
 import { usePlannerHost } from '../shared/PlannerHost'
 import { FAA_CHART_CYCLE } from '../shared/faaData'
@@ -1890,8 +1890,39 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       } else {
         resolveHomeIdent().then(id => { if (id) { setDep(id); setDepVal(true) } })
       }
+      // A field tapped on the map home, handed over as a destination. Consumed
+      // once and deleted: it is an instruction to act on, not a preference to
+      // remember, and leaving it behind would re-route the pilot every time
+      // they opened the planner afterwards.
+      // A field tapped on the map home, handed over as a destination.
+      //
+      // Calculated by passing the ident straight to calcRoute rather than
+      // setting state and waiting for it to arrive. calcRoute already takes
+      // overrides, and driving it from an effect keyed on dep/dest/loading
+      // meant an effect firing on values calcRoute itself sets: React caught
+      // it as an infinite update loop.
+      //
+      // Consumed once and deleted: it is an instruction, not a preference,
+      // and leaving it behind would re-route the pilot every time they
+      // opened the planner afterwards.
+      get('settings', 'pendingDest').catch(() => null).then(async pd => {
+        if (!pd?.value) return
+        await del('settings', 'pendingDest').catch(() => {})
+        setDest(pd.value); setDestVal(true)
+        const depId = r?.dep || (await resolveHomeIdent())
+        if (!depId) return
+        // The position travels with the ident, because the ident alone is not
+        // always resolvable: heliports and seaplane bases live in a separate
+        // pack from airports, and calcRoute resolves against the airports one.
+        // A route to NV78 failed for exactly that reason, while the marker
+        // that offered it knew precisely where it was.
+        const destPos = (pd.lat != null && pd.lon != null) ? [pd.lat, pd.lon] : undefined
+        const calculated = await calcRoute({ dep: depId, dest: pd.value, destPos })
+        if (calculated) plannerHost?.onRouteCalculated?.(calculated)
+      })
     })
   }, [])
+
 
   // AWC answers "does this field report weather", which is not the same
   // question as "does this field exist", and validating against it alone
@@ -2944,6 +2975,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       setRL(false)
     }
   }
+
 
   // Can this aeroplane reach the other end?
   //

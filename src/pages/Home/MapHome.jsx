@@ -806,6 +806,28 @@ export default function MapHome() {
     })
   }, [])
 
+  // A field tapped on the map, made the destination.
+  //
+  // "Add to route" from an aerodrome means "take me there", so this sets the
+  // destination rather than inserting a waypoint mid-route. The planner is
+  // then opened to do the arithmetic, because distance, course and magnetic
+  // variation are its job and computing a second opinion here is how two
+  // screens end up disagreeing about the same flight.
+  //
+  // By identifier wherever there is one. A route filed as 30NV can be read
+  // back to a controller; one filed as a pair of coordinates cannot, and the
+  // planner can resolve an ident into a position but not the reverse.
+  const addFieldToRoute = useCallback(async ({ ident, lat, lon }) => {
+    const id = (ident ?? '').trim().toUpperCase()
+    await put('settings', {
+      key: 'pendingDest',
+      value: id || null,
+      lat, lon,
+    }).catch(() => {})
+    setPlanning(true)
+    setSnap('plan')
+  }, [])
+
   // Frame a new route once. The plan is what the map is being looked at for
   // the moment one exists, so it takes the camera from the base framing above
   // rather than being drawn somewhere off the edge of a map still centred on
@@ -1162,7 +1184,8 @@ export default function MapHome() {
           <TrafficLayer snapshot={traffic.snapshot} onSelect={setSelected} filter={tfcFilter} />
         )}
         <Basemap dark={darkBasemap} />
-        <ChartLayers layers={layers} openaipKey={openaipKey} tfrData={tfrData} />
+        <ChartLayers layers={layers} openaipKey={openaipKey} tfrData={tfrData}
+          onAddToRoute={addFieldToRoute} />
         {/* Hold anywhere for the coordinates of that spot, and to put it in
             the route. Same component the planner's map uses. A long press
             rather than a tap, because a tap has to stay free for panning and

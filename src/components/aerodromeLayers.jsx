@@ -18,6 +18,28 @@ import L from 'leaflet'
 import { FLTCAT } from '../lib/weather'
 import { getAirports, getAirportDetails, getAuxAerodromes } from '../lib/aerodromes'
 
+// The one action a pilot wants from a field they just tapped: go there.
+//
+// The caller decides what "add" means, because only it knows whether a route
+// already exists. All this knows is which field was tapped and what it is
+// called, and that a field with an identifier should travel by its
+// identifier: a route filed as 30NV is one that can be read back, and one
+// filed as a pair of coordinates is not.
+function AddToRoute({ onAdd, ident, name, lat, lon }) {
+  if (!onAdd) return null
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onAdd({ ident, name, lat, lon }) }}
+      style={{
+        marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 8,
+        border: 'none', background: '#0a84ff', color: '#fff',
+        fontSize: 13, fontWeight: 700, cursor: 'pointer',
+      }}>
+      + Add to route
+    </button>
+  )
+}
+
 // Radar — public NEXRAD mosaic tiles from the Iowa Environmental Mesonet
 // (IEM), no API key required. Refreshes every 5 min, matching IEM's own
 // update cadence.
@@ -137,7 +159,7 @@ function airportIcon(color, size) {
   return icon
 }
 
-export function AirportLayer() {
+export function AirportLayer({ onAddToRoute }) {
   const map = useMap()
   const [airports, setAirports] = useState(null)
   const [details, setDetails] = useState(null)
@@ -210,6 +232,8 @@ export function AirportLayer() {
             {a.source && (
               <><br /><span style={{ opacity: 0.7 }}>{a.source} · no ICAO code</span></>
             )}
+            <AddToRoute onAdd={onAddToRoute} ident={a.ident} name={a.name}
+              lat={a.lat} lon={a.lon} />
           </div>
         </Popup>
       </Marker>
@@ -240,7 +264,7 @@ const AUX_CAP = 400
 // `zoom < 0`, which is false forever — so the default silently turned the
 // limit off entirely. Seaplane bases were declared without the prop and drew
 // 400 markers across the whole country at world zoom.
-function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 8 }) {
+function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 8, onAddToRoute }) {
   const map = useMap()
   const [list, setList] = useState(null)
   const [visible, setVisible] = useState([])
@@ -301,15 +325,17 @@ function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 8 }) {
               {a.source}{a.name ? '' : ' · no ICAO code'}
             </span></>
           )}
+          <AddToRoute onAdd={onAddToRoute} ident={a.ident} name={a.name}
+            lat={a.lat} lon={a.lon} />
         </div>
       </Popup>
     </Marker>
   ))
 }
 
-export function HeliportLayer() {
-  return <AuxAerodromeLayer dataKey="heliports" icon={HELIPORT_ICON} kindLabel="Heliport" minZoom={8} />
+export function HeliportLayer({ onAddToRoute }) {
+  return <AuxAerodromeLayer onAddToRoute={onAddToRoute} dataKey="heliports" icon={HELIPORT_ICON} kindLabel="Heliport" minZoom={8} />
 }
-export function SeaplaneBaseLayer() {
-  return <AuxAerodromeLayer dataKey="seaplaneBases" icon={SEAPLANE_ICON} kindLabel="Seaplane base" minZoom={8} />
+export function SeaplaneBaseLayer({ onAddToRoute }) {
+  return <AuxAerodromeLayer onAddToRoute={onAddToRoute} dataKey="seaplaneBases" icon={SEAPLANE_ICON} kindLabel="Seaplane base" minZoom={8} />
 }
