@@ -30,9 +30,10 @@ import { createPortal } from 'react-dom'
 import WeatherRibbon from '../../components/WeatherRibbon'
 import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecorder'
 import { put, get, getAll, del } from '../../lib/db'
-import { getAirports } from '../../lib/aerodromes'
+import { findAirport, getAirports } from '../../lib/aerodromes'
 import { crossTrackNm } from '../../lib/corridor'
 import { resolveHomeIdent } from '../../lib/homeBase'
+import { computeDirectRoute } from '../../lib/directRoute'
 import { loadTfrs } from '../../lib/tfr'
 import useIsDark from '../../hooks/useIsDark'
 import { TEMPLATES } from '../../data/aircraftTemplates'
@@ -558,6 +559,9 @@ export default function MapHome() {
       .catch(() => {})
     loadFlights()
     resolveBase()
+    // The old handover left pendingDest rows behind on phones that ran the
+    // broken builds; nothing reads them any more, so they are cleared.
+    del('settings', 'pendingDest').catch(() => {})
   }, [])
 
   // Moving base. Writes the same settings row the weather card writes, so the
@@ -768,28 +772,34 @@ export default function MapHome() {
   // By identifier wherever there is one. A route filed as 30NV can be read
   // back to a controller; one filed as a pair of coordinates cannot, and the
   // planner can resolve an ident into a position but not the reverse.
-  const addFieldToRoute = useCallback(async ({ ident, lat, lon }) => {
-    const id = (ident ?? '').trim().toUpperCase()
-    await put('settings', {
-      key: 'pendingDest',
-      value: id || null,
-      lat, lon,
-    }).catch(() => {})
-    // NOT setting confirmRoute. The read-back panel is still here and still
-    // works, but nothing triggers it, because it cannot yet be reached safely.
+  const addFieldToRoute = useCallback(async ({ ident, name, lat, lon }) => {
+    // Computed right here, not handed to the planner. The planner's own
+    // calculation lives inside its Route card, which only exists once a pilot
+    // opens it, and handing the destination to a screen that was not there is
+    // how the confirmation sat on "Working out the route" forever.
     //
-    // The calculation happens inside RouteAltitude, which only mounts when the
-    // Route and Altitude card is opened. Showing the confirmation hid the
-    // planner, so that card could never be opened, so the calculation never
-    // ran and the panel sat on "Working out the route" with no way out. Hiding
-    // the planner is what broke it and mounting it hidden does not help: the
-    // card still has to be opened by hand.
-    //
-    // Setting a destination therefore opens the planner as it always did. The
-    // panel is dormant until the handover can calculate without the planner's
-    // UI being on screen, which is the real fix and is worth doing properly.
+    // The record saved is the same shape the planner saves, so Open the plan
+    // restores it as its own: fields prefilled, line drawn, no recalculation.
+    const destId = (ident ?? '').trim().toUpperCase()
+    setRoute(null)                  // the panel shows "Working out the route"
+    setConfirmRoute(true)
     setPlanning(true)
     setSnap('plan')
+
+    const depId = await resolveHomeIdent()
+    const depApt = depId ? await findAirport(depId) : null
+    if (!depApt) {
+      // No home base to fly from, so there is nothing to read back. The
+      // planner opens instead, where the pilot can type a departure.
+      setConfirmRoute(false)
+      return
+    }
+    const calculated = await computeDirectRoute(
+      { ident: depId, name: depApt.name, lat: depApt.lat, lon: depApt.lon },
+      { ident: destId, name: name ?? null, lat, lon },
+    )
+    put('settings', { key: 'route', ...calculated }).catch(() => {})
+    setRoute(calculated)
   }, [])
 
   // The same field, added to the plan rather than replacing where it ends.
@@ -946,18 +956,10 @@ export default function MapHome() {
   // planning on top of the map rather than on a screen away from it.
   function onRouteCalculated(calculated) {
     setRoute(calculated)
-    // Stays in the planning layout while confirming: the confirmation sits in
-    // the planner's own slot, so the drawer keeps the shape it already has
-    // rather than a second one built to resemble it.
-    setPlanning(confirmRoute)
-    // A route the pilot typed and calculated themselves needs no read-back:
-    // they were watching the numbers as they made them. One that came from a
-    // tap on the chart does, which is what confirmRoute is already tracking.
-    // 'plan' rather than 'expanded': this is about as much content as the
-    // planner shows, and the taller stop left a screen of empty drawer
-    // under it.
-    setSnap(confirmRoute ? 'plan' : 'collapsed')
+    setPlanning(false)
+    setSnap('collapsed')
   }
+
 
   // Forget the route: off the map, off the drawer, out of storage. Deleted
   // rather than just dropped from state, or it would come back on the next
@@ -1579,18 +1581,12 @@ export default function MapHome() {
             only while planning, so leaving it is what unmounts the megabyte of
             planner and its Leaflet previews rather than leaving them running
             under a map that is already drawing one. */}
-        {/* Mounted whenever planning, including while the confirmation is up.
-            The planner is what calculates the route, so swapping it out for the
-            confirmation left nothing to do the work and the panel sat on
-            "Working out the route" forever. It is hidden instead, still running
-            behind the read-back it is producing. */}
-        {planning && (
+        {planning && !confirmRoute && (
           <div
             onPointerDown={onBodyDragStart} onPointerMove={onDragMove}
             onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
             style={{
-              flex: 1, minHeight: 0,
-              display: confirmRoute ? 'none' : 'flex', flexDirection: 'column',
+              flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
               // Half open, the plan is dragged rather than read: a finger
               // anywhere on it takes the drawer to full screen, which is the
               // only way up other than the handle, and the handle is a target
