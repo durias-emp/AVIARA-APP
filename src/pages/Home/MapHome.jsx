@@ -920,6 +920,13 @@ export default function MapHome() {
   function leavePlanner() {
     setPlanning(false)
     setSnap('collapsed')
+    // Reset inside the planner deletes the saved route, and this held its own
+    // copy in state, so the line stayed on the map after the plan behind it
+    // was gone. Re-read on the way out: storage is what actually decides
+    // whether there is still a route.
+    get('settings', 'route').catch(() => null).then(saved => {
+      if (!saved?.depPos || !saved?.destPos) { setRoute(null); flyHome() }
+    })
   }
 
   // Calculate Route was pressed and it worked. The drawer's job now is to get
@@ -944,9 +951,22 @@ export default function MapHome() {
   // rather than just dropped from state, or it would come back on the next
   // launch, and a route the pilot dismissed coming back is worse than one
   // that never persisted at all.
+  // Home again, wherever the route had taken the camera. A map still framed on
+  // a flight that no longer exists is the app remembering something the pilot
+  // just told it to forget.
+  function flyHome() {
+    // Cleared here as well as in the effect's ref, or the next route to the
+    // same pair of ends would be judged already framed and never fit.
+    fittedRoute.current = null
+    if (mapRef.current && base?.lat != null) {
+      mapRef.current.setView([base.lat, base.lon], 11, { animate: true })
+    }
+  }
+
   function clearRoute() {
     setRoute(null)
     del('settings', 'route').catch(() => {})
+    flyHome()
   }
 
   const recording = rec != null
