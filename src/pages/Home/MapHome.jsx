@@ -994,7 +994,10 @@ export default function MapHome() {
   // planning on top of the map rather than on a screen away from it.
   function onRouteCalculated(calculated) {
     setRoute(calculated)
-    setPlanning(false)
+    // Stays in the planning layout while confirming: the confirmation sits in
+    // the planner's own slot, so the drawer keeps the shape it already has
+    // rather than a second one built to resemble it.
+    setPlanning(confirmRoute)
     // A route the pilot typed and calculated themselves needs no read-back:
     // they were watching the numbers as they made them. One that came from a
     // tap on the chart does, which is what confirmRoute is already tracking.
@@ -1619,7 +1622,7 @@ export default function MapHome() {
             only while planning, so leaving it is what unmounts the megabyte of
             planner and its Leaflet previews rather than leaving them running
             under a map that is already drawing one. */}
-        {planning && (
+        {planning && !confirmRoute && (
           <div
             onPointerDown={onBodyDragStart} onPointerMove={onDragMove}
             onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
@@ -1657,7 +1660,7 @@ export default function MapHome() {
             A destination chosen by tapping a chart is the one most easily
             picked by accident, so it is read back at a size worth reading
             rather than tucked into the summary strip. */}
-        {!planning && confirmRoute && (
+        {planning && confirmRoute && (
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{
             flex: 1, minHeight: 0, overflowY: 'auto',
@@ -1707,11 +1710,11 @@ export default function MapHome() {
               for. */}
           {route?.distNm != null && (
             <div style={{ flexShrink: 0, padding: '12px 12px calc(var(--safe-bottom) + 12px)' }}>
-              <button onClick={() => { setConfirmRoute(false); setSnap('collapsed') }} style={{
+              <button onClick={() => { setConfirmRoute(false); setPlanning(false); setSnap('collapsed') }} style={{
                 width: '100%', padding: '13px 0', borderRadius: 12, border: 'none',
                 background: ACCENT, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
               }}>Looks right</button>
-              <button onClick={() => { setConfirmRoute(false); openPlanner() }} style={{
+              <button onClick={() => { setConfirmRoute(false) }} style={{
                 marginTop: 8, width: '100%', padding: '13px 0', borderRadius: 12, border: 'none',
                 background: 'var(--map-fill)', color: 'var(--map-ink)', fontSize: 14,
                 fontWeight: 700, cursor: 'pointer',
