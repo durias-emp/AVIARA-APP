@@ -1591,16 +1591,27 @@ export default function MapHome() {
       return
     }
 
-    // Flicks move one rung in the direction of travel, so a hard pull from 30
+    // Flicks move one rung in the direction of travel, so a hard pull from 25
     // does not skip the two useful stops in the middle on its way to 100.
-    if (flick) {
-      const i = Math.max(0, ladder.indexOf(snap))
-      setSnap(ladder[Math.min(ladder.length - 1, Math.max(0, i + (up ? 1 : -1)))])
-      return
-    }
-    // Otherwise the nearest rung wins.
-    setSnap(ladder.reduce((best, s2) =>
-      Math.abs(d.lastY - stopY(vh, s2)) < Math.abs(d.lastY - stopY(vh, best)) ? s2 : best))
+    const target = flick
+      ? ladder[Math.min(ladder.length - 1, Math.max(0, Math.max(0, ladder.indexOf(snap)) + (up ? 1 : -1)))]
+      // Otherwise the nearest rung wins.
+      : ladder.reduce((best, s2) =>
+        Math.abs(d.lastY - stopY(vh, s2)) < Math.abs(d.lastY - stopY(vh, best)) ? s2 : best)
+
+    // Pulling a route open opens its flight plan.
+    //
+    // With a route on the drawer, the drawer IS that route: the ends at rest,
+    // and everything else there is to say about it one drag further. Landing
+    // on the tools grid instead would be answering a question nobody asked
+    // while the flight sits there half-read.
+    //
+    // The tap on the handle still goes to 80, so the aircraft, the tools and
+    // the logbook keep a gesture of their own rather than becoming unreachable
+    // for as long as a route exists. Drag for the flight, tap for the rest.
+    if (actionsFloat && snap === 25 && target > 25) { openPlanner(); return }
+
+    setSnap(target)
   }
 
   const statFont = { fontSize: 11, fontWeight: 600, color: 'var(--map-ink-dim)', letterSpacing: '0.2px' }
@@ -2058,6 +2069,10 @@ export default function MapHome() {
               // Tapping the handle used to take it to full screen, which is
               // the thing the plan is no longer allowed to do.
               if (planning) return
+              // Deliberately not the flight plan, even with a route on the
+              // drawer. Dragging opens the route; tapping opens the drawer.
+              // Two gestures, two destinations, and nothing that needs a
+              // route cleared before it can be reached.
               setSnap(s2 => (s2 === 25 ? 80 : 25))
             }}
             style={{
