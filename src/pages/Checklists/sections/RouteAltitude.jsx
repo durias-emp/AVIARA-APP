@@ -3523,25 +3523,18 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
               return (<>
                 {/* Inline map, on the screen that has no other one.
                     In the map home's drawer there is already a map, directly
-                    above this, drawing this same route: a preview of it here
-                    is the same line twice, and it costs 240 px of a panel that
-                    is short to begin with. The chart buttons above stay,
-                    because they choose what the fullscreen map opens with, and
-                    the fullscreen map is not a duplicate of anything. It is
-                    where waypoints are dragged and dropped and where a field
-                    along the route is tapped for its details. */}
-                {plannerHost?.embedded ? (
-                  <button
-                    onClick={() => { setMapFlyTarget(null); setMapClear(false); setMapFS(true) }}
-                    style={{
-                      width: '100%', padding: '9px 0', borderRadius: 9,
-                      background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
-                      fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                    }}>
-                    <span style={{ fontSize: 13 }}>⤢</span> Open route map
-                  </button>
-                ) : (
+                    above this, drawing this same route, so neither a preview
+                    of it nor a button to a second one belongs here.
+
+                    The fullscreen map is still reached by "Add waypoint
+                    from the map", by tapping a field in Aerodromes, or by
+                    tapping the height in Mountains. Each opens it on the
+                    thing that was tapped, which is a better door than one
+                    marked "map". Note that the first of those turns into a
+                    plain text row once the route has waypoints, so a route
+                    that came from a published routing may have no door here
+                    at all: nothing that must be read is left behind it. */}
+                {plannerHost?.embedded ? null : (
                 <div style={{ borderRadius: 10, overflow: 'hidden', height: 240, position: 'relative', cursor: 'pointer' }}
                   onClick={() => { setMapFlyTarget(null); setMapClear(false); setMapFS(true) }}>
                   <MapContainer center={route.depPos} zoom={10}

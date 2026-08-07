@@ -248,6 +248,35 @@ export default function FlightPlanOnePager({ onClose }) {
               : `${dep} DCT ${dest}`}
         </div>
 
+        {/* What the app has not drawn, under the routing that names it.
+            The route map says the same thing, and this is not that
+            duplication: the map note qualifies a line the pilot is looking
+            at, and may not be opened at all on a route that came from a
+            published routing. This qualifies the routing itself, on the
+            sheet that gets read before the engine starts. A departure whose
+            first legs are flown on a heading is a thing to know then, not
+            after. */}
+        {route?.procedureNotes?.length > 0 && (
+          <div style={{ marginBottom: 4, color: PAPER_MUTE }}>
+            {route.procedureNotes.map(n => (
+              <div key={n.proc}>
+                {n.proc} {n.t}
+                {n.transition ? ` VIA ${n.transition}` : ''}
+                {n.runway && `: RWY SEGMENT NOT DRAWN, FLY THE CHART`}
+                {n.undrawable > 0 && `: ${n.undrawable} LEG${n.undrawable > 1 ? 'S' : ''} ON HEADING/VECTOR`}
+                {n.partial && `: REJOINS BEYOND PUBLISHED PORTION, FLY THE CHART`}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* MEAs belong to the airways in the string above them. */}
+        {route?.airwayNotes?.length > 0 && (
+          <div style={{ marginBottom: 4, color: PAPER_MUTE }}>
+            {route.airwayNotes.map(n => `${n.awy} MEA ${n.mea.toLocaleString()}`).join('   ')}
+          </div>
+        )}
+
         {/* ── TAKEOFF ── */}
         <StageHead label="TAKEOFF" active={stage === 'TAKEOFF'} dimmed={dim('TAKEOFF')} onClick={() => toggleStage('TAKEOFF')} />
         <div style={{ opacity: dim('TAKEOFF') ? 0.35 : 1, transition: 'opacity 0.15s' }}>
