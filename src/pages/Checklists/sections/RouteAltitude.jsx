@@ -30,7 +30,6 @@ import AerodromePopup from './AerodromePopup'
 import { fetchBriefing } from '../../../lib/altitudeBrief'
 import { lookupRoutes, classifyRoute } from '../../../lib/preferredRoutes'
 import { expandProcedure } from '../../../lib/procedures'
-import { scopedSettingsKey } from '../../../lib/aircraft'
 import { useActiveAircraft } from '../../../context/ActiveAircraft'
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -2310,13 +2309,6 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     return next
   })
 
-  // Fuel on board and burn, as entered on the Cruise and Fuel card. Read here
-  // because the first question about a route is whether the aeroplane can
-  // reach the other end, and that question belongs next to the route, not two
-  // steps further on where the fuel figures happen to live.
-  const [fuelPlan, setFuelPlan] = useState(null)
-  useEffect(() => { get('settings', scopedSettingsKey('cruise', aircraftId)).then(r => r && setFuelPlan(r)) }, [aircraftId])
-
   const [pickMode, setPickMode] = useState(false)
   // The standalone "where am I going" map, shown before a route exists.
   // Holds the departure it opened over rather than a bare flag, so render
@@ -2947,25 +2939,12 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   }
 
 
-  // Can this aeroplane reach the other end?
-  //
-  // Endurance is fuel divided by burn. Take the legal reserve off it, multiply
-  // what is left by the speed actually being planned, and that is how far it
-  // goes. Everything here is already on file; nothing was doing the division.
-  const rangeCheck = (() => {
-    const fob = parseFloat(fuelPlan?.fuelOnBoard)
-    const burn = parseFloat(fuelPlan?.burnRate)
-    const gs = advice?.recommended?.econ?.gsKt ?? parseFloat(fuelPlan?.tas)
-    if (!route?.distNm || !(fob > 0) || !(burn > 0) || !(gs > 0)) return null
-    // 91.167 for IFR, 91.151 for VFR: 45 minutes either way at night, 30 in
-    // the day under VFR.
-    const reserveMin = flightRules === 'IFR' ? 45 : (fuelPlan?.timeOfDay === 'night' ? 45 : 30)
-    const usableH = fob / burn - reserveMin / 60
-    if (usableH <= 0) return { rangeNm: 0, legs: null, reserveMin }
-    const rangeNm = Math.round(usableH * gs)
-    if (route.distNm <= rangeNm) return null            // nothing to say
-    return { rangeNm, legs: Math.ceil(route.distNm / rangeNm), reserveMin }
-  })()
+  // The range check that used to live here is gone, not moved. Cruise & Fuel
+  // already answers "can this aeroplane reach the other end", and answers it
+  // better: it works from a ground speed with the wind component in it rather
+  // than from TAS, and it takes the reserve from the ruleset rather than
+  // hard-coding 45 and 30 minutes. Two answers to a go/no-go question, from
+  // different numbers, is worse than one.
 
   // The FAA rasters stop at the US border. Outside it SECT, LO and HI fetch
   // tiles that do not exist and render nothing at all, with no error, which
@@ -3472,58 +3451,6 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             onPick={commitDestination} />,
           document.body)}
 
-        {/* What the route said that the map cannot show.
-            The summary that used to sit here is gone: the codes, the ends,
-            the distance, the courses and the variation are all on the card
-            over the map now, and printing them again a drag away made the
-            planner repeat itself. The filed route string is on the completed
-            flight plan.
-            These three are not repeated anywhere, and two of them are the
-            app admitting what it has not drawn, which is the one thing that
-            must never be left to be inferred from the line. */}
-        {route?.airwayNotes?.length > 0 && (
-          <div style={{ fontSize: 11, color: '#64a8ff', fontWeight: 600, marginTop: 10 }}>
-            {route.airwayNotes.map(n => `${n.awy} \u00B7 MEA up to ${n.mea.toLocaleString()} ft`).join('   ')}
-          </div>
-        )}
-
-        {/* The initial legs of a departure are often flown on a heading until
-            an altitude or until ATC turns you. Where those go depends on the
-            day, so there is no line for them, and this says so rather than
-            the map implying a path that was never published. */}
-        {route?.procedureNotes?.length > 0 && (
-          <div style={{ fontSize: 10.5, color: 'var(--warn)', lineHeight: 1.45, marginTop: 10 }}>
-            {route.procedureNotes.map(n => (
-              <div key={n.proc}>
-                {n.proc} · {n.t}
-                {n.transition ? ` via ${n.transition}` : ''}
-                {n.runway && `. ${n.t === 'SID' ? 'begins' : 'ends'} with a runway-specific segment that is not drawn; fly the chart for it`}
-                {n.undrawable > 0 && `. ${n.undrawable} further ${n.undrawable > 1 ? 'legs are' : 'leg is'} flown on a heading or vector`}
-                {n.partial && `. Rejoins beyond the portion published for this routing; fly the chart`}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Before any of the altitude work, because no cruise altitude is the
-            answer to a leg the aeroplane cannot fly. */}
-        {route && rangeCheck && (
-          <div style={{
-            marginTop: 10, padding: '9px 11px', borderRadius: 9,
-            background: 'rgba(255,159,10,0.10)', border: '0.5px solid var(--warn)',
-          }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--warn)' }}>
-              {rangeCheck.rangeNm > 0
-                ? `Beyond range. About ${rangeCheck.rangeNm} NM on this fuel.`
-                : 'Fuel on board does not cover the reserve.'}
-            </div>
-            <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 3, lineHeight: 1.45 }}>
-              {rangeCheck.legs
-                ? `${route.distNm} NM needs about ${rangeCheck.legs} legs with a ${rangeCheck.reserveMin} min reserve. Add a stop as a waypoint and the plan follows it.`
-                : `A ${rangeCheck.reserveMin} min reserve is required on this flight.`}
-            </div>
-          </div>
-        )}
         {/* ── Route map ── */}
         {route?.depPos && route?.destPos && (
           <div style={{ marginTop: 10 }}>
@@ -3946,6 +3873,31 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
 
                         {/* Content: vertical stack, everything fits */}
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'visible', padding: '8px 18px 10px', gap: 0, position: 'relative' }}>
+
+                          {/* What the line does not tell you.
+                              These sat in the planner beside the route
+                              summary, a screen away from the drawing they are
+                              about. A note saying a segment is not drawn
+                              belongs directly under the route it qualifies,
+                              which is the strip of chips right above this. */}
+                          {(route?.procedureNotes?.length > 0 || route?.airwayNotes?.length > 0) && (
+                            <div style={{ fontSize: 10.5, lineHeight: 1.45, marginBottom: 8 }}>
+                              {route.airwayNotes?.length > 0 && (
+                                <div style={{ color: '#64a8ff', fontWeight: 600 }}>
+                                  {route.airwayNotes.map(n => `${n.awy} · MEA up to ${n.mea.toLocaleString()} ft`).join('   ')}
+                                </div>
+                              )}
+                              {route.procedureNotes?.map(n => (
+                                <div key={n.proc} style={{ color: 'rgba(255,196,90,0.92)' }}>
+                                  {n.proc} · {n.t}
+                                  {n.transition ? ` via ${n.transition}` : ''}
+                                  {n.runway && `. ${n.t === 'SID' ? 'begins' : 'ends'} with a runway-specific segment that is not drawn; fly the chart for it`}
+                                  {n.undrawable > 0 && `. ${n.undrawable} further ${n.undrawable > 1 ? 'legs are' : 'leg is'} flown on a heading or vector`}
+                                  {n.partial && `. Rejoins beyond the portion published for this routing; fly the chart`}
+                                </div>
+                              ))}
+                            </div>
+                          )}
 
                           {/* ── TFR section ── */}
                           {layers.tfr && tfrData && (() => {
