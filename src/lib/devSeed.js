@@ -101,9 +101,15 @@ export function seedDemoData() {
 }
 
 async function runSeed() {
+  // Whether this run actually put anything on the device, which decides
+  // whether anyone needs telling. See the dispatch at the end.
+  let wrote = false
 
   const pilot = await get('settings', 'pilot').catch(() => null)
-  if (!pilot?.onboardingComplete) await put('settings', DEMO_PILOT).catch(() => {})
+  if (!pilot?.onboardingComplete) {
+    await put('settings', DEMO_PILOT).catch(() => {})
+    wrote = true
+  }
 
   // A real hangar entry, not the legacy `profile` record.
   //
@@ -119,5 +125,26 @@ async function runSeed() {
   // seeds a device that has never been used and never a device that has.
   const hangar = await getAll('aircraft').catch(() => [])
   const real = hangar.filter(a => a.id !== 'profile' && !a.deletedAt)
-  if (real.length === 0) await createAircraft(DEMO_AIRCRAFT).catch(() => {})
+  if (real.length === 0) {
+    await createAircraft(DEMO_AIRCRAFT).catch(() => {})
+    wrote = true
+  }
+
+  // Say that rows landed.
+  //
+  // Only PilotProfileProvider awaits this function, and only it re-read
+  // afterwards, so the pilot was picked up and the aircraft was not: the
+  // hangar had already been resolved as empty a moment earlier, and nothing
+  // asked it again. A fresh device opened on "No aircraft set" with YS-CNA
+  // sitting in IndexedDB, and stayed that way until the app was reloaded,
+  // which on a phone means the pilot never seeing the aircraft at all.
+  //
+  // This is the same shape as a cloud restore, which lands rows after the
+  // first read for the same reason, so it uses the same signal rather than a
+  // second mechanism: aircraft, logbook, region and profile all listen for it
+  // already. Nothing new has to know about the seed.
+  //
+  // Only when something was written. Firing unconditionally would make every
+  // launch of an already-seeded device re-resolve four providers for nothing.
+  if (wrote) window.dispatchEvent(new Event('aviara-hydrated'))
 }
