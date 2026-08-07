@@ -106,18 +106,19 @@ function chipStackBox(availH, availW, count) {
 // Where the drawer can rest, named by how much of the screen it covers.
 //
 //    0   off the screen entirely
-//   30   where it opens, and where it comes back to
+//   25   where it opens, and where it comes back to
 //   50   half and half: the flight plan, drawn across the map it needs
-//   80   the route read-back, tools, the recent flights
+//   80   tools and the recent flights
 //  100   a screen of its own, for reading the logbook rather than glancing
 //
 // The number is the name. One vocabulary for the code and for talking about
-// it, so "the read-back sits at 80" needs no translating in either direction.
+// it, so "the plan sits at 50" needs no translating in either direction.
 //
-// The read-back is at 80 and not at 50 for one reason: at 50 the labels under
-// TRUE COURSE and VARIATION are cut off by the bottom of the card. A course
-// figure with nothing naming it is worse than no figure, because there is no
-// telling true from magnetic by looking.
+// The resting stop is 25 and was 30. At 30 the drawer stood 244px tall around
+// 146px of contents, so a third of it was empty and the map was paying for the
+// gap. 25 leaves about the safe-area inset and a little air, which is as tight
+// as a fixed fraction can be cut without the hint line landing under the home
+// indicator on the phone, where the inset is real and the desktop's is zero.
 //
 // Fractions of the viewport, not pixels, for two reasons. A stop then means
 // the same thing on every screen; and a stop is a position rather than a
@@ -125,7 +126,7 @@ function chipStackBox(availH, availW, count) {
 // 178px of measured contents plus two correction constants for the pieces that
 // came and went, which is three numbers describing one height and three places
 // to be wrong.
-const SHEET_STOPS = [30, 50, 80, 100]
+const SHEET_STOPS = [25, 50, 80, 100]
 // Where the drawer commits to full whatever the gesture was. Above the 80 stop
 // rather than below it, or every drag that reached 80 would be taken as a
 // drag for 100 and the stop would be unreachable by hand.
@@ -512,12 +513,12 @@ export default function MapHome() {
   // 0 is one of the stops rather than a separate open/closed flag, because it
   // is one: the arrow button hides the drawer, and hiding it is a glance at
   // the map rather than a change of screen.
-  const [snap, setSnap] = useState(30)
+  const [snap, setSnap] = useState(25)
   const sheetOpen = snap !== 0
   // Where a hidden drawer comes back to. Whatever it was doing before it was
   // put away, since putting it away was about seeing the map, not about
   // abandoning the drawer's contents.
-  const lastStop = useRef(30)
+  const lastStop = useRef(25)
   useEffect(() => { if (snap !== 0) lastStop.current = snap }, [snap])
   // Planning happens here now, not on a screen of its own. Plan Route raises
   // the drawer to the 'plan' stop and fills it with the flight plan, so the
@@ -636,7 +637,7 @@ export default function MapHome() {
   // question as what theme the app is in. Anything drawn on top of the map has
   // to contrast with this, not with the sheet.
   const darkBasemap = isDark && !chartOverBasemap
-  const expanded = snap > 30
+  const expanded = snap > 25
 
   // Warm the planner while the pilot is looking at the map.
   //
@@ -957,7 +958,7 @@ export default function MapHome() {
     const destId = (ident ?? '').trim().toUpperCase()
     setRoute(null)
     setPlanning(false)
-    setSnap(30)
+    setSnap(25)
     // The camera is the pilot's from here, so the opening framing stops
     // waiting for a fix to move it out from under them. Where it goes is the
     // framing effect's business: it fits the whole route into the strip the
@@ -1093,7 +1094,7 @@ export default function MapHome() {
 
   function leavePlanner() {
     setPlanning(false)
-    setSnap(30)
+    setSnap(25)
     // Reset inside the planner deletes the saved route, and this held its own
     // copy in state, so the line stayed on the map after the plan behind it
     // was gone. Re-read on the way out: storage is what actually decides
@@ -1109,7 +1110,7 @@ export default function MapHome() {
   function onRouteCalculated(calculated) {
     setRoute(calculated)
     setPlanning(false)
-    setSnap(30)
+    setSnap(25)
   }
 
 
@@ -1147,7 +1148,7 @@ export default function MapHome() {
   // down with a temporal dead zone error.
   const gestureHint = recording
     ? 'Recording your track · tap the square to end and log it'
-    : snap === 30 ? 'Pull up for everything else'
+    : snap === 25 ? 'Pull up for everything else'
     : snap === 50 || snap === 80 ? 'Keep pulling for the full logbook'
     : ''
   const track = rec?.track?.map(p => [p.lat, p.lon]) ?? []
@@ -1156,7 +1157,7 @@ export default function MapHome() {
   // rather than with the rest of the sheet geometry below because the chip
   // stack reads it, and a const cannot be read above its own line.
   const vh = viewportH
-  const restPx = vh - stopY(vh, 30)
+  const restPx = vh - stopY(vh, 25)
 
   // Where the bottom of the chip stack sits: clear of the sheet, then clear of
   // the two map controls, so the chips rest on top of the layers button that
@@ -1293,7 +1294,7 @@ export default function MapHome() {
     // The planner's ceiling is its own stop. It is not allowed above 50 at all,
     // so the finger stops there rather than travelling on to a height the
     // release would only undo.
-    const next = Math.min(stopY(vh, 30), Math.max(stopY(vh, planning ? 50 : 100), d.fromY + shifted))
+    const next = Math.min(stopY(vh, 25), Math.max(stopY(vh, planning ? 50 : 100), d.fromY + shifted))
     d.lastY = next
     setDragY(next)
   }
@@ -1334,7 +1335,7 @@ export default function MapHome() {
     // exactly the same place.
     const ladder = planning ? [50] : SHEET_STOPS
 
-    if (planning && (d.lastY > (stopY(vh, 50) + stopY(vh, 30)) / 2
+    if (planning && (d.lastY > (stopY(vh, 50) + stopY(vh, 25)) / 2
       || (flick && !up && snap === 50))) {
       leavePlanner()
       return
@@ -1663,7 +1664,7 @@ export default function MapHome() {
           map left to float over, and the drawer is what the pilot asked to see
           all of. The row goes back inside it there. */}
       <FloatingCard
-        visible={planning ? (snap === 50) : (actionsFloat && snap === 30)}
+        visible={planning ? (snap === 50) : (actionsFloat && snap === 25)}
         // Compact wherever it floats, with no exception for the planner.
         //
         // The planner kept the wide card on the argument that its stop is fixed
@@ -1780,7 +1781,7 @@ export default function MapHome() {
               // Tapping the handle used to take it to full screen, which is
               // the thing the plan is no longer allowed to do.
               if (planning) return
-              setSnap(s2 => (s2 === 30 ? 80 : 30))
+              setSnap(s2 => (s2 === 25 ? 80 : 25))
             }}
             style={{
               width: 40, height: 5, borderRadius: 3, background: 'var(--map-hairline)',
@@ -1801,7 +1802,7 @@ export default function MapHome() {
               It comes back once the drawer is pulled up, because from there
               the card would be behind it and the record button has to stay
               reachable from the screen the pilot is actually on. */}
-          {!planning && !(actionsFloat && snap === 30) && actionRow()}
+          {!planning && !(actionsFloat && snap === 25) && actionRow()}
 
           {/* A route exists, so the drawer says so. It was taken out as a
               only thing that says what the line across the map is. Tapping it
