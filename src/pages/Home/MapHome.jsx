@@ -32,6 +32,7 @@ import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecord
 import { put, get, getAll, del } from '../../lib/db'
 import { findAirport, getAirports } from '../../lib/aerodromes'
 import { crossTrackNm } from '../../lib/corridor'
+import { fmtAvCoord } from '../../lib/geo'
 import { resolveHomeIdent } from '../../lib/homeBase'
 import { computeDirectRoute } from '../../lib/directRoute'
 import { loadTfrs } from '../../lib/tfr'
@@ -236,102 +237,162 @@ function FloatingCard({ visible, bottom, compact = false, children }) {
 //
 // On it, not in a box on it. It used to be a filled card with 13px figures
 // inside a drawer that is itself a card, which is a frame around a frame: it
-// read as an item in a list rather than as what the drawer is currently
-// about, and the numbers came out too small to take at a glance. The aircraft
-// below already makes this argument and wins it. Same move here.
+// read as an item in a list rather than as what the drawer is currently about.
+// The aircraft below already makes this argument and wins it. Same move here.
 //
-// The figures are the read-back's, at the read-back's size and in its words,
-// because that screen no longer exists and this is where its job went. All
-// four in one row rather than a two by two grid, which is what keeps it
-// inside the resting stop instead of demanding a taller one.
+// Two columns, because the two halves answer different questions. The left is
+// WHERE: the two ends, the aircraft between them pointing the way it is going,
+// and each end's coordinates under it, because a flight plan is filed with
+// positions and half the destinations here have no identifier at all. The
+// right is HOW FAR AND WHICH WAY, stacked so each figure has its own line and
+// its own mark.
 //
-// The X moves up beside the route rather than sitting in the middle of the
-// numbers, which hands the whole width to the figures. That is the difference
-// between MAG COURSE and MAGNETIC COURSE.
+// The marks are the chart's, not decoration. True north is a star and magnetic
+// north is a needle on every declination diagram printed on a sectional, so a
+// pilot reads which is which without reading the words. Variation is drawn as
+// the angle between them, which is what it is.
 function RouteSummary({ route, onClear, onOpen }) {
-  const stat = { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }
-  const statValue = {
-    fontSize: 24, fontWeight: 800, color: 'var(--map-ink)',
-    letterSpacing: '-0.5px', fontVariantNumeric: 'tabular-nums', lineHeight: 1,
-  }
-  // The label decides the column width, and four full words across a phone is
-  // a close-run thing: at 375pt they come to within a pixel of the available
-  // width. Scaled with the screen rather than fixed, so a narrower phone
-  // shrinks the words instead of pushing VARIATION off the side. Capped at
-  // 9.5 so a wide screen does not grow them into the figures they caption.
-  const statLabel = {
-    fontSize: 'clamp(8px, 2.45vw, 9.5px)', fontWeight: 600, color: 'var(--map-ink-faint)',
-    letterSpacing: '0.4px', whiteSpace: 'nowrap',
-  }
+  const dep = route.depPos, dest = route.destPos
+
+  const figure = ({ icon, value, label, dim }) => (
+    <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 7 }}>
+      <span style={{ color: 'var(--map-ink-faint)', display: 'flex', flexShrink: 0 }}>{icon}</span>
+      <span style={{
+        fontSize: 16, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.3px',
+        fontVariantNumeric: 'tabular-nums',
+        color: dim ? 'var(--map-ink-dim)' : 'var(--map-ink)',
+      }}>{value}</span>
+      <span style={{
+        fontSize: 9, fontWeight: 600, color: 'var(--map-ink-faint)', letterSpacing: '0.4px',
+        width: 30, textAlign: 'left', flexShrink: 0,
+      }}>{label}</span>
+    </div>
+  )
+
+  // A position, in the format a plan is filed in. Its own pill and its own
+  // colour so it reads as the machine-readable half of the identifier above
+  // it rather than as more prose.
+  const coord = (pos) => pos && (
+    <span style={{
+      display: 'inline-block', alignSelf: 'flex-start',
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      fontSize: 10, fontWeight: 600, letterSpacing: '-0.2px',
+      color: 'var(--map-ink)', background: accentAlpha(0.22),
+      padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap',
+    }}>{fmtAvCoord(pos[0], pos[1])}</span>
+  )
 
   return (
-    <div style={{ marginTop: 14 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        {/* Tapping the route opens the plan, which is the one place with more
-            to say about it than these four figures. The X is the only thing
-            here that does something else, so it keeps its own hit area. */}
+    // Two columns, side by side rather than stacked, because the figures need
+    // four lines and the two ends need two. Stacked, the block came to 179px
+    // and the resting stop has 198 to give on the phone once the home
+    // indicator is out of it. Beside each other, the tall column sets the
+    // height and the short one fills space that was going to waste anyway.
+    <div style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {/* The two ends. The departure never truncates: it is an identifier
+            and it is four characters. The destination might be a coordinate,
+            which is long, so that is the one allowed to run out of room, and
+            its exact value is in the pill underneath either way. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={onOpen}
+            style={{
+              flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0,
+              cursor: 'pointer', textAlign: 'left',
+              display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: 19, fontWeight: 800, color: 'var(--map-ink)', letterSpacing: '-0.4px',
+            }}>
+            <span style={{ flexShrink: 0 }}>{route.dep}</span>
+            {/* Pointing along the course, so the picture agrees with the line
+                on the map behind it rather than always pointing east. */}
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="var(--map-ink-faint)"
+              style={{ flexShrink: 0, transform: `rotate(${(route.mc ?? 90) - 90}deg)` }}>
+              <path d="M21 12l-8-4v2.6H3v2.8h10V16z" />
+            </svg>
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {route.dest}
+            </span>
+          </button>
+
+          {/* The only control here that does not open the plan, so it keeps
+              its own hit area, and it costs no height sitting on this line. */}
+          <button
+            onClick={onClear}
+            aria-label="Clear route"
+            style={{
+              width: 28, height: 28, borderRadius: '50%', border: 'none', flexShrink: 0,
+              background: 'var(--map-fill)', color: 'var(--map-ink-dim)', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        {/* WHERE, in the format a plan is filed in. Departure on top,
+            destination below, the same order as the line above. */}
         <button
           onClick={onOpen}
           style={{
-            flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0,
-            cursor: 'pointer', textAlign: 'left',
-            fontSize: 20, fontWeight: 800, color: 'var(--map-ink)',
-            letterSpacing: '-0.4px',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-start',
+            background: 'none', border: 'none', padding: 0, cursor: 'pointer',
           }}>
-          {route.dep} <span style={{ color: 'var(--map-ink-faint)' }}>&#8594;</span> {route.dest}
-        </button>
-
-        <button
-          onClick={onClear}
-          aria-label="Clear route"
-          style={{
-            width: 30, height: 30, borderRadius: '50%', border: 'none', flexShrink: 0,
-            background: 'var(--map-fill)', color: 'var(--map-ink-dim)', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
-          </svg>
+          {coord(dep)}
+          {coord(dest)}
         </button>
       </div>
 
+      {/* HOW FAR AND WHICH WAY, one figure to a line. */}
       <button
         onClick={onOpen}
         style={{
-          display: 'flex', width: '100%', gap: 12, justifyContent: 'space-between',
-          background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
+          display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4,
+          flexShrink: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer',
         }}>
-        <div style={stat}>
-          <span style={statValue}>
-            {route.distNm}<span style={{ fontSize: 13, fontWeight: 700, marginLeft: 3 }}>NM</span>
-          </span>
-          <span style={statLabel}>DISTANCE</span>
-        </div>
-        {/* Magnetic gets the same weight as distance: it is the one actually
-            flown. True and variation are the working behind it, so they are
-            dimmed rather than shrunk, which keeps the row on one baseline. */}
-        <div style={stat}>
-          <span style={statValue}>{route.mc}&#176;</span>
-          <span style={statLabel}>MAGNETIC COURSE</span>
-        </div>
-        {/* Only if the planner actually produced them. A route restored from
-            an older version of this record has the first two and not always
-            the rest, and a blank figure on a flight plan is worse than none. */}
-        {route.tc != null && (
-          <div style={stat}>
-            <span style={{ ...statValue, color: 'var(--map-ink-dim)' }}>{route.tc}&#176;</span>
-            <span style={statLabel}>TRUE</span>
-          </div>
-        )}
-        {route.magVar != null && (
-          <div style={stat}>
-            <span style={{ ...statValue, color: 'var(--map-ink-dim)' }}>
-              {parseFloat(route.magVar) >= 0 ? '+' : ''}{route.magVar}&#176;
-            </span>
-            <span style={statLabel}>VARIATION</span>
-          </div>
-        )}
+        {figure({
+          label: 'NM',
+          value: route.distNm,
+          icon: (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round">
+              <path d="M4 6v12M20 6v12M4 12h16" />
+            </svg>
+          ),
+        })}
+        {/* Only if the planner actually produced them. A route restored from an
+            older version of this record has the distance and not always the
+            rest, and a blank figure on a flight plan is worse than none. */}
+        {route.mc != null && figure({
+          label: 'MAG',
+          value: `${route.mc}\u00B0`,
+          icon: (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2l3.2 8.8L12 9.4l-3.2 1.4z" />
+              <path d="M12 22l-3.2-8.8L12 14.6l3.2-1.4z" opacity="0.4" />
+            </svg>
+          ),
+        })}
+        {route.tc != null && figure({
+          label: 'TRUE', dim: true,
+          value: `${route.tc}\u00B0`,
+          icon: (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2.5l2.4 6.3 6.6.3-5.2 4.1 1.8 6.3L12 15.9 6.4 19.5l1.8-6.3L3 9.1l6.6-.3z" />
+            </svg>
+          ),
+        })}
+        {route.magVar != null && figure({
+          label: 'VAR', dim: true,
+          value: `${parseFloat(route.magVar) >= 0 ? '+' : ''}${route.magVar}\u00B0`,
+          icon: (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 19V5M5 19h14M5 8l11 11" />
+            </svg>
+          ),
+        })}
       </button>
     </div>
   )
