@@ -2259,7 +2259,15 @@ export default function MapHome() {
                 background: 'var(--map-fill-soft)', border: 'none', borderRadius: 16,
                 cursor: 'pointer', textAlign: 'left',
               }}>
-                <img src={t.icon} width={24} height={24} alt="" style={{ objectFit: 'contain', flexShrink: 0 }} />
+                {/* Tinted, not recoloured at the source. These are PNGs and a
+                    stray SVG, black line art drawn back when this menu sat on
+                    a white sheet, and there is no fill to set on an <img>.
+                    The filter paints every opaque pixel the drawer's ink
+                    colour, so they follow the theme the way the label beside
+                    them does rather than being white in both. */}
+                <img src={t.icon} width={24} height={24} alt="" style={{
+                  objectFit: 'contain', flexShrink: 0, filter: 'var(--map-icon-ink)',
+                }} />
                 <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--map-ink)', lineHeight: 1.25 }}>{t.label}</span>
               </button>
             ))}

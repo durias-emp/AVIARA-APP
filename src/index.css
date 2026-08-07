@@ -880,6 +880,15 @@ input[type="number"]::-webkit-outer-spin-button {
   /* Ink ON the inverted surface: a selected chip is ink-coloured, and its
      label has to be the panel colour to stay readable. */
   --map-ink-invert:  #ffffff;
+  /* Ink for the icons that arrive as images rather than as SVG we can set
+     a fill on. The menu icons are black line art on transparent, drawn for
+     a white sheet, and the drawer is not one any more.
+
+     brightness(0) flattens whatever colour the file has to black without
+     touching its alpha, and the invert that follows decides the result. So
+     the pair is "paint every pixel one colour", and this is the light
+     panel, where that colour stays black. */
+  --map-icon-ink:    brightness(0);
 }
 
 [data-theme="dark"], [data-theme="red"] {
@@ -892,6 +901,8 @@ input[type="number"]::-webkit-outer-spin-button {
   --map-fill-soft:   rgba(255,255,255,0.07);
   --map-hairline:    rgba(255,255,255,0.18);
   --map-ink-invert:  #1c1c1e;
+  /* Black, then inverted: white. */
+  --map-icon-ink:    brightness(0) invert(1);
 }
 
 /* ── Map popups ───────────────────────────────────────────────
