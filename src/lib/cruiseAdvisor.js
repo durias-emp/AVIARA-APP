@@ -27,14 +27,27 @@ const MOUNTAIN_FT = 5000
 const CLOUD_SOLID = 60          // % cover at which a level counts as IMC
 const CLOUD_FRAC_GATE = 0.2     // how much of the route in cloud before VFR is out
 
-// The floor an altitude must clear.
+// The floor an altitude should clear, and whether missing it is illegal or
+// merely unwise.
 //
-// IFR is the regulation: §91.177 wants 1,000 ft over the highest obstacle
-// within 4 NM, 2,000 ft in designated mountainous terrain. VFR has no en-route
-// minimum beyond §91.119, so the gate stays at 1,000 ft, enough to be clear
-// of the ridge, and the extra margin mountains deserve is applied as a
-// penalty instead of a prohibition. Pilots do fly valleys VFR; the app should
-// discourage a thin margin, not refuse to plan it.
+// IFR is regulation: §91.177 wants 1,000 ft over the highest obstacle within
+// 4 NM, 2,000 ft in designated mountainous terrain. Missing it is a gate.
+//
+// VFR is NOT. §91.177 is titled "Minimum altitudes for IFR operations" and
+// applies to nothing else; the VFR floor is §91.119, which is 500 ft above the
+// surface away from congested areas and says nothing about the highest peak
+// somewhere along a 1,167 NM route. Treating the IFR figure as a prohibition
+// under VFR ruled out every altitude below the tallest thing anywhere in the
+// corridor, and §91.211 rules out everything above 14,000 without oxygen. On
+// any route near real mountains those two met in the middle and the answer was
+// "no cruising altitude works for this route", which was not true and was the
+// common case rather than the exception: from Reno almost every direction has
+// a 12,000 ft peak within 5 NM of something.
+//
+// So under VFR the same figure becomes a penalty, and a heavy one. The pilot
+// is told the ground is higher than the level they picked, in those words, and
+// keeps the authority the regulation actually leaves them: fly the valley,
+// route around it, or climb over it.
 function terrainFloor(terrain, flightRules) {
   if (terrain?.status !== 'ok' || terrain.maxFt == null) return null
   const mountainous = terrain.maxFt > MOUNTAIN_FT
@@ -166,7 +179,9 @@ export async function recommendCruise(waypoints, {
     if (routeMaxMEA && flightRules === 'IFR' && altFt < routeMaxMEA) {
       gates.push({ label: `Below the ${routeMaxMEA.toLocaleString()} ft MEA on this routing` })
     }
-    if (floor != null && altFt < floor) {
+    // A gate under IFR, where it is the regulation. Under VFR it is a penalty
+    // below, because it is not.
+    if (floor != null && altFt < floor && flightRules === 'IFR') {
       gates.push({
         label: `Terrain. ${terrain.maxFt.toLocaleString()} ft peak needs ${fmtAlt(floor)}`,
       })
@@ -266,10 +281,23 @@ export async function recommendCruise(waypoints, {
     if (freezingFt != null && Math.abs(altFt - freezingFt) <= 2000 && (cloud?.meanPct ?? 0) >= 40) {
       add(8, 'at the freezing level', `0 °C near ${Math.round(freezingFt / 100) * 100} ft with cloud`)
     }
-    if (floor != null && terrain.maxFt > MOUNTAIN_FT) {
+    // Terrain, in three bands.
+    //
+    // Under the floor is only reachable under VFR, since IFR gated it out
+    // above. It is the heaviest penalty the engine applies, heavy enough that
+    // an altitude which clears the ridge always outranks one that does not,
+    // and it grows the further below the peak the level sits. Above the floor
+    // but inside 2,000 ft of a mountain keeps the old thin-margin nudge.
+    if (floor != null) {
       const margin = altFt - terrain.maxFt
-      if (margin < 2000) add((12 * (2000 - margin)) / 1000, 'thin terrain margin',
-                             `${Math.round(margin).toLocaleString()} ft above the highest terrain`)
+      if (altFt < floor) {
+        add(45 + Math.min(35, Math.max(0, -margin) / 100),
+            margin < 0 ? 'below the highest terrain on this route' : 'inside 1,000 ft of the terrain',
+            `${terrain.maxFt.toLocaleString()} ft peak in the corridor. ${fmtAlt(floor)} clears it by 1,000 ft`)
+      } else if (terrain.maxFt > MOUNTAIN_FT && margin < 2000) {
+        add((12 * (2000 - margin)) / 1000, 'thin terrain margin',
+            `${Math.round(margin).toLocaleString()} ft above the highest terrain`)
+      }
     }
     if (airspace?.status === 'ok') {
       const at = airspace.areas.filter(a => a.atCruise)
