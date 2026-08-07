@@ -61,7 +61,12 @@ const aircraft = ac
   : null
 
 const itemsBlock = sql.slice(sql.indexOf('insert into maintenance_items'))
-const rows = [...itemsBlock.matchAll(/^ {2}\((.*?)\),?$/gm)].map(m => m[1])
+// `),` for every row but the last, which ends the statement with `);`. The
+// first version of this accepted only the comma and silently dropped the final
+// item: a Turbine Mid Life Inspection, gone from the schedule with nothing to
+// say it had been. A converter that loses a row without complaining is worse
+// than one that crashes, so the count is asserted below.
+const rows = [...itemsBlock.matchAll(/^ {2}\((.*?)\)[,;]$/gm)].map(m => m[1])
 
 const items = rows.map(r => {
   const f = splitFields(r)
@@ -108,3 +113,11 @@ console.log(`category: ${by('category').join(', ')}`)
 console.log(`limits:   ${by('limitType').join(', ')}`)
 console.log(`events:   ${by('eventType').join(', ')}`)
 console.log(`missing description: ${active.filter(i => !i.description).length}`)
+
+// The export is one INSERT per row, so the number of rows in the file and the
+// number of items in the fixture must agree. They did not once.
+const declared = (itemsBlock.match(/^ {2}\(/gm) ?? []).length
+if (declared !== items.length) {
+  console.error(`\nMISMATCH: ${declared} rows in the file, ${items.length} parsed. Refusing to write a partial schedule.`)
+  process.exit(1)
+}

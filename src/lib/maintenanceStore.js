@@ -163,8 +163,20 @@ function nextDate(item, compliedDate) {
 // from their export by scripts/convert-maintenance-sql.js. Seeded only into an
 // empty schedule, so a device where a mechanic has been logging compliance is
 // never overwritten by the snapshot it started from.
-export async function seedFromFixture(aircraftId, registration) {
-  if (!aircraftId) return { seeded: 0 }
+// Single-flight, and this is not defensive programming, it is a bug that
+// happened. React mounts effects twice in development, so this ran twice, both
+// runs read an empty schedule before either had written, and the aircraft
+// ended up with 236 items instead of 118. Checking then writing is not atomic
+// across two callers; sharing one promise makes the second wait for the first.
+let seeding = null
+export function seedFromFixture(aircraftId, registration) {
+  if (!aircraftId) return Promise.resolve({ seeded: 0 })
+  if (seeding) return seeding
+  seeding = runSeed(aircraftId, registration).finally(() => { seeding = null })
+  return seeding
+}
+
+async function runSeed(aircraftId, registration) {
   const existing = await loadItems(aircraftId)
   if (existing.length) return { seeded: 0, reason: 'schedule already present' }
 
