@@ -133,6 +133,39 @@ const SHEET_STOPS = [25, 50, 80, 100]
 const SHEET_FULL_TRIGGER = 90
 const SHEET_RADIUS = 22
 
+// An element's height, kept current.
+//
+// A callback ref rather than an effect, so the observer attaches exactly when
+// the element does and leaves when it goes. The elements this measures come
+// and go with the drawer's contents, and an effect would have to either list
+// them as dependencies (it cannot: they are refs) or re-attach on every
+// render, which is the shape lint rightly complains about.
+function useMeasuredHeight() {
+  const [h, setH] = useState(0)
+  const observer = useRef(null)
+  const ref = useCallback((node) => {
+    observer.current?.disconnect()
+    observer.current = null
+    if (!node || typeof ResizeObserver === 'undefined') return
+    const read = () => setH(Math.round(node.getBoundingClientRect().height))
+    read()
+    observer.current = new ResizeObserver(read)
+    observer.current.observe(node)
+  }, [])
+  return [h, ref]
+}
+
+// The drawer body's own top padding, and the gap under the aircraft's
+// photograph. Named because the image's height is worked out from the space
+// left over, and that arithmetic has to agree with the styles below or the
+// picture is sized against a box it is not in.
+const BODY_PAD_TOP = 6
+const AC_IMG_GAP = 10
+// A little air under the registration. Without it the arithmetic is exact and
+// the text ends on the last pixel of the screen, which is technically not cut
+// and still reads as cut.
+const AC_BREATHING = 10
+
 // Distance from the top of the screen to the top of the drawer, for a stop.
 // Stops are how much is covered and this is where the edge lands, so the two
 // are complements: 100 is at the top of the screen, 0 is below the bottom.
@@ -556,6 +589,13 @@ export default function MapHome() {
   // Rotation still moves it, because rotation really does change the box.
   const shellRef = useRef(null)
   const [viewportH, setViewportH] = useState(() => window.innerHeight)
+  // The drawer's header and the aircraft's name block, measured rather than
+  // assumed. Both change height with their contents: the header gains the
+  // route card and loses the action row, and the name wraps to two lines for
+  // a long type. The photograph's height is what is left after them, so a
+  // guess at either is a guess at whether the name is on the screen.
+  const [grabH, grabRef] = useMeasuredHeight()
+  const [acTextH, acTextRef] = useMeasuredHeight()
   const [dragY, setDragY] = useState(null)      // live offset while a finger is down
   const drag = useRef(null)
   // The room the chips have, measured rather than recomputed. Its CSS height is
@@ -673,12 +713,18 @@ export default function MapHome() {
   // that collapses innerHeight to 390 while the shell stays 793 produces no
   // change at all, and a rotation, which really does resize the shell,
   // produces one.
+  const [safeBottom, setSafeBottom] = useState(0)
   useEffect(() => {
     const read = () => {
       const h = Math.round(shellRef.current?.getBoundingClientRect().height ?? 0)
       // Zero between layouts. Taking it would put every stop at the top of
       // the screen.
       if (h > 0) setViewportH(h)
+      // The home indicator's strip, in a number rather than a CSS expression,
+      // because the aircraft's height is worked out in JS and has to clear it.
+      // Zero on the desktop, which is exactly why it cannot be eyeballed here.
+      setSafeBottom(parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom')) || 0)
     }
     read()
     window.addEventListener('resize', read)
@@ -1193,6 +1239,32 @@ export default function MapHome() {
   // planner's column is sized from this rather than from the full height, or
   // it runs down behind the keyboard and takes its buttons with it.
   const visibleH = vh - kbInset
+
+  // How tall the aircraft's photograph is allowed to be.
+  //
+  // Not a constant, and not a share of the drawer either, because neither can
+  // know what else is in the drawer. The header above the body changes height
+  // with what it is carrying: at 50 it holds the actions AND the route card,
+  // 244px of a 406px drawer, which leaves 162 for everything below. A 210px
+  // photograph in 162px of space pushed the aircraft's name off the bottom of
+  // the screen, and the name is the part of a portrait a pilot actually reads.
+  //
+  // So it is measured. What the drawer shows, minus the header, minus the
+  // name and registration, is what the picture may have, and it still reaches
+  // its full 210 once the drawer is tall enough to afford it.
+  //
+  // The subtraction is against the VISIBLE drawer rather than the body's own
+  // box, which is a different number: the column is the full height of the
+  // shell and hangs below the screen, so the body measures 568 while 162 of
+  // it is on screen. Laying out against the box is exactly how the name ended
+  // up somewhere nobody could see it.
+  // The home indicator comes off the top of it. The body's own bottom padding
+  // already clears the inset, but that padding sits at the bottom of a box
+  // that hangs below the screen, so at 50 it is nowhere near the edge the
+  // content is actually being cut at.
+  const bodyVisibleH = Math.max(0, (visibleH - liftedY) - grabH - safeBottom)
+  const acImgCap = Math.max(0, Math.min(210,
+    Math.round(bodyVisibleH - acTextH - BODY_PAD_TOP - AC_IMG_GAP - AC_BREATHING)))
 
   // Declared below restY rather than with the other map effects: it reads it,
   // and a const cannot be read before it is initialised. Placed above, the
@@ -1764,6 +1836,7 @@ export default function MapHome() {
             the sheet, which is a bigger target than the handle alone and is
             what people reach for anyway. */}
         <div
+          ref={grabRef}
           onPointerDown={onDragStart} onPointerMove={onDragMove}
           onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
           style={{
@@ -1908,8 +1981,13 @@ export default function MapHome() {
             marginBottom: 20, border: 'none', background: 'none', cursor: 'pointer',
           }}>
             {ac?.image ? (
+              // Whatever is left after the name, worked out above. 210 is the
+              // right size at full screen and more than the whole body has at
+              // 50, where the picture pushed the aircraft's name off the
+              // bottom edge.
               <img src={ac.image} alt="" style={{
-                display: 'block', width: '100%', maxHeight: 210,
+                display: 'block', width: '100%',
+                maxHeight: acImgCap,
                 objectFit: 'contain', marginBottom: 10,
               }} />
             ) : (
@@ -1919,7 +1997,10 @@ export default function MapHome() {
               // the right kind rather than a gap where the picture should be.
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                height: 150, marginBottom: 10,
+                // Capped the same way as a photograph. A custom aircraft has
+                // no picture and is no less entitled to have its name on the
+                // screen.
+                height: Math.min(150, acImgCap), marginBottom: 10,
               }}>
                 <img
                   src={isHelicopter ? '/helicopter.png' : '/modo-avion.png'}
@@ -1930,6 +2011,7 @@ export default function MapHome() {
                   }} />
               </div>
             )}
+            <div ref={acTextRef}>
             <div style={{
               fontSize: 26, fontWeight: 800, color: 'var(--map-ink)',
               letterSpacing: '-0.7px', lineHeight: 1.1,
@@ -1946,6 +2028,7 @@ export default function MapHome() {
                 textTransform: 'uppercase',
               }}>{ac.registration}</div>
             )}
+            </div>
           </button>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
