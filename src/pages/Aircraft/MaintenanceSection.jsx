@@ -175,11 +175,8 @@ function Group({ status, items, onComply }) {
         </span>
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)' }}>{items.length}</span>
       </button>
-      {/* The header keeps its own rule: it is a different kind of thing from
-          the rows under it, which is exactly what the rules between the rows
-          were not. */}
       {open && (
-        <div style={{ borderTop: '1px solid var(--border)', paddingBottom: 4 }}>
+        <div style={{ paddingBottom: 4 }}>
           {items.map(i => <Item key={i.id} item={i} onComply={onComply} />)}
         </div>
       )}
@@ -190,7 +187,6 @@ function Group({ status, items, onComply }) {
 export default function MaintenanceSection({ aircraftId, registration, hobbs, cycles }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
-  const [seedNote, setSeedNote] = useState(null)
   const [complying, setComplying] = useState(null)
   const [history, setHistory] = useState([])
 
@@ -211,11 +207,10 @@ export default function MaintenanceSection({ aircraftId, registration, hobbs, cy
     if (!aircraftId) return undefined
     let cancelled = false
     ;(async () => {
-      const seeded = await seedFromFixture(aircraftId, registration).catch(() => ({ seeded: 0 }))
+      await seedFromFixture(aircraftId, registration).catch(() => {})
       const rows = await loadItems(aircraftId)
       const log = await loadLog(aircraftId)
       if (cancelled) return
-      if (seeded.seeded) setSeedNote(`${seeded.seeded} items loaded from the ${seeded.snapshot ?? ''} sheet`.trim())
       setItems(rows)
       setHistory(log)
       setLoading(false)
@@ -274,10 +269,6 @@ export default function MaintenanceSection({ aircraftId, registration, hobbs, cy
           )
         })}
       </div>
-
-      {seedNote && (
-        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 10 }}>{seedNote}</div>
-      )}
 
       {hobbs == null && (
         <div style={{
