@@ -2,7 +2,7 @@ import { openDB } from 'idb'
 import { SYNCED_STORES, pushToCloud } from './sync'
 
 const DB_NAME = 'pqrh'
-const DB_VERSION = 8
+const DB_VERSION = 9
 
 let _db = null
 
@@ -71,6 +71,19 @@ async function db() {
         // invalidation logic needed. Disposable fetch cache like `weather`/
         // `airportDiagram`, not pilot data, so it's excluded from cloud sync.
         ensureStore(db, 'procedureChartImages', { keyPath: 'key' })
+      }
+      if (oldVersion < 9) {
+        // The aircraft's maintenance schedule, and the record of complying
+        // with it. Local rather than in Postgres for the same reason flights
+        // and currency are: a pilot checking whether the 100-hour is due is
+        // usually standing at the aircraft, which is exactly where there is no
+        // signal. One row per item, keyed by id, scoped to an aircraft by its
+        // aircraftId field.
+        ensureStore(db, 'maintenanceItems', { keyPath: 'id' })
+        // Append only. A compliance record is what says an inspection
+        // happened, so nothing in the app updates or deletes one; corrections
+        // are made by appending, the way a logbook is corrected.
+        ensureStore(db, 'complianceLog', { keyPath: 'id' })
       }
     },
     blocking() {
@@ -146,6 +159,26 @@ export async function putMany(store, values) {
     await Promise.all([...values.map(v => tx.store.put(v)), tx.done])
   })
   if (SYNCED_STORES.includes(store)) pushToCloud(store)
+}
+
+// Several writes that must all happen or none of them.
+//
+// Everything else here is one row at a time, which is all the app has needed:
+// a half-written pair of records is not a state any other feature can reach.
+// Maintenance can. Logging compliance appends the record that says an
+// inspection happened AND rolls the item's due values forward, and a failure
+// between the two leaves the schedule either claiming an inspection nothing
+// recorded, or recording one the schedule does not believe. Both are worse
+// than the write failing outright.
+//
+// run() is handed the transaction; return a promise of your writes. The
+// transaction commits when they settle and rolls back if any of them throws.
+export async function transact(storeNames, mode, run) {
+  const d = await db()
+  const tx = d.transaction(storeNames, mode)
+  const result = await run(tx)
+  await tx.done
+  return result
 }
 
 export async function del(store, key) {

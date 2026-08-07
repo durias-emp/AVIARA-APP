@@ -3,7 +3,12 @@ import { get, put, getAll, clearStore } from './db'
 
 // The stores backed up to the cloud. `weather`/`airportDiagram` are
 // excluded — disposable fetch caches, not pilot data worth restoring.
-export const SYNCED_STORES = ['aircraft', 'currency', 'checklists', 'settings', 'flights', 'logbookEntries', 'uapReports']
+export const SYNCED_STORES = ['aircraft', 'currency', 'checklists', 'settings', 'flights', 'logbookEntries', 'uapReports',
+  // The maintenance schedule and its compliance record: pilot data, backed up
+  // like the rest of it. The compliance log merges cleanly across devices
+  // because it is append-only with unique ids, so a restore only ever adds
+  // rows it does not have.
+  'maintenanceItems', 'complianceLog']
 
 async function currentUserId() {
   const { data } = await supabase.auth.getSession()

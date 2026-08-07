@@ -1,0 +1,6 @@
+{
+  "aircraft": null,
+  "snapshot": null,
+  "source": "CNA OpsBoard export. Regenerate with: node scripts/convert-maintenance-sql.js <03_data.sql> src/data/maintenance/ys-cna.json",
+  "items": []
+}

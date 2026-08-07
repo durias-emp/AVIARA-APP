@@ -28,4 +28,11 @@ export default defineConfig([
       'aviara/no-tdz-reference': 'error',
     },
   },
+  {
+    // The data builders under scripts/ run in node, not the browser: they read
+    // an export off disk and write a fixture. Without node globals every one
+    // of them is a wall of "process is not defined" that hides real problems.
+    files: ['scripts/**/*.js'],
+    languageOptions: { globals: globals.node },
+  },
 ])

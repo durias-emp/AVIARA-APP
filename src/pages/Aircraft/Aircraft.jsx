@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import MaintenanceSection from './MaintenanceSection'
 import { Link } from 'react-router-dom'
 import { get, put } from '../../lib/db'
 import { useLogbook } from '../../context/Logbook'
@@ -1104,6 +1105,7 @@ export default function Aircraft({ aircraftId, onBack, onDeleted, onHangar }) {
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [customName, setCustomName] = useState('')
   const [hobbsModalOpen, setHobbsModalOpen] = useState(false)
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false)
   const [currencyData, setCurrencyData] = useState(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -1653,7 +1655,8 @@ export default function Aircraft({ aircraftId, onBack, onDeleted, onHangar }) {
             background: 'var(--bg-card)', border: 'none',
             boxShadow: 'var(--shadow-sm)', cursor: 'pointer', fontFamily: 'inherit',
             fontSize: 14, fontWeight: 700, color: 'var(--text)',
-          }}>
+          }}
+            onClick={() => setMaintenanceOpen(o => !o)}>
             Maintenance
           </button>
           <button onClick={() => setHobbsModalOpen(true)} style={{
@@ -1665,6 +1668,18 @@ export default function Aircraft({ aircraftId, onBack, onDeleted, onHangar }) {
             Hobbs Time
           </button>
         </div>
+
+        {/* The schedule, under the button that opens it rather than on a
+            screen of its own: it is measured against the airframe time sitting
+            a few lines above, and reading one without the other is how an
+            inspection gets missed. */}
+        {maintenanceOpen && (
+          <MaintenanceSection
+            aircraftId={aircraftId}
+            registration={profile.registration}
+            hobbs={profile.hobbsTime ?? null}
+            cycles={profile.cyclesCurrent ?? null} />
+        )}
 
         {/* Identity */}
         <Section title="Identity">
