@@ -120,19 +120,16 @@ function Entry({ entry, showDescription = false }) {
   )
 }
 
-function Item({ item, entries = [], onComply }) {
-  const [open, setOpen] = useState(false)
-  const tone = TONE[item.status] ?? TONE[STATUS.UNKNOWN]
+function Item({ item, onOpen }) {
   const clock = bindingClock(item)
   const dimmed = item.status === STATUS.NOT_APPLICABLE
 
   return (
     // No rule between rows. Sixteen of them stacked turned the overdue group
     // into a table, and a line every forty pixels competes with the one thing
-    // on each row that is actually red. The gap does the separating; the
-    // padding grew a little to take over the work the line was doing.
+    // on each row that is actually red. The gap does the separating.
     <div style={{ opacity: dimmed ? 0.55 : 1 }}>
-      <button onClick={() => setOpen(o => !o)} style={{
+      <button onClick={() => onOpen(item)} style={{
         width: '100%', background: 'none', border: 'none', cursor: 'pointer',
         padding: '13px 14px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10,
         fontFamily: 'inherit',
@@ -144,85 +141,140 @@ function Item({ item, entries = [], onComply }) {
           }}>{item.description}</span>
           <span style={{ display: 'block', fontSize: 10.5, color: 'var(--text-tertiary)', marginTop: 2 }}>
             {[item.itemNumber, item.category, item.isRetirement ? 'life-limited' : null]
-              .filter(Boolean).join(' · ')}
+              .filter(Boolean).join(' \u00B7 ')}
           </span>
         </span>
         {clock && <Pill status={item.status}>{clock}</Pill>}
       </button>
+    </div>
+  )
+}
 
-      {open && (
-        <div style={{ padding: '0 14px 14px' }}>
-          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 10 }}>
-            <Clock label="HOURS" value={item.hoursLeft != null ? fmtHours(item.hoursLeft) : null}
-              sub={item.dueAtHours != null ? `due at ${item.dueAtHours.toLocaleString()}` : null} />
-            <Clock label="CYCLES" value={item.cyclesLeft != null ? fmtCycles(item.cyclesLeft) : null}
-              sub={item.dueAtCycles != null ? `due at ${item.dueAtCycles.toLocaleString()}` : null} />
-            <Clock label="CALENDAR" value={item.daysLeft != null ? fmtDays(item.daysLeft) : null}
-              sub={item.dueDate ?? null} />
+// One item, opened.
+//
+// A drawer rather than an expansion in place. Opening a row inside a list of a
+// hundred and eighteen pushed everything below it down and left the thing being
+// read halfway up a scroll position that had just moved; and the detail is a
+// different question from the list, so it gets its own surface. The list stays
+// exactly where it was underneath, which is where the pilot will be looking
+// when they close it.
+function ItemDrawer({ item, entries = [], onComply, onClose }) {
+  const tone = TONE[item.status] ?? TONE[STATUS.UNKNOWN]
+  const canComply = item.status !== STATUS.ON_CONDITION && item.status !== STATUS.NOT_APPLICABLE
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'flex-end',
+      }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: '100%', maxHeight: '86%', overflowY: 'auto',
+        background: 'var(--bg)', borderRadius: '18px 18px 0 0',
+        padding: '10px 16px calc(var(--safe-bottom) + 18px)',
+      }}>
+        {/* The handle, because this is the same kind of object as every other
+            drawer in the app and a pilot should not have to learn it twice. */}
+        <div style={{
+          width: 40, height: 5, borderRadius: 3, background: 'var(--border)',
+          margin: '0 auto 14px',
+        }} />
+
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 4 }}>
+          <span style={{ flex: 1, fontSize: 17, fontWeight: 800, color: 'var(--text)', lineHeight: 1.25 }}>
+            {item.description}
+          </span>
+          <Pill status={item.status}>{STATUS_LABEL[item.status]}</Pill>
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginBottom: 16 }}>
+          {[item.itemNumber, item.category, item.isRetirement ? 'life-limited' : null]
+            .filter(Boolean).join(' \u00B7 ')}
+        </div>
+
+        <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', marginBottom: 14 }}>
+          <Clock label="HOURS" value={item.hoursLeft != null ? fmtHours(item.hoursLeft) : null}
+            sub={item.dueAtHours != null ? `due at ${item.dueAtHours.toLocaleString()}` : null} />
+          <Clock label="CYCLES" value={item.cyclesLeft != null ? fmtCycles(item.cyclesLeft) : null}
+            sub={item.dueAtCycles != null ? `due at ${item.dueAtCycles.toLocaleString()}` : null} />
+          <Clock label="CALENDAR" value={item.daysLeft != null ? fmtDays(item.daysLeft) : null}
+            sub={item.dueDate ?? null} />
+        </div>
+
+        {/* Why a clock could not be read. Naming the missing counter is the
+            difference between "we do not know" and "it is fine". */}
+        {item.unreadable?.length > 0 && (
+          <div style={{
+            background: 'rgba(255,149,0,0.12)', color: '#FF9500', borderRadius: 10,
+            padding: '10px 12px', fontSize: 11.5, lineHeight: 1.5, marginBottom: 14,
+          }}>
+            No {item.unreadable.join(' or ')} recorded for this aircraft, so this cannot be worked out.
           </div>
+        )}
 
-          {/* Why a clock could not be read. Naming the missing counter is the
-              difference between "we do not know" and "it is fine". */}
-          {item.unreadable?.length > 0 && (
-            <div style={{ fontSize: 11.5, color: '#FF9500', marginBottom: 10 }}>
-              No {item.unreadable.join(' or ')} recorded for this aircraft, so this cannot be worked out.
-            </div>
-          )}
+        {(item.reference || item.partNumber || item.serialNumber) && (
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 14 }}>
+            {item.reference && <div>{item.reference}</div>}
+            {(item.partNumber || item.serialNumber) && (
+              <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                {[item.partNumber && `P/N ${item.partNumber}`, item.serialNumber && `S/N ${item.serialNumber}`]
+                  .filter(Boolean).join('   ')}
+              </div>
+            )}
+          </div>
+        )}
 
-          {(item.reference || item.partNumber || item.serialNumber) && (
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 10 }}>
-              {item.reference && <div>{item.reference}</div>}
-              {(item.partNumber || item.serialNumber) && (
-                <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
-                  {[item.partNumber && `P/N ${item.partNumber}`, item.serialNumber && `S/N ${item.serialNumber}`]
-                    .filter(Boolean).join('   ')}
-                </div>
-              )}
-            </div>
-          )}
+        {item.lastCompliedDate && (
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 14 }}>
+            Last done {item.lastCompliedDate}
+            {item.lastCompliedHours != null ? ` at ${item.lastCompliedHours.toLocaleString()} hrs` : ''}
+          </div>
+        )}
 
-          {item.lastCompliedDate && (
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 10 }}>
-              Last done {item.lastCompliedDate}
-              {item.lastCompliedHours != null ? ` at ${item.lastCompliedHours.toLocaleString()} hrs` : ''}
-            </div>
-          )}
+        {item.notes && (
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5, marginBottom: 14 }}>
+            {item.notes}
+          </div>
+        )}
 
-          {item.notes && (
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 10 }}>{item.notes}</div>
-          )}
+        {/* Everything this item has been through on this device. The sheet's
+            own last compliance came with the import and is shown above; these
+            are the ones logged here since. */}
+        {entries.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{
+              fontSize: 9.5, fontWeight: 600, color: 'var(--text-tertiary)',
+              letterSpacing: '0.3px', marginBottom: 2,
+            }}>HISTORY</div>
+            {entries.map(e => <Entry key={e.id} entry={e} />)}
+          </div>
+        )}
 
-          {/* Everything this item has been through on this device. The sheet's
-              own "last complied" figures came with the import and are shown
-              above; these are the ones logged here since. */}
-          {entries.length > 0 && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{
-                fontSize: 9.5, fontWeight: 600, color: 'var(--text-tertiary)',
-                letterSpacing: '0.3px', marginBottom: 2,
-              }}>HISTORY</div>
-              {entries.map(e => <Entry key={e.id} entry={e} />)}
-            </div>
-          )}
-
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{
+            flex: canComply ? 1 : undefined, width: canComply ? undefined : '100%',
+            padding: '13px 0', borderRadius: 11, border: 'none',
+            background: 'var(--bg-card-2)', color: 'var(--text)', fontFamily: 'inherit',
+            fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+          }}>Close</button>
           {/* Nothing to comply with on an item that is on condition or does
               not apply, so no button that would do nothing. */}
-          {item.status !== STATUS.ON_CONDITION && item.status !== STATUS.NOT_APPLICABLE && (
+          {canComply && (
             <button onClick={() => onComply(item)} style={{
-              width: '100%', padding: '10px 0', borderRadius: 10, border: 'none',
+              flex: 1, padding: '13px 0', borderRadius: 11, border: 'none',
               background: tone.bg, color: tone.fg, fontFamily: 'inherit',
-              fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+              fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
             }}>
               {item.isRetirement ? 'Record replacement' : 'Log compliance'}
             </button>
           )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
 
-function Group({ status, items, entriesByItem, onComply }) {
+function Group({ status, items, onOpen }) {
   const [open, setOpen] = useState(status === STATUS.OVERDUE || status === STATUS.DUE_SOON)
   if (!items.length) return null
   const tone = TONE[status] ?? TONE[STATUS.UNKNOWN]
@@ -244,9 +296,7 @@ function Group({ status, items, entriesByItem, onComply }) {
       </button>
       {open && (
         <div style={{ paddingBottom: 4 }}>
-          {items.map(i => (
-            <Item key={i.id} item={i} entries={entriesByItem[i.id] ?? []} onComply={onComply} />
-          ))}
+          {items.map(i => <Item key={i.id} item={i} onOpen={onOpen} />)}
         </div>
       )}
     </div>
@@ -289,6 +339,12 @@ export default function MaintenanceSection({ aircraftId, registration, hobbs, cy
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [complying, setComplying] = useState(null)
+  // Held by id, not by object: after logging compliance the schedule is
+  // re-read and the old object is a stale copy with the pre-compliance due
+  // values on it. Looking it up each render means the drawer shows what just
+  // happened rather than what used to be true.
+  const [openItemId, setOpenItemId] = useState(null)
+  const openItem = useCallback((item) => setOpenItemId(item.id), [])
   const [history, setHistory] = useState([])
 
   // Re-read after a write. Called from an event handler, never from an effect.
@@ -348,6 +404,9 @@ export default function MaintenanceSection({ aircraftId, registration, hobbs, cy
     )
   }
 
+  // Looked up rather than stored, so it follows the data.
+  const detail = openItemId ? groups.items.find(i => i.id === openItemId) : null
+
   const counts = [
     [STATUS.OVERDUE, groups.overdue.length],
     [STATUS.DUE_SOON, groups.dueSoon.length],
@@ -386,14 +445,22 @@ export default function MaintenanceSection({ aircraftId, registration, hobbs, cy
         </div>
       )}
 
-      <Group status={STATUS.OVERDUE} entriesByItem={entriesByItem} items={groups.overdue} onComply={setComplying} />
-      <Group status={STATUS.DUE_SOON} entriesByItem={entriesByItem} items={groups.dueSoon} onComply={setComplying} />
-      <Group status={STATUS.UNKNOWN} entriesByItem={entriesByItem} items={groups.unknown} onComply={setComplying} />
-      <Group status={STATUS.OK} entriesByItem={entriesByItem} items={groups.ok} onComply={setComplying} />
-      <Group status={STATUS.ON_CONDITION} entriesByItem={entriesByItem} items={groups.onCondition} onComply={setComplying} />
-      <Group status={STATUS.NOT_APPLICABLE} entriesByItem={entriesByItem} items={groups.notApplicable} onComply={setComplying} />
+      <Group status={STATUS.OVERDUE} items={groups.overdue} onOpen={openItem} />
+      <Group status={STATUS.DUE_SOON} items={groups.dueSoon} onOpen={openItem} />
+      <Group status={STATUS.UNKNOWN} items={groups.unknown} onOpen={openItem} />
+      <Group status={STATUS.OK} items={groups.ok} onOpen={openItem} />
+      <Group status={STATUS.ON_CONDITION} items={groups.onCondition} onOpen={openItem} />
+      <Group status={STATUS.NOT_APPLICABLE} items={groups.notApplicable} onOpen={openItem} />
 
       <HistorySection entries={history} />
+
+      {detail && (
+        <ItemDrawer
+          item={detail}
+          entries={entriesByItem[detail.id] ?? []}
+          onComply={setComplying}
+          onClose={() => setOpenItemId(null)} />
+      )}
 
       {complying && (
         <ComplianceForm
@@ -401,7 +468,7 @@ export default function MaintenanceSection({ aircraftId, registration, hobbs, cy
           hobbs={hobbs}
           cycles={cycles}
           onCancel={() => setComplying(null)}
-          onSaved={async () => { setComplying(null); await refresh() }}
+          onSaved={async () => { setComplying(null); setOpenItemId(null); await refresh() }}
         />
       )}
 
@@ -470,7 +537,9 @@ function ComplianceForm({ item, hobbs, cycles, onCancel, onSaved }) {
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,0.45)',
+      // Above the item drawer that opened it, which stays behind rather than
+      // being torn down: cancelling should put the pilot back where they were.
+      position: 'fixed', inset: 0, zIndex: 3100, background: 'rgba(0,0,0,0.45)',
       display: 'flex', alignItems: 'flex-end',
     }} onClick={onCancel}>
       <div onClick={e => e.stopPropagation()} style={{
