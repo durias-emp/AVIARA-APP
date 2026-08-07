@@ -162,6 +162,18 @@ function useMeasuredHeight() {
 // picture is sized against a box it is not in.
 const BODY_PAD_TOP = 6
 const AC_IMG_GAP = 10
+// What sits above the route block inside the drawer's grab area: its top
+// padding, the handle, and the handle's margin. Named because the route block
+// is stretched to the foot of the resting stop and that arithmetic has to
+// agree with the styles, or it fills to the wrong line.
+const GRAB_ABOVE_ROUTE = 29
+// The room kept clear at the bottom for the hint. Measured, not guessed: the
+// line is 16px tall and sits 4px above the safe-area inset, so its top is 20
+// above it, and the rest is gap. Guessing 11px for its height is what let it
+// overlap VARIATION on the phone while the desktop, where the inset is zero,
+// looked fine.
+const HINT_RESERVE = 28
+
 // A little air under the registration. Without it the arithmetic is exact and
 // the text ends on the last pixel of the screen, which is technically not cut
 // and still reads as cut.
@@ -257,7 +269,7 @@ function FloatingCard({ visible, bottom, compact = false, children }) {
 // of the map takes the whole drawer out of the way, and Reset in the plan is
 // where a route is actually discarded. A destructive control sitting beside
 // the numbers earned its place only while there was nowhere else for it.
-function RouteSummary({ route, onOpen, aircraftIcon }) {
+function RouteSummary({ route, onOpen, aircraftIcon, fillTo = 0 }) {
   const dep = route.depPos, dest = route.destPos
 
   // An identifier, or nothing at all.
@@ -293,14 +305,13 @@ function RouteSummary({ route, onOpen, aircraftIcon }) {
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
         {code && (
           <span style={{
-            // 21 and not larger. A four-letter code at 24px comes within a
-            // pixel and a half of the block's edge, and the aircraft standing
-            // on that edge is rotated: a turned 20px square has a 28px
-            // bounding box, so it needs far more room than its size suggests.
-            // The block is filled by the line under the code now, not by the
-            // code growing into the aeroplane.
-            fontSize: 21, fontWeight: 800, color: 'var(--map-ink)',
-            letterSpacing: '-0.6px', lineHeight: 1, maxWidth: '100%',
+            // 26 now the ends have half the card each rather than a quarter.
+            // It was held at 21 because the aircraft stood on the block's edge
+            // and a turned 18px icon has a 25px bounding box; at the centre of
+            // a half there is about 40px of clearance either side instead of
+            // four, so the code can be read from arm's length again.
+            fontSize: 26, fontWeight: 800, color: 'var(--map-ink)',
+            letterSpacing: '-0.8px', lineHeight: 1, maxWidth: '100%',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{code}</span>
         )}
@@ -325,7 +336,11 @@ function RouteSummary({ route, onOpen, aircraftIcon }) {
             color: code ? 'var(--map-ink-faint)' : 'var(--map-ink)',
             letterSpacing: '-0.3px', lineHeight: 1.3, whiteSpace: 'nowrap',
             textAlign: 'center', marginTop: label ? 2 : 0,
-          }}>{latStr}<br />{lonStr}</span>
+            // One line again. It was split across two only because a quarter
+            // of a phone could not hold 21 characters of monospace; half a
+            // phone can, with room to spare, and the line it gives back is
+            // what pays for the bigger code above it.
+          }}>{latStr} {lonStr}</span>
         )}
       </div>
     )
@@ -359,7 +374,16 @@ function RouteSummary({ route, onOpen, aircraftIcon }) {
     // RENO/RENO/TAHOE and DALLAS-FORT WOR are not names, they are the start of
     // names. Stacked, the ends get the whole width and the figures get a line
     // of their own, and both stop competing for the same 339 pixels.
-    <div style={{ marginTop: 10, position: 'relative' }}>
+    // Filled to the foot of the drawer's first state, ends at the top and
+    // figures at the bottom, rather than both bunched under the handle with
+    // the rest of the drawer empty beneath them. fillTo is zero at every other
+    // stop, where the aircraft and the tools follow underneath and stretching
+    // this would only push them down.
+    <div style={{
+      marginTop: 10, position: 'relative',
+      display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+      minHeight: fillTo || undefined,
+    }}>
       <div style={{
         position: 'relative',
         display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8,
@@ -398,7 +422,7 @@ function RouteSummary({ route, onOpen, aircraftIcon }) {
           whole. */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-        gap: 8, marginTop: 10,
+        gap: 8, marginTop: 8,
       }}>
         {figure({
           label: 'DISTANCE',
@@ -1910,7 +1934,7 @@ export default function MapHome() {
           // underneath, which is where 560 put it: correctly positioned and
           // completely invisible.
           position: 'absolute', left: 0, right: 0, zIndex: 620,
-          bottom: 'calc(var(--safe-bottom) + 12px)',
+          bottom: 'calc(var(--safe-bottom) + 4px)',
           textAlign: 'center', pointerEvents: 'none',
         }}>
           {/* Keyed on the words, so a hint that changes is a hint that gets
@@ -2053,7 +2077,10 @@ export default function MapHome() {
               of everything below. */}
           {!planning && route?.distNm != null && (
             <RouteSummary route={route} onOpen={openPlanner}
-              aircraftIcon={isHelicopter ? '/helicopter.png' : '/modo-avion.png'} />
+              aircraftIcon={isHelicopter ? '/helicopter.png' : '/modo-avion.png'}
+              fillTo={snap === 25
+                ? Math.max(0, restPx - GRAB_ABOVE_ROUTE - 10 - safeBottom - HINT_RESERVE)
+                : 0} />
           )}
         </div>
 
