@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { usePaneActivity } from './PaneActivity'
+import { useBackOverride } from '../../../context/BackOverride'
 import { useCardLayout } from './CardLayout'
 
 /* ── Expandable card shell. Used by every checklist item ────── */
@@ -12,6 +13,17 @@ export function ExpandableCard({ item, isChecked, onToggle, open, setOpen, child
   // the opposite of what opening it was for.
   const filling = stretch && !isOpen
   usePaneActivity(isOpen)
+
+  // While this card is open it owns back, so back closes it instead of
+  // throwing away the whole planner. Open a card, work in it, press back:
+  // the pilot is looking at the step list again, which is where they came
+  // from, and the plan they were halfway through is still there.
+  //
+  // A card the pane opened by itself claims nothing. forceOpen and solo have
+  // no closed state to go back to, so claiming would only make back do
+  // nothing at all, which is worse than back leaving the step.
+  const closeCard = useCallback(() => setOpen?.(false), [setOpen])
+  useBackOverride(open && !forceOpen && !solo && setOpen ? closeCard : null)
   const rootRef = useRef(null)
   const wasOpenRef = useRef(open)
   const contentRef = useRef(null)

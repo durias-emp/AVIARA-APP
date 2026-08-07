@@ -1,7 +1,5 @@
-import { useCallback, useContext } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
-import { useOverlayClose } from '../context/OverlayClose'
-import { BackOverrideContext } from '../context/BackOverride'
+import { useLocation } from 'react-router-dom'
+import { useBack } from '../hooks/useBack'
 import { useSwipeBack } from '../hooks/useSwipeBack'
 
 function IconChevronLeft({ size = 20 }) {
@@ -21,24 +19,21 @@ function IconHouse({ size = 18 }) {
   )
 }
 
-// Same "go back" resolution as BackButton (onBack prop → close the overlay
-// → navigate home), just with a house glyph instead of a chevron — for
-// full-bleed screens (the full-screen Map) where a floating icon reads
+// The same resolution as BackButton, with a house glyph instead of a chevron,
+// for full-bleed screens (the full-screen Map) where a floating icon reads
 // better than a titled header row.
+//
+// The glyph follows the destination rather than the component's name: a house
+// when the press goes home, a chevron when it goes up one. A house that
+// sometimes went back was the button lying about itself, and it is the kind of
+// lie a pilot only finds out about by losing what they were in the middle of.
 export function HomeButton({ onBack }) {
-  const navigate     = useNavigate()
-  const closeOverlay = useOverlayClose()
-
-  function handleBack() {
-    if (onBack)        { onBack();        return }
-    if (closeOverlay)  { closeOverlay();  return }
-    navigate('/')
-  }
+  const { goBack, goesHome } = useBack(onBack)
 
   return (
     <button
-      onClick={handleBack}
-      aria-label="Back to Home"
+      onClick={goBack}
+      aria-label={goesHome ? 'Back to Home' : 'Back'}
       style={{
         width: 40,
         height: 40,
@@ -54,24 +49,18 @@ export function HomeButton({ onBack }) {
         flexShrink: 0,
         WebkitTapHighlightColor: 'transparent',
       }}>
-      <IconHouse size={18} />
+      {goesHome ? <IconHouse size={18} /> : <IconChevronLeft size={18} />}
     </button>
   )
 }
 
 export function BackButton({ onBack }) {
-  const navigate      = useNavigate()
-  const closeOverlay  = useOverlayClose()
-
-  function handleBack() {
-    if (onBack)        { onBack();        return }
-    if (closeOverlay)  { closeOverlay();  return }
-    navigate('/')
-  }
+  const { goBack } = useBack(onBack)
 
   return (
     <button
-      onClick={handleBack}
+      onClick={goBack}
+      aria-label="Back"
       style={{
         width: 36,
         height: 36,
@@ -93,25 +82,21 @@ export function BackButton({ onBack }) {
 
 export default function Shell({ children }) {
   const location = useLocation()
-  const navigate  = useNavigate()
-  const backOverride = useContext(BackOverrideContext)
   const isHome = location.pathname === '/'
   // The checklist page owns its own internal scroll (a single active step
   // pane, with a fixed tab bar below it). Letting the outer shell scroll
   // too would create a double-scrollbar fight between the two containers.
   const ownsInternalScroll = location.pathname === '/checklists'
 
-  const handleSwipeBack = useCallback(() => {
-    const override = backOverride?.peek?.()
-    if (override) { override(); return }
-    navigate('/')
-  }, [backOverride, navigate])
+  // The same function the header button calls, so the gesture and the button
+  // cannot end up in different places.
+  const { goBack } = useBack()
 
   // On /checklists, a full-width horizontal drag means "swipe between tabs". 
   // letting the edge-swipe-back gesture also listen there would make a touch
   // starting near the left edge ambiguous between the two. Back navigation
   // stays available via the header's BackButton, so just disable the swipe.
-  const swipeRef = useSwipeBack(handleSwipeBack, { disabled: isHome || ownsInternalScroll })
+  const swipeRef = useSwipeBack(goBack, { disabled: isHome || ownsInternalScroll })
 
   // A screen that scrolls inside itself needs the shell pinned to the
   // viewport; one that scrolls as a page needs it to grow with its content.
