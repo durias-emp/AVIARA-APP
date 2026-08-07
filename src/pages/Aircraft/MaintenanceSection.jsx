@@ -66,7 +66,61 @@ function Clock({ label, value, sub }) {
   )
 }
 
-function Item({ item, onComply }) {
+// One compliance record.
+//
+// Read-only, always. This is the only part of the schedule that is a record
+// rather than a plan: an item's due values are a guess about the future and
+// can be corrected, but what was done to an aircraft on a date is not a guess
+// and nothing in the app edits or deletes it. A correction is another entry.
+function Entry({ entry, showDescription = false }) {
+  const replaced = entry.replacedSerialNumber || entry.fittedSerialNumber
+  return (
+    <div style={{ padding: '9px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>
+          {entry.compliedDate}
+        </span>
+        {entry.compliedHours != null && (
+          <span style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+            {entry.compliedHours.toLocaleString()} hrs
+          </span>
+        )}
+        {entry.compliedCycles != null && (
+          <span style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+            {entry.compliedCycles.toLocaleString()} cyc
+          </span>
+        )}
+        {entry.workOrder && (
+          <span style={{ fontSize: 10.5, color: 'var(--text-tertiary)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+            W/O {entry.workOrder}
+          </span>
+        )}
+      </div>
+      {showDescription && (
+        <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 2 }}>{entry.description}</div>
+      )}
+      {/* A replacement says which part left and which arrived. An entry that
+          only said "complied" would be the thing this whole flow exists to
+          stop: the same serial number carrying on with a new life. */}
+      {replaced && (
+        <div style={{
+          fontSize: 10.5, color: 'var(--text-tertiary)', marginTop: 3,
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        }}>
+          {entry.replacedSerialNumber ? `S/N ${entry.replacedSerialNumber} off` : 'part off'}
+          {entry.fittedSerialNumber ? `  ·  S/N ${entry.fittedSerialNumber} on` : ''}
+        </div>
+      )}
+      {entry.notes && (
+        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 3, lineHeight: 1.45 }}>
+          {entry.notes}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Item({ item, entries = [], onComply }) {
   const [open, setOpen] = useState(false)
   const tone = TONE[item.status] ?? TONE[STATUS.UNKNOWN]
   const clock = bindingClock(item)
@@ -138,6 +192,19 @@ function Item({ item, onComply }) {
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 10 }}>{item.notes}</div>
           )}
 
+          {/* Everything this item has been through on this device. The sheet's
+              own "last complied" figures came with the import and are shown
+              above; these are the ones logged here since. */}
+          {entries.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{
+                fontSize: 9.5, fontWeight: 600, color: 'var(--text-tertiary)',
+                letterSpacing: '0.3px', marginBottom: 2,
+              }}>HISTORY</div>
+              {entries.map(e => <Entry key={e.id} entry={e} />)}
+            </div>
+          )}
+
           {/* Nothing to comply with on an item that is on condition or does
               not apply, so no button that would do nothing. */}
           {item.status !== STATUS.ON_CONDITION && item.status !== STATUS.NOT_APPLICABLE && (
@@ -155,7 +222,7 @@ function Item({ item, onComply }) {
   )
 }
 
-function Group({ status, items, onComply }) {
+function Group({ status, items, entriesByItem, onComply }) {
   const [open, setOpen] = useState(status === STATUS.OVERDUE || status === STATUS.DUE_SOON)
   if (!items.length) return null
   const tone = TONE[status] ?? TONE[STATUS.UNKNOWN]
@@ -177,7 +244,41 @@ function Group({ status, items, onComply }) {
       </button>
       {open && (
         <div style={{ paddingBottom: 4 }}>
-          {items.map(i => <Item key={i.id} item={i} onComply={onComply} />)}
+          {items.map(i => (
+            <Item key={i.id} item={i} entries={entriesByItem[i.id] ?? []} onComply={onComply} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Everything logged against this aircraft, newest first.
+//
+// Collapsed by default: the schedule answers what is coming, which is the
+// question being asked ninety-nine times out of a hundred. The log answers
+// what was done, which matters when it matters.
+function HistorySection({ entries }) {
+  const [open, setOpen] = useState(false)
+  if (!entries.length) return null
+  return (
+    <div style={{
+      background: 'var(--bg-card)', borderRadius: 'var(--r-lg)',
+      boxShadow: 'var(--shadow-sm)', overflow: 'hidden', marginBottom: 12,
+    }}>
+      <button onClick={() => setOpen(o => !o)} style={{
+        width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+        padding: '13px 14px', display: 'flex', alignItems: 'center', gap: 10,
+        fontFamily: 'inherit', textAlign: 'left',
+      }}>
+        <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+          Compliance log
+        </span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)' }}>{entries.length}</span>
+      </button>
+      {open && (
+        <div style={{ padding: '0 14px 10px' }}>
+          {entries.map(e => <Entry key={e.id} entry={e} showDescription />)}
         </div>
       )}
     </div>
@@ -220,6 +321,11 @@ export default function MaintenanceSection({ aircraftId, registration, hobbs, cy
 
   // Every countdown, recomputed whenever the counters move. No re-read.
   const groups = useMemo(() => summarise(items, hobbs ?? null, cycles ?? null), [items, hobbs, cycles])
+  const entriesByItem = useMemo(() => {
+    const by = {}
+    for (const e of history) (by[e.itemId] ??= []).push(e)
+    return by
+  }, [history])
 
   if (loading) return null
 
@@ -280,12 +386,14 @@ export default function MaintenanceSection({ aircraftId, registration, hobbs, cy
         </div>
       )}
 
-      <Group status={STATUS.OVERDUE} items={groups.overdue} onComply={setComplying} />
-      <Group status={STATUS.DUE_SOON} items={groups.dueSoon} onComply={setComplying} />
-      <Group status={STATUS.UNKNOWN} items={groups.unknown} onComply={setComplying} />
-      <Group status={STATUS.OK} items={groups.ok} onComply={setComplying} />
-      <Group status={STATUS.ON_CONDITION} items={groups.onCondition} onComply={setComplying} />
-      <Group status={STATUS.NOT_APPLICABLE} items={groups.notApplicable} onComply={setComplying} />
+      <Group status={STATUS.OVERDUE} entriesByItem={entriesByItem} items={groups.overdue} onComply={setComplying} />
+      <Group status={STATUS.DUE_SOON} entriesByItem={entriesByItem} items={groups.dueSoon} onComply={setComplying} />
+      <Group status={STATUS.UNKNOWN} entriesByItem={entriesByItem} items={groups.unknown} onComply={setComplying} />
+      <Group status={STATUS.OK} entriesByItem={entriesByItem} items={groups.ok} onComply={setComplying} />
+      <Group status={STATUS.ON_CONDITION} entriesByItem={entriesByItem} items={groups.onCondition} onComply={setComplying} />
+      <Group status={STATUS.NOT_APPLICABLE} entriesByItem={entriesByItem} items={groups.notApplicable} onComply={setComplying} />
+
+      <HistorySection entries={history} />
 
       {complying && (
         <ComplianceForm
@@ -299,7 +407,7 @@ export default function MaintenanceSection({ aircraftId, registration, hobbs, cy
 
       <div style={{ fontSize: 10.5, color: 'var(--text-tertiary)', lineHeight: 1.6, marginTop: 4 }}>
         A planning aid, not the aircraft record. The logbooks and the signature of the person who did
-        the work are what count.{history.length ? ` ${history.length} compliance entries recorded here.` : ''}
+        the work are what count.
       </div>
     </div>
   )
