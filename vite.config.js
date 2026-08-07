@@ -46,7 +46,12 @@ function trafficDevProxy() {
       server.middlewares.use('/api/traffic', async (req, res) => {
         const url = new URL(req.url, 'http://localhost')
         const query = Object.fromEntries(url.searchParams)
-        const { default: handler } = await server.ssrLoadModule('/api/traffic.js')
+        // ssrLoadModule is the dev server's; the preview server has no module
+        // graph, so there it is a plain Node import of the same file. Either
+        // way it is the real handler rather than a copy of it.
+        const { default: handler } = server.ssrLoadModule
+          ? await server.ssrLoadModule('/api/traffic.js')
+          : await import(new URL('./api/traffic.js', import.meta.url).href)
         // The handler expects the Vercel request/response shape.
         const shim = {
           status(code) { res.statusCode = code; return shim },
@@ -237,6 +242,27 @@ function notamsDevProxy() {
       })
     },
   }
+}
+
+// The API middlewares, on the preview server as well as the dev one.
+//
+// Vite calls configureServer for `npm run dev` and configurePreviewServer for
+// `npm run preview`. Every proxy below registered only the first, so a built
+// app served locally had no /api at all: the requests fell through to the SPA
+// fallback and came back 200 with index.html in the body. Every caller does
+// res.json() on that, throws, and swallows it, so nothing 404s and nothing
+// logs. Route calculation answered "Could not calculate. Check both ICAO
+// codes" for KRNO to KSFO, which is a lie about the ICAO codes, and weather,
+// TFRs, NOTAMs and charts were quietly dead the same way.
+//
+// This is preview-only. Production is unaffected: Vercel deploys api/*.js as
+// real functions and never sees this file's middlewares.
+//
+// Registered in the hook body rather than in a returned callback, so it lands
+// BEFORE Vite's own middlewares and gets to /api/* ahead of the SPA fallback.
+function alsoOnPreview(plugin) {
+  if (!plugin?.configureServer) return plugin
+  return { ...plugin, configurePreviewServer: plugin.configureServer }
 }
 
 function awcDevProxy() {
@@ -624,16 +650,18 @@ export default defineConfig(({ mode }) => {
       ...(phoneTest ? { host: true } : {}),
     },
     plugins: [
-      awcDevProxy(),
-      notamsDevProxy(),
-      tfrDevProxy(),
-    trafficDevProxy(),
+      // deviceLogSink is the exception: it pipes phone readings to the dev
+      // server's terminal, which a preview server has no use for.
+      alsoOnPreview(awcDevProxy()),
+      alsoOnPreview(notamsDevProxy()),
+      alsoOnPreview(tfrDevProxy()),
+      alsoOnPreview(trafficDevProxy()),
       deviceLogSink(),
-      tfrDetailDevProxy(),
-      iconDevProxy(),
-      pohDevProxy(),
-      logbookPageDevProxy(),
-      procedureChartDevProxy(),
+      alsoOnPreview(tfrDetailDevProxy()),
+      alsoOnPreview(iconDevProxy()),
+      alsoOnPreview(pohDevProxy()),
+      alsoOnPreview(logbookPageDevProxy()),
+      alsoOnPreview(procedureChartDevProxy()),
       react(),
       tailwindcss(),
       ...(phoneTest ? [basicSsl()] : []),
