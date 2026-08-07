@@ -273,20 +273,43 @@ function RouteSummary({ route, onOpen, aircraftIcon }) {
     return ident
   }
 
-  // A block: an end of the route, centred in its quarter. Latitude over
-  // longitude, which is how a position fits under a code rather than beside
-  // one.
-  const end = (ident, pos) => {
+  // A block: an end of the route, centred in its quarter.
+  //
+  // Three lines, which is what fills the block rather than padding it out.
+  // The two ends were 52px tall in a 78px row, so there was a hole under them
+  // while the figures beside them ran the full height. The pass this is
+  // modelled on says exactly what belongs in that space: the code, the place
+  // it names, and then the detail. Here the detail is the position, because
+  // that is what gets filed.
+  const end = (ident, pos, name) => {
     const code = codeOf(ident, pos)
     const [latStr, lonStr] = pos ? fmtAvCoord(pos[0], pos[1]).split(' ') : []
+    // Only when it is really a name. The planner falls back to the identifier
+    // when a field has no name of its own, and for a dropped point that
+    // identifier IS the coordinate, so both cases would print the line
+    // underneath twice.
+    const label = name && name !== ident && name !== code ? name : null
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 0 }}>
         {code && (
           <span style={{
+            // 21 and not larger. A four-letter code at 24px comes within a
+            // pixel and a half of the block's edge, and the aircraft standing
+            // on that edge is rotated: a turned 20px square has a 28px
+            // bounding box, so it needs far more room than its size suggests.
+            // The block is filled by the line under the code now, not by the
+            // code growing into the aeroplane.
             fontSize: 21, fontWeight: 800, color: 'var(--map-ink)',
             letterSpacing: '-0.6px', lineHeight: 1, maxWidth: '100%',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{code}</span>
+        )}
+        {label && (
+          <span style={{
+            fontSize: 9, fontWeight: 600, color: 'var(--map-ink-dim)',
+            letterSpacing: '0.1px', lineHeight: 1.3, maxWidth: '100%',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{label}</span>
         )}
         {pos && (
           <span style={{
@@ -297,10 +320,11 @@ function RouteSummary({ route, onOpen, aircraftIcon }) {
             // pushed it into the aircraft standing on the block's edge, and a
             // position that collides with something is not more readable for
             // being larger.
-            fontSize: 9.5,
+            fontSize: 10,
             fontWeight: code ? 600 : 700,
             color: code ? 'var(--map-ink-faint)' : 'var(--map-ink)',
-            letterSpacing: '-0.3px', lineHeight: 1.4, whiteSpace: 'nowrap', textAlign: 'center',
+            letterSpacing: '-0.3px', lineHeight: 1.45, whiteSpace: 'nowrap',
+            textAlign: 'center', marginTop: label ? 2 : 0,
           }}>{latStr}<br />{lonStr}</span>
         )}
       </div>
@@ -362,10 +386,10 @@ function RouteSummary({ route, onOpen, aircraftIcon }) {
       // content, so a block holding a long coordinate simply grew and took
       // width off its neighbours: the quarters were not quarters, and the
       // aircraft sitting at 25% was no longer on the line between them.
-      display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8, alignItems: 'start',
+      display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8, alignItems: 'stretch',
     }}>
-      {end(route.dep, dep)}
-      {end(route.dest, dest)}
+      {end(route.dep, dep, route.depName)}
+      {end(route.dest, dest, route.destName)}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {figure({ icon: NM, value: `${route.distNm} NM`, label: 'DISTANCE' })}
@@ -395,7 +419,7 @@ function RouteSummary({ route, onOpen, aircraftIcon }) {
           alt=""
           style={{
             position: 'absolute', left: '25%', top: 1,
-            width: 20, height: 20, objectFit: 'contain',
+            width: 18, height: 18, objectFit: 'contain',
             transform: `translateX(-50%) rotate(${route.tc ?? route.mc ?? 0}deg)`,
             filter: 'var(--icon-filter)', opacity: 0.85, pointerEvents: 'none',
           }} />
