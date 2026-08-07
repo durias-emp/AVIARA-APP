@@ -232,84 +232,106 @@ function FloatingCard({ visible, bottom, compact = false, children }) {
   )
 }
 
-// The planned route, on the drawer. The same four figures the planner shows
-// under Calculate Route, in the same words, because a pilot who checked them
-// there should not have to work out whether these are the same numbers.
+// The route, once there is one, on the drawer.
 //
-// Magnetic course gets the emphasis: it is the one you actually fly. True
-// course and variation are underneath it as the working, not as headline
-
-// The route, once there is one, in the drawer.
+// On it, not in a box on it. It used to be a filled card with 13px figures
+// inside a drawer that is itself a card, which is a frame around a frame: it
+// read as an item in a list rather than as what the drawer is currently
+// about, and the numbers came out too small to take at a glance. The aircraft
+// below already makes this argument and wins it. Same move here.
 //
-// It came back after being removed: a line drawn across the map with nothing
-// in the drawer naming it left the app showing a flight it would not talk
-// about. This is the compact form of the read-back, and tapping it opens the
-// read-back itself.
-
+// The figures are the read-back's, at the read-back's size and in its words,
+// because that screen no longer exists and this is where its job went. All
+// four in one row rather than a two by two grid, which is what keeps it
+// inside the resting stop instead of demanding a taller one.
+//
+// The X moves up beside the route rather than sitting in the middle of the
+// numbers, which hands the whole width to the figures. That is the difference
+// between MAG COURSE and MAGNETIC COURSE.
 function RouteSummary({ route, onClear, onOpen }) {
-  const stat = { display: 'flex', flexDirection: 'column', gap: 2 }
-  const statValue = { fontSize: 17, fontWeight: 800, color: 'var(--map-ink)', letterSpacing: '-0.3px', fontVariantNumeric: 'tabular-nums' }
-  const statLabel = { fontSize: 9, fontWeight: 600, color: 'var(--map-ink-faint)', letterSpacing: '0.4px' }
+  const stat = { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }
+  const statValue = {
+    fontSize: 24, fontWeight: 800, color: 'var(--map-ink)',
+    letterSpacing: '-0.5px', fontVariantNumeric: 'tabular-nums', lineHeight: 1,
+  }
+  // The label decides the column width, and four full words across a phone is
+  // a close-run thing: at 375pt they come to within a pixel of the available
+  // width. Scaled with the screen rather than fixed, so a narrower phone
+  // shrinks the words instead of pushing VARIATION off the side. Capped at
+  // 9.5 so a wide screen does not grow them into the figures they caption.
+  const statLabel = {
+    fontSize: 'clamp(8px, 2.45vw, 9.5px)', fontWeight: 600, color: 'var(--map-ink-faint)',
+    letterSpacing: '0.4px', whiteSpace: 'nowrap',
+  }
 
   return (
-    <div style={{
-      background: 'var(--map-fill)', borderRadius: 14, padding: '10px 12px', marginTop: 12,
-      display: 'flex', alignItems: 'center', gap: 12,
-    }}>
-      {/* The whole card opens the read-back, which is the screen that
-          explains a route now; the planner is one tap further on from there.
-          The X is the only thing on it that does something else, so it keeps
-          its own hit area away from the numbers. */}
-      <button
-        onClick={onOpen}
-        style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0,
-          cursor: 'pointer', textAlign: 'left' }}>
-        <div style={{
-          fontSize: 13, fontWeight: 700, color: 'var(--map-ink)', marginBottom: 7,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {route.dep} <span style={{ color: 'var(--map-ink-faint)', fontWeight: 600 }}>→</span> {route.dest}
-        </div>
-        <div style={{ display: 'flex', gap: 20 }}>
-          <div style={stat}>
-            <span style={statValue}>{route.distNm}<span style={{ fontSize: 11, fontWeight: 600, marginLeft: 2 }}>NM</span></span>
-            <span style={statLabel}>DISTANCE</span>
-          </div>
-          <div style={stat}>
-            <span style={statValue}>{route.mc}°</span>
-            <span style={statLabel}>MAG COURSE</span>
-          </div>
-          {/* Only if the planner actually produced them. A route restored from
-              an older version of this record has the first two and not always
-              the rest, and a blank figure on a flight plan is worse than none. */}
-          {route.tc != null && (
-            <div style={stat}>
-              <span style={{ ...statValue, fontSize: 14, color: 'var(--map-ink-dim)' }}>{route.tc}°</span>
-              <span style={statLabel}>TRUE</span>
-            </div>
-          )}
-          {route.magVar != null && (
-            <div style={stat}>
-              <span style={{ ...statValue, fontSize: 14, color: 'var(--map-ink-dim)' }}>
-                {parseFloat(route.magVar) >= 0 ? '+' : ''}{route.magVar}°
-              </span>
-              <span style={statLabel}>VAR</span>
-            </div>
-          )}
-        </div>
-      </button>
+    <div style={{ marginTop: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        {/* Tapping the route opens the plan, which is the one place with more
+            to say about it than these four figures. The X is the only thing
+            here that does something else, so it keeps its own hit area. */}
+        <button
+          onClick={onOpen}
+          style={{
+            flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0,
+            cursor: 'pointer', textAlign: 'left',
+            fontSize: 20, fontWeight: 800, color: 'var(--map-ink)',
+            letterSpacing: '-0.4px',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+          {route.dep} <span style={{ color: 'var(--map-ink-faint)' }}>&#8594;</span> {route.dest}
+        </button>
+
+        <button
+          onClick={onClear}
+          aria-label="Clear route"
+          style={{
+            width: 30, height: 30, borderRadius: '50%', border: 'none', flexShrink: 0,
+            background: 'var(--map-fill)', color: 'var(--map-ink-dim)', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
 
       <button
-        onClick={onClear}
-        aria-label="Clear route"
+        onClick={onOpen}
         style={{
-          width: 30, height: 30, borderRadius: '50%', border: 'none', flexShrink: 0,
-          background: 'var(--map-panel)', color: 'var(--map-ink-dim)', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          display: 'flex', width: '100%', gap: 12, justifyContent: 'space-between',
+          background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
         }}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-          <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
-        </svg>
+        <div style={stat}>
+          <span style={statValue}>
+            {route.distNm}<span style={{ fontSize: 13, fontWeight: 700, marginLeft: 3 }}>NM</span>
+          </span>
+          <span style={statLabel}>DISTANCE</span>
+        </div>
+        {/* Magnetic gets the same weight as distance: it is the one actually
+            flown. True and variation are the working behind it, so they are
+            dimmed rather than shrunk, which keeps the row on one baseline. */}
+        <div style={stat}>
+          <span style={statValue}>{route.mc}&#176;</span>
+          <span style={statLabel}>MAGNETIC COURSE</span>
+        </div>
+        {/* Only if the planner actually produced them. A route restored from
+            an older version of this record has the first two and not always
+            the rest, and a blank figure on a flight plan is worse than none. */}
+        {route.tc != null && (
+          <div style={stat}>
+            <span style={{ ...statValue, color: 'var(--map-ink-dim)' }}>{route.tc}&#176;</span>
+            <span style={statLabel}>TRUE</span>
+          </div>
+        )}
+        {route.magVar != null && (
+          <div style={stat}>
+            <span style={{ ...statValue, color: 'var(--map-ink-dim)' }}>
+              {parseFloat(route.magVar) >= 0 ? '+' : ''}{route.magVar}&#176;
+            </span>
+            <span style={statLabel}>VARIATION</span>
+          </div>
+        )}
       </button>
     </div>
   )
