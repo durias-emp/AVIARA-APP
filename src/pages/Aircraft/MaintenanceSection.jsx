@@ -11,6 +11,7 @@
 // footer says so rather than leaving it implied.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Drawer from '../../components/Drawer'
 import { loadItems, loadLog, logCompliance, seedFromFixture } from '../../lib/maintenanceStore'
 import { STATUS, STATUS_LABEL, summarise } from '../../lib/maintenanceStatus'
 
@@ -163,36 +164,20 @@ function ItemDrawer({ item, entries = [], onComply, onClose }) {
   const canComply = item.status !== STATUS.ON_CONDITION && item.status !== STATUS.NOT_APPLICABLE
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,0.45)',
-        display: 'flex', alignItems: 'flex-end',
-      }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width: '100%', maxHeight: '86%', overflowY: 'auto',
-        background: 'var(--bg)', borderRadius: '18px 18px 0 0',
-        padding: '10px 16px calc(var(--safe-bottom) + 18px)',
-      }}>
-        {/* The handle, because this is the same kind of object as every other
-            drawer in the app and a pilot should not have to learn it twice. */}
-        <div style={{
-          width: 40, height: 5, borderRadius: 3, background: 'var(--border)',
-          margin: '0 auto 14px',
-        }} />
-
+    <Drawer onClose={onClose}>
+      {({ close }) => (<>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 4 }}>
-          <span style={{ flex: 1, fontSize: 17, fontWeight: 800, color: 'var(--text)', lineHeight: 1.25 }}>
+          <span style={{ flex: 1, fontSize: 19, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.3px', lineHeight: 1.25 }}>
             {item.description}
           </span>
           <Pill status={item.status}>{STATUS_LABEL[item.status]}</Pill>
         </div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 18 }}>
           {[item.itemNumber, item.category, item.isRetirement ? 'life-limited' : null]
             .filter(Boolean).join(' \u00B7 ')}
         </div>
 
-        <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', marginBottom: 16 }}>
           <Clock label="HOURS" value={item.hoursLeft != null ? fmtHours(item.hoursLeft) : null}
             sub={item.dueAtHours != null ? `due at ${item.dueAtHours.toLocaleString()}` : null} />
           <Clock label="CYCLES" value={item.cyclesLeft != null ? fmtCycles(item.cyclesLeft) : null}
@@ -205,15 +190,15 @@ function ItemDrawer({ item, entries = [], onComply, onClose }) {
             difference between "we do not know" and "it is fine". */}
         {item.unreadable?.length > 0 && (
           <div style={{
-            background: 'rgba(255,149,0,0.12)', color: '#FF9500', borderRadius: 10,
-            padding: '10px 12px', fontSize: 11.5, lineHeight: 1.5, marginBottom: 14,
+            background: 'rgba(255,149,0,0.12)', color: '#FF9500', borderRadius: 12,
+            padding: '11px 13px', fontSize: 12, lineHeight: 1.5, marginBottom: 16,
           }}>
             No {item.unreadable.join(' or ')} recorded for this aircraft, so this cannot be worked out.
           </div>
         )}
 
         {(item.reference || item.partNumber || item.serialNumber) && (
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 14 }}>
+          <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 16 }}>
             {item.reference && <div>{item.reference}</div>}
             {(item.partNumber || item.serialNumber) && (
               <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
@@ -225,14 +210,14 @@ function ItemDrawer({ item, entries = [], onComply, onClose }) {
         )}
 
         {item.lastCompliedDate && (
-          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 14 }}>
+          <div style={{ fontSize: 12.5, color: 'var(--text-tertiary)', marginBottom: 16 }}>
             Last done {item.lastCompliedDate}
             {item.lastCompliedHours != null ? ` at ${item.lastCompliedHours.toLocaleString()} hrs` : ''}
           </div>
         )}
 
         {item.notes && (
-          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5, marginBottom: 14 }}>
+          <div style={{ fontSize: 12.5, color: 'var(--text-tertiary)', lineHeight: 1.5, marginBottom: 16 }}>
             {item.notes}
           </div>
         )}
@@ -241,36 +226,36 @@ function ItemDrawer({ item, entries = [], onComply, onClose }) {
             own last compliance came with the import and is shown above; these
             are the ones logged here since. */}
         {entries.length > 0 && (
-          <div style={{ marginBottom: 14 }}>
+          <div style={{ marginBottom: 16 }}>
             <div style={{
-              fontSize: 9.5, fontWeight: 600, color: 'var(--text-tertiary)',
-              letterSpacing: '0.3px', marginBottom: 2,
-            }}>HISTORY</div>
+              fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)',
+              textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2,
+            }}>History</div>
             {entries.map(e => <Entry key={e.id} entry={e} />)}
           </div>
         )}
 
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onClose} style={{
+          <button onClick={close} style={{
             flex: canComply ? 1 : undefined, width: canComply ? undefined : '100%',
-            padding: '13px 0', borderRadius: 11, border: 'none',
+            padding: '13px 0', borderRadius: 14, border: '0.5px solid var(--border)',
             background: 'var(--bg-card-2)', color: 'var(--text)', fontFamily: 'inherit',
-            fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+            fontSize: 14, fontWeight: 700, cursor: 'pointer',
           }}>Close</button>
           {/* Nothing to comply with on an item that is on condition or does
               not apply, so no button that would do nothing. */}
           {canComply && (
             <button onClick={() => onComply(item)} style={{
-              flex: 1, padding: '13px 0', borderRadius: 11, border: 'none',
+              flex: 1, padding: '13px 0', borderRadius: 14, border: 'none',
               background: tone.bg, color: tone.fg, fontFamily: 'inherit',
-              fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+              fontSize: 14, fontWeight: 700, cursor: 'pointer',
             }}>
               {item.isRetirement ? 'Record replacement' : 'Log compliance'}
             </button>
           )}
         </div>
-      </div>
-    </div>
+      </>)}
+    </Drawer>
   )
 }
 
@@ -503,7 +488,7 @@ function ComplianceForm({ item, hobbs, cycles, onCancel, onSaved }) {
   const replacing = item.isRetirement
   const field = {
     width: '100%', padding: '9px 10px', borderRadius: 9, fontSize: 13,
-    background: 'var(--bg-card-2)', border: '1px solid var(--border)',
+    background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
     color: 'var(--text)', fontFamily: 'inherit',
   }
   const label = { fontSize: 10.5, fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: 4, display: 'block' }
@@ -536,21 +521,15 @@ function ComplianceForm({ item, hobbs, cycles, onCancel, onSaved }) {
   }
 
   return (
-    <div style={{
-      // Above the item drawer that opened it, which stays behind rather than
-      // being torn down: cancelling should put the pilot back where they were.
-      position: 'fixed', inset: 0, zIndex: 3100, background: 'rgba(0,0,0,0.45)',
-      display: 'flex', alignItems: 'flex-end',
-    }} onClick={onCancel}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width: '100%', maxHeight: '86%', overflowY: 'auto',
-        background: 'var(--bg)', borderRadius: '18px 18px 0 0',
-        padding: '18px 16px calc(var(--safe-bottom) + 18px)',
-      }}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', marginBottom: 2 }}>
+    // 310, so it sits above the item drawer that opened it rather than
+    // replacing it: cancelling should put the pilot back on what they were
+    // reading, not back in the list.
+    <Drawer onClose={onCancel} zIndex={310}>
+      {({ close }) => (<>
+        <div style={{ fontSize: 19, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.3px', marginBottom: 2 }}>
           {replacing ? 'Record replacement' : 'Log compliance'}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 14 }}>{item.description}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 16 }}>{item.description}</div>
 
         <div style={{ display: 'grid', gap: 12 }}>
           <div>
@@ -610,19 +589,20 @@ function ComplianceForm({ item, hobbs, cycles, onCancel, onSaved }) {
           {error && <div style={{ fontSize: 12, color: '#FF3B30' }}>{error}</div>}
 
           <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={onCancel} style={{
-              flex: 1, padding: '12px 0', borderRadius: 11, border: 'none',
+            <button onClick={close} style={{
+              flex: 1, padding: '13px 0', borderRadius: 14,
+              border: '0.5px solid var(--border)',
               background: 'var(--bg-card-2)', color: 'var(--text)', fontFamily: 'inherit',
-              fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+              fontSize: 14, fontWeight: 700, cursor: 'pointer',
             }}>Cancel</button>
             <button onClick={save} disabled={saving} style={{
-              flex: 1, padding: '12px 0', borderRadius: 11, border: 'none',
+              flex: 1, padding: '13px 0', borderRadius: 14, border: 'none',
               background: 'var(--text)', color: 'var(--bg)', fontFamily: 'inherit',
-              fontSize: 13.5, fontWeight: 700, cursor: saving ? 'default' : 'pointer',
+              fontSize: 14, fontWeight: 700, cursor: saving ? 'default' : 'pointer',
             }}>{saving ? 'Saving…' : 'Save'}</button>
           </div>
         </div>
-      </div>
-    </div>
+      </>)}
+    </Drawer>
   )
 }
