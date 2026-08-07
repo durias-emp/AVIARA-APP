@@ -5,12 +5,35 @@ import { createAircraft } from './aircraft'
 // fresh device lands on Home instead of onboarding. For looking at real screens
 // on a phone preview without typing a profile in first.
 //
-// Gated the same way as the sign-in bypass in App.jsx: on import.meta.env.DEV,
-// which Vite hardcodes to false in any production build so Rollup strips this
-// branch out of the bundle, AND on an opt-in flag in .env.local, which is
-// gitignored and never reaches the deployment. Neither alone turns it on.
+// Two gates, and production fails both.
+//
+// The flag lives in .env.local, which is gitignored and is not on the build
+// machine, so a deployed bundle is built with it undefined and Rollup strips
+// this whole module out. That is the gate that matters.
+//
+// It used to also require import.meta.env.DEV, and that made the phone
+// preview useless: the phone is served a real build (vite preview, tunnelled),
+// where DEV is false, so every look at the app on the device started with six
+// screens of onboarding. The hostname check below replaces it, and is the
+// stronger of the two: a bundle that somehow shipped with the flag on still
+// seeds nothing on pqrh-app.vercel.app, where DEV would have said the same
+// thing only because of how it was built.
+const PREVIEW_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\]|.*\.local)$/
+const isPreviewHost = () => {
+  const h = window.location.hostname
+  return PREVIEW_HOSTS.test(h)
+    // The tunnels used to put a local build on the phone. Named explicitly
+    // rather than by "not the production domain", so a domain nobody thought
+    // of is off by default instead of on.
+    || h.endsWith('.trycloudflare.com')
+    || h.endsWith('.ngrok-free.app')
+    || h.endsWith('.ngrok.io')
+}
+
+// One value, used by the seed and by the onboarding bypass that depends on
+// it, so the two can never disagree about whether this is a preview.
 export const DEMO_SEED_ENABLED =
-  import.meta.env.DEV && import.meta.env.VITE_DEV_DEMO === '1'
+  import.meta.env.VITE_DEV_DEMO === '1' && isPreviewHost()
 
 // Nobody real. The dates are recent on purpose so the currency and medical
 // checks read as in-date rather than showing a wall of expiry warnings.
