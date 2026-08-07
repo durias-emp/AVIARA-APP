@@ -231,8 +231,8 @@ function AircraftImageControls({ aircraftName, registration, hasImage, onImage, 
       )}
       {note && (
         <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center', maxWidth: 340, lineHeight: 1.5 }}>
-          Drawn from your photo. Check the tail number — image models letter
-          badly, so treat it as decoration, not as a record.
+          Drawn from your photo. Give the tail number a look before you keep
+          it — it usually comes out right, but it is a drawing, not a record.
         </div>
       )}
     </div>
