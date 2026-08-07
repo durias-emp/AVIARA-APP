@@ -1,4 +1,5 @@
-/* global process, Buffer */
+/* global process */
+import { generateImage } from './_imageGen.js'
 const PROMPT = (name) =>
   `Create a stylized 3D transportation icon of a ${name} in a unified premium mobility-app design language inspired by modern ride-sharing vehicle illustrations.
 
@@ -32,36 +33,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const openaiRes = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'dall-e-3',
-        prompt: PROMPT(aircraftName.trim()),
-        n: 1,
-        size: '1024x1024',
-        quality: 'standard',
-      }),
-    })
-
-    if (!openaiRes.ok) {
-      const err = await openaiRes.json().catch(() => ({}))
-      return res.status(openaiRes.status).json({ error: err.error?.message ?? 'OpenAI request failed' })
-    }
-
-    const data = await openaiRes.json()
-    const imageUrl = data.data[0].url
-
-    // Download and return as base64 data URL so the PWA can cache it offline
-    const imgRes = await fetch(imageUrl)
-    const buffer = await imgRes.arrayBuffer()
-    const base64 = Buffer.from(buffer).toString('base64')
-
-    return res.status(200).json({ image: `data:image/png;base64,${base64}` })
+    const image = await generateImage({ apiKey, prompt: PROMPT(aircraftName.trim()) })
+    return res.status(200).json({ image })
   } catch (err) {
-    return res.status(500).json({ error: err.message })
+    return res.status(err.status ?? 500).json({ error: err.message })
   }
 }
