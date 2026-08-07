@@ -160,12 +160,11 @@ function Item({ item, onOpen }) {
 // exactly where it was underneath, which is where the pilot will be looking
 // when they close it.
 function ItemDrawer({ item, entries = [], onComply, onClose }) {
-  const tone = TONE[item.status] ?? TONE[STATUS.UNKNOWN]
   const canComply = item.status !== STATUS.ON_CONDITION && item.status !== STATUS.NOT_APPLICABLE
 
   return (
     <Drawer onClose={onClose}>
-      {({ close }) => (<>
+      <>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 4 }}>
           <span style={{ flex: 1, fontSize: 19, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.3px', lineHeight: 1.25 }}>
             {item.description}
@@ -235,26 +234,23 @@ function ItemDrawer({ item, entries = [], onComply, onClose }) {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={close} style={{
-            flex: canComply ? 1 : undefined, width: canComply ? undefined : '100%',
-            padding: '13px 0', borderRadius: 14, border: '0.5px solid var(--border)',
-            background: 'var(--bg-card-2)', color: 'var(--text)', fontFamily: 'inherit',
-            fontSize: 14, fontWeight: 700, cursor: 'pointer',
-          }}>Close</button>
-          {/* Nothing to comply with on an item that is on condition or does
-              not apply, so no button that would do nothing. */}
-          {canComply && (
-            <button onClick={() => onComply(item)} style={{
-              flex: 1, padding: '13px 0', borderRadius: 14, border: 'none',
-              background: tone.bg, color: tone.fg, fontFamily: 'inherit',
-              fontSize: 14, fontWeight: 700, cursor: 'pointer',
-            }}>
-              {item.isRetirement ? 'Record replacement' : 'Log compliance'}
-            </button>
-          )}
-        </div>
-      </>)}
+        {/* One button, and it is the thing the pilot came here to do. Tapping
+            off the drawer already closes it, the same as every other drawer in
+            the app, so a Close button was spending half the width saying so.
+
+            Inverted text on background, which is what the app's primary button
+            is everywhere else, rather than the status colour: a red button
+            beside a red status pill reads as a warning to be dismissed. */}
+        {canComply && (
+          <button onClick={() => onComply(item)} style={{
+            width: '100%', padding: '15px 0', borderRadius: 14, border: 'none',
+            background: 'var(--text)', color: 'var(--bg)', fontFamily: 'inherit',
+            fontSize: 15, fontWeight: 700, cursor: 'pointer',
+          }}>
+            {item.isRetirement ? 'Record replacement' : 'Log compliance'}
+          </button>
+        )}
+      </>
     </Drawer>
   )
 }
