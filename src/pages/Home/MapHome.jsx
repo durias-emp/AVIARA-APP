@@ -257,7 +257,7 @@ function FloatingCard({ visible, bottom, compact = false, children }) {
 // of the map takes the whole drawer out of the way, and Reset in the plan is
 // where a route is actually discarded. A destructive control sitting beside
 // the numbers earned its place only while there was nowhere else for it.
-function RouteSummary({ route, onOpen }) {
+function RouteSummary({ route, onOpen, aircraftIcon }) {
   const dep = route.depPos, dest = route.destPos
 
   // An identifier, or nothing at all.
@@ -273,122 +273,143 @@ function RouteSummary({ route, onOpen }) {
     return ident
   }
 
-  // Split across two lines, latitude over longitude, which is how it fits
-  // under a code rather than beside one.
-  const end = (ident, pos, align) => {
+  // A block: an end of the route, centred in its quarter. Latitude over
+  // longitude, which is how a position fits under a code rather than beside
+  // one.
+  const end = (ident, pos) => {
     const code = codeOf(ident, pos)
     const [latStr, lonStr] = pos ? fmtAvCoord(pos[0], pos[1]).split(' ') : []
     return (
-      <span style={{
-        display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0,
-        alignItems: align === 'right' ? 'flex-end' : 'flex-start',
-        textAlign: align === 'right' ? 'right' : 'left',
-      }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 0 }}>
         {code && (
           <span style={{
-            fontSize: 27, fontWeight: 800, color: 'var(--map-ink)',
-            letterSpacing: '-0.9px', lineHeight: 1,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%',
+            fontSize: 21, fontWeight: 800, color: 'var(--map-ink)',
+            letterSpacing: '-0.6px', lineHeight: 1, maxWidth: '100%',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{code}</span>
         )}
         {pos && (
           <span style={{
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            // Larger and in the ink when it is doing the naming, small and
-            // faint when it is only the detail under a code.
-            fontSize: code ? 10 : 13,
+            // One size either way. It says which job it is doing with weight
+            // and colour instead: in the ink when it is the name, faint when
+            // it is the detail under a code. Growing it for the first case
+            // pushed it into the aircraft standing on the block's edge, and a
+            // position that collides with something is not more readable for
+            // being larger.
+            fontSize: 9.5,
             fontWeight: code ? 600 : 700,
             color: code ? 'var(--map-ink-faint)' : 'var(--map-ink)',
-            letterSpacing: '-0.2px', lineHeight: 1.35, whiteSpace: 'nowrap',
+            letterSpacing: '-0.3px', lineHeight: 1.4, whiteSpace: 'nowrap', textAlign: 'center',
           }}>{latStr}<br />{lonStr}</span>
         )}
-      </span>
+      </div>
     )
   }
 
+  // A figure, centred in its half of a block: the mark and the number on one
+  // line, the word underneath. Four quarters of equal width is what lets the
+  // words be words again rather than MAG and VAR.
   const figure = ({ icon, value, label, dim }) => (
-    <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-      <span style={{ color: 'var(--map-ink-faint)', display: 'flex', flexShrink: 0 }}>{icon}</span>
+    <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+        <span style={{ color: 'var(--map-ink-faint)', display: 'flex', flexShrink: 0 }}>{icon}</span>
+        <span style={{
+          fontSize: 17, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.4px',
+          fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+          color: dim ? 'var(--map-ink-dim)' : 'var(--map-ink)',
+        }}>{value}</span>
+      </span>
       <span style={{
-        fontSize: 20, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.4px',
-        fontVariantNumeric: 'tabular-nums',
-        color: dim ? 'var(--map-ink-dim)' : 'var(--map-ink)',
-      }}>{value}</span>
-      <span style={{
-        fontSize: 10, fontWeight: 600, color: 'var(--map-ink-faint)', letterSpacing: '0.4px',
-        width: 34, textAlign: 'left', flexShrink: 0,
+        fontSize: 9, fontWeight: 600, color: 'var(--map-ink-faint)',
+        letterSpacing: '0.3px', whiteSpace: 'nowrap',
       }}>{label}</span>
     </div>
   )
 
-  return (
-    <div style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-      <button
-        onClick={onOpen}
-        style={{
-          flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0,
-          cursor: 'pointer', textAlign: 'left',
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8,
-        }}>
-        {end(route.dep, dep, 'left')}
-        {/* Flying along the course, so the picture agrees with the line on the
-            map behind it rather than always pointing east. */}
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="var(--map-ink-faint)"
-          style={{ flexShrink: 0, marginTop: 5, transform: `rotate(${(route.mc ?? 90) - 90}deg)` }}>
-          <path d="M21 12l-8-4v2.6H3v2.8h10V16z" />
-        </svg>
-        {end(route.dest, dest, 'right')}
-      </button>
+  const NM = (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2.2" strokeLinecap="round">
+      <path d="M4 6v12M20 6v12M4 12h16" />
+    </svg>
+  )
+  const NEEDLE = (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2l3.2 8.8L12 9.4l-3.2 1.4z" />
+      <path d="M12 22l-3.2-8.8L12 14.6l3.2-1.4z" opacity="0.4" />
+    </svg>
+  )
+  const STAR = (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2.5l2.4 6.3 6.6.3-5.2 4.1 1.8 6.3L12 15.9 6.4 19.5l1.8-6.3L3 9.1l6.6-.3z" />
+    </svg>
+  )
+  const ANGLE = (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 19V5M5 19h14M5 8l11 11" />
+    </svg>
+  )
 
-      <button
-        onClick={onOpen}
-        style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5,
-          flexShrink: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-        }}>
-        {figure({
-          label: 'NM',
-          value: route.distNm,
-          icon: (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              strokeWidth="2" strokeLinecap="round">
-              <path d="M4 6v12M20 6v12M4 12h16" />
-            </svg>
-          ),
-        })}
+  return (
+    // Four equal blocks. The two ends have the left half, a block each, and
+    // the figures have the right half, two to a block. Equal quarters are what
+    // let the labels be words again: DISTANCE and MAGNETIC COURSE fit a
+    // quarter of a phone, where a column squeezed beside a wider one did not.
+    <div style={{
+      marginTop: 12, position: 'relative',
+      // minmax(0, 1fr) and not 1fr. A grid track's automatic minimum is its
+      // content, so a block holding a long coordinate simply grew and took
+      // width off its neighbours: the quarters were not quarters, and the
+      // aircraft sitting at 25% was no longer on the line between them.
+      display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8, alignItems: 'start',
+    }}>
+      {end(route.dep, dep)}
+      {end(route.dest, dest)}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {figure({ icon: NM, value: `${route.distNm} NM`, label: 'DISTANCE' })}
         {/* Only if the planner actually produced them. A route restored from an
             older version of this record has the distance and not always the
             rest, and a blank figure on a flight plan is worse than none. */}
-        {route.mc != null && figure({
-          label: 'MAG',
-          value: `${route.mc}\u00B0`,
-          icon: (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2l3.2 8.8L12 9.4l-3.2 1.4z" />
-              <path d="M12 22l-3.2-8.8L12 14.6l3.2-1.4z" opacity="0.4" />
-            </svg>
-          ),
-        })}
-        {route.tc != null && figure({
-          label: 'TRUE', dim: true,
-          value: `${route.tc}\u00B0`,
-          icon: (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2.5l2.4 6.3 6.6.3-5.2 4.1 1.8 6.3L12 15.9 6.4 19.5l1.8-6.3L3 9.1l6.6-.3z" />
-            </svg>
-          ),
-        })}
+        {route.tc != null && figure({ icon: STAR, value: `${route.tc}\u00B0`, label: 'TRUE COURSE', dim: true })}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {route.mc != null && figure({ icon: NEEDLE, value: `${route.mc}\u00B0`, label: 'MAGNETIC COURSE' })}
         {route.magVar != null && figure({
-          label: 'VAR', dim: true,
+          icon: ANGLE, dim: true, label: 'VARIATION',
           value: `${parseFloat(route.magVar) >= 0 ? '+' : ''}${route.magVar}\u00B0`,
-          icon: (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 19V5M5 19h14M5 8l11 11" />
-            </svg>
-          ),
         })}
-      </button>
+      </div>
+
+      {/* The aircraft, on the line between the two ends.
+          The same picture the map is flying, so the drawer and the chart agree
+          about what is being flown: a helicopter here means a helicopter out
+          there. Turned to the TRUE course rather than the magnetic one,
+          because the chart behind it is north up and true is the angle a
+          reader measures off it. */}
+      {aircraftIcon && (
+        <img
+          src={aircraftIcon}
+          alt=""
+          style={{
+            position: 'absolute', left: '25%', top: 1,
+            width: 20, height: 20, objectFit: 'contain',
+            transform: `translateX(-50%) rotate(${route.tc ?? route.mc ?? 0}deg)`,
+            filter: 'var(--icon-filter)', opacity: 0.85, pointerEvents: 'none',
+          }} />
+      )}
+
+      {/* One target over the whole thing rather than three, so a tap anywhere
+          on the route opens the plan and nothing here has to be aimed at. */}
+      <button
+        onClick={onOpen}
+        aria-label="Open the flight plan"
+        style={{
+          position: 'absolute', inset: 0, background: 'none', border: 'none',
+          padding: 0, cursor: 'pointer',
+        }} />
     </div>
   )
 }
@@ -1988,7 +2009,8 @@ export default function MapHome() {
               Not while planning, where the same route is already the subject
               of everything below. */}
           {!planning && route?.distNm != null && (
-            <RouteSummary route={route} onOpen={openPlanner} />
+            <RouteSummary route={route} onOpen={openPlanner}
+              aircraftIcon={isHelicopter ? '/helicopter.png' : '/modo-avion.png'} />
           )}
         </div>
 
