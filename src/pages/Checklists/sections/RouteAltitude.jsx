@@ -3472,87 +3472,58 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
             onPick={commitDestination} />,
           document.body)}
 
-        {/* Route result */}
-        {route && (
-          <div style={{ marginTop: 10, background: 'var(--bg-card-2)', borderRadius: 10, padding: '10px 12px' }}>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>
-              {route.depName} → {route.destName}
-            </div>
-            {route.wpts?.length > 0 && (
-              <div style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 700, letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: 8, overflowX: 'auto', whiteSpace: 'nowrap' }}>
-                {(route.atsTokens ?? [route.dep, ...route.wpts.map(w => w.name), route.dest]).join(' → ')}
-              </div>
-            )}
-            {route.airwayNotes?.length > 0 && (
-              <div style={{ fontSize: 11, color: '#64a8ff', fontWeight: 600, marginBottom: 8 }}>
-                {route.airwayNotes.map(n => `${n.awy} · MEA up to ${n.mea.toLocaleString()} ft`).join('   ')}
-              </div>
-            )}
-            {/* What the procedure expansion could not draw. The initial legs of
-                a departure are often flown on a heading until an altitude or
-                until ATC turns you, where those go depends on the day, so
-                there is no line for them and the count says so rather than the
-                map implying a path that was never published. */}
-            {route.procedureNotes?.length > 0 && (
-              <div style={{ fontSize: 10.5, color: 'var(--warn)', lineHeight: 1.45, marginBottom: 8 }}>
-                {route.procedureNotes.map(n => (
-                  <div key={n.proc}>
-                    {n.proc} · {n.t}
-                    {n.transition ? ` via ${n.transition}` : ''}
-                    {/* The runway-specific segment is where a departure's
-                        heading and vector legs live, and which one applies
-                        isn't known until the runway is, so it is never drawn,
-                        and that is said plainly rather than left to be
-                        inferred from a line that starts in mid-air. */}
-                    {n.runway && `. ${n.t === 'SID' ? 'begins' : 'ends'} with a runway-specific segment that is not drawn; fly the chart for it`}
-                    {n.undrawable > 0 && `. ${n.undrawable} further ${n.undrawable > 1 ? 'legs are' : 'leg is'} flown on a heading or vector`}
-                    {n.partial && `. Rejoins beyond the portion published for this routing; fly the chart`}
-                  </div>
-                ))}
-              </div>
-            )}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-              {[
-                { label: 'Distance',    val: `${route.distNm} NM` },
-                { label: 'True Course', val: `${route.tc}°` },
-                { label: 'Mag Var',     val: `${parseFloat(route.magVar) >= 0 ? '+' : ''}${route.magVar}°` },
-              ].map(r => (
-                <div key={r.label} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace' }}>{r.val}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{r.label}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Said here, before any of the altitude work, because no cruise
-                altitude is the answer to a leg the aeroplane cannot fly. */}
-            {rangeCheck && (
-              <div style={{
-                marginTop: 8, padding: '9px 11px', borderRadius: 9,
-                background: 'rgba(255,159,10,0.10)', border: '0.5px solid var(--warn)',
-              }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--warn)' }}>
-                  {rangeCheck.rangeNm > 0
-                    ? `Beyond range. About ${rangeCheck.rangeNm} NM on this fuel.`
-                    : 'Fuel on board does not cover the reserve.'}
-                </div>
-                <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 3, lineHeight: 1.45 }}>
-                  {rangeCheck.legs
-                    ? `${route.distNm} NM needs about ${rangeCheck.legs} legs with a ${rangeCheck.reserveMin} min reserve. Add a stop as a waypoint and the plan follows it.`
-                    : `A ${rangeCheck.reserveMin} min reserve is required on this flight.`}
-                </div>
-              </div>
-            )}
-            <div style={{
-              marginTop: 10, padding: '7px 10px', borderRadius: 8,
-              background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            }}>
-              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Magnetic Course</span>
-              <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', fontFamily: 'monospace' }}>{route.mc}°</span>
-            </div>
+        {/* What the route said that the map cannot show.
+            The summary that used to sit here is gone: the codes, the ends,
+            the distance, the courses and the variation are all on the card
+            over the map now, and printing them again a drag away made the
+            planner repeat itself. The filed route string is on the completed
+            flight plan.
+            These three are not repeated anywhere, and two of them are the
+            app admitting what it has not drawn, which is the one thing that
+            must never be left to be inferred from the line. */}
+        {route?.airwayNotes?.length > 0 && (
+          <div style={{ fontSize: 11, color: '#64a8ff', fontWeight: 600, marginTop: 10 }}>
+            {route.airwayNotes.map(n => `${n.awy} \u00B7 MEA up to ${n.mea.toLocaleString()} ft`).join('   ')}
           </div>
         )}
 
+        {/* The initial legs of a departure are often flown on a heading until
+            an altitude or until ATC turns you. Where those go depends on the
+            day, so there is no line for them, and this says so rather than
+            the map implying a path that was never published. */}
+        {route?.procedureNotes?.length > 0 && (
+          <div style={{ fontSize: 10.5, color: 'var(--warn)', lineHeight: 1.45, marginTop: 10 }}>
+            {route.procedureNotes.map(n => (
+              <div key={n.proc}>
+                {n.proc} · {n.t}
+                {n.transition ? ` via ${n.transition}` : ''}
+                {n.runway && `. ${n.t === 'SID' ? 'begins' : 'ends'} with a runway-specific segment that is not drawn; fly the chart for it`}
+                {n.undrawable > 0 && `. ${n.undrawable} further ${n.undrawable > 1 ? 'legs are' : 'leg is'} flown on a heading or vector`}
+                {n.partial && `. Rejoins beyond the portion published for this routing; fly the chart`}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Before any of the altitude work, because no cruise altitude is the
+            answer to a leg the aeroplane cannot fly. */}
+        {route && rangeCheck && (
+          <div style={{
+            marginTop: 10, padding: '9px 11px', borderRadius: 9,
+            background: 'rgba(255,159,10,0.10)', border: '0.5px solid var(--warn)',
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--warn)' }}>
+              {rangeCheck.rangeNm > 0
+                ? `Beyond range. About ${rangeCheck.rangeNm} NM on this fuel.`
+                : 'Fuel on board does not cover the reserve.'}
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 3, lineHeight: 1.45 }}>
+              {rangeCheck.legs
+                ? `${route.distNm} NM needs about ${rangeCheck.legs} legs with a ${rangeCheck.reserveMin} min reserve. Add a stop as a waypoint and the plan follows it.`
+                : `A ${rangeCheck.reserveMin} min reserve is required on this flight.`}
+            </div>
+          </div>
+        )}
         {/* ── Route map ── */}
         {route?.depPos && route?.destPos && (
           <div style={{ marginTop: 10 }}>
