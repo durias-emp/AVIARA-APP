@@ -290,7 +290,7 @@ function RouteSummary({ route, onOpen, aircraftIcon }) {
     // underneath twice.
     const label = name && name !== ident && name !== code ? name : null
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
         {code && (
           <span style={{
             // 21 and not larger. A four-letter code at 24px comes within a
@@ -307,7 +307,7 @@ function RouteSummary({ route, onOpen, aircraftIcon }) {
         {label && (
           <span style={{
             fontSize: 9, fontWeight: 600, color: 'var(--map-ink-dim)',
-            letterSpacing: '0.1px', lineHeight: 1.3, maxWidth: '100%',
+            letterSpacing: '0.1px', lineHeight: 1.2, maxWidth: '100%',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{label}</span>
         )}
@@ -323,7 +323,7 @@ function RouteSummary({ route, onOpen, aircraftIcon }) {
             fontSize: 10,
             fontWeight: code ? 600 : 700,
             color: code ? 'var(--map-ink-faint)' : 'var(--map-ink)',
-            letterSpacing: '-0.3px', lineHeight: 1.45, whiteSpace: 'nowrap',
+            letterSpacing: '-0.3px', lineHeight: 1.3, whiteSpace: 'nowrap',
             textAlign: 'center', marginTop: label ? 2 : 0,
           }}>{latStr}<br />{lonStr}</span>
         )}
@@ -351,82 +351,102 @@ function RouteSummary({ route, onOpen, aircraftIcon }) {
     </div>
   )
 
-  const NM = (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2.2" strokeLinecap="round">
-      <path d="M4 6v12M20 6v12M4 12h16" />
-    </svg>
-  )
-  const NEEDLE = (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2l3.2 8.8L12 9.4l-3.2 1.4z" />
-      <path d="M12 22l-3.2-8.8L12 14.6l3.2-1.4z" opacity="0.4" />
-    </svg>
-  )
-  const STAR = (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2.5l2.4 6.3 6.6.3-5.2 4.1 1.8 6.3L12 15.9 6.4 19.5l1.8-6.3L3 9.1l6.6-.3z" />
-    </svg>
-  )
-  const ANGLE = (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 19V5M5 19h14M5 8l11 11" />
-    </svg>
-  )
-
   return (
-    // Four equal blocks. The two ends have the left half, a block each, and
-    // the figures have the right half, two to a block. Equal quarters are what
-    // let the labels be words again: DISTANCE and MAGNETIC COURSE fit a
-    // quarter of a phone, where a column squeezed beside a wider one did not.
-    <div style={{
-      marginTop: 12, position: 'relative',
-      // minmax(0, 1fr) and not 1fr. A grid track's automatic minimum is its
-      // content, so a block holding a long coordinate simply grew and took
-      // width off its neighbours: the quarters were not quarters, and the
-      // aircraft sitting at 25% was no longer on the line between them.
-      display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8, alignItems: 'stretch',
-    }}>
-      {end(route.dep, dep, route.depName)}
-      {end(route.dest, dest, route.destName)}
+    // Two rows, not four columns across.
+    //
+    // The ends and the figures were side by side, a quarter of the screen
+    // each, which left the two names clipped to about twelve characters:
+    // RENO/RENO/TAHOE and DALLAS-FORT WOR are not names, they are the start of
+    // names. Stacked, the ends get the whole width and the figures get a line
+    // of their own, and both stop competing for the same 339 pixels.
+    <div style={{ marginTop: 10, position: 'relative' }}>
+      <div style={{
+        position: 'relative',
+        display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8,
+        alignItems: 'start',
+      }}>
+        {end(route.dep, dep, route.depName)}
+        {end(route.dest, dest, route.destName)}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {figure({ icon: NM, value: `${route.distNm} NM`, label: 'DISTANCE' })}
+        {/* The aircraft, on the line between the two ends: the middle of the
+            card now rather than a quarter along it, which is both where a pass
+            puts it and where there is the most room for it.
+
+            The same picture the map is flying, helicopter or aeroplane by the
+            profile's category, so the drawer and the chart cannot disagree
+            about what is being flown. Turned to the TRUE course, not the
+            magnetic one, because the chart behind it is north up and true is
+            the angle a reader measures off it. */}
+        {aircraftIcon && (
+          <img
+            src={aircraftIcon}
+            alt=""
+            style={{
+              position: 'absolute', left: '50%', top: 1,
+              width: 18, height: 18, objectFit: 'contain',
+              transform: `translateX(-50%) rotate(${route.tc ?? route.mc ?? 0}deg)`,
+              filter: 'var(--icon-filter)', opacity: 0.85, pointerEvents: 'none',
+            }} />
+        )}
+      </div>
+
+      {/* All four on one line.
+          Spread rather than cut into equal quarters: a quarter of a phone is
+          78px and MAGNETIC COURSE needs 85, so equal columns would have meant
+          shrinking the words again. Sized to their contents and spaced apart,
+          they come to about 285 of the 339 available and the labels stay
+          whole. */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+        gap: 8, marginTop: 10,
+      }}>
+        {figure({
+          label: 'DISTANCE',
+          value: `${route.distNm} NM`,
+          icon: (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2.2" strokeLinecap="round">
+              <path d="M4 6v12M20 6v12M4 12h16" />
+            </svg>
+          ),
+        })}
         {/* Only if the planner actually produced them. A route restored from an
             older version of this record has the distance and not always the
             rest, and a blank figure on a flight plan is worse than none. */}
-        {route.tc != null && figure({ icon: STAR, value: `${route.tc}\u00B0`, label: 'TRUE COURSE', dim: true })}
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {route.mc != null && figure({ icon: NEEDLE, value: `${route.mc}\u00B0`, label: 'MAGNETIC COURSE' })}
+        {route.mc != null && figure({
+          label: 'MAGNETIC COURSE',
+          value: `${route.mc}\u00B0`,
+          icon: (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2l3.2 8.8L12 9.4l-3.2 1.4z" />
+              <path d="M12 22l-3.2-8.8L12 14.6l3.2-1.4z" opacity="0.4" />
+            </svg>
+          ),
+        })}
+        {route.tc != null && figure({
+          label: 'TRUE COURSE', dim: true,
+          value: `${route.tc}\u00B0`,
+          icon: (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2.5l2.4 6.3 6.6.3-5.2 4.1 1.8 6.3L12 15.9 6.4 19.5l1.8-6.3L3 9.1l6.6-.3z" />
+            </svg>
+          ),
+        })}
         {route.magVar != null && figure({
-          icon: ANGLE, dim: true, label: 'VARIATION',
+          label: 'VARIATION', dim: true,
           value: `${parseFloat(route.magVar) >= 0 ? '+' : ''}${route.magVar}\u00B0`,
+          icon: (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 19V5M5 19h14M5 8l11 11" />
+            </svg>
+          ),
         })}
       </div>
 
-      {/* The aircraft, on the line between the two ends.
-          The same picture the map is flying, so the drawer and the chart agree
-          about what is being flown: a helicopter here means a helicopter out
-          there. Turned to the TRUE course rather than the magnetic one,
-          because the chart behind it is north up and true is the angle a
-          reader measures off it. */}
-      {aircraftIcon && (
-        <img
-          src={aircraftIcon}
-          alt=""
-          style={{
-            position: 'absolute', left: '25%', top: 1,
-            width: 18, height: 18, objectFit: 'contain',
-            transform: `translateX(-50%) rotate(${route.tc ?? route.mc ?? 0}deg)`,
-            filter: 'var(--icon-filter)', opacity: 0.85, pointerEvents: 'none',
-          }} />
-      )}
-
-      {/* One target over the whole thing rather than three, so a tap anywhere
-          on the route opens the plan and nothing here has to be aimed at. */}
+      {/* One target over the whole thing rather than several, so a tap
+          anywhere on the route opens the plan and nothing here has to be
+          aimed at. */}
       <button
         onClick={onOpen}
         aria-label="Open the flight plan"
@@ -437,7 +457,6 @@ function RouteSummary({ route, onOpen, aircraftIcon }) {
     </div>
   )
 }
-
 
 // One tapped aircraft. Deliberately sparse: this is a reference readout, and
 // padding it with fields the feed reports unreliably would suggest more
