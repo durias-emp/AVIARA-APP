@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { get, put } from '../../lib/db'
 import { useLogbook } from '../../context/Logbook'
 import { BackButton } from '../../components/Shell'
-import { generateAircraftIcon } from '../../lib/generateIcon'
+import { generateAircraftIcon, generateIconFromPhoto } from '../../lib/generateIcon'
 import { extractPohChart } from '../../lib/extractPohChart'
 import { FAR, calendarMonthExpiry, statusFromExpiry, statusFromHours, fmtDate, fmtDaysLeft } from '../../lib/currency'
 import { SegControl } from '../../components/SegControl'
@@ -18,206 +18,223 @@ export const FILING_CATEGORIES = ['Airplane', 'Rotorcraft', 'Other']
 
 export function AircraftPlaceholder() {
   return (
+    // A side profile rather than a plan view. Seen from above, a light single
+    // is a cross — a fat body with four stubs — which reads as a quadcopter
+    // long before it reads as an aeroplane. From the side the parts that say
+    // "aircraft" are all visible at once: the nose, the prop, the tail fin,
+    // the gear.
     <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg"
       style={{ width: '100%', height: '100%', opacity: 0.18 }}>
-      {/* Fuselage */}
-      <ellipse cx="100" cy="105" rx="10" ry="52" fill="currentColor" />
-      {/* Wings */}
-      <path d="M100 95 L28 130 L38 134 L100 108 L162 134 L172 130 Z" fill="currentColor" />
-      {/* Horizontal stabilizer */}
-      <path d="M100 150 L72 162 L76 165 L100 155 L124 165 L128 162 Z" fill="currentColor" />
-      {/* Vertical stabilizer */}
-      <path d="M100 148 L95 135 L105 135 Z" fill="currentColor" />
-      {/* Nose */}
-      <ellipse cx="100" cy="55" rx="7" ry="10" fill="currentColor" />
+      <g fill="currentColor">
+        {/* Fuselage, nose to the left, tapering into the tailcone */}
+        <path d="M42 106
+                 Q42 94 62 90
+                 L118 87
+                 Q148 89 172 100
+                 Q176 103 172 106
+                 L118 116
+                 Q68 120 52 117
+                 Q42 114 42 106 Z" />
+        {/* Cabin glazing, sunk into the top line so it reads as windows */}
+        <path d="M66 91 L96 88 L112 88 L110 96 L68 98 Z" opacity="0.4" />
+        {/* High wing, sitting on the cabin roof, with its lift strut */}
+        <rect x="58" y="76" width="84" height="7" rx="3.5" />
+        <path d="M70 83 L88 112 L93 112 L75 83 Z" />
+        {/* Swept fin off the tailcone */}
+        <path d="M143 92 L166 50 L174 50 L176 98 Z" />
+        {/* Tailplane */}
+        <rect x="152" y="93" width="40" height="6" rx="3" />
+        {/* Propeller disc, touching the nose */}
+        <ellipse cx="39" cy="104" rx="3.5" ry="31" />
+        {/* Tricycle gear */}
+        <rect x="56" y="116" width="4.5" height="14" rx="2.2" />
+        <circle cx="58" cy="135" r="6.5" />
+        <rect x="96" y="115" width="5" height="17" rx="2.5" />
+        <circle cx="98" cy="138" r="7.5" />
+      </g>
     </svg>
   )
 }
 
-function GenerateIconButton({ aircraftName, onGenerated }) {
-  const [open, setOpen]         = useState(false)
-  const [name, setName]         = useState(aircraftName ?? '')
-  const [generating, setGenerating] = useState(false)
-  const [error, setError]       = useState(null)
+/* A phone camera writes 4000px JPEGs. That is far more than either a 280px
+   hero or a vision model needs, and the profile is stored in IndexedDB as a
+   base64 string, so shipping the original would bloat every read of the
+   record. Longest edge 1400px keeps a tail number readable and cuts the
+   payload by roughly an order of magnitude. */
+function fileToScaledDataUrl(file, maxEdge = 1400) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Could not read that file'))
+    reader.onload = () => {
+      const img = new Image()
+      img.onerror = () => reject(new Error('That file is not an image'))
+      img.onload = () => {
+        const scale = Math.min(1, maxEdge / Math.max(img.width, img.height))
+        const w = Math.round(img.width * scale)
+        const h = Math.round(img.height * scale)
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        resolve(canvas.toDataURL('image/jpeg', 0.85))
+      }
+      img.src = reader.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+/* ── Where the aircraft's picture comes from. Three ways in: the photo
+   itself, a cartoon drawn from the photo, or a cartoon drawn from the
+   model name alone for a pilot who hasn't got a photo to hand. ── */
+function AircraftImageControls({ aircraftName, registration, hasImage, onImage, onClear }) {
+  const [mode, setMode] = useState(null)        // null | 'photo' | 'cartoon' | 'name'
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const [name, setName] = useState(aircraftName ?? '')
+  const [note, setNote] = useState(null)
+  const fileRef = useRef(null)
+  const pending = useRef(null)                   // 'photo' | 'cartoon'
 
   useEffect(() => { setName(aircraftName ?? '') }, [aircraftName])
 
-  async function generate() {
-    if (!name.trim()) return
-    setGenerating(true)
+  function pick(kind) {
+    pending.current = kind
     setError(null)
+    fileRef.current?.click()
+  }
+
+  async function onFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''                          // so the same file can be re-picked
+    if (!file) return
+    const kind = pending.current
+    pending.current = null
+    // No pending choice means this change event did not come from one of the
+    // two buttons. Falling through would silently pick the paid path.
+    if (kind !== 'photo' && kind !== 'cartoon') return
+    setBusy(true); setError(null); setNote(null); setMode(kind)
     try {
-      const image = await generateAircraftIcon(name.trim())
-      onGenerated(image)
-      setOpen(false)
-    } catch (e) {
-      setError(e.message)
+      const dataUrl = await fileToScaledDataUrl(file)
+      if (kind === 'photo') {
+        onImage(dataUrl)
+        setMode(null)
+      } else {
+        const { image, description } = await generateIconFromPhoto({
+          imageDataUrl: dataUrl,
+          registration,
+          hint: aircraftName,
+        })
+        onImage(image)
+        setNote(description ?? null)
+        setMode(null)
+      }
+    } catch (err) {
+      setError(err.message)
     } finally {
-      setGenerating(false)
+      setBusy(false)
     }
   }
 
-  if (!open) {
+  async function fromName() {
+    if (!name.trim()) return
+    setBusy(true); setError(null)
+    try {
+      onImage(await generateAircraftIcon(name.trim()))
+      setMode(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const chip = {
+    display: 'flex', alignItems: 'center', gap: 6,
+    background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.15)',
+    borderRadius: 10, padding: '7px 13px', cursor: busy ? 'default' : 'pointer',
+    color: 'var(--text-secondary)', fontSize: 12.5, fontWeight: 500,
+    fontFamily: 'inherit', opacity: busy ? 0.5 : 1,
+  }
+
+  if (busy) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.15)',
-          borderRadius: 10, padding: '7px 14px', cursor: 'pointer',
-          color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500,
-        }}
-      >
-        <svg width={13} height={13} viewBox="0 0 24 24" fill="none">
-          <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
-            stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-        Generate icon
-      </button>
+      <div style={{ textAlign: 'center', fontSize: 12.5, color: 'var(--text-tertiary)', padding: '8px 0' }}>
+        {mode === 'cartoon' ? 'Reading the photo and drawing it… about 30 seconds'
+          : mode === 'name' ? 'Drawing… about 15 seconds'
+          : 'Loading the photo…'}
+      </div>
     )
   }
 
   return (
-    <div style={{
-      background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-      borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10,
-    }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Generate aircraft icon</div>
-      <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: -4 }}>
-        Describe your aircraft. Model name is enough, add details if you want.
-      </div>
-      <input
-        autoFocus
-        value={name}
-        onChange={e => setName(e.target.value)}
-        onKeyDown={e => e.key === 'Enter' && generate()}
-        placeholder="e.g. Cirrus Vision Jet SF50"
-        maxLength={80}
-        style={{
-          padding: '9px 12px', borderRadius: 9,
-          border: '0.5px solid var(--border-strong)',
-          background: 'var(--bg-card-2)', color: 'var(--text)',
-          fontSize: 14, outline: 'none', fontFamily: 'inherit',
-        }}
-      />
-      {error && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{error}</div>}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          onClick={generate}
-          disabled={!name.trim() || generating}
-          style={{
-            flex: 1, padding: '9px 0', borderRadius: 9, border: 'none',
-            background: 'var(--accent)', color: 'var(--accent-fg)',
-            fontWeight: 700, fontSize: 14, cursor: generating ? 'default' : 'pointer',
-            opacity: !name.trim() || generating ? 0.5 : 1,
-          }}
-        >
-          {generating ? 'Generating…' : 'Generate'}
-        </button>
-        <button
-          onClick={() => { setOpen(false); setError(null) }}
-          disabled={generating}
-          style={{
-            padding: '9px 14px', borderRadius: 9, border: 'none',
-            background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
-            fontSize: 14, cursor: 'pointer',
-          }}
-        >Cancel</button>
-      </div>
-      {generating && (
-        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', textAlign: 'center' }}>
-          This takes about 15 seconds…
-        </div>
-      )}
-    </div>
-  )
-}
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: 'none' }} />
 
-/* ── Hobbs time entry. Cumulative aircraft hours, odometer-style ──
-   Single digit buffer, right-aligned: typing pushes older digits left,
-   same feel as a price/odometer input rather than 6 separately-tabbed boxes. ── */
-function HobbsTimeModal({ onCancel, onConfirm, initialValue }) {
-  const initRaw = () => {
-    if (initialValue == null) return ''
-    const rounded = Math.round(initialValue * 10) / 10
-    const whole = Math.floor(rounded)
-    const tenths = Math.round((rounded - whole) * 10)
-    return `${whole}${tenths}`.slice(-6)
-  }
-
-  const [raw, setRaw] = useState(initRaw)
-  const inputRef = useRef(null)
-
-  function handleChange(e) {
-    setRaw(e.target.value.replace(/[^0-9]/g, '').slice(-6))
-  }
-
-  const padded = raw.padStart(6, '0')
-  const digits = padded.split('')
-  const whole = parseInt(padded.slice(0, 5), 10)
-  const tenths = parseInt(padded.slice(5), 10)
-  const value = whole + tenths / 10
-  const isValid = raw.length > 0 && value > 0
-
-  const digitBoxStyle = {
-    width: 32, height: 42, borderRadius: 8, fontSize: 16, fontWeight: 700,
-    color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontVariantNumeric: 'tabular-nums',
-    background: 'var(--bg-card-2)', border: '0.5px solid var(--border)',
-    boxSizing: 'border-box',
-  }
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 600,
-      background: 'rgba(0,0,0,0.55)',
-      backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px',
-    }} onClick={onCancel}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width: '100%', maxWidth: 320,
-        background: 'var(--bg-card)', borderRadius: 16,
-        padding: '16px 14px 14px',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-      }}>
-        <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginTop: 0, marginBottom: 12, textAlign: 'center' }}>
-          Hobbs Time
-        </h3>
-
-        <div
-          style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 16 }}
-          onClick={() => inputRef.current?.focus()}
-        >
-          {digits.map((d, i) => (
-            <div key={i} style={digitBoxStyle}>{d}</div>
-          ))}
+      {mode === 'name' ? (
+        <div style={{
+          background: 'var(--bg-card)', border: '0.5px solid var(--border)', borderRadius: 14,
+          padding: 14, display: 'flex', flexDirection: 'column', gap: 10, width: '100%', maxWidth: 340,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Draw from the model name</div>
           <input
-            ref={inputRef}
-            type="text" inputMode="numeric" value={raw} onChange={handleChange}
-            autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
-            autoFocus
+            autoFocus value={name} maxLength={80}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && fromName()}
+            placeholder="e.g. Cessna 172S"
             style={{
-              position: 'absolute', inset: 0, width: '100%', height: '100%',
-              opacity: 0, border: 'none', outline: 'none', padding: 0, cursor: 'pointer',
+              padding: '9px 12px', borderRadius: 9, border: '0.5px solid var(--border-strong)',
+              background: 'var(--bg-card-2)', color: 'var(--text)', fontSize: 14,
+              outline: 'none', fontFamily: 'inherit',
             }}
           />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={fromName} disabled={!name.trim()} style={{
+              flex: 1, padding: '9px 0', borderRadius: 9, border: 'none',
+              background: 'var(--accent)', color: 'var(--accent-fg)', fontFamily: 'inherit',
+              fontWeight: 700, fontSize: 14, cursor: 'pointer', opacity: name.trim() ? 1 : 0.5,
+            }}>Draw it</button>
+            <button onClick={() => { setMode(null); setError(null) }} style={{
+              padding: '9px 14px', borderRadius: 9, border: 'none', fontFamily: 'inherit',
+              background: 'var(--bg-card-2)', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer',
+            }}>Cancel</button>
+          </div>
         </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+          <button style={chip} onClick={() => pick('photo')}>
+            <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 9a2 2 0 0 1 2-2h1.5l1-2h7l1 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+              <circle cx="12" cy="13" r="3.2" />
+            </svg>
+            Use a photo
+          </button>
+          <button style={chip} onClick={() => pick('cartoon')}>
+            <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+            </svg>
+            Cartoon from photo
+          </button>
+          <button style={chip} onClick={() => { setMode('name'); setError(null) }}>
+            Draw from name
+          </button>
+          {hasImage && (
+            <button style={chip} onClick={() => { onClear(); setNote(null) }}>Remove</button>
+          )}
+        </div>
+      )}
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={onCancel} style={{
-            flex: 1, padding: 10, borderRadius: 'var(--r-md)', border: '0.5px solid var(--border)',
-            background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
-            fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-          }}>Cancel</button>
-          <button disabled={!isValid} onClick={() => onConfirm(value)} style={{
-            flex: 1, padding: 10, borderRadius: 'var(--r-md)', border: 'none',
-            background: isValid ? 'var(--accent)' : 'var(--bg-card-2)',
-            color: isValid ? 'var(--accent-fg)' : 'var(--text-tertiary)',
-            fontSize: 14, fontWeight: 700, cursor: isValid ? 'pointer' : 'default',
-            fontFamily: 'inherit',
-          }}>Confirm</button>
+      {error && (
+        <div style={{ fontSize: 12, color: 'var(--danger)', textAlign: 'center', maxWidth: 340 }}>{error}</div>
+      )}
+      {note && (
+        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center', maxWidth: 340, lineHeight: 1.5 }}>
+          Drawn from your photo. Check the tail number — image models letter
+          badly, so treat it as decoration, not as a record.
         </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -701,7 +718,7 @@ function CurrentHobbsBoxes({ value }) {
   return (
     <div style={{ marginBottom: 8 }}>
       <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 4 }}>
-        Current Hobbs
+        Total Time
       </div>
       <div style={{ display: 'flex', gap: 4 }}>
         {digits.map((d, i) => <div key={i} style={boxStyle}>{d}</div>)}
@@ -821,7 +838,7 @@ function InspectionRow({ insp, value, onDateChange, warnDays, currentHobbs }) {
 
       {insp.unit === 'hours' && currentHobbs == null && (
         <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>
-          Set Hobbs Time above to track this
+          Set Total Airframe Time above to track this
         </div>
       )}
       {insp.hint && <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>{insp.hint}</div>}
@@ -1139,7 +1156,11 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
   const [saving, setSaving] = useState(false)
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [customName, setCustomName] = useState('')
-  const [hobbsModalOpen, setHobbsModalOpen] = useState(false)
+  const [topTab, setTopTab] = useState('details')
+  // The airframe total is typed rather than picked, so it is held as a draft
+  // string and written on blur. Saving per keystroke would push a half-typed
+  // "12" into every inspection's hours-remaining sum on the way to "1250".
+  const [airframeDraft, setAirframeDraft] = useState('')
   const [currencyData, setCurrencyData] = useState(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -1311,6 +1332,28 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
       save(next)
       return next
     })
+  }
+
+  // The stored figure is the source of truth; the draft only exists while a
+  // field is being typed into. Re-seeding it when the aircraft changes is what
+  // stops one aeroplane's hours appearing on the next one after a swipe.
+  // Optional chaining is load-bearing: hooks run before the `if (!profile)`
+  // guard further down, so on the first render — profile still null while the
+  // record loads — a plain `profile.hobbsTime` in the dependency array throws
+  // during render and takes the whole page white.
+  useEffect(() => {
+    setAirframeDraft(profile?.hobbsTime == null ? '' : String(profile.hobbsTime))
+  }, [profile?.hobbsTime, aircraftId])
+
+  function commitAirframeTime() {
+    const trimmed = airframeDraft.trim()
+    const current = profile.hobbsTime == null ? '' : String(profile.hobbsTime)
+    if (trimmed === current) return              // nothing typed, no write
+    if (trimmed !== '' && Number.isNaN(parseFloat(trimmed))) {
+      setAirframeDraft(current)                  // gibberish: put the old value back
+      return
+    }
+    patchHobbs(trimmed)
   }
 
   // ── Weight & Balance setup. Belongs to this aircraft's profile, never a
@@ -1623,14 +1666,15 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
           </div>
           </div>{/* end hover/swipe zone */}
 
-          {/* Generate icon button, only when no built-in template image exists */}
+          {/* Picture controls, only when no built-in template image exists */}
           {!activeTemplate?.image && (
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10, marginBottom: 4 }}>
-              <GenerateIconButton
+            <div style={{ marginTop: 10, marginBottom: 4 }}>
+              <AircraftImageControls
                 aircraftName={profile.fullName || profile.label || ''}
-                onGenerated={dataUrl => {
-                  patch(null, 'image', dataUrl)
-                }}
+                registration={profile.registration ?? ''}
+                hasImage={!!profile.image}
+                onImage={dataUrl => patch(null, 'image', dataUrl)}
+                onClear={() => patch(null, 'image', null)}
               />
             </div>
           )}
@@ -1645,6 +1689,35 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
                 {reg}
               </div>
             )}
+
+            {/* Total airframe time. It sits with the name because half the
+                maintenance page is measured against it — an inspection due
+                "every 100 hours" means nothing until this number is here. It
+                used to be behind a button, which hid the one figure most of
+                the section depends on. */}
+            <div style={{
+              display: 'flex', alignItems: 'baseline', justifyContent: 'center',
+              gap: 8, marginTop: 10,
+            }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Total Airframe Time:
+              </span>
+              <input
+                value={airframeDraft}
+                onChange={e => setAirframeDraft(e.target.value.replace(/[^0-9.]/g, ''))}
+                onBlur={commitAirframeTime}
+                onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()}
+                inputMode="decimal"
+                placeholder="0.0"
+                style={{
+                  width: 84, padding: '4px 8px', borderRadius: 7,
+                  border: '0.5px solid var(--border-strong)', background: 'var(--bg-card-2)',
+                  color: 'var(--text)', fontSize: 14, fontWeight: 700, fontFamily: 'monospace',
+                  textAlign: 'center', outline: 'none',
+                }}
+              />
+              <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>hrs</span>
+            </div>
           </div>
 
           {/* Stats badges */}
@@ -1661,25 +1734,35 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
       {/* ── Editable fields ── */}
       <div style={{ padding: '0 16px 40px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-        {/* Maintenance / Hobbs Time */}
+        {/* Aircraft Details / Maintenance */}
         <div style={{ display: 'flex', gap: 10 }}>
-          <button style={{
-            flex: 1, padding: '9px 12px', borderRadius: 10,
-            background: 'var(--bg-card)', border: 'none',
-            boxShadow: 'var(--shadow-sm)', cursor: 'pointer', fontFamily: 'inherit',
-            fontSize: 14, fontWeight: 700, color: 'var(--text)',
-          }}>
-            Maintenance
-          </button>
-          <button onClick={() => setHobbsModalOpen(true)} style={{
-            flex: 1, padding: '9px 12px', borderRadius: 10,
-            background: 'var(--bg-card)', border: 'none',
-            boxShadow: 'var(--shadow-sm)', cursor: 'pointer', fontFamily: 'inherit',
-            fontSize: 14, fontWeight: 700, color: 'var(--text)',
-          }}>
-            Hobbs Time
-          </button>
+          {[['details', 'Aircraft Details'], ['maintenance', 'Maintenance']].map(([id, label]) => (
+            <button key={id} onClick={() => setTopTab(id)} style={{
+              flex: 1, padding: '9px 12px', borderRadius: 10,
+              background: topTab === id ? 'var(--text)' : 'var(--bg-card)',
+              border: 'none', boxShadow: 'var(--shadow-sm)', cursor: 'pointer',
+              fontFamily: 'inherit', fontSize: 14, fontWeight: 700,
+              color: topTab === id ? 'var(--bg)' : 'var(--text)',
+              transition: 'background 0.15s, color 0.15s',
+            }}>
+              {label}
+            </button>
+          ))}
         </div>
+
+        {topTab === 'maintenance' && (
+          <div style={{
+            borderRadius: 12, background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
+            padding: '34px 18px', textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Maintenance</div>
+            <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6, lineHeight: 1.5 }}>
+              Nothing here yet. Tracked against the total airframe time above.
+            </div>
+          </div>
+        )}
+
+        {topTab === 'details' && (<>
 
         {/* Identity */}
         <Section title="Identity">
@@ -2000,7 +2083,7 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
         </div>
 
         {/* Manage */}
-        <Section title="Manage Aircraft">
+        <Section title="Share / Delete Aircraft">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <button
               onClick={shareProfile}
@@ -2029,6 +2112,7 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
             <div style={{ marginTop: 10, fontSize: 12, color: 'var(--danger)' }}>{shareError}</div>
           )}
         </Section>
+        </>)}
 
       </div>
 
@@ -2097,14 +2181,6 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
         </div>
       )}
 
-      {/* Hobbs time modal */}
-      {hobbsModalOpen && (
-        <HobbsTimeModal
-          initialValue={profile.hobbsTime}
-          onCancel={() => setHobbsModalOpen(false)}
-          onConfirm={value => { patchHobbs(value); setHobbsModalOpen(false) }}
-        />
-      )}
 
     </div>
   )
