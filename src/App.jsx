@@ -8,6 +8,7 @@ import { RegionProvider } from './context/Region'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { SocialProfileProvider } from './context/SocialProfile'
 import BackOverrideProvider from './context/BackOverrideProvider'
+import { DEMO_SEED_ENABLED } from './lib/devSeed'
 import Shell from './components/Shell'
 
 // The redesign's home: a map you fly from. The previous menu-style Home is
@@ -119,7 +120,20 @@ function AppRoutes({ theme }) {
 
   if (profile === null) return null
 
-  if (!profile.onboardingComplete) return (
+  // A demo preview never asks who you are.
+  //
+  // The seed writes a completed profile before this gate reads one, so in the
+  // ordinary case this never fires. It is here for the cases where that is not
+  // enough: a device carrying a half-finished profile from an earlier session,
+  // a storage state nobody can clear because the thing in front of them IS the
+  // onboarding form, or a fresh tunnel address starting from nothing while the
+  // seed is still writing. A preview is for looking at the app, and being
+  // asked to introduce yourself to it is the one thing it is not for.
+  //
+  // DEMO_SEED_ENABLED rather than DEV, so it also needs the opt-in flag in
+  // .env.local: a developer working ON onboarding still gets to see it. Vite
+  // strips the whole branch from production builds.
+  if (!profile.onboardingComplete && !DEMO_SEED_ENABLED) return (
     <Suspense fallback={null}>
       <Onboarding />
     </Suspense>
