@@ -73,12 +73,14 @@ function Item({ item, onComply }) {
   const dimmed = item.status === STATUS.NOT_APPLICABLE
 
   return (
-    <div style={{
-      borderTop: '1px solid var(--border)', opacity: dimmed ? 0.55 : 1,
-    }}>
+    // No rule between rows. Sixteen of them stacked turned the overdue group
+    // into a table, and a line every forty pixels competes with the one thing
+    // on each row that is actually red. The gap does the separating; the
+    // padding grew a little to take over the work the line was doing.
+    <div style={{ opacity: dimmed ? 0.55 : 1 }}>
       <button onClick={() => setOpen(o => !o)} style={{
         width: '100%', background: 'none', border: 'none', cursor: 'pointer',
-        padding: '11px 14px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10,
+        padding: '13px 14px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10,
         fontFamily: 'inherit',
       }}>
         <span style={{ flex: 1, minWidth: 0 }}>
@@ -173,7 +175,14 @@ function Group({ status, items, onComply }) {
         </span>
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)' }}>{items.length}</span>
       </button>
-      {open && items.map(i => <Item key={i.id} item={i} onComply={onComply} />)}
+      {/* The header keeps its own rule: it is a different kind of thing from
+          the rows under it, which is exactly what the rules between the rows
+          were not. */}
+      {open && (
+        <div style={{ borderTop: '1px solid var(--border)', paddingBottom: 4 }}>
+          {items.map(i => <Item key={i.id} item={i} onComply={onComply} />)}
+        </div>
+      )}
     </div>
   )
 }

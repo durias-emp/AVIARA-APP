@@ -1652,9 +1652,14 @@ export default function Aircraft({ aircraftId, onBack, onDeleted, onHangar }) {
         <div style={{ display: 'flex', gap: 10 }}>
           <button style={{
             flex: 1, padding: '9px 12px', borderRadius: 10,
-            background: 'var(--bg-card)', border: 'none',
+            // Filled while it is the one you are looking at. Two buttons that
+            // swap the whole page have to say which one is showing, or the
+            // aircraft's details look like they have gone missing.
+            background: maintenanceOpen ? 'var(--text)' : 'var(--bg-card)',
+            color: maintenanceOpen ? 'var(--bg)' : 'var(--text)',
+            border: 'none',
             boxShadow: 'var(--shadow-sm)', cursor: 'pointer', fontFamily: 'inherit',
-            fontSize: 14, fontWeight: 700, color: 'var(--text)',
+            fontSize: 14, fontWeight: 700,
           }}
             onClick={() => setMaintenanceOpen(o => !o)}>
             Maintenance
@@ -1669,17 +1674,23 @@ export default function Aircraft({ aircraftId, onBack, onDeleted, onHangar }) {
           </button>
         </div>
 
-        {/* The schedule, under the button that opens it rather than on a
-            screen of its own: it is measured against the airframe time sitting
-            a few lines above, and reading one without the other is how an
-            inspection gets missed. */}
-        {maintenanceOpen && (
+        {/* Maintenance replaces the page rather than sitting on top of it.
+            The two buttons above are a pair of tabs: the schedule is a
+            different question about the same aircraft, and leaving Identity,
+            Weight and Balance and the rest stacked underneath it made a page
+            you scroll past a hundred and eighteen inspections to reach.
+
+            It stays under the buttons rather than moving to a screen of its
+            own because every figure on it is measured against the Total
+            Airframe Time a few lines above, and reading one without the other
+            is how an inspection gets missed. */}
+        {maintenanceOpen ? (
           <MaintenanceSection
             aircraftId={aircraftId}
             registration={profile.registration}
             hobbs={profile.hobbsTime ?? null}
             cycles={profile.cyclesCurrent ?? null} />
-        )}
+        ) : (<>
 
         {/* Identity */}
         <Section title="Identity">
@@ -1977,6 +1988,7 @@ export default function Aircraft({ aircraftId, onBack, onDeleted, onHangar }) {
           )}
         </Section>
 
+        </>)}
       </div>
 
       {/* Delete-aircraft confirmation */}
