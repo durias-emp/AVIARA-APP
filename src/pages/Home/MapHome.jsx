@@ -738,6 +738,19 @@ export default function MapHome() {
   // map keeps showing what the route is being drawn across. /checklists still
   // exists and still works; this is the way in, not the only way.
   const [planning, setPlanning] = useState(false)
+  // A step inside the flight plan is open.
+  //
+  // The plan rests at 50 and is not allowed above it, which is right while it
+  // is a list of steps to choose from. It is wrong the moment one of them is
+  // opened: a form that needs more room than half a screen was scrolling away
+  // under the drawer's own title, which is the drawer hiding its contents from
+  // itself. Open a step and the drawer stands up to full screen; close it and
+  // it sits back down.
+  const [planStep, setPlanStep] = useState(false)
+  const onStepOpenChange = useCallback((open) => {
+    setPlanStep(open)
+    setSnap(open ? 100 : 50)
+  }, [])
   // The calculated route: drawn on the map, summarised on the collapsed
   // drawer, and cleared by the X on that card. Read back from IndexedDB on
   // mount, so a route survives the app being closed and reopened, which is
@@ -1320,6 +1333,7 @@ export default function MapHome() {
 
   function leavePlanner() {
     setPlanning(false)
+    setPlanStep(false)
     setSnap(25)
     // Reset inside the planner deletes the saved route, and this held its own
     // copy in state, so the line stayed on the map after the plan behind it
@@ -1544,7 +1558,7 @@ export default function MapHome() {
     // The planner's ceiling is its own stop. It is not allowed above 50 at all,
     // so the finger stops there rather than travelling on to a height the
     // release would only undo.
-    const next = Math.min(stopY(vh, 25), Math.max(stopY(vh, planning ? 50 : 100), d.fromY + shifted))
+    const next = Math.min(stopY(vh, 25), Math.max(stopY(vh, planning && !planStep ? 50 : 100), d.fromY + shifted))
     d.lastY = next
     setDragY(next)
   }
@@ -1571,7 +1585,7 @@ export default function MapHome() {
     // Dragging that far is unambiguous, and snapping back from there would
     // feel like the sheet fighting the hand. Not while planning, which has no
     // 100 to commit to.
-    if (!planning && d.lastY <= stopY(vh, SHEET_FULL_TRIGGER)) { setSnap(100); return }
+    if ((!planning || planStep) && d.lastY <= stopY(vh, SHEET_FULL_TRIGGER)) { setSnap(100); return }
 
     // The planner has one stop, 50, and no way up from it. Half the screen is
     // the plan and half is the map the route is being drawn across, and a plan
@@ -1583,7 +1597,7 @@ export default function MapHome() {
     // away, which costs nothing to do by accident, because every field writes
     // itself to storage as it is filled in and Plan Route comes back to
     // exactly the same place.
-    const ladder = planning ? [50] : SHEET_STOPS
+    const ladder = planning ? (planStep ? [50, 100] : [50]) : SHEET_STOPS
 
     if (planning && (d.lastY > (stopY(vh, 50) + stopY(vh, 25)) / 2
       || (flick && !up && snap === 50))) {
@@ -2142,7 +2156,8 @@ export default function MapHome() {
                 Opening the flight plan…
               </div>
             }>
-              <Planner embedded onClose={leavePlanner} onRouteCalculated={onRouteCalculated} />
+              <Planner embedded onClose={leavePlanner} onRouteCalculated={onRouteCalculated}
+                onStepOpenChange={onStepOpenChange} />
             </Suspense>
           </div>
         )}

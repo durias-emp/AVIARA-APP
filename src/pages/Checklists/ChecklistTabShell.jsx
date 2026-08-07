@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import StepPane from './sections/StepPane'
 import StepTabBar from './shared/StepTabBar'
 import { PaneActivityContext } from './shared/PaneActivity'
@@ -34,7 +34,7 @@ function PaneActivityProvider({ onActiveChange, children }) {
 export default function ChecklistTabShell({
   sections, resetKey, checked, onToggle, total,
   customItems, onDeleteCustomItem, onUpdateCustomItemValue, completeBar,
-  activeIndex, onActiveIndexChange, embedded = false,
+  activeIndex, onActiveIndexChange, embedded = false, onStepOpenChange,
 }) {
   const [dragPx, setDragPx] = useState(0)
   const [dragging, setDragging] = useState(false)
@@ -61,6 +61,14 @@ export default function ChecklistTabShell({
   // gap. Add Step and Complete Flight Plan are both about the plan as a whole,
   // so neither has anything to say while a pilot is inside one step of it.
   const footerHidden = paneOpen[activeIndex] ?? false
+
+  // Tell whoever is holding this shell that a step wants the room.
+  //
+  // Inside the map home's drawer that is the difference between a form
+  // scrolling away under the drawer's own title and the drawer standing up to
+  // full screen so the form has somewhere to be. The same signal already hides
+  // the footer, so nothing new is being tracked, only reported.
+  useEffect(() => { onStepOpenChange?.(footerHidden) }, [footerHidden, onStepOpenChange])
 
   // The footer (tab bar + action buttons) is position:fixed to the real
   // viewport bottom, immune to any dvh/ancestor-height mismatch. Panes pad

@@ -99,20 +99,21 @@ function allIds(checklist) {
 // Two hosts, one planner. Standalone at /checklists it owns the screen;
 // embedded it fills whatever box the map home's drawer gives it, and reports
 // a calculated route back so the drawer can drop down and show the line.
-export default function Checklists({ embedded = false, onClose, onRouteCalculated }) {
+export default function Checklists({ embedded = false, onClose, onRouteCalculated, onStepOpenChange }) {
   return (
     <ChecklistDetail
       checklist={CHECKLISTS[0]}
       embedded={embedded}
       onBack={onClose}
       onRouteCalculated={onRouteCalculated}
+      onStepOpenChange={onStepOpenChange}
     />
   )
 }
 
 
 /* ── Checklist detail: full-screen tabbed steps ─────────────── */
-function ChecklistDetail({ checklist, onBack, embedded = false, onRouteCalculated }) {
+function ChecklistDetail({ checklist, onBack, embedded = false, onRouteCalculated, onStepOpenChange }) {
   const { aircraftId } = useActiveAircraft()
   const [checked, setChecked]         = useState(new Set())
   const [customItems, setCustomItems] = useState({ PILOT: [] })
@@ -349,6 +350,7 @@ function ChecklistDetail({ checklist, onBack, embedded = false, onRouteCalculate
       {flightPlanType && (
       <ChecklistTabShell
         embedded={embedded}
+        onStepOpenChange={onStepOpenChange}
         sections={checklist.sections}
         resetKey={resetKey}
         checked={checked}
