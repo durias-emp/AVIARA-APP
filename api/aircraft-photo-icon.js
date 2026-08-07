@@ -1,4 +1,5 @@
-/* global process, Buffer */
+/* global process */
+import { generateImage } from './_imageGen.js'
 
 /* Turn a photo of a real aeroplane into the app's house-style icon.
 
@@ -94,31 +95,10 @@ export default async function handler(req, res) {
     const reg = registration?.trim()?.toUpperCase() || null
 
     // ── 2. Draw it in the house style ──
-    const imgGen = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: authed,
-      body: JSON.stringify({
-        model: 'dall-e-3',
-        prompt: RENDER(desc, reg),
-        n: 1,
-        size: '1024x1024',
-        quality: 'standard',
-      }),
-    })
+    const image = await generateImage({ apiKey, prompt: RENDER(desc, reg) })
 
-    if (!imgGen.ok) {
-      const err = await imgGen.json().catch(() => ({}))
-      return res.status(imgGen.status).json({ error: err.error?.message ?? 'Could not draw the aircraft' })
-    }
-
-    const imageUrl = (await imgGen.json()).data[0].url
-    const buffer = await (await fetch(imageUrl)).arrayBuffer()
-
-    return res.status(200).json({
-      image: `data:image/png;base64,${Buffer.from(buffer).toString('base64')}`,
-      description: desc,
-    })
+    return res.status(200).json({ image, description: desc })
   } catch (err) {
-    return res.status(500).json({ error: err.message })
+    return res.status(err.status ?? 500).json({ error: err.message })
   }
 }
