@@ -13,6 +13,7 @@ import { buildAircraftExport, exportFileName } from '../../lib/aircraftShare'
 import { CHART_TYPES, createEmptyChart, normalizeUserPerfChart, validatePerfChart, pickRandomVerificationCells, getPerfChart, interpolateChart } from '../../lib/aircraftPerf'
 import WBSetupSection from './WBSetupSection'
 import PerfChartEditor from './PerfChartEditor'
+import MaintenanceSection from './MaintenanceSection'
 
 export const FILING_CATEGORIES = ['Airplane', 'Rotorcraft', 'Other']
 
@@ -1751,15 +1752,11 @@ export default function Aircraft({ aircraftId, onBack, onDeleted }) {
         </div>
 
         {topTab === 'maintenance' && (
-          <div style={{
-            borderRadius: 12, background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)',
-            padding: '34px 18px', textAlign: 'center',
-          }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Maintenance</div>
-            <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6, lineHeight: 1.5 }}>
-              Nothing here yet. Tracked against the total airframe time above.
-            </div>
-          </div>
+          <MaintenanceSection
+            aircraftId={aircraftId}
+            hobbsCurrent={profile.hobbsTime}
+            cyclesCurrent={profile.cyclesCurrent}
+          />
         )}
 
         {topTab === 'details' && (<>
