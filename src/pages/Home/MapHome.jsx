@@ -240,122 +240,117 @@ function FloatingCard({ visible, bottom, compact = false, children }) {
 // read as an item in a list rather than as what the drawer is currently about.
 // The aircraft below already makes this argument and wins it. Same move here.
 //
-// Two columns, because the two halves answer different questions. The left is
-// WHERE: the two ends, the aircraft between them pointing the way it is going,
-// and each end's coordinates under it, because a flight plan is filed with
-// positions and half the destinations here have no identifier at all. The
-// right is HOW FAR AND WHICH WAY, stacked so each figure has its own line and
-// its own mark.
+// The two ends are a boarding pass: the code big enough to read across a
+// cockpit, the position under it in small type so it plainly belongs to that
+// end rather than floating between them, and the aircraft flying between the
+// two. It is a form every passenger already knows how to read, which is worth
+// more here than novelty.
 //
-// The marks are the chart's, not decoration. True north is a star and magnetic
-// north is a needle on every declination diagram printed on a sectional, so a
-// pilot reads which is which without reading the words. Variation is drawn as
-// the angle between them, which is what it is.
-function RouteSummary({ route, onClear, onOpen }) {
+// The figures live to the right, one to a line with a mark of its own. The
+// marks are the chart's rather than decoration: true north is a star and
+// magnetic north is a needle on every declination diagram printed on a
+// sectional, and variation is drawn as the angle between them, which is what
+// it is. A pilot reads which is which without reading the words, and that is
+// what lets the words stay short.
+//
+// There is no clear button. Putting a route away is rare, the arrow at the top
+// of the map takes the whole drawer out of the way, and Reset in the plan is
+// where a route is actually discarded. A destructive control sitting beside
+// the numbers earned its place only while there was nowhere else for it.
+function RouteSummary({ route, onOpen }) {
   const dep = route.depPos, dest = route.destPos
 
+  // An identifier, or nothing at all.
+  //
+  // Pilots fly to strips and to points that are in no database, so half the
+  // destinations on this map ARE a coordinate: the planner stores the position
+  // as the identifier because that is the only thing there is to store. A
+  // coordinate is not a code and must not be dressed as one, so the code slot
+  // goes empty and the position below it does the naming on its own.
+  const codeOf = (ident, pos) => {
+    if (!ident) return null
+    if (pos && ident === fmtAvCoord(pos[0], pos[1])) return null
+    return ident
+  }
+
+  // Split across two lines, latitude over longitude, which is how it fits
+  // under a code rather than beside one.
+  const end = (ident, pos, align) => {
+    const code = codeOf(ident, pos)
+    const [latStr, lonStr] = pos ? fmtAvCoord(pos[0], pos[1]).split(' ') : []
+    return (
+      <span style={{
+        display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0,
+        alignItems: align === 'right' ? 'flex-end' : 'flex-start',
+        textAlign: align === 'right' ? 'right' : 'left',
+      }}>
+        {code && (
+          <span style={{
+            fontSize: 27, fontWeight: 800, color: 'var(--map-ink)',
+            letterSpacing: '-0.9px', lineHeight: 1,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%',
+          }}>{code}</span>
+        )}
+        {pos && (
+          <span style={{
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            // Larger and in the ink when it is doing the naming, small and
+            // faint when it is only the detail under a code.
+            fontSize: code ? 10 : 13,
+            fontWeight: code ? 600 : 700,
+            color: code ? 'var(--map-ink-faint)' : 'var(--map-ink)',
+            letterSpacing: '-0.2px', lineHeight: 1.35, whiteSpace: 'nowrap',
+          }}>{latStr}<br />{lonStr}</span>
+        )}
+      </span>
+    )
+  }
+
   const figure = ({ icon, value, label, dim }) => (
-    <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 7 }}>
+    <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
       <span style={{ color: 'var(--map-ink-faint)', display: 'flex', flexShrink: 0 }}>{icon}</span>
       <span style={{
-        fontSize: 16, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.3px',
+        fontSize: 20, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.4px',
         fontVariantNumeric: 'tabular-nums',
         color: dim ? 'var(--map-ink-dim)' : 'var(--map-ink)',
       }}>{value}</span>
       <span style={{
-        fontSize: 9, fontWeight: 600, color: 'var(--map-ink-faint)', letterSpacing: '0.4px',
-        width: 30, textAlign: 'left', flexShrink: 0,
+        fontSize: 10, fontWeight: 600, color: 'var(--map-ink-faint)', letterSpacing: '0.4px',
+        width: 34, textAlign: 'left', flexShrink: 0,
       }}>{label}</span>
     </div>
   )
 
-  // A position, in the format a plan is filed in. Its own pill and its own
-  // colour so it reads as the machine-readable half of the identifier above
-  // it rather than as more prose.
-  const coord = (pos) => pos && (
-    <span style={{
-      display: 'inline-block', alignSelf: 'flex-start',
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-      fontSize: 10, fontWeight: 600, letterSpacing: '-0.2px',
-      color: 'var(--map-ink)', background: accentAlpha(0.22),
-      padding: '3px 7px', borderRadius: 6, whiteSpace: 'nowrap',
-    }}>{fmtAvCoord(pos[0], pos[1])}</span>
-  )
-
   return (
-    // Two columns, side by side rather than stacked, because the figures need
-    // four lines and the two ends need two. Stacked, the block came to 179px
-    // and the resting stop has 198 to give on the phone once the home
-    // indicator is out of it. Beside each other, the tall column sets the
-    // height and the short one fills space that was going to waste anyway.
     <div style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {/* The two ends. The departure never truncates: it is an identifier
-            and it is four characters. The destination might be a coordinate,
-            which is long, so that is the one allowed to run out of room, and
-            its exact value is in the pill underneath either way. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={onOpen}
-            style={{
-              flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0,
-              cursor: 'pointer', textAlign: 'left',
-              display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 19, fontWeight: 800, color: 'var(--map-ink)', letterSpacing: '-0.4px',
-            }}>
-            <span style={{ flexShrink: 0 }}>{route.dep}</span>
-            {/* Pointing along the course, so the picture agrees with the line
-                on the map behind it rather than always pointing east. */}
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="var(--map-ink-faint)"
-              style={{ flexShrink: 0, transform: `rotate(${(route.mc ?? 90) - 90}deg)` }}>
-              <path d="M21 12l-8-4v2.6H3v2.8h10V16z" />
-            </svg>
-            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {route.dest}
-            </span>
-          </button>
-
-          {/* The only control here that does not open the plan, so it keeps
-              its own hit area, and it costs no height sitting on this line. */}
-          <button
-            onClick={onClear}
-            aria-label="Clear route"
-            style={{
-              width: 28, height: 28, borderRadius: '50%', border: 'none', flexShrink: 0,
-              background: 'var(--map-fill)', color: 'var(--map-ink-dim)', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-
-        {/* WHERE, in the format a plan is filed in. Departure on top,
-            destination below, the same order as the line above. */}
-        <button
-          onClick={onOpen}
-          style={{
-            display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-start',
-            background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-          }}>
-          {coord(dep)}
-          {coord(dest)}
-        </button>
-      </div>
-
-      {/* HOW FAR AND WHICH WAY, one figure to a line. */}
       <button
         onClick={onOpen}
         style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4,
+          flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0,
+          cursor: 'pointer', textAlign: 'left',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8,
+        }}>
+        {end(route.dep, dep, 'left')}
+        {/* Flying along the course, so the picture agrees with the line on the
+            map behind it rather than always pointing east. */}
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="var(--map-ink-faint)"
+          style={{ flexShrink: 0, marginTop: 5, transform: `rotate(${(route.mc ?? 90) - 90}deg)` }}>
+          <path d="M21 12l-8-4v2.6H3v2.8h10V16z" />
+        </svg>
+        {end(route.dest, dest, 'right')}
+      </button>
+
+      <button
+        onClick={onOpen}
+        style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5,
           flexShrink: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer',
         }}>
         {figure({
           label: 'NM',
           value: route.distNm,
           icon: (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               strokeWidth="2" strokeLinecap="round">
               <path d="M4 6v12M20 6v12M4 12h16" />
             </svg>
@@ -368,7 +363,7 @@ function RouteSummary({ route, onClear, onOpen }) {
           label: 'MAG',
           value: `${route.mc}\u00B0`,
           icon: (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2l3.2 8.8L12 9.4l-3.2 1.4z" />
               <path d="M12 22l-3.2-8.8L12 14.6l3.2-1.4z" opacity="0.4" />
             </svg>
@@ -378,7 +373,7 @@ function RouteSummary({ route, onClear, onOpen }) {
           label: 'TRUE', dim: true,
           value: `${route.tc}\u00B0`,
           icon: (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2.5l2.4 6.3 6.6.3-5.2 4.1 1.8 6.3L12 15.9 6.4 19.5l1.8-6.3L3 9.1l6.6-.3z" />
             </svg>
           ),
@@ -387,7 +382,7 @@ function RouteSummary({ route, onClear, onOpen }) {
           label: 'VAR', dim: true,
           value: `${parseFloat(route.magVar) >= 0 ? '+' : ''}${route.magVar}\u00B0`,
           icon: (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 19V5M5 19h14M5 8l11 11" />
             </svg>
@@ -397,6 +392,7 @@ function RouteSummary({ route, onClear, onOpen }) {
     </div>
   )
 }
+
 
 // One tapped aircraft. Deliberately sparse: this is a reference readout, and
 // padding it with fields the feed reports unreliably would suggest more
@@ -1259,27 +1255,25 @@ export default function MapHome() {
     }
   }
 
-  function clearRoute() {
-    setRoute(null)
-    del('settings', 'route').catch(() => {})
-    flyHome()
-  }
+  // No clearRoute any more. The X that called it is gone, and a route is
+  // discarded from Reset inside the plan, which deletes the same record and is
+  // where a pilot goes to change a route rather than to glance at one.
 
   const recording = rec != null
 
-  // What the drawer is telling the pilot to do next, which is nothing once it
-  // is already all the way open. Empty means the line is not rendered at all,
-  // rather than rendered blank and still taking its margins.
+  // What the drawer is telling the pilot to do next.
+  //
+  // Only at the resting stop, and only for as long as it takes to be read.
+  // Higher up the drawer's own contents reach the bottom of the screen, and a
+  // line laid over them would be sitting on the aircraft.
   //
   // Declared here rather than up with the other route derivations: it reads
   // `recording`, which is defined on the line above, and a const cannot be
   // read before it is initialised. Putting it earlier took the whole screen
   // down with a temporal dead zone error.
-  const gestureHint = recording
-    ? 'Recording your track · tap the square to end and log it'
-    : snap === 25 ? 'Pull up for everything else'
-    : snap === 50 || snap === 80 ? 'Keep pulling for the full logbook'
-    : ''
+  const gestureHint = planning || snap !== 25 ? ''
+    : recording ? 'Recording your track · tap the square to end and log it'
+    : 'Pull up for everything else'
   const track = rec?.track?.map(p => [p.lat, p.lon]) ?? []
 
   // The viewport, and how much of it the drawer covers at rest. Declared here
@@ -1838,6 +1832,32 @@ export default function MapHome() {
         {actionRow(true)}
       </FloatingCard>
 
+      {/* The one line the drawer says about itself, on the floor of the
+          screen rather than tucked under the route.
+
+          It sits in the shell, not in the drawer, because the drawer's box is
+          a full screen tall and hangs below the fold: its own bottom edge is
+          nowhere near the one a pilot can see. Anchored here it lands on the
+          real bottom, in the room the resting stop has spare. */}
+      {gestureHint && (
+        <div style={{
+          // Above the drawer, which is 600. The line lands in the drawer's
+          // own empty bottom, so it has to paint on top of it rather than
+          // underneath, which is where 560 put it: correctly positioned and
+          // completely invisible.
+          position: 'absolute', left: 0, right: 0, zIndex: 620,
+          bottom: 'calc(var(--safe-bottom) + 12px)',
+          textAlign: 'center', pointerEvents: 'none',
+        }}>
+          {/* Keyed on the words, so a hint that changes is a hint that gets
+              said again rather than one that quietly swapped its text while
+              nobody was looking at it. */}
+          <span key={gestureHint} className="hint-bounce" style={{
+            fontSize: 11, fontWeight: 600, color: 'var(--map-ink-faint)',
+          }}>{gestureHint}</span>
+        </div>
+      )}
+
       {/* Traffic legend, and the selected aircraft. Present only while the
           layer is on, because a warning about data that is not on screen is
           noise, and absent once the sheet is expanded so it does not fight the
@@ -1960,33 +1980,15 @@ export default function MapHome() {
               reachable from the screen the pilot is actually on. */}
           {!planning && !(actionsFloat && snap === 25) && actionRow()}
 
-          {/* A route exists, so the drawer says so. It was taken out as a
-              only thing that says what the line across the map is. Tapping it
-              opens the plan, which is the one place with more to say about the
-              route than these four figures, and the X is how a route is
-              disagreed with.
+          {/* A route exists, so the drawer says so: it is the only thing that
+              says what the line across the map is, and tapping it opens the
+              plan, which is the one place with more to say about a route than
+              these figures.
 
               Not while planning, where the same route is already the subject
               of everything below. */}
           {!planning && route?.distNm != null && (
-            <RouteSummary
-              route={route}
-              onClear={clearRoute}
-              onOpen={openPlanner} />
-          )}
-
-          {/* No hint line while planning. It is the drawer explaining itself,
-              and the plan needs the height more than it needs the sentence
-              now that Close Plan says out loud what the gesture used to. */}
-          {/* Only the lines about the gesture live here, under the thing the
-              gesture acts on. The reference-aid notice used to take this slot
-              at full screen, which put a standing disclaimer in the one place
-              reserved for telling the pilot what to do next. It now sits at
-              the bottom of the list, where a footnote belongs. */}
-          {!planning && gestureHint && (
-          <div style={{ textAlign: 'center', margin: '10px 0 6px', fontSize: 10, color: 'var(--map-ink-faint)' }}>
-            {gestureHint}
-          </div>
+            <RouteSummary route={route} onOpen={openPlanner} />
           )}
         </div>
 

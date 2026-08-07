@@ -929,3 +929,34 @@ input[type="number"]::-webkit-outer-spin-button {
   color: var(--map-ink);
   background: transparent;
 }
+
+/* ── The drawer's one hint ────────────────────────────────────
+   It has to be noticed once and then stop existing. A line that simply sits
+   there is furniture: read on the first launch and looked past on every one
+   after. So arriving, being noticed and leaving are one animation rather than
+   a timer in JavaScript holding a piece of state that only ever counts down.
+   forwards leaves it at the last frame, which is gone.
+
+   Two bounces, not a loop. Something moving forever in the corner of a chart
+   is the kind of thing you end up covering with a thumb. */
+@keyframes hint-say-it-once {
+  0%        { opacity: 0; transform: translateY(6px); }
+  3%        { opacity: 1; transform: translateY(0); }
+  8%        { transform: translateY(-6px); }
+  13%       { transform: translateY(0); }
+  18%       { transform: translateY(-3px); }
+  23%, 88%  { opacity: 1; transform: translateY(0); }
+  100%      { opacity: 0; transform: translateY(0); }
+}
+
+.hint-bounce {
+  display: inline-block;
+  animation: hint-say-it-once 7s cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
+}
+
+/* A cockpit is a bad place to insist on motion, and the system setting is the
+   pilot saying so. The hint still appears and still leaves; it just holds
+   still while it does. */
+@media (prefers-reduced-motion: reduce) {
+  .hint-bounce { animation: hint-say-it-once 7s linear forwards; }
+}
