@@ -269,7 +269,7 @@ function FloatingCard({ visible, bottom, compact = false, children }) {
 // of the map takes the whole drawer out of the way, and Reset in the plan is
 // where a route is actually discarded. A destructive control sitting beside
 // the numbers earned its place only while there was nowhere else for it.
-function RouteSummary({ route, onOpen, aircraftIcon, fillTo = 0 }) {
+function RouteSummary({ route, onOpen, aircraftIcon, fillTo = 0, showFigures = true }) {
   const dep = route.depPos, dest = route.destPos
 
   // An identifier, or nothing at all.
@@ -381,7 +381,11 @@ function RouteSummary({ route, onOpen, aircraftIcon, fillTo = 0 }) {
     // this would only push them down.
     <div style={{
       marginTop: 10, position: 'relative',
-      display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+      display: 'flex', flexDirection: 'column',
+      // Spread when there are two things to spread; centred when the figures
+      // are away, so the ends sit in the middle of the space rather than
+      // hanging from the top of it with a hole underneath.
+      justifyContent: showFigures ? 'space-between' : 'center',
       minHeight: fillTo || undefined,
     }}>
       <div style={{
@@ -414,6 +418,13 @@ function RouteSummary({ route, onOpen, aircraftIcon, fillTo = 0 }) {
         )}
       </div>
 
+      {/* All four on one line, and not until the drawer is pulled up.
+          At rest the question is where you are going, and the two ends answer
+          it; the figures are what you check once you have decided to look at
+          the flight, which is the same gesture that opens everything else.
+          They are one drag away, not one screen away. */}
+      {showFigures && (
+      <>
       {/* All four on one line.
           Spread rather than cut into equal quarters: a quarter of a phone is
           78px and MAGNETIC COURSE needs 85, so equal columns would have meant
@@ -467,6 +478,8 @@ function RouteSummary({ route, onOpen, aircraftIcon, fillTo = 0 }) {
           ),
         })}
       </div>
+      </>
+      )}
 
       {/* One target over the whole thing rather than several, so a tap
           anywhere on the route opens the plan and nothing here has to be
@@ -2078,6 +2091,7 @@ export default function MapHome() {
           {!planning && route?.distNm != null && (
             <RouteSummary route={route} onOpen={openPlanner}
               aircraftIcon={isHelicopter ? '/helicopter.png' : '/modo-avion.png'}
+              showFigures={snap > 25}
               fillTo={snap === 25
                 ? Math.max(0, restPx - GRAB_ABOVE_ROUTE - 10 - safeBottom - HINT_RESERVE)
                 : 0} />
