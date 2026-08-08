@@ -21,6 +21,7 @@ import DropPointPopup from '../../components/DropPointPopup'
 // preview map: three copies of a hex is how the three drifted apart.
 import { ACCENT, accentAlpha, ROUTE_COLOR, ROUTE_OPACITY, ROUTE_WEIGHT } from '../../components/mapStyle'
 import ActivityCard from '../../components/ActivityCard'
+import RouteChips from '../../components/RouteChips'
 import TrafficLayer from '../../components/TrafficLayer'
 import TrafficLegend from '../../components/TrafficLegend'
 import useLiveTraffic from '../../hooks/useLiveTraffic'
@@ -32,7 +33,6 @@ import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecord
 import { put, get, getAll, del } from '../../lib/db'
 import { findAirport, getAirports } from '../../lib/aerodromes'
 import { crossTrackNm } from '../../lib/corridor'
-import { fmtAvCoord } from '../../lib/geo'
 import { resolveHomeIdent } from '../../lib/homeBase'
 import { computeDirectRoute } from '../../lib/directRoute'
 import { loadTfrs } from '../../lib/tfr'
@@ -280,76 +280,8 @@ function FloatingCard({ visible, bottom, compact = false, children }) {
 // Chips rather than a line of text because they are the same object the
 // fullscreen map puts above its own readout, and because a point you can see
 // is a point you can take out.
-function RouteSummary({ route, onOpen, onRemoveLeg, fillTo = 0 }) {
-  const dep = route.depPos, dest = route.destPos
+function RouteSummary({ route, onOpen, onRemoveLeg, onReorder, onAddStop, onFocusPoint, fillTo = 0 }) {
 
-  // An identifier, or the position when that is all there is.
-  //
-  // Pilots fly to strips and to points that are in no database, so half the
-  // destinations on this map ARE a coordinate: the planner stores the position
-  // as the identifier because that is the only thing there is to store.
-  const codeOf = (ident, pos) => {
-    if (!ident) return null
-    if (pos && ident === fmtAvCoord(pos[0], pos[1])) return 'Point'
-    return ident
-  }
-
-  // The route as it was entered, not as it was expanded.
-  //
-  // A SID or an airway becomes a dozen fixes in `wpts` so the map can draw
-  // them, and printing all twelve here would be a strip of names the pilot
-  // never typed, with the one name they did type nowhere in it. Consecutive
-  // fixes that share a `via` collapse back into the thing they came from, so
-  // ARDIA7 reads as ARDIA7. That is also the unit worth removing: taking a
-  // single fix out of a published departure is not a thing anyone means.
-  const legs = []
-  for (const w of route.wpts ?? []) {
-    const key = w.via ?? w.name
-    if (!key) continue
-    if (legs[legs.length - 1]?.key === key) continue
-    legs.push({ key, label: key, via: !!w.via })
-  }
-
-  // A pill, and its colour says what kind of thing it is.
-  //
-  // Taken from ForeFlight's flight plan strip, where an airway is tinted apart
-  // from the fixes either side of it. That is the one distinction worth making
-  // in a route: KRDR and HML are places, V181 is the way between two of them,
-  // and a strip that draws them identically asks the pilot to know which is
-  // which from the shape of the name.
-  const chip = (label, { onRemove, via } = {}) => (
-    <span key={label} style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
-      background: via ? 'rgba(255,159,10,0.18)' : 'var(--map-fill)',
-      borderRadius: 999,
-      padding: onRemove ? '5px 6px 5px 11px' : '5px 11px',
-    }}>
-      <span style={{
-        fontSize: 13.5, fontWeight: 800,
-        color: via ? '#FF9F0A' : 'var(--map-ink)',
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        letterSpacing: '0.5px', lineHeight: 1,
-      }}>{label}</span>
-      {onRemove && (
-        <button
-          onClick={e => { e.stopPropagation(); onRemove() }}
-          aria-label={`Remove ${label}`}
-          style={{
-            background: 'none', border: 'none', padding: 3, display: 'flex',
-            alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-            color: via ? 'rgba(255,159,10,0.75)' : 'var(--map-ink-faint)',
-          }}>
-          <svg width={9} height={9} viewBox="0 0 24 24" fill="none">
-            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-          </svg>
-        </button>
-      )}
-    </span>
-  )
-
-  // A figure, its mark and its word. The marks are the chart's rather than
-  // decoration: true north is a star and magnetic north is a needle on every
-  // declination diagram printed on a sectional.
   // The word first and the number under it, left aligned, which is how a
   // flight plan prints a row of figures and how ForeFlight lays this same
   // strip out. The icons went with the change: at this size they were
@@ -381,18 +313,12 @@ function RouteSummary({ route, onOpen, onRemoveLeg, fillTo = 0 }) {
       display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
       gap: 12, minHeight: fillTo || undefined,
     }}>
-      {/* The route. Wrapped rather than scrolled sideways: the whole point is
-          that nothing is hidden, and a strip that runs off the edge hides the
-          end of the route behind a gesture nobody knows is there. Wrapping
-          also fills the drawer, which a single line does not. */}
-      <div style={{
-        position: 'relative', zIndex: 1,
-        display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6,
-      }}>
-        {chip(codeOf(route.dep, dep) ?? 'FROM')}
-        {legs.map(leg => chip(leg.label, { via: leg.via, onRemove: () => onRemoveLeg?.(leg.key) }))}
-        {chip(codeOf(route.dest, dest) ?? 'TO')}
-      </div>
+      <RouteChips
+        route={route}
+        onRemoveLeg={onRemoveLeg}
+        onReorder={onReorder}
+        onAddStop={onAddStop}
+        onFocusPoint={onFocusPoint} />
 
       {/* The figures, on the floor of the drawer. The two ends used to hold
           this space with their coordinates; the chips above are shorter, so
@@ -1150,6 +1076,60 @@ export default function MapHome() {
       put('settings', { key: 'route', ...next }).catch(() => {})
       return next
     })
+  }, [])
+
+  // The route's middle, as the groups a pilot thinks in.
+  //
+  // Consecutive fixes sharing a `via` are one thing: the airway or procedure
+  // they came from. Everything that edits the strip works on these rather
+  // than on the fixes underneath, so a route can be reordered without a
+  // published departure being taken apart in the process.
+  const legGroups = useCallback((wpts) => {
+    const groups = []
+    for (const w of wpts ?? []) {
+      const key = w.via ?? w.name
+      if (!key) continue
+      if (groups[groups.length - 1]?.key === key) groups[groups.length - 1].wpts.push(w)
+      else groups.push({ key, wpts: [w] })
+    }
+    return groups
+  }, [])
+
+  // Both edits drop the planner's figures, for the reason given above
+  // addDroppedWaypoint: they describe the route as it was before the edit,
+  // and a distance that no longer matches the line is worse than none.
+  const withEdit = useCallback((prev, wpts) => {
+    const next = { ...prev, wpts, needsRecalc: true }
+    for (const stale of ['distNm', 'tc', 'mc', 'trueCourse', 'magCourse', 'magVar']) delete next[stale]
+    put('settings', { key: 'route', ...next }).catch(() => {})
+    return next
+  }, [])
+
+  // A chip dragged to a new place in the route.
+  const reorderRouteLeg = useCallback((key, toIndex) => {
+    setRoute(prev => {
+      const groups = legGroups(prev?.wpts)
+      const from = groups.findIndex(g => g.key === key)
+      if (from < 0) return prev
+      const moved = groups.splice(from, 1)[0]
+      groups.splice(Math.max(0, Math.min(groups.length, toIndex)), 0, moved)
+      return withEdit(prev, groups.flatMap(g => g.wpts))
+    })
+  }, [legGroups, withEdit])
+
+  // A stop typed into the strip. It lands at the end of the middle, which is
+  // the leg the pilot is looking at when they type into the space after the
+  // last chip.
+  const addRouteStop = useCallback((wpt) => {
+    setRoute(prev => (prev ? withEdit(prev, [...(prev.wpts ?? []), wpt]) : prev))
+  }, [withEdit])
+
+  // A chip tapped: put the map on it. The zoom is the one an airport gets
+  // from the picker, so arriving at a point from the strip and arriving at it
+  // from anywhere else look the same.
+  const focusRoutePoint = useCallback((lat, lon) => {
+    if (lat == null || lon == null) return
+    mapRef.current?.setView([lat, lon], AIRPORT_ZOOM, { animate: true })
   }, [])
 
   // A field tapped on the map, made the destination.
@@ -2102,6 +2082,7 @@ export default function MapHome() {
               of everything below. */}
           {!planning && hasRoute && (
             <RouteSummary route={route} onOpen={openPlanner} onRemoveLeg={removeRouteLeg}
+              onReorder={reorderRouteLeg} onAddStop={addRouteStop} onFocusPoint={focusRoutePoint}
               fillTo={snap === 25
                 ? Math.max(0, restPx - GRAB_ABOVE_ROUTE - 10 - safeBottom - HINT_RESERVE)
                 : 0} />
