@@ -333,7 +333,12 @@ function RouteSummary({ route, onOpen, onRemoveLeg, onRemoveEnd, onReorder, onAd
       {hasFigures && (
         <div style={{
           position: 'relative', zIndex: 1,
-          display: 'flex', alignItems: 'flex-start', gap: 22, flexWrap: 'wrap',
+          // The same width as the field above, first figure on its left edge
+          // and last on its right, so the two read as one column of the same
+          // card. Packed left with a fixed gap they stopped short of VAR's
+          // slot and the row looked like it belonged to a narrower screen.
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+          gap: 12, flexWrap: 'wrap',
         }}>
           {figure({
             label: 'DIST',
@@ -1393,7 +1398,9 @@ export default function MapHome() {
   // `recording`, which is defined on the line above, and a const cannot be
   // read before it is initialised. Putting it earlier took the whole screen
   // down with a temporal dead zone error.
-  const gestureHint = planning || snap !== 25 ? ''
+  // Nothing to say while a route is on the drawer: the strip and its figures
+  // are the drawer's statement, and the hint was printing itself across VAR.
+  const gestureHint = planning || snap !== 25 || hasRoute ? ''
     : recording ? 'Recording your track · tap the square to end and log it'
     : 'Pull up for everything else'
   const track = rec?.track?.map(p => [p.lat, p.lon]) ?? []
