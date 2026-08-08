@@ -280,7 +280,7 @@ function FloatingCard({ visible, bottom, compact = false, children }) {
 // Chips rather than a line of text because they are the same object the
 // fullscreen map puts above its own readout, and because a point you can see
 // is a point you can take out.
-function RouteSummary({ route, onOpen, onRemoveLeg, onReorder, onAddStop, onFocusPoint, fillTo = 0 }) {
+function RouteSummary({ route, onOpen, onRemoveLeg, onRemoveEnd, onReorder, onAddStop, onFocusPoint, fillTo = 0 }) {
 
   // The word first and the number under it, left aligned, which is how a
   // flight plan prints a row of figures and how ForeFlight lays this same
@@ -316,6 +316,7 @@ function RouteSummary({ route, onOpen, onRemoveLeg, onReorder, onAddStop, onFocu
       <RouteChips
         route={route}
         onRemoveLeg={onRemoveLeg}
+        onRemoveEnd={onRemoveEnd}
         onReorder={onReorder}
         onAddStop={onAddStop}
         onFocusPoint={onFocusPoint} />
@@ -1055,29 +1056,6 @@ export default function MapHome() {
     })
   }, [])
 
-  // A point taken back out of the route, from the chip that names it.
-  //
-  // Removes the whole leg rather than one fix. A published departure arrives
-  // here as a dozen fixes sharing a `via`, and pulling one out of the middle
-  // of ARDIA7 leaves a procedure that is no longer the procedure. The chip
-  // says ARDIA7, so the chip removes ARDIA7.
-  //
-  // The planner's figures go in the same write, for the reason spelled out
-  // above addDroppedWaypoint: they describe the route as it was before this,
-  // and a distance that no longer matches the line drawn under it is worse
-  // than none. The planner recomputes them the moment it is opened.
-  const removeRouteLeg = useCallback((key) => {
-    setRoute(prev => {
-      if (!prev?.wpts?.length) return prev
-      const wpts = prev.wpts.filter(w => (w.via ?? w.name) !== key)
-      if (wpts.length === prev.wpts.length) return prev
-      const next = { ...prev, wpts, needsRecalc: true }
-      for (const stale of ['distNm', 'tc', 'mc', 'trueCourse', 'magCourse', 'magVar']) delete next[stale]
-      put('settings', { key: 'route', ...next }).catch(() => {})
-      return next
-    })
-  }, [])
-
   // The route's middle, as the groups a pilot thinks in.
   //
   // Consecutive fixes sharing a `via` are one thing: the airway or procedure
@@ -1100,7 +1078,9 @@ export default function MapHome() {
   // and a distance that no longer matches the line is worse than none.
   const withEdit = useCallback((prev, wpts) => {
     const next = { ...prev, wpts, needsRecalc: true }
-    for (const stale of ['distNm', 'tc', 'mc', 'trueCourse', 'magCourse', 'magVar']) delete next[stale]
+    // The filed string goes with the figures: it names a composition that no
+    // longer exists, and the one-pager falls back to dep, wpts and dest.
+    for (const stale of ['distNm', 'tc', 'mc', 'trueCourse', 'magCourse', 'magVar', 'atsTokens']) delete next[stale]
     put('settings', { key: 'route', ...next }).catch(() => {})
     return next
   }, [])
@@ -1122,6 +1102,26 @@ export default function MapHome() {
   // last chip.
   const addRouteStop = useCallback((wpt) => {
     setRoute(prev => (prev ? withEdit(prev, [...(prev.wpts ?? []), wpt]) : prev))
+  }, [withEdit])
+
+  // A point taken back out of the route, from the chip that names it.
+  //
+  // Removes the whole leg rather than one fix. A published departure arrives
+  // here as a dozen fixes sharing a `via`, and pulling one out of the middle
+  // of ARDIA7 leaves a procedure that is no longer the procedure. The chip
+  // says ARDIA7, so the chip removes ARDIA7.
+  //
+  // The planner's figures go in the same write, for the reason spelled out
+  // above addDroppedWaypoint: they describe the route as it was before this,
+  // and a distance that no longer matches the line drawn under it is worse
+  // than none. The planner recomputes them the moment it is opened.
+  const removeRouteLeg = useCallback((key) => {
+    setRoute(prev => {
+      if (!prev?.wpts?.length) return prev
+      const wpts = prev.wpts.filter(w => (w.via ?? w.name) !== key)
+      if (wpts.length === prev.wpts.length) return prev
+      return withEdit(prev, wpts)
+    })
   }, [withEdit])
 
   // A chip tapped: put the map on it. The zoom is the one an airport gets
@@ -1324,14 +1324,52 @@ export default function MapHome() {
   // Home again, wherever the route had taken the camera. A map still framed on
   // a flight that no longer exists is the app remembering something the pilot
   // just told it to forget.
-  function flyHome() {
+  // A callback rather than a declaration only because removeRouteEnd holds it
+  // in a dependency array, and a function remade every render would remake
+  // that callback with it.
+  const flyHome = useCallback(() => {
     // Cleared here as well as in the effect's ref, or the next route to the
     // same pair of ends would be judged already framed and never fit.
     fittedRoute.current = null
     if (mapRef.current && base?.lat != null) {
       mapRef.current.setView([base.lat, base.lon], 11, { animate: true })
     }
-  }
+  }, [base])
+
+  // An end taken off the route, from its own chip's x.
+  //
+  // An end is not a waypoint: a route cannot be without one. Removing it
+  // promotes the nearest plain point in the middle to be the new end, which
+  // is what deleting the origin token does to a ForeFlight route string. Via
+  // groups between the removed end and that point go with it, because an
+  // airway whose anchor point is gone is not a route element, it is a name
+  // floating in the string.
+  //
+  // With nothing in the middle to promote, removing an end removes the route,
+  // deleted from storage the way Reset deletes it, or it would come back on
+  // the next launch.
+  const removeRouteEnd = useCallback((which) => {
+    const groups = legGroups(route?.wpts)
+    const seq = which === 'dep' ? groups : [...groups].reverse()
+    const i = seq.findIndex(g => !g.wpts[0].via)
+    if (i < 0) {
+      del('settings', 'route').catch(() => {})
+      setRoute(null)
+      flyHome()
+      return
+    }
+    const grp = seq[i]
+    const point = which === 'dep' ? grp.wpts[0] : grp.wpts[grp.wpts.length - 1]
+    const rest = seq.slice(i + 1)
+    const wpts = (which === 'dep' ? rest : [...rest].reverse()).flatMap(g => g.wpts)
+    setRoute(prev => {
+      if (!prev) return prev
+      const moved = which === 'dep'
+        ? { ...prev, dep: point.name, depName: null, depPos: [point.lat, point.lon] }
+        : { ...prev, dest: point.name, destName: null, destPos: [point.lat, point.lon] }
+      return withEdit(moved, wpts)
+    })
+  }, [route, legGroups, withEdit, flyHome])
 
   // No clearRoute any more. The X that called it is gone, and a route is
   // discarded from Reset inside the plan, which deletes the same record and is
@@ -2082,6 +2120,7 @@ export default function MapHome() {
               of everything below. */}
           {!planning && hasRoute && (
             <RouteSummary route={route} onOpen={openPlanner} onRemoveLeg={removeRouteLeg}
+              onRemoveEnd={removeRouteEnd}
               onReorder={reorderRouteLeg} onAddStop={addRouteStop} onFocusPoint={focusRoutePoint}
               fillTo={snap === 25
                 ? Math.max(0, restPx - GRAB_ABOVE_ROUTE - 10 - safeBottom - HINT_RESERVE)
