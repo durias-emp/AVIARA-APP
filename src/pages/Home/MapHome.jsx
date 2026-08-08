@@ -285,6 +285,11 @@ function RouteSummary({ route, onOpen, aircraftIcon, fillTo = 0, showFigures = t
     return ident
   }
 
+  // At rest the two ends ARE the drawer, so they take all of it. With the
+  // figures showing, the two share the height between them and neither
+  // stretches.
+  const fillEnds = !showFigures && fillTo > 0
+
   // A block: an end of the route, centred in its quarter.
   //
   // Three lines, which is what fills the block rather than padding it out.
@@ -293,7 +298,7 @@ function RouteSummary({ route, onOpen, aircraftIcon, fillTo = 0, showFigures = t
   // modelled on says exactly what belongs in that space: the code, the place
   // it names, and then the detail. Here the detail is the position, because
   // that is what gets filed.
-  const end = (ident, pos, name) => {
+  const end = (ident, pos, name, fill) => {
     const code = codeOf(ident, pos)
     const [latStr, lonStr] = pos ? fmtAvCoord(pos[0], pos[1]).split(' ') : []
     // Only when it is really a name. The planner falls back to the identifier
@@ -302,7 +307,15 @@ function RouteSummary({ route, onOpen, aircraftIcon, fillTo = 0, showFigures = t
     // underneath twice.
     const label = name && name !== ident && name !== code ? name : null
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0,
+        // Filling the block rather than floating in the middle of it, which is
+        // what a pass does: the code at the top, the place it names under it,
+        // and the detail sitting on the floor. At rest this is the only thing
+        // in the drawer, so a compact stack left two thirds of the panel empty
+        // and the card read as something small in a big box.
+        ...(fill ? { height: '100%', justifyContent: 'space-between' } : null),
+      }}>
         {code && (
           <span style={{
             // 26 now the ends have half the card each rather than a quarter.
@@ -385,16 +398,21 @@ function RouteSummary({ route, onOpen, aircraftIcon, fillTo = 0, showFigures = t
       // Spread when there are two things to spread; centred when the figures
       // are away, so the ends sit in the middle of the space rather than
       // hanging from the top of it with a hole underneath.
-      justifyContent: showFigures ? 'space-between' : 'center',
+      justifyContent: showFigures ? 'space-between' : 'stretch',
       minHeight: fillTo || undefined,
     }}>
       <div style={{
         position: 'relative',
         display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8,
-        alignItems: 'start',
+        // Stretched only when this row is the whole drawer. With the figures
+        // below it, or at any stop where the aircraft and the tools follow
+        // underneath, the row is content-sized and stretching it would push
+        // everything else down.
+        alignItems: fillEnds ? 'stretch' : 'start',
+        ...(fillEnds ? { flex: 1, minHeight: 0 } : null),
       }}>
-        {end(route.dep, dep, route.depName)}
-        {end(route.dest, dest, route.destName)}
+        {end(route.dep, dep, route.depName, fillEnds)}
+        {end(route.dest, dest, route.destName, fillEnds)}
 
         {/* The aircraft, on the line between the two ends: the middle of the
             card now rather than a quarter along it, which is both where a pass
