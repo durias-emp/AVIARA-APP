@@ -269,250 +269,175 @@ function FloatingCard({ visible, bottom, compact = false, children }) {
 // of the map takes the whole drawer out of the way, and Reset in the plan is
 // where a route is actually discarded. A destructive control sitting beside
 // the numbers earned its place only while there was nowhere else for it.
-function RouteSummary({ route, onOpen, aircraftIcon, fillTo = 0, showFigures = true }) {
+// The route on the drawer: every point of it, as chips.
+//
+// It used to be the two ends as a boarding pass, which was honest about where
+// the flight begins and ends and silent about everything in between. On
+// KDFW ARDIA7 ELLVR KIDDZ5 KHOU that is three quarters of the route missing
+// from the one card that claims to describe it, and the pilot had to open the
+// plan to find out what the line on the map was actually made of.
+//
+// Chips rather than a line of text because they are the same object the
+// fullscreen map puts above its own readout, and because a point you can see
+// is a point you can take out.
+function RouteSummary({ route, onOpen, onRemoveLeg, fillTo = 0 }) {
   const dep = route.depPos, dest = route.destPos
 
-  // An identifier, or nothing at all.
+  // An identifier, or the position when that is all there is.
   //
   // Pilots fly to strips and to points that are in no database, so half the
   // destinations on this map ARE a coordinate: the planner stores the position
-  // as the identifier because that is the only thing there is to store. A
-  // coordinate is not a code and must not be dressed as one, so the code slot
-  // goes empty and the position below it does the naming on its own.
+  // as the identifier because that is the only thing there is to store.
   const codeOf = (ident, pos) => {
     if (!ident) return null
-    if (pos && ident === fmtAvCoord(pos[0], pos[1])) return null
+    if (pos && ident === fmtAvCoord(pos[0], pos[1])) return 'Point'
     return ident
   }
 
-  // At rest the two ends ARE the drawer, so they take all of it. With the
-  // figures showing, the two share the height between them and neither
-  // stretches.
-  const fillEnds = !showFigures && fillTo > 0
-
-  // A block: an end of the route, centred in its quarter.
+  // The route as it was entered, not as it was expanded.
   //
-  // Three lines, which is what fills the block rather than padding it out.
-  // The two ends were 52px tall in a 78px row, so there was a hole under them
-  // while the figures beside them ran the full height. The pass this is
-  // modelled on says exactly what belongs in that space: the code, the place
-  // it names, and then the detail. Here the detail is the position, because
-  // that is what gets filed.
-  const end = (ident, pos, name, fill) => {
-    const code = codeOf(ident, pos)
-    const [latStr, lonStr] = pos ? fmtAvCoord(pos[0], pos[1]).split(' ') : []
-    // Only when it is really a name. The planner falls back to the identifier
-    // when a field has no name of its own, and for a dropped point that
-    // identifier IS the coordinate, so both cases would print the line
-    // underneath twice.
-    const label = name && name !== ident && name !== code ? name : null
-    return (
-      <div style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0,
-        // Filling the block rather than floating in the middle of it, which is
-        // what a pass does: the code at the top, the place it names under it,
-        // and the detail sitting on the floor. At rest this is the only thing
-        // in the drawer, so a compact stack left two thirds of the panel empty
-        // and the card read as something small in a big box.
-        ...(fill ? { height: '100%', justifyContent: 'space-between' } : null),
-      }}>
-        {code && (
-          <span style={{
-            // As big as the half will take, which is what the pilot reads
-            // from arm's length and across a cockpit.
-            //
-            // Sized off the viewport rather than fixed, because the limit is
-            // the aircraft standing between the two blocks: a turned 18px icon
-            // has a 25px bounding box, and a code that grows past its column's
-            // share runs into it. 12vw keeps roughly a finger's width of air
-            // either side of the icon on a 320px phone and on a 430px one,
-            // where a single number could only be right for one of them.
-            fontSize: 'clamp(26px, 12vw, 46px)',
-            fontWeight: 800, color: 'var(--map-ink)',
-            letterSpacing: '-0.8px', lineHeight: 1, maxWidth: '100%',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{code}</span>
-        )}
-        {label && (
-          <span style={{
-            fontSize: 9, fontWeight: 600, color: 'var(--map-ink-dim)',
-            letterSpacing: '0.1px', lineHeight: 1.2, maxWidth: '100%',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{label}</span>
-        )}
-        {pos && (
-          <span style={{
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            // One size either way. It says which job it is doing with weight
-            // and colour instead: in the ink when it is the name, faint when
-            // it is the detail under a code. Growing it for the first case
-            // pushed it into the aircraft standing on the block's edge, and a
-            // position that collides with something is not more readable for
-            // being larger.
-            fontSize: 10,
-            fontWeight: code ? 600 : 700,
-            color: code ? 'var(--map-ink-faint)' : 'var(--map-ink)',
-            letterSpacing: '-0.3px', lineHeight: 1.3, whiteSpace: 'nowrap',
-            textAlign: 'center', marginTop: label ? 2 : 0,
-            // One line again. It was split across two only because a quarter
-            // of a phone could not hold 21 characters of monospace; half a
-            // phone can, with room to spare, and the line it gives back is
-            // what pays for the bigger code above it.
-          }}>{latStr} {lonStr}</span>
-        )}
-      </div>
-    )
+  // A SID or an airway becomes a dozen fixes in `wpts` so the map can draw
+  // them, and printing all twelve here would be a strip of names the pilot
+  // never typed, with the one name they did type nowhere in it. Consecutive
+  // fixes that share a `via` collapse back into the thing they came from, so
+  // ARDIA7 reads as ARDIA7. That is also the unit worth removing: taking a
+  // single fix out of a published departure is not a thing anyone means.
+  const legs = []
+  for (const w of route.wpts ?? []) {
+    const key = w.via ?? w.name
+    if (!key) continue
+    if (legs[legs.length - 1]?.key === key) continue
+    legs.push({ key, label: key, via: !!w.via })
   }
 
-  // A figure, centred in its half of a block: the mark and the number on one
-  // line, the word underneath. Four quarters of equal width is what lets the
-  // words be words again rather than MAG and VAR.
-  const figure = ({ icon, value, label, dim }) => (
-    <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-        <span style={{ color: 'var(--map-ink-faint)', display: 'flex', flexShrink: 0 }}>{icon}</span>
-        <span style={{
-          fontSize: 17, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.4px',
-          fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
-          color: dim ? 'var(--map-ink-dim)' : 'var(--map-ink)',
-        }}>{value}</span>
-      </span>
+  // A pill, and its colour says what kind of thing it is.
+  //
+  // Taken from ForeFlight's flight plan strip, where an airway is tinted apart
+  // from the fixes either side of it. That is the one distinction worth making
+  // in a route: KRDR and HML are places, V181 is the way between two of them,
+  // and a strip that draws them identically asks the pilot to know which is
+  // which from the shape of the name.
+  const chip = (label, { onRemove, via } = {}) => (
+    <span key={label} style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
+      background: via ? 'rgba(255,159,10,0.18)' : 'var(--map-fill)',
+      borderRadius: 999,
+      padding: onRemove ? '5px 6px 5px 11px' : '5px 11px',
+    }}>
+      <span style={{
+        fontSize: 13.5, fontWeight: 800,
+        color: via ? '#FF9F0A' : 'var(--map-ink)',
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        letterSpacing: '0.5px', lineHeight: 1,
+      }}>{label}</span>
+      {onRemove && (
+        <button
+          onClick={e => { e.stopPropagation(); onRemove() }}
+          aria-label={`Remove ${label}`}
+          style={{
+            background: 'none', border: 'none', padding: 3, display: 'flex',
+            alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            color: via ? 'rgba(255,159,10,0.75)' : 'var(--map-ink-faint)',
+          }}>
+          <svg width={9} height={9} viewBox="0 0 24 24" fill="none">
+            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
+    </span>
+  )
+
+  // A figure, its mark and its word. The marks are the chart's rather than
+  // decoration: true north is a star and magnetic north is a needle on every
+  // declination diagram printed on a sectional.
+  // The word first and the number under it, left aligned, which is how a
+  // flight plan prints a row of figures and how ForeFlight lays this same
+  // strip out. The icons went with the change: at this size they were
+  // decoration competing with the number they sat beside, and the word says
+  // it better than a mark that has to be learned.
+  const figure = ({ value, label, dim }) => (
+    <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
       <span style={{
         fontSize: 9, fontWeight: 600, color: 'var(--map-ink-faint)',
-        letterSpacing: '0.3px', whiteSpace: 'nowrap',
+        letterSpacing: '0.4px', whiteSpace: 'nowrap', textTransform: 'uppercase',
       }}>{label}</span>
+      <span style={{
+        fontSize: 16, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.3px',
+        fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+        color: dim ? 'var(--map-ink-dim)' : 'var(--map-ink)',
+      }}>{value}</span>
     </div>
   )
 
+  // Only what survives an edit. Removing a point drops the planner's figures
+  // in the same write, because they describe the route as it was a moment ago
+  // and a distance that no longer matches the line is worse than no distance:
+  // it is a wrong number wearing the planner's authority.
+  const hasFigures = route.distNm != null
+
   return (
-    // Two rows, not four columns across.
-    //
-    // The ends and the figures were side by side, a quarter of the screen
-    // each, which left the two names clipped to about twelve characters:
-    // RENO/RENO/TAHOE and DALLAS-FORT WOR are not names, they are the start of
-    // names. Stacked, the ends get the whole width and the figures get a line
-    // of their own, and both stop competing for the same 339 pixels.
-    // Filled to the foot of the drawer's first state, ends at the top and
-    // figures at the bottom, rather than both bunched under the handle with
-    // the rest of the drawer empty beneath them. fillTo is zero at every other
-    // stop, where the aircraft and the tools follow underneath and stretching
-    // this would only push them down.
     <div style={{
       marginTop: 10, position: 'relative',
-      display: 'flex', flexDirection: 'column',
-      // Spread when there are two things to spread; centred when the figures
-      // are away, so the ends sit in the middle of the space rather than
-      // hanging from the top of it with a hole underneath.
-      justifyContent: showFigures ? 'space-between' : 'stretch',
-      minHeight: fillTo || undefined,
+      display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+      gap: 12, minHeight: fillTo || undefined,
     }}>
+      {/* The route. Wrapped rather than scrolled sideways: the whole point is
+          that nothing is hidden, and a strip that runs off the edge hides the
+          end of the route behind a gesture nobody knows is there. Wrapping
+          also fills the drawer, which a single line does not. */}
       <div style={{
-        position: 'relative',
-        display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8,
-        // Stretched only when this row is the whole drawer. With the figures
-        // below it, or at any stop where the aircraft and the tools follow
-        // underneath, the row is content-sized and stretching it would push
-        // everything else down.
-        alignItems: fillEnds ? 'stretch' : 'start',
-        ...(fillEnds ? { flex: 1, minHeight: 0 } : null),
+        position: 'relative', zIndex: 1,
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6,
       }}>
-        {end(route.dep, dep, route.depName, fillEnds)}
-        {end(route.dest, dest, route.destName, fillEnds)}
-
-        {/* The aircraft, on the line between the two ends: the middle of the
-            card now rather than a quarter along it, which is both where a pass
-            puts it and where there is the most room for it.
-
-            The same picture the map is flying, helicopter or aeroplane by the
-            profile's category, so the drawer and the chart cannot disagree
-            about what is being flown. Turned to the TRUE course, not the
-            magnetic one, because the chart behind it is north up and true is
-            the angle a reader measures off it. */}
-        {aircraftIcon && (
-          <img
-            src={aircraftIcon}
-            alt=""
-            style={{
-              position: 'absolute', left: '50%', top: 1,
-              width: 18, height: 18, objectFit: 'contain',
-              transform: `translateX(-50%) rotate(${route.tc ?? route.mc ?? 0}deg)`,
-              filter: 'var(--icon-filter)', opacity: 0.85, pointerEvents: 'none',
-            }} />
-        )}
+        {chip(codeOf(route.dep, dep) ?? 'FROM')}
+        {legs.map(leg => chip(leg.label, { via: leg.via, onRemove: () => onRemoveLeg?.(leg.key) }))}
+        {chip(codeOf(route.dest, dest) ?? 'TO')}
       </div>
 
-      {/* All four on one line, and not until the drawer is pulled up.
-          At rest the question is where you are going, and the two ends answer
-          it; the figures are what you check once you have decided to look at
-          the flight, which is the same gesture that opens everything else.
-          They are one drag away, not one screen away. */}
-      {showFigures && (
-      <>
-      {/* All four on one line.
-          Spread rather than cut into equal quarters: a quarter of a phone is
-          78px and MAGNETIC COURSE needs 85, so equal columns would have meant
-          shrinking the words again. Sized to their contents and spaced apart,
-          they come to about 285 of the 339 available and the labels stay
-          whole. */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-        gap: 8, marginTop: 8,
-      }}>
-        {figure({
-          label: 'DISTANCE',
-          value: `${route.distNm} NM`,
-          icon: (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              strokeWidth="2.2" strokeLinecap="round">
-              <path d="M4 6v12M20 6v12M4 12h16" />
-            </svg>
-          ),
-        })}
-        {/* Only if the planner actually produced them. A route restored from an
-            older version of this record has the distance and not always the
-            rest, and a blank figure on a flight plan is worse than none. */}
-        {route.mc != null && figure({
-          label: 'MAGNETIC COURSE',
-          value: `${route.mc}\u00B0`,
-          icon: (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2l3.2 8.8L12 9.4l-3.2 1.4z" />
-              <path d="M12 22l-3.2-8.8L12 14.6l3.2-1.4z" opacity="0.4" />
-            </svg>
-          ),
-        })}
-        {route.tc != null && figure({
-          label: 'TRUE COURSE', dim: true,
-          value: `${route.tc}\u00B0`,
-          icon: (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2.5l2.4 6.3 6.6.3-5.2 4.1 1.8 6.3L12 15.9 6.4 19.5l1.8-6.3L3 9.1l6.6-.3z" />
-            </svg>
-          ),
-        })}
-        {route.magVar != null && figure({
-          label: 'VARIATION', dim: true,
-          value: `${parseFloat(route.magVar) >= 0 ? '+' : ''}${route.magVar}\u00B0`,
-          icon: (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 19V5M5 19h14M5 8l11 11" />
-            </svg>
-          ),
-        })}
-      </div>
-      </>
+      {/* The figures, on the floor of the drawer. The two ends used to hold
+          this space with their coordinates; the chips above are shorter, so
+          these sit at the bottom rather than following immediately under. */}
+      {hasFigures && (
+        <div style={{
+          position: 'relative', zIndex: 1,
+          display: 'flex', alignItems: 'flex-start', gap: 22, flexWrap: 'wrap',
+        }}>
+          {figure({
+            label: 'DIST',
+            value: `${route.distNm} NM`,
+          })}
+          {route.mc != null && figure({
+            label: 'MC',
+            value: `${route.mc}\u00B0`,
+          })}
+          {route.tc != null && figure({
+            label: 'TC', dim: true,
+            value: `${route.tc}\u00B0`,
+          })}
+          {route.magVar != null && figure({
+            label: 'VAR', dim: true,
+            value: `${parseFloat(route.magVar) >= 0 ? '+' : ''}${route.magVar}\u00B0`,
+          })}
+        </div>
+      )}
+
+      {/* Said only when it is true. A route mid-edit has no figures, and an
+          empty strip where they were is a question rather than an answer. */}
+      {!hasFigures && (
+        <div style={{ position: 'relative', zIndex: 1, fontSize: 11, color: 'var(--map-ink-faint)' }}>
+          Open the plan to work out the new distance and course
+        </div>
       )}
 
       {/* One target over the whole thing rather than several, so a tap
           anywhere on the route opens the plan and nothing here has to be
-          aimed at. */}
+          aimed at. Under the chips, so their own buttons win. */}
       <button
         onClick={onOpen}
         aria-label="Open the flight plan"
         style={{
           position: 'absolute', inset: 0, background: 'none', border: 'none',
-          padding: 0, cursor: 'pointer',
+          padding: 0, cursor: 'pointer', zIndex: 0,
         }} />
     </div>
   )
@@ -788,7 +713,19 @@ export default function MapHome() {
   // already makes this division, and the read-back makes it too, so a route on
   // the drawer now makes it as well: the drawer carries the subject, the card
   // above carries the actions, and the map stays visible between them.
-  const actionsFloat = !planning && route?.distNm != null
+  // Is there a route on the drawer?
+  //
+  // This asked whether the route had a DISTANCE, which was the same question
+  // right up until a route could be edited from the drawer. Taking a waypoint
+  // out drops the planner's figures on purpose, and with distNm gone the app
+  // concluded the route had gone too: the card vanished mid-edit, the buttons
+  // came back, and the line the pilot had just shortened was still drawn
+  // across the map with nothing on the drawer admitting it existed.
+  //
+  // `route` is only ever set with both ends resolved, so its presence is the
+  // honest test. The figures are a property of a route, not proof of one.
+  const hasRoute = !!route?.depPos && !!route?.destPos
+  const actionsFloat = !planning && hasRoute
   // The height every stop is a fraction of, measured off the shell itself
   // rather than read from window.innerHeight.
   //
@@ -1187,6 +1124,29 @@ export default function MapHome() {
       wpts.splice(at, 0, { lat, lon, name: `WPT${highest + 1}` })
       const next = { ...prev, wpts, needsRecalc: true }
       for (const stale of ['distNm', 'trueCourse', 'magCourse', 'magVar']) delete next[stale]
+      put('settings', { key: 'route', ...next }).catch(() => {})
+      return next
+    })
+  }, [])
+
+  // A point taken back out of the route, from the chip that names it.
+  //
+  // Removes the whole leg rather than one fix. A published departure arrives
+  // here as a dozen fixes sharing a `via`, and pulling one out of the middle
+  // of ARDIA7 leaves a procedure that is no longer the procedure. The chip
+  // says ARDIA7, so the chip removes ARDIA7.
+  //
+  // The planner's figures go in the same write, for the reason spelled out
+  // above addDroppedWaypoint: they describe the route as it was before this,
+  // and a distance that no longer matches the line drawn under it is worse
+  // than none. The planner recomputes them the moment it is opened.
+  const removeRouteLeg = useCallback((key) => {
+    setRoute(prev => {
+      if (!prev?.wpts?.length) return prev
+      const wpts = prev.wpts.filter(w => (w.via ?? w.name) !== key)
+      if (wpts.length === prev.wpts.length) return prev
+      const next = { ...prev, wpts, needsRecalc: true }
+      for (const stale of ['distNm', 'tc', 'mc', 'trueCourse', 'magCourse', 'magVar']) delete next[stale]
       put('settings', { key: 'route', ...next }).catch(() => {})
       return next
     })
@@ -2140,10 +2100,8 @@ export default function MapHome() {
 
               Not while planning, where the same route is already the subject
               of everything below. */}
-          {!planning && route?.distNm != null && (
-            <RouteSummary route={route} onOpen={openPlanner}
-              aircraftIcon={isHelicopter ? '/helicopter.png' : '/modo-avion.png'}
-              showFigures={snap > 25}
+          {!planning && hasRoute && (
+            <RouteSummary route={route} onOpen={openPlanner} onRemoveLeg={removeRouteLeg}
               fillTo={snap === 25
                 ? Math.max(0, restPx - GRAB_ABOVE_ROUTE - 10 - safeBottom - HINT_RESERVE)
                 : 0} />
