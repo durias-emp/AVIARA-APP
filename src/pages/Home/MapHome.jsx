@@ -294,13 +294,23 @@ function RouteSummary({ route, onOpen, onRemoveLeg, onRemoveEnd, onReorder, onAd
   // decoration competing with the number they sat beside, and the word says
   // it better than a mark that has to be learned.
   const figure = ({ value, label, dim }) => (
-    <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+    <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
       <span style={{
-        fontSize: 9, fontWeight: 600, color: 'var(--map-ink-faint)',
+        // The whole word. These were cut to MC and VAR back when the figures
+        // shared a row with the two ends and each had a quarter of a phone to
+        // live in; they have the full width now, and a label a pilot has to
+        // expand in their head is not a label.
+        //
+        // Sized off the viewport so the four words fit the width they are
+        // spread across: a fixed size that fits MAGNETIC COURSE on a 430px
+        // phone wraps it on a 320px one.
+        fontSize: 'clamp(8px, 2.5vw, 10px)',
+        fontWeight: 600, color: 'var(--map-ink-faint)',
         letterSpacing: '0.4px', whiteSpace: 'nowrap', textTransform: 'uppercase',
       }}>{label}</span>
       <span style={{
-        fontSize: 16, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.3px',
+        fontSize: 'clamp(17px, 5.4vw, 22px)',
+        fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.3px',
         fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
         color: dim ? 'var(--map-ink-dim)' : 'var(--map-ink)',
       }}>{value}</span>
@@ -333,27 +343,36 @@ function RouteSummary({ route, onOpen, onRemoveLeg, onRemoveEnd, onReorder, onAd
       {hasFigures && (
         <div style={{
           position: 'relative', zIndex: 1,
-          // The same width as the field above, first figure on its left edge
-          // and last on its right, so the two read as one column of the same
-          // card. Packed left with a fixed gap they stopped short of VAR's
-          // slot and the row looked like it belonged to a narrower screen.
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-          gap: 12, flexWrap: 'wrap',
+          // The same width as the field above, so the two read as one column
+          // of the same card.
+          //
+          // A grid rather than a spread row, because the words are whole
+          // again: four of them do not fit across a phone, and a wrapping
+          // flex row left VARIATION hanging alone under a ragged edge. Tracks
+          // of at least 150px give two tidy columns on a phone and four on
+          // anything wide enough to hold them, without a breakpoint deciding
+          // it from a number written down here. 130 rather than 150 because
+          // 150 gave a 320px phone a single column and stacked all four into
+          // a tower; 130 pairs them there and still yields one row of four on
+          // anything wide.
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+          alignItems: 'flex-start', gap: '12px 10px',
         }}>
           {figure({
-            label: 'DIST',
+            label: 'Distance',
             value: `${route.distNm} NM`,
           })}
           {route.mc != null && figure({
-            label: 'MC',
+            label: 'Magnetic course',
             value: `${route.mc}\u00B0`,
           })}
           {route.tc != null && figure({
-            label: 'TC', dim: true,
+            label: 'True course', dim: true,
             value: `${route.tc}\u00B0`,
           })}
           {route.magVar != null && figure({
-            label: 'VAR', dim: true,
+            label: 'Variation', dim: true,
             value: `${parseFloat(route.magVar) >= 0 ? '+' : ''}${route.magVar}\u00B0`,
           })}
         </div>
