@@ -219,13 +219,19 @@ const TOOLS = [
 // this then read as a matched pair at the top and bottom of the map, and the
 // map either side of it comes back instead of being covered by card holding
 // nothing.
-function FloatingCard({ visible, bottom, compact = false, children }) {
+// stretch keeps the compact chrome and gives up the hug: the card spans the
+// same 18px insets as the drawer's content, so it sits flush with the route
+// field below it. A menu narrower than the input it floats over read as
+// belonging to something else.
+function FloatingCard({ visible, bottom, compact = false, stretch = false, children }) {
   return (
     <div style={{
       position: 'absolute', zIndex: 550, bottom,
-      ...(compact
+      ...(compact && !stretch
         ? { left: 0, right: 0, display: 'flex', justifyContent: 'center' }
-        : { left: 12, right: 12 }),
+        : compact
+          ? { left: 18, right: 18 }
+          : { left: 12, right: 12 }),
       transform: visible ? 'translateY(0) scale(1)' : 'translateY(16px) scale(0.97)',
       opacity: visible ? 1 : 0,
       pointerEvents: visible ? 'auto' : 'none',
@@ -237,7 +243,7 @@ function FloatingCard({ visible, bottom, compact = false, children }) {
         borderRadius: compact ? 16 : 18,
         padding: compact ? '9px 14px' : '16px 18px',
         boxShadow: compact ? '0 2px 10px rgba(0,0,0,0.18)' : '0 4px 20px rgba(0,0,0,0.12)',
-        ...(compact ? { width: 'fit-content', maxWidth: 'calc(100vw - 24px)' } : null),
+        ...(compact && !stretch ? { width: 'fit-content', maxWidth: 'calc(100vw - 24px)' } : null),
       }}>
         {children}
       </div>
@@ -1651,10 +1657,13 @@ export default function MapHome() {
   // The tile's 92px belongs to its label, so it goes when the label does. Left
   // on, it padded a fit-content card back out to nearly the full width, which
   // is a compact card in every respect except the one that was asked for.
-  const actionRow = (compact = false) => (
+  const actionRow = (compact = false, spread = false) => (
     <div style={{
       display: 'flex', alignItems: 'center',
-      justifyContent: compact ? 'center' : 'space-around',
+      // Spread across a stretched card the way the wide row spreads across
+      // the drawer, so the same three buttons hold the same positions whether
+      // they are on the sheet or floating over the map.
+      justifyContent: compact && !spread ? 'center' : 'space-around',
       gap: compact ? 18 : 10,
     }}>
       <button
@@ -1951,12 +1960,16 @@ export default function MapHome() {
         // as one object moving between heights, and this one read as a
         // different card arriving.
         compact
+        // Stretched over the route at rest, so the menu is as wide as the
+        // field it floats above; still hugging in the planner, where a full
+        // width card was covering the route being drawn.
+        stretch={!planning}
         bottom={planning
           ? `${vh - stopY(vh, 50) + 10}px`
           // Above the drawer, and above the recording stats when those are out
           // too, rather than on top of them.
           : `${restPx + (recording ? 132 : 0) + 10}px`}>
-        {actionRow(true)}
+        {actionRow(true, !planning)}
       </FloatingCard>
 
       {/* The one line the drawer says about itself, on the floor of the
