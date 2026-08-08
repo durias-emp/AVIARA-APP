@@ -98,6 +98,73 @@ export async function getAirportIdents() {
   return _identSet
 }
 
+// Searching the bundled set by ident or name.
+//
+// The alternates picker used a hand-written list of 92 US airports, so a
+// pilot flying out of MSLP could not file an alternate at all: nothing in
+// Central America was in it, and the search simply returned nothing, which
+// reads as "no such airport" rather than "not in our short list". This set is
+// worldwide, already bundled, already offline, and already what the corridor
+// analysis and ident validation use.
+//
+// Pure, and takes the rows rather than fetching them, so a caller can hold
+// the list in state and search it synchronously while typing. 34k rows is a
+// couple of milliseconds a keystroke; awaiting a promise per keystroke is
+// what would be slow.
+//
+// Accents are folded, because the fields this exists for are called Toncontín
+// and Óscar Arnulfo Romero, and nobody types those on a phone in the cockpit.
+const fold = (s) => (s ?? '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+// A name matches at the start of one of its words, not anywhere inside it.
+// A plain substring test answered "KLAS" with Niklason Lake Estates, because
+// "ni-KLAS-on" contains it. Word starts still find "Las Vegas" from "las
+// vegas" and Toncontin from "toncontin", which is how anyone actually
+// searches, and they stop a four-letter ident dragging in the alphabet.
+const startsWord = (text, qFold) => {
+  if (!text) return false
+  const t = fold(text)
+  return t.startsWith(qFold) || t.includes(' ' + qFold)
+}
+
+export function searchAirports(rows, query, { limit = 6, exclude, refPos, cityOf } = {}) {
+  const q = (query ?? '').trim()
+  if (!rows || q.length < 1) return []
+  const qUp = q.toUpperCase()
+  const qFold = fold(q)
+  const skip = exclude instanceof Set ? exclude : new Set(exclude ?? [])
+
+  const hits = []
+  for (const row of rows) {
+    const [ident, lat, lon, cls, name] = row
+    if (skip.has(ident)) continue
+
+    // Three ways to match, best first. An exact ident always wins: a pilot
+    // typing MGGT means MGGT, not the fourteen fields with Guatemala in the
+    // name.
+    const tier = ident === qUp ? 0
+      : ident.startsWith(qUp) ? 1
+      : (startsWord(name, qFold) || startsWord(cityOf?.(ident), qFold)) ? 2
+      : -1
+    if (tier < 0) continue
+
+    // Inside a tier, the nearest usable field wins when we know where the
+    // pilot is. An alternate 40 NM away beats one 2,000 NM away whatever its
+    // name, and that is the whole question this picker answers. With no
+    // reference position, fall back to size.
+    const distNm = refPos ? haversineNm(refPos[0], refPos[1], lat, lon) : null
+    hits.push({ ident, name, cls, lat, lon, distNm, tier })
+  }
+
+  hits.sort((a, b) =>
+    a.tier - b.tier ||
+    (a.distNm != null && b.distNm != null ? a.distNm - b.distNm : b.cls - a.cls) ||
+    a.ident.localeCompare(b.ident))
+
+  return hits.slice(0, limit)
+}
+
 // Frequencies/runways, keyed by ident — no lat/lon of its own, always used
 // alongside getAirports(). Dynamic import so the map's airport layer (and
 // anything else that doesn't need this) never pays for the ~2MB chunk.

@@ -7,6 +7,7 @@ import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
 import { FAA_AIRPORTS, FAA_DTPP_BASE } from '../shared/faaData'
 import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
 import { awcUrl, proxyJSON, lookupAirport, parseMetar, bearingDeg, haversineNm } from '../shared/awc'
+import { getAirports, searchAirports } from '../../../lib/aerodromes'
 
 // Parse DMS string "28-25-45.8000N" → decimal degrees
 function parseDMSAlt(dms) {
@@ -18,6 +19,12 @@ function parseDMSAlt(dms) {
   return val
 }
 
+// Cities for the US majors, from the hand-written list that used to BE the
+// search. The bundled worldwide records have a name and no city, and losing
+// "Las Vegas" as a way to find KLAS would be a step back for the fields it
+// does cover.
+const FAA_CITY = Object.fromEntries(FAA_AIRPORTS.map(a => [a.icao, a.city]))
+
 export function AlternatesItem({ item, isChecked, onToggle }) {
   const { aircraftId } = useActiveAircraft()
   const [open, setOpen]       = useState(false)
@@ -28,6 +35,13 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
   const [burnRate, setBurnRate] = useState(10)
 
   // Takeoff alternate state
+  // The worldwide field list, held here rather than fetched per keystroke.
+  //
+  // In the parent because AltCard is redefined on every render of this
+  // component, so React treats it as a new type and remounts it: state put
+  // inside it would be thrown away between keystrokes. Loaded once, searched
+  // synchronously.
+  const [airports, setAirports] = useState(null)
   const [toAlts, setToAlts]           = useState([])
   const [toQuery, setToQuery]         = useState('')
   const [toShowList, setToShowList]   = useState(false)
@@ -112,6 +126,15 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
     }).catch(() => {})
   }, [open, aircraftId])
 
+  // Loaded when the card opens rather than on mount: it is a 2 MB chunk and
+  // most flights never open this step.
+  useEffect(() => {
+    if (!open || airports) return
+    let cancelled = false
+    getAirports().then(rows => { if (!cancelled) setAirports(rows) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [open, airports])
+
   // Persist chosen alternates so the Flight Plan one-pager can read them. 
   // this list was previously local-only and vanished when the card closed.
   const altsRestored = useRef(false)
@@ -168,13 +191,19 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
     loading, setLoading, error, setError, suggestions, suggestLoad }) {
 
     const altMinLink = altMinUrl(refIcao)
-    const matches = query.length >= 1
-      ? FAA_AIRPORTS.filter(a =>
-          a.icao.startsWith(query.toUpperCase()) ||
-          a.name.toLowerCase().includes(query.toLowerCase()) ||
-          a.city.toLowerCase().includes(query.toLowerCase())
-        ).filter(a => !alts.find(x => x.icaoId === a.icao)).slice(0, 6)
-      : []
+    // Worldwide, and ranked by how near it is to the field being planned
+    // from. The old list was 92 US airports, so an alternate outside the
+    // United States could not be filed at all.
+    const matches = searchAirports(airports, query, {
+      // The field being planned from is not an alternate to itself, and it
+      // sorts to the top of every search that matches it, at 0 NM.
+      exclude: new Set([...alts.map(a => a.icaoId), refIcao].filter(Boolean)),
+      refPos,
+      // The hand list is gone as a source of airports and kept as a source of
+      // city names: the bundled records carry no city, and "Las Vegas" is how
+      // a pilot looks for KLAS.
+      cityOf: id => FAA_CITY[id],
+    })
 
     return (
       <div style={{ margin: '10px 14px 0', borderRadius: 12, background: 'var(--bg-card-2)', overflow: 'visible', display: 'flow-root' }}>
@@ -208,14 +237,21 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
               background: 'var(--bg-card-2)', borderTop: 'none',
               borderRadius: '0 0 8px 8px', overflow: 'hidden' }}>
               {matches.map((a, i) => (
-                <button key={a.icao} onMouseDown={() => addAlt(a.icao, refPos, refIcao, setAlts, setQuery, setShowList, setLoading, setError)}
+                <button key={a.ident} onMouseDown={() => addAlt(a.ident, refPos, refIcao, setAlts, setQuery, setShowList, setLoading, setError)}
                   style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none',
                     borderTop: i > 0 ? '0.5px solid var(--border)' : 'none',
                     padding: '8px 11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 9 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace', minWidth: 40 }}>{a.icao}</span>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text)' }}>{a.name}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{a.city}</div>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace', minWidth: 40 }}>{a.ident}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
+                    {/* The city where we have one, and how far otherwise: for
+                        an alternate, distance from the field being planned
+                        from is the number that decides it. */}
+                    <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
+                      {[FAA_CITY[a.ident], a.distNm != null ? `${Math.round(a.distNm)} NM from ${refIcao}` : null]
+                        .filter(Boolean).join(' · ') || ['Small', 'Medium', 'Large'][a.cls]}
+                    </div>
                   </div>
                 </button>
               ))}
