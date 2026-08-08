@@ -318,12 +318,17 @@ function RouteSummary({ route, onOpen, aircraftIcon, fillTo = 0, showFigures = t
       }}>
         {code && (
           <span style={{
-            // 26 now the ends have half the card each rather than a quarter.
-            // It was held at 21 because the aircraft stood on the block's edge
-            // and a turned 18px icon has a 25px bounding box; at the centre of
-            // a half there is about 40px of clearance either side instead of
-            // four, so the code can be read from arm's length again.
-            fontSize: 26, fontWeight: 800, color: 'var(--map-ink)',
+            // As big as the half will take, which is what the pilot reads
+            // from arm's length and across a cockpit.
+            //
+            // Sized off the viewport rather than fixed, because the limit is
+            // the aircraft standing between the two blocks: a turned 18px icon
+            // has a 25px bounding box, and a code that grows past its column's
+            // share runs into it. 12vw keeps roughly a finger's width of air
+            // either side of the icon on a 320px phone and on a 430px one,
+            // where a single number could only be right for one of them.
+            fontSize: 'clamp(26px, 12vw, 46px)',
+            fontWeight: 800, color: 'var(--map-ink)',
             letterSpacing: '-0.8px', lineHeight: 1, maxWidth: '100%',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{code}</span>
