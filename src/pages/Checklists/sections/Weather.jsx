@@ -128,7 +128,10 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
         lookupAirport(icao),
         fetch(awcUrl('metar', { ids: icao, format: 'raw', hours: '3' })).then(r => r.text()),
       ])
-      if (apt.status !== 'fulfilled') throw new Error('Airport not found')
+      // The lookup's own reason, not a fresh guess at it. Rewriting every
+      // rejection as "Airport not found" told a pilot with no signal that the
+      // alternate they were adding does not exist.
+      if (apt.status !== 'fulfilled') throw apt.reason ?? new Error('Airport not found')
       const airport = apt.value
       const raw = metarRaw.status === 'fulfilled' ? (metarRaw.value || '').trim() : ''
       const wx = raw.length > 8 ? parseMetar(raw) : null
@@ -140,7 +143,7 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
       }
       setAlts(prev => [...prev, { ...airport, raw, wx, distNm, bearing, refIcao }])
     } catch (e) {
-      setError(e.message || 'Airport not found')
+      setError(e.userMessage || e.message || 'Airport not found')
     } finally { setLoading(false) }
   }
 

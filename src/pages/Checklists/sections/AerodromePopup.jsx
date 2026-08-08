@@ -29,6 +29,11 @@ const FREQ_GROUPS = [
 
 export default function AerodromePopup({ field, onClose, onSetAlternate, onDivert }) {
   const [details, setDetails] = useState(null)
+  // Why there are no details, when there are none. "No runway data published
+  // for KXYZ" is a statement about the world, and the app was making it every
+  // time it simply could not ask. Offline, that told a pilot a field had no
+  // runways.
+  const [detailsErr, setDetailsErr] = useState(null)
   const [wx, setWx] = useState(null)          // { metar, station, distNm|0 } | 'none'
   const [loading, setLoading] = useState(true)
 
@@ -40,8 +45,8 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
     let cancelled = false
 
     lookupAirport(field.ident)
-      .then(d => { if (!cancelled) setDetails(d) })
-      .catch(() => { if (!cancelled) setDetails(null) })
+      .then(d => { if (!cancelled) { setDetails(d); setDetailsErr(null) } })
+      .catch(e => { if (!cancelled) { setDetails(null); setDetailsErr(e) } })
       .finally(() => { if (!cancelled) setLoading(false) })
 
     // Its own report first. Only when the field does not publish one does the
@@ -58,6 +63,9 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
 
   if (!field) return null
 
+  // Only an outage says "unknown". A service that answered and had nothing is
+  // the field genuinely publishing nothing, which is worth saying plainly.
+  const unreachable = detailsErr?.reachable === false
   const runways = details?.runways ?? []
   // Longest first: on an unplanned landing that is the number that decides.
   // parseInt copes with the "10,000 ft" formatting by reading up to the comma,
@@ -135,7 +143,9 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
         <Section title="Runways">
           {loading && <Muted>Loading…</Muted>}
           {!loading && !runways.length && (
-            <Muted>No runway data published for {field.ident}. Check the Chart Supplement.</Muted>
+            <Muted>{unreachable
+              ? `Cannot reach the airport service, so ${field.ident}'s runways are unknown. Check your connection.`
+              : `No runway data published for ${field.ident}. Check the Chart Supplement.`}</Muted>
           )}
           {byLength.map(r => (
             <div key={r.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '3px 0' }}>
@@ -183,7 +193,9 @@ export default function AerodromePopup({ field, onClose, onSetAlternate, onDiver
         <Section title="Frequencies">
           {loading && <Muted>Loading…</Muted>}
           {!loading && !details?.frequencies?.length && (
-            <Muted>None published for {field.ident} in our data. Check the Chart Supplement or the AIP.</Muted>
+            <Muted>{unreachable
+              ? `Cannot reach the airport service, so ${field.ident}'s frequencies are unknown. Check your connection.`
+              : `None published for ${field.ident} in our data. Check the Chart Supplement or the AIP.`}</Muted>
           )}
           {grouped.map(g => (
             <div key={g.key} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '3px 0' }}>
