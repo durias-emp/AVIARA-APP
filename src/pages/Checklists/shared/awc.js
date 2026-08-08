@@ -115,22 +115,56 @@ async function bundledDetails(ids) {
   return { frequencies, runways, source }
 }
 
-export async function fetchAWC(id) {
-  // Use our Vercel proxy. Avoids CORS and third-party rate limits
+// An airport from the AWC proxy, with the reason it came back empty.
+//
+// "This airport does not exist" and "I could not ask" are different answers
+// and used to be the same one: every failure was caught and turned into null,
+// so a pilot with no signal, or a build serving no API at all, was told to
+// check ICAO codes that were perfectly correct. That is the worst kind of
+// error message, because it sends someone to look for a mistake they did not
+// make.
+//
+// `reachable` is false only when the service could not be asked: the request
+// threw, the status was not ok, or the body was not JSON. A clean answer that
+// simply contains no such airport is reachable and empty, which is a real
+// "not found" and says so.
+export async function fetchAWCResult(id) {
+  let reachable = false
+
+  const ask = async (path, params) => {
+    const res = await fetch(awcUrl(path, params), { signal: AbortSignal.timeout(8000) })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const text = await res.text()
+
+    // AWC answers an unknown identifier with 204 and an empty body. That is
+    // the service replying "no such station", which is an answer, so it counts
+    // as reached. Parsing it as JSON throws, and reading that throw as "the
+    // network is down" is what made a mistyped code report a connection
+    // problem.
+    if (!text.trim()) { reachable = true; return null }
+
+    // A body that will not parse is nobody answering. A preview server with no
+    // API returns 200 with index.html here, which is the case that started
+    // all this, so the status alone proves nothing and the body has to.
+    const data = JSON.parse(text)
+    reachable = true
+    return data
+  }
+
   try {
-    const res = await fetch(awcUrl('airport', { ids: id, format: 'json' }), { signal: AbortSignal.timeout(8000) })
-    const data = await res.json()
-    if (Array.isArray(data) && data.length) return data[0]
-  } catch { /* ignore */ }
+    const data = await ask('airport', { ids: id, format: 'json' })
+    if (Array.isArray(data) && data.length) return { airport: data[0], reachable: true }
+  } catch { /* fall through to the METAR station */ }
+
   try {
-    const res = await fetch(awcUrl('metar', { ids: id, format: 'json', hours: '3' }), { signal: AbortSignal.timeout(8000) })
-    const metar = await res.json()
+    const metar = await ask('metar', { ids: id, format: 'json', hours: '3' })
     if (Array.isArray(metar) && metar.length) {
       const m = metar[0]
-      return { icaoId: m.icaoId || id, faaId: m.stationId || id, name: m.site, lat: m.lat, lon: m.lon, elev: m.elev, state: m.state, country: m.country, tower: null, rwyNum: null }
+      return { airport: { icaoId: m.icaoId || id, faaId: m.stationId || id, name: m.site, lat: m.lat, lon: m.lon, elev: m.elev, state: m.state, country: m.country, tower: null, rwyNum: null }, reachable: true }
     }
-  } catch { /* ignore */ }
-  return null
+  } catch { /* both failed */ }
+
+  return { airport: null, reachable }
 }
 
 export async function lookupAirport(icao) {
@@ -139,13 +173,27 @@ export async function lookupAirport(icao) {
   const [detResult, awcResult] = await Promise.allSettled([
     // ICAO first, then the FAA-style ident small US fields are keyed by
     bundledDetails([id, id.replace(/^K/, '')]),
-    fetchAWC(id),
+    fetchAWCResult(id),
   ])
 
   const det = detResult.status === 'fulfilled' ? detResult.value : { frequencies: [], runways: [], source: null }
-  const awc = awcResult.status === 'fulfilled' ? awcResult.value : null
+  const awcRes = awcResult.status === 'fulfilled' ? awcResult.value : { airport: null, reachable: false }
+  const awc = awcRes.airport
 
-  if (!awc && !det.frequencies.length && !det.runways.length) throw new Error('not found')
+  // Nothing anywhere. Which of the two reasons it was decides what the pilot
+  // is told: an identifier to re-check, or a service to wait for. The bundled
+  // list is on the device and cannot be unreachable, so if it had nothing
+  // either, an unreachable AWC is the whole story.
+  if (!awc && !det.frequencies.length && !det.runways.length) {
+    const err = new Error(awcRes.reachable
+      ? `No airport data for ${id}`
+      : 'Airport service unreachable')
+    err.reachable = awcRes.reachable
+    err.userMessage = awcRes.reachable
+      ? `No data published for ${id}`
+      : 'Cannot reach the airport service. Check your connection.'
+    throw err
+  }
 
   // AWC runways carry gradient and alignment; the bundled NASR list carries
   // length and surface. Neither is a superset, and letting AWC win outright. 

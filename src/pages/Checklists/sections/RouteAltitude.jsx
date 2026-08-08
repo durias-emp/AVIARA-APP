@@ -13,7 +13,7 @@ import { get, put } from '../../../lib/db'
 import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
 import { usePlannerHost } from '../shared/PlannerHost'
 import { FAA_CHART_CYCLE } from '../shared/faaData'
-import { awcUrl, proxyFetch, fetchAWC, lookupAirport, parseMetar, bearingDeg, haversineNm } from '../shared/awc'
+import { awcUrl, proxyFetch, fetchAWCResult, lookupAirport, parseMetar, bearingDeg, haversineNm } from '../shared/awc'
 import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expandAirway, getAirwayGeometry, getWorldRef } from '../../../lib/waypoints'
 import { sampleRoute } from '../../../lib/corridor'
 import { analyzeTerrain, MOUNTAIN_FT } from '../../../lib/terrain'
@@ -1903,9 +1903,23 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
   // app sets out to serve as well as the majors. AWC still goes first: when
   // it does answer it carries elevation and runway detail the bundled list
   // has no room for. See findAirport() for the shared fallback.
+  // The bundled list is the fallback and it is on the device, so it answers
+  // whether or not there is a network. Only when BOTH have nothing, and the
+  // service was the one that could not be asked, is this a connection problem
+  // rather than a bad identifier. Reported, because "Airport not found" under
+  // a correctly typed KSFO is the app blaming the pilot for its own outage.
   async function resolveEndpoint(id) {
-    return (await fetchAWC(id)) ?? (await findAirport(id))
+    const { airport, reachable } = await fetchAWCResult(id)
+    if (airport) return airport
+    const bundled = await findAirport(id)
+    if (bundled) return bundled
+    return { notFound: true, reachable }
   }
+
+  const endpointError = (result) =>
+    result?.reachable === false
+      ? 'Cannot reach the airport service'
+      : 'Airport not found'
 
   async function validateDep() {
     const id = dep.trim().toUpperCase()
@@ -1913,11 +1927,11 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setDepChk(true); setDepErr(null)
     const result = await resolveEndpoint(id)
     setDepChk(false)
-    if (result) {
+    if (result && !result.notFound) {
       setDep(id); setDepVal(true)
       if (result.lat != null) depPosHint.current = [parseFloat(result.lat), parseFloat(result.lon)]
     }
-    else setDepErr('Airport not found')
+    else setDepErr(endpointError(result))
   }
 
   async function validateDest() {
@@ -1926,8 +1940,8 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     setDestChk(true); setDestErr(null)
     const result = await resolveEndpoint(id)
     setDestChk(false)
-    if (result) { setDest(id); setDestVal(true) }
-    else setDestErr('Airport not found')
+    if (result && !result.notFound) { setDest(id); setDestVal(true) }
+    else setDestErr(endpointError(result))
   }
 
   // ICAO codes are always exactly 4 characters (maxLength on both inputs). 
@@ -2787,19 +2801,37 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
       // both have to survive being recalculated, which is what broke: the
       // first calculation worked because the position was handed in, and
       // every one after it went looking for an ICAO code that never existed.
+      // Reports which end failed and why, because "Could not calculate, check
+      // both ICAO codes" was the answer to every failure including the ones
+      // that were nothing to do with the codes. A pilot with no signal was
+      // sent to proof-read KRNO.
       const resolveEnd = async (id, pos) => {
         if (pos) return { lat: pos[0], lon: pos[1] }
         const coord = parseAvCoord(id)
         if (coord) return coord
         const saved = await resolveWaypoint(id)
         if (saved) return { lat: saved.lat, lon: saved.lon }
-        return fetchAWC(id)
+        const { airport, reachable } = await fetchAWCResult(id)
+        if (airport) return airport
+        return { failedId: id, reachable }
       }
       const [da, dsta] = await Promise.all([
         resolveEnd(depId, over.depPos),
         resolveEnd(destId, over.destPos),
       ])
-      if (!da?.lat || !dsta?.lat) throw new Error('Coordinates not found')
+      if (!da?.lat || !dsta?.lat) {
+        // Whichever end actually failed gets named. Both failing on an
+        // unreachable service is one problem, not two, so it is said once.
+        const bad = [da, dsta].filter(r => r?.failedId)
+        const offline = bad.some(r => r.reachable === false)
+        const err = new Error('Coordinates not found')
+        err.userMessage = offline
+          ? 'Cannot reach the airport service. Check your connection, or pick the point on the map.'
+          : bad.length
+            ? `${bad.map(r => r.failedId).join(' and ')} not found. Check the identifier, or pick the point on the map.`
+            : 'Could not place both ends of the route. Pick the point on the map.'
+        throw err
+      }
 
       const depLat = parseFloat(da.lat), depLon = parseFloat(da.lon)
       const dstLat = parseFloat(dsta.lat), dstLon = parseFloat(dsta.lon)

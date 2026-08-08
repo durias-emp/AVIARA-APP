@@ -312,7 +312,10 @@ export function AirportItem({ item, isChecked, onToggle }) {
     setAptError(null)
     lookupAirport(viewIcao)
       .then(d => { setAptData(d); setAptLoading(false) })
-      .catch(() => { setAptError('Airport data unavailable'); setAptLoading(false) })
+      // The lookup says whether it could not reach the service or simply had
+      // nothing published, and those send a pilot to two different places.
+      // "Airport data unavailable" for both told them neither.
+      .catch(e => { setAptError(e?.userMessage || 'Airport data unavailable'); setAptLoading(false) })
   }, [open, viewIcao])
 
 
