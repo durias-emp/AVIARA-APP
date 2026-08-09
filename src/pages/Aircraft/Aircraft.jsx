@@ -247,7 +247,9 @@ export const CUSTOM_BLANK = {
   vspeeds: { vs: '', vs0: '', vr: '', vx: '', vy: '', vg: '', va: '', vfe: '', vno: '', vne: '', vref: '', cruise: '' },
   fuel: { total: '', usable: '', type: '100LL' },
   burnRate: { climb: '', cruise: '' },
-  perf: { toRoll: '', to50ft: '', ldgRoll: '', ldg50ft: '', roc: '', ceiling: '', hoverIGE: '', hoverOGE: '' },
+  // `pressurised` is null rather than false: not stated, so the descent model
+  // infers it from the ceiling and says it did. False here would be a claim.
+  perf: { toRoll: '', to50ft: '', ldgRoll: '', ldg50ft: '', roc: '', ceiling: '', hoverIGE: '', hoverOGE: '', pressurised: null },
   notes: '',
 }
 
@@ -1924,6 +1926,18 @@ export default function Aircraft({ aircraftId, onBack, onDeleted, onHangar }) {
                   correct from the POH. The templates have always carried one. */}
               <Field label="Service ceiling" value={profile.perf?.ceiling ?? ''}
                 onChange={v => patch('perf', 'ceiling', v)} placeholder="e.g. 14,000 ft" />
+              {/* Sets the descent rate the altitude advisor plans with, which is
+                  what decides whether a high cruise pays back on a short leg.
+                  Its own row, and a choice rather than a field: it is not a
+                  figure off a chart. */}
+              <div style={{ gridColumn: '1 / -1' }}>
+                <Choice
+                  label="Cabin"
+                  hint="Decides the descent rate used when working out whether a cruise altitude is worth the climb to it."
+                  value={profile.perf?.pressurised ?? null}
+                  options={[{ value: false, label: 'Unpressurised' }, { value: true, label: 'Pressurised' }]}
+                  onChange={v => patch('perf', 'pressurised', v)} />
+              </div>
             </div>
           </Section>
         )}
@@ -2155,6 +2169,47 @@ export function Field({ label, value, onChange, placeholder, type = 'text' }) {
           fontVariantNumeric: 'tabular-nums',
         }}
       />
+    </div>
+  )
+}
+
+// A field whose answer is one of a few words rather than a number. Nothing is
+// selected until the pilot picks: an unanswered question has to look unanswered,
+// because the code behind it treats "not stated" differently from either answer.
+export function Choice({ label, hint, value, options, onChange }) {
+  return (
+    <div>
+      <label style={{
+        display: 'flex', alignItems: 'flex-end', minHeight: 30, lineHeight: 1.35,
+        fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 500,
+      }}>
+        {label}
+      </label>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {options.map(o => {
+          const on = value === o.value
+          return (
+            <button
+              key={String(o.value)}
+              type="button"
+              onClick={() => onChange(on ? null : o.value)}
+              aria-pressed={on}
+              style={{
+                flex: 1, padding: '10px 8px', borderRadius: 'var(--r-sm)',
+                border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                background: on ? 'var(--text)' : 'var(--bg-card-2)',
+                color: on ? 'var(--bg)' : 'var(--text-secondary)',
+                fontSize: 14, fontWeight: on ? 700 : 500,
+                WebkitTapHighlightColor: 'transparent',
+              }}>{o.label}</button>
+          )
+        })}
+      </div>
+      {hint && (
+        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 6, lineHeight: 1.35 }}>
+          {hint}
+        </div>
+      )}
     </div>
   )
 }

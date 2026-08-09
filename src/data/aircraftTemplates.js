@@ -20,7 +20,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '43', vs0: '35', vx: '55', vy: '67', vg: '60', va: '90', vfe: '85', vno: '107', vne: '149', vref: '54', cruise: '107' },
     fuel: { total: '26 USG', usable: '24.5 USG', type: '100LL' },
     burnRate: { climb: '6.1 GPH', cruise: '6.1 GPH' },
-    perf: { toRoll: '735 ft', to50ft: '1,340 ft', ldgRoll: '475 ft', ldg50ft: '1,200 ft', roc: '715 fpm', ceiling: '14,700 ft' },
+    perf: { toRoll: '735 ft', to50ft: '1,340 ft', ldgRoll: '475 ft', ldg50ft: '1,200 ft', roc: '715 fpm', ceiling: '14,700 ft', pressurised: false },
     notes: 'VA at MTOW (1,670 lb). VFE applies all flap settings. Standard avgas trainer.',
   },
   {
@@ -33,7 +33,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '48', vs0: '40', vx: '62', vy: '74', vg: '68', va: '105', vfe: '85', vno: '129', vne: '163', vref: '62', cruise: '122' },
     fuel: { total: '56 USG', usable: '53 USG', type: '100LL' },
     burnRate: { climb: '11.5 GPH', cruise: '8.5 GPH' },
-    perf: { toRoll: '960 ft', to50ft: '1,630 ft', ldgRoll: '575 ft', ldg50ft: '1,335 ft', roc: '730 fpm', ceiling: '14,000 ft' },
+    perf: { toRoll: '960 ft', to50ft: '1,630 ft', ldgRoll: '575 ft', ldg50ft: '1,335 ft', roc: '730 fpm', ceiling: '14,000 ft', pressurised: false },
     notes: '180 hp IO-360. VFE 110 kt (first 10° flap), 85 kt (10–30°). VA reduces with weight.',
   },
   {
@@ -46,7 +46,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '50', vs0: '45', vx: '64', vy: '76', vg: '76', va: '113', vfe: '102', vno: '125', vne: '154', vref: '66', cruise: '128' },
     fuel: { total: '50 USG', usable: '48 USG', type: '100LL' },
     burnRate: { climb: '11.5 GPH', cruise: '10 GPH' },
-    perf: { toRoll: '870 ft', to50ft: '1,600 ft', ldgRoll: '600 ft', ldg50ft: '1,390 ft', roc: '667 fpm', ceiling: '13,240 ft' },
+    perf: { toRoll: '870 ft', to50ft: '1,600 ft', ldgRoll: '600 ft', ldg50ft: '1,390 ft', roc: '667 fpm', ceiling: '13,240 ft', pressurised: false },
     notes: 'Low wing, 180 hp O-360. Electric fuel pump ON for T/O & landing. VY = VG (76 kt). Differential braking for steering.',
   },
   {
@@ -59,7 +59,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '50', vs0: '41', vx: '60', vy: '84', vg: '70', va: '110', vfe: '100', vno: '140', vne: '175', vref: '62', cruise: '145' },
     fuel: { total: '92 USG', usable: '87 USG', type: '100LL' },
     burnRate: { climb: '17 GPH', cruise: '14 GPH' },
-    perf: { toRoll: '795 ft', to50ft: '1,514 ft', ldgRoll: '590 ft', ldg50ft: '1,350 ft', roc: '924 fpm', ceiling: '18,100 ft' },
+    perf: { toRoll: '795 ft', to50ft: '1,514 ft', ldgRoll: '590 ft', ldg50ft: '1,350 ft', roc: '924 fpm', ceiling: '18,100 ft', pressurised: false },
     notes: '230 hp IO-540, constant-speed prop, cowl flaps. VFE 140 (10°) / 120 (20°) / 100 (30°). Turbo T182T differs at altitude.',
   },
   {
@@ -72,7 +72,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '73', vs0: '60', vx: '88', vy: '102', vg: '88', va: '133', vfe: '110', vno: '176', vne: '205', vref: '79', cruise: '183' },
     fuel: { total: '94.5 USG', usable: '92 USG', type: '100LL' },
     burnRate: { climb: '19 GPH', cruise: '16.5 GPH' },
-    perf: { toRoll: '1,082 ft', to50ft: '1,628 ft', ldgRoll: '693 ft', ldg50ft: '1,178 ft', roc: '1,270 fpm', ceiling: '17,500 ft' },
+    perf: { toRoll: '1,082 ft', to50ft: '1,628 ft', ldgRoll: '693 ft', ldg50ft: '1,178 ft', roc: '1,270 fpm', ceiling: '17,500 ft', pressurised: false },
     notes: '310 hp IO-550-N, composite. CAPS parachute deploy ≤ 140 KIAS. Single power lever. VFE 150 kt (50% flap), 110 kt (full).',
   },
   {
@@ -85,7 +85,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '78', vs0: '61', vx: '72', vy: '104', vg: '95', va: '149', vfe: '95', vno: '175', vne: '175', vref: '82', cruise: '185' },
     fuel: { total: '335.6 USG', usable: '332 USG', type: 'Jet-A' },
     burnRate: { climb: '80 GPH', cruise: '62 GPH' },
-    perf: { toRoll: '1,365 ft', to50ft: '2,055 ft', ldgRoll: '950 ft', ldg50ft: '1,795 ft', roc: '1,275 fpm', ceiling: '25,000 ft' },
+    perf: { toRoll: '1,365 ft', to50ft: '2,055 ft', ldgRoll: '950 ft', ldg50ft: '1,795 ft', roc: '1,275 fpm', ceiling: '25,000 ft', pressurised: false },
     notes: 'PT6A-140, 867 SHP. VMO replaces Vno/Vne. Inertial separator reduces perf. Rotate ~65–70 kt. Cargo pod ~1,090 lb.',
   },
   {
@@ -98,7 +98,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '67', vs0: '67', vx: '120', vy: '130', vg: '120', va: '166', vfe: '130', vno: '240', vne: '240', vref: '88', cruise: '290' },
     fuel: { total: '406.8 USG', usable: '402 USG', type: 'Jet-A' },
     burnRate: { climb: '75 GPH', cruise: '58 GPH' },
-    perf: { toRoll: '1,180 ft', to50ft: '2,485 ft', ldgRoll: '1,800 ft', ldg50ft: '2,170 ft', roc: '1,920 fpm', ceiling: '30,000 ft' },
+    perf: { toRoll: '1,180 ft', to50ft: '2,485 ft', ldgRoll: '1,800 ft', ldg50ft: '2,170 ft', roc: '1,920 fpm', ceiling: '30,000 ft', pressurised: true },
     notes: 'PT6E-67XP, 1,200 SHP. EPECS (FADEC + autothrottle), single-lever. Pressurized to 30,000 ft. VMO 240 KCAS / M0.49. VFE by flap setting. Verify AFM.',
   },
   {
@@ -111,7 +111,7 @@ export const TEMPLATES = [
     vspeeds: { vs: '78', vs0: '81', vx: '125', vy: '140', vg: '135', va: '184', vfe: '158', vno: '260', vne: '260', vref: '109', cruise: '312' },
     fuel: { total: '544 USG', usable: '539 USG', type: 'Jet-A' },
     burnRate: { climb: '130 GPH', cruise: '96 GPH' },
-    perf: { toRoll: '1,940 ft', to50ft: '3,300 ft', ldgRoll: '2,100 ft', ldg50ft: '2,550 ft', roc: '2,731 fpm', ceiling: '35,000 ft' },
+    perf: { toRoll: '1,940 ft', to50ft: '3,300 ft', ldgRoll: '2,100 ft', ldg50ft: '2,550 ft', roc: '2,731 fpm', ceiling: '35,000 ft', pressurised: true },
     notes: '2× PT6A-60A (1,050 SHP). Pressurized, winglets. VMO 260 KIAS / M0.58. V1 ≈ 99, Vr ≈ 104, V2 ≈ 109, Vmca 93. Compute per weight/condition. VFE 202 kt approach, 158 kt full. Burn at LRC FL350.',
   },
   // ── Helicopters ─────────────────────────────────────────
@@ -125,7 +125,7 @@ export const TEMPLATES = [
     vspeeds: { vne: '140', vy: '60', vx: '', auto: '65', cruise: '115' },
     fuel: { total: '73.6 USG', usable: '73.6 USG', type: 'Jet-A' },
     burnRate: { climb: '23 GPH', cruise: '23 GPH' },
-    perf: { roc: '1,000 fpm', ceiling: '14,000 ft DA', hoverIGE: '>10,000 ft DA', hoverOGE: '>10,000 ft DA' },
+    perf: { roc: '1,000 fpm', ceiling: '14,000 ft DA', hoverIGE: '>10,000 ft DA', hoverOGE: '>10,000 ft DA', pressurised: false },
     notes: 'RR300 (270 SHP T/O). 2-blade main rotor, crashworthy tanks. Vne decreases with DA and weight. Use HIGE/HOGE hover ceiling charts for performance planning.',
   },
   {
@@ -138,7 +138,7 @@ export const TEMPLATES = [
     vspeeds: { vne: '130', vy: '56', vx: '', auto: '69', cruise: '117' },
     fuel: { total: '91 USG', usable: '91 USG', type: 'Jet-A' },
     burnRate: { climb: '30 GPH', cruise: '29 GPH' },
-    perf: { roc: '1,280 fpm', ceiling: '13,500 ft DA', hoverIGE: '9,400 ft DA', hoverOGE: '6,000 ft DA' },
+    perf: { roc: '1,280 fpm', ceiling: '13,500 ft DA', hoverIGE: '9,400 ft DA', hoverOGE: '6,000 ft DA', pressurised: false },
     notes: 'Allison/RR 250-C20B/J, 420 SHP derated (~317 SHP at transmission limit). 2-blade semi-rigid rotor. Vne reduces with altitude/temp/weight. Range ~385 nm.',
   },
   {
@@ -151,7 +151,7 @@ export const TEMPLATES = [
     vspeeds: { vne: '155', vy: '62', vx: '', auto: '65', cruise: '135' },
     fuel: { total: '143 USG', usable: '143 USG', type: 'Jet-A' },
     burnRate: { climb: '50 GPH', cruise: '36 GPH' },
-    perf: { roc: '1,670 fpm', ceiling: '23,000 ft DA', hoverIGE: '>22,960 ft DA', hoverOGE: '21,390 ft DA' },
+    perf: { roc: '1,670 fpm', ceiling: '23,000 ft DA', hoverIGE: '>22,960 ft DA', hoverOGE: '21,390 ft DA', pressurised: false },
     notes: 'Safran Arriel 2D, 952 SHP, dual-channel FADEC. 3-blade Starflex rotor. External MTOW 6,173 lb (sling load 3,086 lb). Vne decreases with alt/temp.',
   },
 ]

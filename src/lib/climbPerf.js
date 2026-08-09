@@ -11,10 +11,34 @@
 // `assumed` so the UI can say which numbers are the pilot's and which are ours.
 
 const ISA_LAPSE = 6.87535e-6      // per foot, standard atmosphere
-const DESCENT_FPM = 500           // comfortable, unpressurised, ears intact
 const CLIMB_SPEED_FACTOR = 0.85   // Vy is slower than cruise
 const DESCENT_SPEED_FACTOR = 1.05 // and descent is faster
 const DESCENT_BURN_FACTOR = 0.6
+
+// What limits a descent is ears, not the aeroplane, and which set of ears
+// depends on whether there is a pressurisation system between them and the
+// outside air.
+//
+// Unpressurised, the cabin is the outside, so 500 fpm is the comfortable
+// figure. Pressurised, the cabin comes down at roughly that rate while the
+// aeroplane comes down three to four times faster, which is why a turboprop
+// descends at 1,500 fpm and nobody on board minds.
+//
+// One rate for everything used to be 500, and it was quietly deciding
+// altitudes: a PC-12 leaving FL180 was modelled as needing 106 NM to get back
+// down, so on a 109 NM leg every altitude that cleared the terrain was thrown
+// out as "climb and descent use up the leg" and the card answered that no
+// cruising altitude worked at all. For a route PC-12s fly daily.
+const DESCENT_FPM_UNPRESSURISED = 500
+const DESCENT_FPM_PRESSURISED = 1500
+
+// Where the guess comes from when a profile does not say. Above 25,000 ft an
+// unpressurised cabin stops being practical whatever the oxygen system, so a
+// ceiling above it means pressurised. It is deliberately strict rather than
+// generous: a Caravan tops out at exactly 25,000 and is not pressurised, and
+// guessing pressurised is the direction that makes high altitudes look cheaper
+// than they are.
+const PRESSURISED_CEILING_FT = 25000
 
 // A number out of a string that carries its unit: '1,081 lb' -> 1081.
 export function num(v) {
@@ -68,7 +92,15 @@ export function parseAircraftPerf(profile) {
   const ceilRaw = num(profile.perf?.ceiling)
   const burnClimbRaw = num(profile.burnRate?.climb)
 
+  const pressRaw = profile.perf?.pressurised
+  const ceilingFt = ceilRaw ?? def.ceilingFt
+  const pressurised = typeof pressRaw === 'boolean'
+    ? pressRaw
+    : ceilingFt > PRESSURISED_CEILING_FT
+
   return {
+    pressurised,
+    descentFpm: pressurised ? DESCENT_FPM_PRESSURISED : DESCENT_FPM_UNPRESSURISED,
     tasKt,
     // The reference altitude for the published cruise speed. Book cruise
     // figures are quoted at 6,000–8,000 ft for pistons; using sea level would
@@ -77,13 +109,18 @@ export function parseAircraftPerf(profile) {
     burnCruiseGph,
     burnClimbGph: burnClimbRaw ?? (burnCruiseGph ? burnCruiseGph * 1.25 : 0),
     rocFpm: rocRaw ?? def.rocFpm,
-    serviceCeilingFt: ceilRaw ?? def.ceilingFt,
+    serviceCeilingFt: ceilingFt,
     hCritFt: def.hCritFt,
     klass,
     assumed: {
       roc: rocRaw == null,
       ceiling: ceilRaw == null,
       burnClimb: burnClimbRaw == null,
+      // Only worth saying when the guess came out pressurised. That is the
+      // direction that makes a fast descent, and a fast descent is what lets a
+      // high altitude look worth the climb. Guessing unpressurised costs
+      // nothing but a conservative answer.
+      pressurised: typeof pressRaw !== 'boolean' && pressurised,
     },
   }
 }
@@ -139,7 +176,7 @@ export function climbTo(perf, fromFt, toFt, hwKt = 0) {
 // high altitude does not pay on a short leg.
 export function descentFrom(perf, fromFt, toFt, hwKt = 0) {
   if (!perf || fromFt <= toFt) return { minutes: 0, gallons: 0, distNm: 0 }
-  const minutes = (fromFt - toFt) / DESCENT_FPM
+  const minutes = (fromFt - toFt) / (perf.descentFpm || DESCENT_FPM_UNPRESSURISED)
   const midTas = tasAt(perf, (fromFt + toFt) / 2) * DESCENT_SPEED_FACTOR
   return {
     minutes,

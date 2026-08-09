@@ -1582,6 +1582,7 @@ function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick, brief, brie
     'no-aircraft-performance': 'no aircraft performance set. Climb cost not considered',
     'assumed-climb-performance': `climb rate and ceiling assumed (${acPerf?.rocFpm} fpm, ${acPerf?.serviceCeilingFt?.toLocaleString()} ft). Set them on the Aircraft page`,
     'terrain-unavailable': 'terrain data unavailable. Clearance not checked',
+    'assumed-pressurised': `a pressurised cabin was assumed from the ${acPerf?.serviceCeilingFt?.toLocaleString()} ft ceiling, so descent is planned at ${acPerf?.descentFpm?.toLocaleString()} fpm. Set it on the Aircraft page`,
     'flight-rules-not-modelled': `${advice.flightRules} rules are not modelled. The altitudes are listed as VFR, and neither the VFR cloud check nor the IFR floors have been applied`,
   }
 

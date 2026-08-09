@@ -165,6 +165,10 @@ export async function recommendCruise(waypoints, {
   if (atmo.status !== 'ok') degraded.push('winds-aloft-unavailable')
   if (!perf) degraded.push('no-aircraft-performance')
   else if (perf.assumed.roc || perf.assumed.ceiling) degraded.push('assumed-climb-performance')
+  // Separate from the above, and only when the guess came out pressurised. That
+  // is the one that shortens the descent, and a short descent is what lets a
+  // high altitude look like it pays for its climb.
+  if (perf?.assumed.pressurised) degraded.push('assumed-pressurised')
   if (terrain?.status !== 'ok') degraded.push('terrain-unavailable')
   // The gates below test for IFR and for VFR by name, so a rule that is neither
   // collects the IFR floors and the VFR cloud check alike: an altitude offered
