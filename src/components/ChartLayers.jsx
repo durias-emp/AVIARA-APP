@@ -33,6 +33,7 @@ import { tfrColor } from '../lib/tfr'
 import {
   AirportLayer, HeliportLayer, SeaplaneBaseLayer, RadarLayer, FlightCategoryLayer,
 } from './aerodromeLayers'
+import TilePrefetch from './TilePrefetch'
 
 // A transparent 1px PNG. A missing chart tile is a hole in the mosaic, not an
 // error, and the browser's broken-image glyph tiled across the map is worse
@@ -51,12 +52,28 @@ const FAA = 'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/service
 // invalidates them.
 export function Basemap({ dark = false }) {
   const style = dark ? 'dark_all' : 'rastertiles/voyager'
-  return (
+  return (<>
     <TileLayer
       key={style}
       url={`https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png`}
+      // Grey patches on zoom and pan were mostly self-inflicted. keepBuffer
+      // holds three rings of tiles past the edges instead of throwing them
+      // away the moment they scroll off, and updateWhenIdle=false starts
+      // fetches DURING a drag rather than after the finger settles, which on
+      // a phone is the difference between tiles arriving with the motion and
+      // arriving a beat after it.
+      keepBuffer={6}
+      updateWhenIdle={false}
+      // CORS, same as the flight-image exporter already uses on these tiles,
+      // so the service worker can store real responses it is allowed to
+      // count and expire rather than opaque ones it cannot.
+      crossOrigin="anonymous"
       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' />
-  )
+    {/* And the tiles nobody asked for yet: the zoom levels underneath the
+        view, fetched while the map sits still, so zooming out lands on a map
+        that is already there. */}
+    <TilePrefetch style={style} />
+  </>)
 }
 
 export default function ChartLayers({ layers, openaipKey, tfrData, onSetDestination, onAddWaypoint }) {

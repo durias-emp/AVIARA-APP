@@ -751,6 +751,20 @@ export default defineConfig(({ mode }) => {
               },
             },
             {
+              // The basemap, remembered. A road tile does not change between
+              // chart cycles, so once seen it is served from here: revisits
+              // start on a full map, and the areas a pilot has looked at stay
+              // drawn offline. Capped and self-purging so it can never crowd
+              // out the app's own storage.
+              urlPattern: /^https:\/\/[abcd]\.basemaps\.cartocdn\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'basemap-tiles',
+                expiration: { maxEntries: 300, maxAgeSeconds: 14 * 24 * 3600, purgeOnQuotaError: true },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
               urlPattern: /^https:\/\/aviationweather\.gov\/.*/i,
               handler: 'NetworkFirst',
               options: { cacheName: 'wx-cache', networkTimeoutSeconds: 10 },
