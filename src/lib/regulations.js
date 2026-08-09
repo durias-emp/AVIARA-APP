@@ -83,15 +83,17 @@ function intlCruisingAltitude(rules, { courseDeg }) {
   }
 }
 
-// The reserve tables below are written around two rules, VFR and IFR. A third
-// exists now (RTC), and its rules have not been settled.
+// The reserve tables below are written around two rules, VFR and IFR, and every
+// one of these functions asks "is it IFR?" and hands everything else the VFR
+// row. That is safe only while every caller passes one of the two.
 //
-// Every one of these functions asks "is it IFR?" and treats everything else as
-// VFR, so an unsettled rule would quietly collect the VFR row: a shorter
-// reserve than IFR, printed with a VFR citation. That is a regulatory figure
-// invented from a label. This returns the longer of the two instead, says it is
-// not the figure for these rules, and cites nothing, because there is nothing
-// honest to cite.
+// A flight plan type is not a rule. RTC is rotorcraft under the VFR rules and
+// says VFR here, which is why it never reaches this. The guard is for the next
+// type added: without it, a rule this table has never heard of would silently
+// collect a shorter reserve than IFR and a VFR citation to go with it, which is
+// a regulatory figure invented from a label. It returns the longer of the two
+// instead, says it is not the requirement for this flight, and cites nothing,
+// because there would be nothing honest to cite.
 function isKnownRule(flightRules) {
   return flightRules === 'IFR' || flightRules === 'VFR'
 }

@@ -121,6 +121,12 @@ export default function FlightPlanOnePager({ onClose }) {
   // pilot's stated intent and stands until the fuel plan says otherwise.
   const flightRules = cruise?.flightRules || fpType?.value?.flightRules || 'VFR'
   const timeOfDay = cruise?.timeOfDay || 'day'
+  // What the strip prints, which is not always what it computes with. RTC is
+  // rotorcraft flown under the VFR rules, so it reserves and plans as VFR while
+  // the pilot picked RTC, and a release that answered VFR to a choice of RTC
+  // would be naming a different flight than the one on the screen behind it.
+  const rulesLabel = fpType?.value?.type === 'RTC' && flightRules === 'VFR'
+    ? 'RTC' : flightRules
   // Jurisdiction-aware (see src/lib/regulations.js) — this strip is styled
   // as a printable dispatch release, so unlike the interactive Cruise & Fuel
   // checklist item it just shows the resulting number, no RuleInfo trigger.
@@ -211,7 +217,7 @@ export default function FlightPlanOnePager({ onClose }) {
         <Rule />
 
         <PLine l={`TRIP DIST ${route?.distNm ?? '---'}NM`} r={`TC/MC ${route?.tc != null ? Math.round(route.tc) : '--'}/${route?.mc != null ? Math.round(route.mc) : '--'}`} />
-        <PLine l={`SOULS ${lastWB?.souls ?? '--'}`} r={`RULES ${flightRules}${flightRules === 'VFR' ? ` ${timeOfDay.toUpperCase()}` : ''}`} />
+        <PLine l={`SOULS ${lastWB?.souls ?? '--'}`} r={`RULES ${rulesLabel}${flightRules === 'VFR' ? ` ${timeOfDay.toUpperCase()}` : ''}`} />
         <PLine l={`PIC ${pilot?.name || '----'}`} r={acProfile?.color ? acProfile.color.toUpperCase() : '----'} />
         {(pilot?.phone || pilot?.email) && (
           <PLine l={pilot?.phone ? `TEL ${pilot.phone}` : ''} r={pilot?.email || ''} />

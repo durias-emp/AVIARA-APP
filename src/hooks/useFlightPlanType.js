@@ -13,14 +13,13 @@ const EVENT = 'aviara-flight-plan-type'
 // of the same list is how the two end up disagreeing.
 //
 // A type is not the same thing as a rule, which is why `flightRules` is carried
-// beside the label rather than read off it. Local was always flown VFR. RTC's
-// rules have not been settled yet, so it carries its own value and the places
-// that branch on VFR-or-IFR are told to treat it as neither rather than quietly
-// picking one.
+// beside the label rather than read off it. Local was always flown VFR, and RTC
+// is rotorcraft flown under the VFR rules, so both name themselves in `type`
+// and answer VFR to everything that asks what rules apply.
 export const FLIGHT_PLAN_TYPES = [
   { key: 'VFR', label: 'VFR', flightRules: 'VFR', crossCountry: true },
   { key: 'IFR', label: 'IFR', flightRules: 'IFR', crossCountry: true },
-  { key: 'RTC', label: 'RTC', flightRules: 'RTC', crossCountry: true },
+  { key: 'RTC', label: 'RTC', flightRules: 'VFR', crossCountry: true },
 ]
 
 // Everything the app has ever stored here, including the retired Local, so a

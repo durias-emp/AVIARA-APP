@@ -166,11 +166,11 @@ export async function recommendCruise(waypoints, {
   if (!perf) degraded.push('no-aircraft-performance')
   else if (perf.assumed.roc || perf.assumed.ceiling) degraded.push('assumed-climb-performance')
   if (terrain?.status !== 'ok') degraded.push('terrain-unavailable')
-  // Every rule test below asks "is it IFR?" and lets everything else take the
-  // VFR path. A third type exists now whose rules are not settled, and it would
-  // pass through here collecting neither the IFR floors nor the VFR cloud
-  // check: an altitude offered with no ruleset applied at all, looking exactly
-  // like one that had passed both. Said out loud instead.
+  // The gates below test for IFR and for VFR by name, so a rule that is neither
+  // collects the IFR floors and the VFR cloud check alike: an altitude offered
+  // with no ruleset applied at all, looking exactly like one that had passed
+  // both. The three flight plan types all resolve to VFR or IFR, RTC included,
+  // so this is a guard on the next one rather than a live case.
   if (flightRules !== 'VFR' && flightRules !== 'IFR') degraded.push('flight-rules-not-modelled')
 
   const floor = terrainFloor(terrain, flightRules)
