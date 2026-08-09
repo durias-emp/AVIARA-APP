@@ -44,10 +44,25 @@ export default function VectorBasemap({ dark = false, onFail }) {
         layer = L.maplibreGL({
           style: dark ? STYLE.dark : STYLE.light,
           attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; OpenMapTiles &copy; <a href="https://openfreemap.org/">OpenFreeMap</a>',
+          // The bridge default hides only 10% of extra map beyond each edge,
+          // so a quick pan flashed blank margin before the throttled reposition
+          // caught up. A third of a screen each way keeps the reveal covered.
+          padding: 0.3,
+          // Forwarded to the GL engine. Labels and tiles normally fade in over
+          // ~300ms; after every re-render that fade reads as the whole map
+          // blinking, so the crisp frame lands in one step instead.
+          fadeDuration: 0,
         })
         // A device without WebGL throws right here, during the layer's own
         // onAdd, which is the honest moment to find out.
         layer.addTo(map)
+        // The flicker fix. During a pinch the bridge re-renders the GL scene
+        // at every zoom tick while Leaflet is simultaneously scaling the same
+        // canvas with CSS, and the two alternate on screen as a strobe. Unhook
+        // the per-tick re-render: the CSS scale carries the gesture exactly
+        // the way raster tiles do (soft while moving), and the crisp GL frame
+        // lands once at zoomend. One owner per gesture, nothing to fight.
+        map.off('zoom', layer._pinchZoom, layer)
       } catch (err) {
         console.warn('[vector-basemap] failed, falling back to raster:', err?.message ?? err, err?.stack)
         if (!cancelled) onFail?.(err)
