@@ -19,10 +19,11 @@ import { CHARTS, EMPTY_LAYERS, resolveOpenaipKey } from '../../components/chartD
 import DropPointPopup from '../../components/DropPointPopup'
 // Route styling lives in one place now, shared with the planner and its
 // preview map: three copies of a hex is how the three drifted apart.
-import { ACCENT, accentAlpha, ROUTE_COLOR, ROUTE_OPACITY, ROUTE_WEIGHT } from '../../components/mapStyle'
+import { ACCENT, accentAlpha } from '../../components/mapStyle'
 import ActivityCard from '../../components/ActivityCard'
 import RouteChips from '../../components/RouteChips'
 import FlightRulesRow from '../../components/FlightRulesRow'
+import RouteLineEditor from '../../components/RouteLineEditor'
 import TrafficLayer from '../../components/TrafficLayer'
 import TrafficLegend from '../../components/TrafficLegend'
 import useLiveTraffic from '../../hooks/useLiveTraffic'
@@ -1074,6 +1075,17 @@ export default function MapHome() {
     [routeLine],
   )
 
+  // What to call each turning point when one is tapped on the map. Built with
+  // the same filter routeLine uses, so the nth dot on the line and the nth name
+  // here are the same waypoint.
+  const routeMiddleNames = useMemo(
+    () => (route?.wpts ?? [])
+      .filter(w => w?.lat != null && w?.lon != null)
+      .map(w => w.name || w.via || ''),
+    [route],
+  )
+
+
   // A point held on the map, put into the plan.
   //
   // The waypoint is inserted into the leg it is nearest, and the figures the
@@ -1170,6 +1182,22 @@ export default function MapHome() {
       const wpts = prev.wpts.filter(w => (w.via ?? w.name) !== key)
       if (wpts.length === prev.wpts.length) return prev
       return withEdit(prev, wpts)
+    })
+  }, [withEdit])
+
+  // A turning point taken off the line, by identity rather than by index.
+  //
+  // routeLine drops any waypoint missing a coordinate, so the nth dot on the
+  // map is the nth VALID waypoint and not necessarily wpts[n]. Matching the
+  // object itself cannot drift the way an index quietly can, and deleting the
+  // wrong leg of a flight plan is not a mistake that announces itself.
+  const removeRouteWaypointAt = useCallback((i) => {
+    setRoute(prev => {
+      if (!prev?.wpts?.length) return prev
+      const valid = prev.wpts.filter(w => w?.lat != null && w?.lon != null)
+      const target = valid[i]
+      if (!target) return prev
+      return withEdit(prev, prev.wpts.filter(w => w !== target))
     })
   }, [withEdit])
 
@@ -1801,24 +1829,18 @@ export default function MapHome() {
         />
         {/* The plan, under the track rather than over it: where both exist,
             what was actually flown is the one that has to be readable. */}
+        {/* The line is the editor now: hold it to bend it, tap a turning point
+            to take it out. Same gestures ForeFlight and Garmin Pilot use, and
+            the same hold the route strip uses to pick up a chip. */}
         {routeLine.length > 1 && (
-          <>
-            <Polyline positions={routeLine}
-              pathOptions={{ color: ROUTE_COLOR, weight: ROUTE_WEIGHT, opacity: ROUTE_OPACITY, lineCap: 'round', lineJoin: 'round' }} />
-            {/* Turning points, small: they are structure, not destinations. */}
-            {routeLine.slice(1, -1).map((p, i) => (
-              <CircleMarker key={`wpt-${i}`} center={p} radius={3.5}
-                pathOptions={{ color: '#fff', weight: 1.5, fillColor: ROUTE_COLOR, fillOpacity: 1 }} />
-            ))}
-            {[[routeLine[0], route.dep], [routeLine[routeLine.length - 1], route.dest]].map(([p, ident]) => (
-              <CircleMarker key={`end-${ident}`} center={p} radius={6}
-                pathOptions={{ color: '#fff', weight: 2.5, fillColor: ROUTE_COLOR, fillOpacity: 1 }}>
-                <Tooltip permanent direction="top" offset={[0, -10]} className="home-base-label">
-                  {ident}
-                </Tooltip>
-              </CircleMarker>
-            ))}
-          </>
+          <RouteLineEditor
+            positions={routeLine}
+            middleNames={routeMiddleNames}
+            depIdent={route.dep}
+            destIdent={route.dest}
+            onInsert={addDroppedWaypoint}
+            onRemove={removeRouteWaypointAt}
+          />
         )}
         {track.length > 1 && (
           <Polyline positions={track} pathOptions={{ color: ACCENT, weight: 5, opacity: 0.9, lineCap: 'round' }} />
