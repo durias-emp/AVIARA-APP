@@ -22,6 +22,7 @@ import DropPointPopup from '../../components/DropPointPopup'
 import { ACCENT, accentAlpha, ROUTE_COLOR, ROUTE_OPACITY, ROUTE_WEIGHT } from '../../components/mapStyle'
 import ActivityCard from '../../components/ActivityCard'
 import RouteChips from '../../components/RouteChips'
+import FlightRulesRow from '../../components/FlightRulesRow'
 import TrafficLayer from '../../components/TrafficLayer'
 import TrafficLegend from '../../components/TrafficLegend'
 import useLiveTraffic from '../../hooks/useLiveTraffic'
@@ -2222,6 +2223,19 @@ export default function MapHome() {
                 // taken off the card that replaced it.
                 ? Math.max(0, restPx - GRAB_ABOVE_ROUTE - 10 - safeBottom - (gestureHint ? HINT_RESERVE : 0))
                 : 0} />
+          )}
+
+          {/* The rules, directly under the route, which is the whole point of
+              them being here: the pilot sees the flight and what it is being
+              filed as in one look, instead of answering the question on a
+              screen that had hidden the route to ask it.
+
+              With the plan open only. At rest the drawer is showing the route
+              card sized to the 25 stop, and that stop has nothing spare. */}
+          {planning && (
+            <div style={{ marginTop: 14 }}>
+              <FlightRulesRow />
+            </div>
           )}
         </div>
 

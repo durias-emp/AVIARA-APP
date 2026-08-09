@@ -1,12 +1,7 @@
-// Only three options are meaningful for this operation: VFR and IFR flights
-// are always cross-country, and Local is always flown VFR, so a single
-// choice here fully determines both flightRules and crossCountry, instead of
-// asking two separate questions.
-const OPTIONS = [
-  { key: 'VFR',   label: 'VFR',   flightRules: 'VFR', crossCountry: true },
-  { key: 'IFR',   label: 'IFR',   flightRules: 'IFR', crossCountry: true },
-  { key: 'LOCAL', label: 'Local', flightRules: 'VFR', crossCountry: false },
-]
+// The list itself lives with the hook that stores the answer, because the row
+// under the route card asks the same question and two copies of three options
+// is how the two come to offer different ones.
+import { FLIGHT_PLAN_TYPES as OPTIONS } from '../../hooks/useFlightPlanType'
 
 function OptionButton({ label, onClick }) {
   return (

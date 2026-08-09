@@ -83,7 +83,30 @@ function intlCruisingAltitude(rules, { courseDeg }) {
   }
 }
 
+// The reserve tables below are written around two rules, VFR and IFR. A third
+// exists now (RTC), and its rules have not been settled.
+//
+// Every one of these functions asks "is it IFR?" and treats everything else as
+// VFR, so an unsettled rule would quietly collect the VFR row: a shorter
+// reserve than IFR, printed with a VFR citation. That is a regulatory figure
+// invented from a label. This returns the longer of the two instead, says it is
+// not the figure for these rules, and cites nothing, because there is nothing
+// honest to cite.
+function isKnownRule(flightRules) {
+  return flightRules === 'IFR' || flightRules === 'VFR'
+}
+
+function unmodelledReserve() {
+  return {
+    value: 45,
+    steps: ['These flight rules are not in the reserve table. 45 min is carried as the longer of the two reserves it does hold, not as the requirement for this type of flight. Check your own regulator.'],
+    citation: null,
+    unmodelled: true,
+  }
+}
+
 function usReserveMinutes(rules, { flightRules, isHelicopter, timeOfDay }) {
+  if (!isKnownRule(flightRules)) return unmodelledReserve()
   let value, steps
   if (flightRules === 'IFR') {
     value = 45
@@ -100,6 +123,7 @@ function usReserveMinutes(rules, { flightRules, isHelicopter, timeOfDay }) {
 }
 
 function caReserveMinutes(rules, { flightRules, isHelicopter, timeOfDay }) {
+  if (!isKnownRule(flightRules)) return unmodelledReserve()
   let value, steps
   if (flightRules === 'IFR') {
     // CAR 602.88(4): propeller-driven aeroplanes get 45 min, turbo-jets and
@@ -118,6 +142,7 @@ function caReserveMinutes(rules, { flightRules, isHelicopter, timeOfDay }) {
 }
 
 function intlReserveMinutes(rules, { flightRules }) {
+  if (!isKnownRule(flightRules)) return unmodelledReserve()
   const value = flightRules === 'IFR' ? 45 : 30
   return {
     value,

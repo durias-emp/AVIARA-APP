@@ -122,21 +122,32 @@ function ChecklistDetail({ checklist, onBack, embedded = false, onRouteCalculate
   const [addDrawerOpen, setAddDrawerOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
 
-  // Flight-plan-type picker (VFR/IFR + Local/Cross Country). Gates entry to
-  // the checklist. `undefined` = not yet loaded from storage (render nothing
-  // to avoid a flash of the picker before we know), `null` = loaded and not
-  // yet picked, an object = picked and persisted until Reset.
+  // The picked flight plan type. `undefined` = not yet loaded from storage
+  // (render nothing to avoid a flash of the picker before we know), `null` =
+  // loaded and not yet picked, an object = picked and persisted until Reset.
+  //
+  // Embedded, it no longer gates anything: the drawer asks the same question in
+  // a row directly under the route card, above this. The full-screen picker is
+  // still the way in when the checklist is opened on its own, where there is no
+  // drawer above it to have asked.
   const [flightPlanType, setFlightPlanType] = useState(undefined)
 
   useEffect(() => {
-    get('settings', 'flightPlanType').then(saved => {
+    const load = () => get('settings', 'flightPlanType').then(saved => {
       setFlightPlanType(saved?.value ?? null)
     })
+    load()
+    // Answered above while this stays mounted below, so the change has to
+    // arrive rather than be waited for.
+    window.addEventListener('aviara-flight-plan-type', load)
+    return () => window.removeEventListener('aviara-flight-plan-type', load)
   }, [checklist.id])
 
   function pickFlightPlanType(value) {
     setFlightPlanType(value)
     put('settings', { key: 'flightPlanType', value })
+      .then(() => window.dispatchEvent(new Event('aviara-flight-plan-type')))
+      .catch(() => {})
   }
 
   const customTotal = Object.values(customItems).reduce((sum, arr) => sum + arr.length, 0)
@@ -209,7 +220,7 @@ function ChecklistDetail({ checklist, onBack, embedded = false, onRouteCalculate
     setChecked(new Set())
     save(new Set(), customItems)   // custom items persist across resets. They're a template
     setResetKey(k => k + 1)        // remount every item so cleared data shows immediately
-    setFlightPlanType(null)        // back to the VFR/IFR + Local/XC picker for the next flight
+    setFlightPlanType(null)        // nothing picked, ready for the next flight
 
     await Promise.all([
       del('settings', 'route'),
@@ -221,6 +232,11 @@ function ChecklistDetail({ checklist, onBack, embedded = false, onRouteCalculate
       del('settings', scopedSettingsKey('lastWB', aircraftId)),
       del('settings', 'flightPlanType'),
     ]).catch(() => {})
+
+    // The rules row is mounted above this, outside the planner, so clearing the
+    // choice here has to reach it. Without this it kept showing the rule of the
+    // flight that was just reset.
+    window.dispatchEvent(new Event('aviara-flight-plan-type'))
 
     ;['cruise_fuel_state', 'apt_fbo_freq', 'apt_fbo_note',
       'ac_maint_ac-annual', 'ac_maint_ac-100hr', 'ac_maint_ac-oil',
@@ -343,11 +359,11 @@ function ChecklistDetail({ checklist, onBack, embedded = false, onRouteCalculate
         )}
       </div>
 
-      {flightPlanType === null && (
+      {flightPlanType === null && !embedded && (
         <FlightPlanTypePicker onComplete={pickFlightPlanType} />
       )}
 
-      {flightPlanType && (
+      {(flightPlanType || (embedded && flightPlanType !== undefined)) && (
       <ChecklistTabShell
         embedded={embedded}
         onStepOpenChange={onStepOpenChange}
