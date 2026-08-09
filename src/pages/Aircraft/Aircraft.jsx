@@ -1918,6 +1918,12 @@ export default function Aircraft({ aircraftId, onBack, onDeleted, onHangar }) {
                 onChange={v => patch('perf', 'ldg50ft', v)} placeholder="e.g. 1,335 ft" />
               <Field label="Rate of climb (best, SL/std day)" value={profile.perf?.roc ?? ''}
                 onChange={v => patch('perf', 'roc', v)} placeholder="e.g. 700 fpm" />
+              {/* The altitude advisor caps the candidate list at this figure and
+                  gates anything above it, so leaving it off the fixed-wing form
+                  meant a number doing real work that the pilot could not see or
+                  correct from the POH. The templates have always carried one. */}
+              <Field label="Service ceiling" value={profile.perf?.ceiling ?? ''}
+                onChange={v => patch('perf', 'ceiling', v)} placeholder="e.g. 14,000 ft" />
             </div>
           </Section>
         )}

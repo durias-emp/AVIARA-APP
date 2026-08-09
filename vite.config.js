@@ -71,6 +71,43 @@ function trafficDevProxy() {
   }
 }
 
+// The altitude briefing, run through the real serverless handler the same way
+// traffic is. Without this the endpoint 404s locally, fetchBriefing reads that
+// as "unavailable" and falls back to the engine's own reasons, which is the
+// correct behaviour for an outage and completely wrong as a permanent state:
+// the written briefing could only ever be seen in production.
+function altitudeBriefDevProxy() {
+  return {
+    name: 'altitude-brief-dev-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/altitude-brief', async (req, res) => {
+        let raw = ''
+        for await (const chunk of req) raw += chunk
+        let body
+        try { body = JSON.parse(raw || '{}') } catch { body = {} }
+
+        const { default: handler } = server.ssrLoadModule
+          ? await server.ssrLoadModule('/api/altitude-brief.js')
+          : await import(new URL('./api/altitude-brief.js', import.meta.url).href)
+
+        const shim = {
+          status(code) { res.statusCode = code; return shim },
+          setHeader(k, v) { res.setHeader(k, v); return shim },
+          json(payload) { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(payload)) },
+          send(payload) { res.end(payload) },
+        }
+        try {
+          await handler({ method: req.method, body }, shim)
+        } catch (err) {
+          res.statusCode = 502
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'dev proxy failed', detail: err.message }))
+        }
+      })
+    },
+  }
+}
+
 function tfrDevProxy() {
   const WFS_URL =
     'https://tfr.faa.gov/geoserver/TFR/ows?service=WFS&version=1.1.0&request=GetFeature' +
@@ -656,6 +693,7 @@ export default defineConfig(({ mode }) => {
       alsoOnPreview(notamsDevProxy()),
       alsoOnPreview(tfrDevProxy()),
       alsoOnPreview(trafficDevProxy()),
+      alsoOnPreview(altitudeBriefDevProxy()),
       deviceLogSink(),
       alsoOnPreview(tfrDetailDevProxy()),
       alsoOnPreview(iconDevProxy()),

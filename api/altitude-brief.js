@@ -4,7 +4,7 @@
  * The engine has already done the analysis: it sampled the route, pulled the
  * forecast profile, gathered the hazards, ran the aircraft's climb performance
  * and scored every legal altitude. This endpoint turns that into advice a pilot
- * can read — and nothing more.
+ * can read, and nothing more.
  *
  * Two rules are enforced here rather than trusted to the prompt:
  *   1. The model may only choose from the candidate altitudes supplied. The
@@ -31,7 +31,8 @@ Operating philosophy, in order:
 Hard rules for your answer:
 - Choose ONLY from the candidate altitudes given. Never suggest one that is not in the list.
 - Use ONLY the numbers in the payload. Do not calculate, estimate, round differently, or introduce any figure that is not there. If something is not in the payload, say it was not available rather than filling it in.
-- Where a hazard is marked "modelled", call it modelled or derived — never a forecast.
+- Where a hazard is marked "modelled", call it modelled or derived, never a forecast.
+- Never use em dashes. Use a comma, a colon or a full stop instead.
 - Be brief: 3-5 short sentences of reasoning, then the trade-off the pilot is accepting.
 - End by noting the pilot has final authority.
 
@@ -76,7 +77,7 @@ export default async function handler(req, res) {
     let parsed
     try { parsed = JSON.parse(text) } catch { return res.status(502).json({ error: 'unparseable briefing' }) }
 
-    // Server-side half of rule 1. The client checks again — this is the cheap
+    // Server-side half of rule 1. The client checks again: this is the cheap
     // place to catch it, not the only place.
     const legal = payload.candidates.map(c => c.altFt)
     if (!legal.includes(parsed.altFt)) {
