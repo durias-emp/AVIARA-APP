@@ -2198,17 +2198,26 @@ export default function MapHome() {
               It comes back once the drawer is pulled up, because from there
               the card would be behind it and the record button has to stay
               reachable from the screen the pilot is actually on. */}
-          {!planning && !(actionsFloat && snap === 25) && actionRow()}
+          {/* Inside the drawer whenever there is no card floating over the
+              map holding it: at rest without a route, and at full screen
+              where the map is gone and the floating card with it. The menu
+              never leaves, it only changes which surface it is on. */}
+          {!(actionsFloat && snap === 25) && !(planning && snap === 50) && actionRow()}
 
           {/* A route exists, so the drawer says so: it is the only thing that
-              says what the line across the map is, and tapping it opens the
-              plan, which is the one place with more to say about a route than
-              these figures.
+              says what the line across the map is.
 
-              Not while planning, where the same route is already the subject
-              of everything below. */}
-          {!planning && hasRoute && (
-            <RouteSummary route={route} onOpen={openPlanner} onRemoveLeg={removeRouteLeg}
+              It stays while the plan is open, which it did not before. Pulling
+              the drawer up used to swap the route away for the planner, so the
+              strip a pilot had just been working in vanished at the moment
+              they asked for more of the same flight. The plan's list comes up
+              underneath it instead: the route at the top, its sections below,
+              one drawer.
+
+              Filled to the resting stop only at rest. Higher up the list
+              below needs the room more than the card does. */}
+          {hasRoute && (
+            <RouteSummary route={route} onOpen={planning ? undefined : openPlanner} onRemoveLeg={removeRouteLeg}
               onRemoveEnd={removeRouteEnd}
               onReorder={reorderRouteLeg} onAddStop={addRouteStop} onFocusPoint={focusRoutePoint}
               fillTo={snap === 25
