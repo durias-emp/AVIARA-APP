@@ -2268,7 +2268,11 @@ export default function MapHome() {
                 Opening the flight plan…
               </div>
             }>
-              <Planner embedded onClose={leavePlanner} onRouteCalculated={onRouteCalculated}
+              {/* Its title and back button only once the drawer is the whole
+                  screen. Below that the route card above is the subject and
+                  the sheet has no height to spare for a second header. */}
+              <Planner embedded showHeader={snap === 100}
+                onClose={leavePlanner} onRouteCalculated={onRouteCalculated}
                 onStepOpenChange={onStepOpenChange} />
             </Suspense>
           </div>
