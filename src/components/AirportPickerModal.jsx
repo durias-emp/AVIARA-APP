@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { findAirport } from '../lib/aerodromes'
-import { searchAirports, nearbyAirports, placeLabel } from '../lib/airportSearch'
+import { searchAirports, nearbyAirports, placeLabel, loadSearchIndex } from '../lib/airportSearch'
 import { useHomeLocation } from '../context/HomeLocation'
 
 // Examples deliberately mix codes with place names. The input used to accept
@@ -99,6 +99,18 @@ function ResultRow({ r, first, onPick }) {
           }}>{sub}</span>
         )}
       </span>
+      {/* Said out loud, because a helideck offered in a list of airports and
+          not marked as one is how a fixed-wing pilot plans to land on it. */}
+      {r.kind && r.kind !== 'airport' && (
+        <span style={{
+          fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)',
+          letterSpacing: '0.06em', textTransform: 'uppercase',
+          border: '0.5px solid var(--border)', borderRadius: 4, padding: '1px 4px',
+          whiteSpace: 'nowrap',
+        }}>
+          {r.kind === 'heliport' ? 'Heli' : 'Sea'}
+        </span>
+      )}
       {r.iata && (
         <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
           {r.iata}
@@ -208,7 +220,13 @@ export default function AirportPickerModal({
 
     if (req !== reqRef.current) return
     setResults([])
-    setNote('none')
+    // "No airport matches KJFK" and "the airport list did not load" look
+    // identical from here, and they are not remotely the same sentence: the
+    // first told a pilot that Kennedy does not exist. searchAirports answers []
+    // for both, so ask the index itself which one this was.
+    const idx = await loadSearchIndex().catch(() => null)
+    if (req !== reqRef.current) return
+    setNote(idx ? 'none' : 'unavailable')
     setBusy(false)
   }
 
@@ -334,7 +352,16 @@ export default function AirportPickerModal({
 
           {note === 'none' && !busy && (
             <div style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600, margin: '12px 2px 0' }}>
-              No airport matches “{value.trim()}”
+              No airport matches “{value.trim().toUpperCase()}”
+            </div>
+          )}
+
+          {/* Not the same thing as no match, and it must not read like one. */}
+          {note === 'unavailable' && !busy && (
+            <div style={{ fontSize: 12, color: 'var(--warn)', fontWeight: 600, margin: '12px 2px 0', lineHeight: 1.45 }}>
+              The airport list has not loaded, so this cannot be searched yet.
+              It is not that “{value.trim().toUpperCase()}” does not exist.
+              Reopen the app while online and it will download.
             </div>
           )}
 

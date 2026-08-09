@@ -12,7 +12,7 @@
 // time someone actually types a word. So search works with no signal, which
 // matters — a pilot looking for a diversion is not reliably online.
 
-import { getAirports } from './aerodromes'
+import { getAirports, getAuxAerodromes } from './aerodromes'
 
 // Accents are stripped from both the index and the query, so "Montreal"
 // finds "Montréal" and vice versa. Done once at index build, not per
@@ -36,12 +36,37 @@ async function buildIndex() {
   const airports = await getAirports()
   if (!airports) return null
 
+  // Heliports and seaplane bases, appended after the runway airports.
+  //
+  // They are held in their own file because the class number the rest of the
+  // app sorts on is a size tier and a heliport is not a smaller aerodrome. But
+  // a picker that says it finds any airport in the world and then cannot find
+  // an oil-platform helideck or a lake in British Columbia is not telling the
+  // truth, and 11,804 of them is not a rounding error. So they are searchable
+  // here, marked, and ranked below every runway: a pilot typing a place name
+  // means the field with a runway on it unless they say otherwise.
+  //
+  // Optional. If the file will not load, search is exactly what it was before.
+  let auxRows = []
+  try {
+    const aux = await getAuxAerodromes()
+    auxRows = [
+      ...(aux?.heliports ?? []).map(r => [r[0], r[1], r[2], r[3], 'heliport']),
+      ...(aux?.seaplaneBases ?? []).map(r => [r[0], r[1], r[2], r[3], 'seaplane']),
+    ]
+  } catch { /* the runway airports alone are still a search */ }
+
   const n = airports.length
+  const total = n + auxRows.length
   const idx = {
-    idents: new Array(n), names: new Array(n), foldedNames: new Array(n),
-    cities: new Array(n), foldedCities: new Array(n), iatas: new Array(n),
-    countries: new Array(n), classes: new Uint8Array(n),
-    lats: new Float64Array(n), lons: new Float64Array(n),
+    idents: new Array(total), names: new Array(total), foldedNames: new Array(total),
+    cities: new Array(total), foldedCities: new Array(total), iatas: new Array(total),
+    countries: new Array(total), classes: new Uint8Array(total),
+    kinds: new Array(total),
+    lats: new Float64Array(total), lons: new Float64Array(total),
+    // How many rows the positional sidecar is allowed to describe. It lines up
+    // with airports.json and nothing else, so it must never run past n.
+    nAirports: n,
     hasAux: false,
   }
   for (let i = 0; i < n; i++) {
@@ -56,6 +81,7 @@ async function buildIndex() {
     idx.foldedCities[i] = ''
     idx.iatas[i] = ''
     idx.countries[i] = ''
+    idx.kinds[i] = 'airport'
   }
 
   // The sidecar is optional by design. If it is missing, unreadable, or no
@@ -66,10 +92,20 @@ async function buildIndex() {
   try {
     const aux = (await import('../data/geo/airport_search.json')).default
     const rows = aux?.rows
-    const aligned = Array.isArray(rows) && rows.length === n &&
-      aux.n === n && aux.first === idx.idents[0] && aux.last === idx.idents[n - 1]
+    // The sidecar describes airports.json, and getAirports appends supplements
+    // to it (six El Salvador fields today) that the sidecar has never heard of.
+    // So it describes a PREFIX of the list, not the whole of it.
+    //
+    // Comparing its length against the merged total therefore failed on every
+    // device, every time, and quietly turned off city and IATA search. Two of
+    // the four things this picker's own subtitle offers, gone, with a warning
+    // in a console no pilot reads. Checking the prefix keeps the guard's real
+    // purpose, which is never to hang row i's city on a different airport.
+    const m = Array.isArray(rows) ? rows.length : 0
+    const aligned = m > 0 && m <= n && aux.n === m &&
+      aux.first === idx.idents[0] && aux.last === idx.idents[m - 1]
     if (aligned) {
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < m; i++) {
         const parts = rows[i].split('\t')
         idx.cities[i] = parts[0] || ''
         idx.foldedCities[i] = parts[0] ? fold(parts[0]) : ''
@@ -82,6 +118,24 @@ async function buildIndex() {
     }
   } catch {
     // offline before the first fetch, or the file isn't built yet
+  }
+
+  // Appended after the sidecar, so the alignment guard above only ever sees
+  // the rows the sidecar actually describes.
+  for (let k = 0; k < auxRows.length; k++) {
+    const i = n + k
+    const r = auxRows[k]
+    idx.idents[i] = r[0]
+    idx.lats[i] = r[1]
+    idx.lons[i] = r[2]
+    idx.classes[i] = 0
+    idx.names[i] = r[3] || ''
+    idx.foldedNames[i] = fold(r[3])
+    idx.cities[i] = ''
+    idx.foldedCities[i] = ''
+    idx.iatas[i] = ''
+    idx.countries[i] = ''
+    idx.kinds[i] = r[4]
   }
 
   return idx
@@ -159,9 +213,17 @@ function relevance(idx, i, q) {
   return 0
 }
 
+// What a heliport or seaplane base gives up against a runway airport. Bigger
+// than one size class, so a small strip still beats a helideck that matched
+// equally well, and smaller than the gap between a code match and a name match,
+// so typing a helipad's own identifier still puts it first.
+const NO_RUNWAY_PENALTY = 150
+
 function score(idx, i, q) {
   const r = relevance(idx, i, q)
-  return r === 0 ? 0 : r + idx.classes[i] * CLASS_WEIGHT
+  if (r === 0) return 0
+  const s = r + idx.classes[i] * CLASS_WEIGHT
+  return idx.kinds[i] === 'airport' ? s : Math.max(1, s - NO_RUNWAY_PENALTY)
 }
 
 let _regionNames
@@ -186,6 +248,10 @@ function hydrate(idx, i, near) {
     country: idx.countries[i],
     countryName: regionName(idx.countries[i]),
     cls: idx.classes[i],
+    // 'airport' | 'heliport' | 'seaplane'. The picker says which, because a
+    // helideck offered without a word about it is how a fixed-wing pilot ends
+    // up planning to land on one.
+    kind: idx.kinds?.[i] ?? 'airport',
     lat: idx.lats[i],
     lon: idx.lons[i],
     distNm: near ? haversineNm(near.lat, near.lon, idx.lats[i], idx.lons[i]) : null,
