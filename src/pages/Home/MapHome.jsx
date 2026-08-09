@@ -1375,6 +1375,22 @@ export default function MapHome() {
     }
   }, [base])
 
+  // The flight plan, closed from the drawer.
+  //
+  // The X in the action row when a route is showing. There is no planner open
+  // to close here, so leaving means the route goes: off the drawer, off the
+  // map, and out of storage, because a route dropped from state alone comes
+  // back on the next launch and a flight the pilot just dismissed returning
+  // is worse than one that never persisted.
+  //
+  // The camera comes home too. A map still framed on a flight that no longer
+  // exists is the app remembering something it was told to forget.
+  const forgetRoute = useCallback(() => {
+    del('settings', 'route').catch(() => {})
+    setRoute(null)
+    flyHome()
+  }, [flyHome])
+
   // An end taken off the route, from its own chip's x.
   //
   // An end is not a waypoint: a route cannot be without one. Removing it
@@ -1737,13 +1753,25 @@ export default function MapHome() {
           : <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M8 5.5v13l11-6.5z" /></svg>}
       </button>
 
-      <button onClick={planning ? leavePlanner : openPlanner}
+      {/* Open the plan, or leave it. Which of the two depends on whether the
+          pilot is already in it, and a route on the drawer means they are:
+          the card below is the plan's route section, and pulling the drawer
+          up opens the rest of it. Offering "Plan Route" there is offering a
+          door to the room you are standing in.
+
+          Leaving from the drawer forgets the route, because there is nothing
+          else to leave: the drawer goes back to what it says with no flight
+          on it. Leaving from inside the planner just closes the planner and
+          keeps the route, which is what it has always done. */}
+      <button onClick={planning ? leavePlanner : (hasRoute ? forgetRoute : openPlanner)}
         style={{ ...tileBtn, ...(compact ? { width: 38 } : null) }}>
         <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)',
           ...(compact ? { width: 38, height: 38 } : null) }}>
-          {planning ? <IconClosePlan /> : <IconRoute />}
+          {planning || hasRoute ? <IconClosePlan /> : <IconRoute />}
         </span>
-        {!compact && <span style={tileLabel}>{planning ? 'Close Plan' : 'Plan Route'}</span>}
+        {!compact && <span style={tileLabel}>
+          {planning ? 'Close Plan' : hasRoute ? 'Clear Route' : 'Plan Route'}
+        </span>}
       </button>
     </div>
   )
