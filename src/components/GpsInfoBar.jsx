@@ -129,6 +129,10 @@ export default function GpsInfoBar({ route, coords, derived, status, lastKnown }
       }).catch(() => {})
 
     getAirports().then(list => {
+      // null is "the table did not load", and iterating it threw into the catch
+      // below, which is a silent nearest-field readout rather than a wrong one.
+      // Same outcome, said on purpose.
+      if (!list) return
       let best = null, bestD = Infinity
       for (const [ident, lat, lon] of list) {
         const d = haversineNm(coords.lat, coords.lon, lat, lon)

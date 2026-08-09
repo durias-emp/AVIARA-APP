@@ -410,7 +410,14 @@ export default function AirportInfo() {
     setWx(null)
     setAirspaceClass(null)
     Promise.all([
-      getAirports().then(list => list.find(a => a[0] === icao) ?? null),
+      // `?.` and a catch, both. getAirports answers null when the airport table
+      // could not be loaded, and calling find on that threw inside the
+      // Promise.all, which meant the then below never ran, which meant
+      // setLoading(false) never ran: the screen sat on "Loading..." for ever
+      // with an airport picked and nothing under it. A missing table should
+      // cost the field's name and coordinates, not the whole screen, because
+      // weather and NOTAMs come from somewhere else entirely and still work.
+      getAirports().then(list => list?.find(a => a[0] === icao) ?? null).catch(() => null),
       loadWeather(icao).catch(() => null),
     ]).then(([hit, wxResult]) => {
       if (hit) {

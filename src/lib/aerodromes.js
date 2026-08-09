@@ -21,6 +21,7 @@
 // underneath, which is what 10 NM means.
 
 import { bboxOf, crossTrackNm, haversineNm, sampleRoute } from './corridor'
+import { importWithRetry } from './chunkRetry'
 import { ES_AERODROME_ROWS, ES_HELIPORT_ROWS } from '../data/esAerodromes'
 import { HN_HELIPORT_ROWS } from '../data/hnAerodromes'
 
@@ -54,8 +55,14 @@ let _airports = null
 export async function getAirports() {
   if (_airports) return _airports
   try {
-    const bundled = (await import('../data/geo/airports.json')).default.airports
-    _airports = mergeSupplement(bundled, ES_AERODROME_ROWS)
+    // Through the retry, because this file fails exactly the way a screen does:
+    // named by content hash, replaced by the next deploy, and asked for by name
+    // from a page that has not caught up. It used to fail silently into null,
+    // and null is not "there are no airports", it is "we could not find out" —
+    // which the airport screen then read as an airport with no runways and sat
+    // on Loading for ever.
+    const mod = await importWithRetry('data:airports', () => import('../data/geo/airports.json'))
+    _airports = mergeSupplement(mod.default.airports, ES_AERODROME_ROWS)
     return _airports
   } catch {
     return null
@@ -171,8 +178,8 @@ export function searchAirports(rows, query, { limit = 6, exclude, refPos, cityOf
 let _details = null
 export async function getAirportDetails() {
   if (_details) return _details
-  const d = (await import('../data/geo/airport_details.json')).default
-  _details = d
+  const mod = await importWithRetry('data:airport_details', () => import('../data/geo/airport_details.json'))
+  _details = mod.default
   return _details
 }
 
@@ -182,7 +189,7 @@ export async function getAirportDetails() {
 let _aux = null
 export async function getAuxAerodromes() {
   if (_aux) return _aux
-  const d = (await import('../data/geo/aux_aerodromes.json')).default
+  const d = (await importWithRetry('data:aux_aerodromes', () => import('../data/geo/aux_aerodromes.json'))).default
   _aux = {
     ...d,
     // The bundled pack has no heliports anywhere in El Salvador and five in

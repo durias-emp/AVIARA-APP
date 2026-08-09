@@ -194,9 +194,13 @@ export function AirportLayer({ onSetDestination, onAddWaypoint }) {
 
   useEffect(() => {
     let cancelled = false
+    // getAirportDetails throws when its file will not load, and an uncaught
+    // rejection here left the whole aerodrome layer undrawn with nothing said.
+    // The effect below already treats a null list as "draw nothing", so the
+    // catch simply lets it reach that.
     Promise.all([getAirports(), getAirportDetails()]).then(([list, det]) => {
       if (!cancelled) { setAirports(list); setDetails(det) }
-    })
+    }).catch(() => {})
     return () => { cancelled = true }
   }, [])
 

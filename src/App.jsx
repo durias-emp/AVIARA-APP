@@ -11,37 +11,13 @@ import BackOverrideProvider from './context/BackOverrideProvider'
 import { DEMO_SEED_ENABLED } from './lib/devSeed'
 import Shell from './components/Shell'
 import RouteErrorBoundary from './components/RouteErrorBoundary'
+import { importWithRetry } from './lib/chunkRetry'
 
-// A lazy import that survives an update landing underneath a live page.
-//
-// Every screen below is its own file, named by content hash, and the page that
-// is open right now names the ones belonging to the build that served it. Ship
-// again and those files are replaced. The first tap on a screen the pilot has
-// not opened yet then asks for something that is no longer there, and since the
-// server answers unknown paths with index.html, the browser is handed HTML
-// where it expected JavaScript. One reload cures it: the reload fetches the new
-// page, and the new page knows the new names.
-//
-// Once per screen per session. A chunk missing for any other reason would
-// otherwise reload for ever, and a reload loop is worse than a message. The
-// second failure falls through to the boundary, which says so.
-//
-// Not while offline. There the file is missing because it was never downloaded,
-// a reload cannot conjure it, and the pilot is better off being told.
+// A screen that survives an update landing underneath a live page. The cure is
+// in chunkRetry, shared with the aeronautical data, which fails the same way for
+// the same reason. Whatever gets past it lands in the boundary below.
 function lazyRoute(name, loader) {
-  return lazy(() => loader().catch(err => {
-    const key = `aviara-chunk-retry:${name}`
-    let retried = true
-    try { retried = sessionStorage.getItem(key) != null } catch { /* private mode */ }
-    if (!retried && navigator.onLine !== false) {
-      try { sessionStorage.setItem(key, '1') } catch { /* nothing to do */ }
-      window.location.reload()
-      // Deliberately never settles: the reload is already on its way, and
-      // resolving anything here would flash a screen about to be thrown away.
-      return new Promise(() => {})
-    }
-    throw err
-  }))
+  return lazy(() => importWithRetry(name, loader))
 }
 
 // The redesign's home: a map you fly from. The previous menu-style Home is

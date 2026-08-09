@@ -9,7 +9,11 @@ async function resolveToken(raw, nearPos) {
   const ident = raw.trim().toUpperCase()
   if (!ident) return null
 
-  const airports = await getAirports()
+  // May be null when the airport table could not be loaded. Falling through to
+  // the waypoint resolver below is the right answer then: it reaches fixes,
+  // navaids and coordinates, none of which live in this table, so a typed
+  // route still resolves what it can instead of throwing on the first leg.
+  const airports = (await getAirports()) ?? []
   const tryIdents = [ident]
   if (ident.length === 3) tryIdents.push('K' + ident)
   if (ident.length === 4 && ident[0] === 'K') tryIdents.push(ident.slice(1))
