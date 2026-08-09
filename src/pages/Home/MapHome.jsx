@@ -791,7 +791,14 @@ export default function MapHome() {
   const [recorder] = useState(() => createRecorder({ onUpdate: setRec }))
 
   const activeCount = Object.values(layers).filter(Boolean).length
-  const chipLayout = chipStackBox(chipArea.h, chipArea.w, CHARTS.length)
+  // The chart toggles plus one door. 3D is not a layer that draws on this
+  // map, because this map's camera is Leaflet's and Leaflet's camera is flat:
+  // tilting the floor under it would strand every overlay in the air. It is a
+  // view of its own, so its chip navigates instead of toggling, and it lives
+  // here because the layers panel is where a pilot goes to change what the
+  // map shows them. Spike only (vector-map-spike).
+  const chipDefs = [...CHARTS, { key: 'view3d', label: '3D', view: true }]
+  const chipLayout = chipStackBox(chipArea.h, chipArea.w, chipDefs.length)
 
   // Whether anything is drawn ON the basemap. The FAA rasters and the openAIP
   // airspace are semi-transparent and were drawn for paper: over dark tiles
@@ -1968,8 +1975,9 @@ export default function MapHome() {
         }}>
           {/* One flat list, so the wrap above decides the columns rather than
               this deciding them in advance. */}
-          {CHARTS.map((c, i) => (
-            <button key={c.key} className="chart-chip" onClick={() => toggleLayer(c.key)} style={{
+          {chipDefs.map((c, i) => (
+            <button key={c.key} className="chart-chip"
+              onClick={() => (c.view ? navigate('/labs/3d') : toggleLayer(c.key))} style={{
               background: layers[c.key] ? 'var(--map-ink)' : 'var(--map-panel)',
               color: layers[c.key] ? 'var(--map-ink-invert)' : 'var(--map-ink)',
               border: 'none', borderRadius: 10, cursor: 'pointer',
@@ -1988,7 +1996,7 @@ export default function MapHome() {
               // happened to move at once.
               animation: `${chartsOpen ? 'chipIn' : 'chipOut'} 220ms cubic-bezier(0.34,1.3,0.64,1) both`,
               animationDelay: chartsOpen
-                ? `${(CHARTS.length - 1 - i) * 16}ms`
+                ? `${(chipDefs.length - 1 - i) * 16}ms`
                 : `${i * 14}ms`,
               transition: 'background 160ms, color 160ms',
             }}>{c.label}</button>
