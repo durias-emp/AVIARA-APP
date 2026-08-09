@@ -25,7 +25,9 @@
 // and its mosaic edges look ragged, so handing off to the basemap is the
 // deliberate behaviour, the same one ForeFlight has.
 
+import { useState } from 'react'
 import { TileLayer, Polygon, CircleMarker, Popup } from 'react-leaflet'
+import VectorBasemap from './VectorBasemap'
 import TerrainLayer from '../pages/Checklists/sections/TerrainLayer'
 import { tfrColor } from '../lib/tfr'
 // The marker overlays, shared with the app's other map so both draw the same
@@ -51,6 +53,17 @@ const FAA = 'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/service
 // prop leaves the already-loaded light tiles on screen until something else
 // invalidates them.
 export function Basemap({ dark = false }) {
+  // SPIKE (vector-map-spike branch): the floor is OpenFreeMap vector tiles,
+  // with yesterday's CARTO raster kept whole underneath as the fallback for
+  // any device whose WebGL will not carry it. Reverting the whole experiment
+  // is `git switch strava-layout`; the tag pre-vector-map marks the exact
+  // point this branch grew from.
+  const [vectorDown, setVectorDown] = useState(false)
+  if (!vectorDown) return <VectorBasemap dark={dark} onFail={() => setVectorDown(true)} />
+  return <RasterBasemap dark={dark} />
+}
+
+function RasterBasemap({ dark = false }) {
   const style = dark ? 'dark_all' : 'rastertiles/voyager'
   return (<>
     <TileLayer

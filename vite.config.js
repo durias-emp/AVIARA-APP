@@ -751,6 +751,19 @@ export default defineConfig(({ mode }) => {
               },
             },
             {
+              // The vector basemap: style JSON, glyphs, sprites and the pbf
+              // tiles all live on this one host. Same deal as the raster
+              // cache below it, so areas a pilot has seen stay drawn offline
+              // and revisits do not refetch a megabyte of style plumbing.
+              urlPattern: /^https:\/\/tiles\.openfreemap\.org\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'vector-basemap',
+                expiration: { maxEntries: 400, maxAgeSeconds: 30 * 24 * 3600, purgeOnQuotaError: true },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
               // The basemap, remembered. A road tile does not change between
               // chart cycles, so once seen it is served from here: revisits
               // start on a full map, and the areas a pilot has looked at stay
