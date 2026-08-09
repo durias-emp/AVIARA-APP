@@ -242,11 +242,19 @@ export default function RouteChips({
 
   return (
     <div style={{ position: 'relative', zIndex: 1 }}>
-      {/* The field. Pointer events stop here: a finger in the strip is
-          working the route, not dragging the sheet, and the handle above it
-          still moves the drawer. */}
+      {/* The field lets the drag through.
+          
+          It used to swallow every pointerdown on the theory that a finger in
+          the strip is working the route. But the field is 83px of the drawer's
+          grab area, mostly empty on a two-point route, and swallowing there
+          meant the sheet could not be dragged from the largest thing on it.
+          The drawer felt stuck.
+          
+          The chips and the input stop propagation themselves, which is where
+          it belongs: those are targets. Everything between them is the
+          drawer's to drag, and a tap that lands on nothing still puts the
+          caret in the input. */}
       <div
-        onPointerDown={e => e.stopPropagation()}
         onClick={e => { if (e.target === e.currentTarget) inputRef.current?.focus() }}
         style={{
           display: 'flex', flexWrap: 'wrap', alignContent: 'flex-start',

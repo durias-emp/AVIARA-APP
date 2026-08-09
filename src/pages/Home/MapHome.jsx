@@ -302,7 +302,16 @@ function RouteSummary({ route, onOpen, onRemoveLeg, onRemoveEnd, onReorder, onAd
         // phone wraps it on a 320px one.
         fontSize: 'clamp(8px, 2.5vw, 10px)',
         fontWeight: 600, color: 'var(--map-ink-faint)',
-        letterSpacing: '0.4px', whiteSpace: 'nowrap', textTransform: 'uppercase',
+        letterSpacing: '0.4px', textTransform: 'uppercase',
+        // Wraps rather than truncating or spilling. Two short lines of a
+        // whole word beat one line of MAG.
+        //
+        // Two lines' worth of space whether or not the word needs both, so
+        // the four numbers sit on one baseline. Without it MAGNETIC COURSE
+        // pushed its own figure down and the row read as broken rather than
+        // as one word being longer than the others.
+        lineHeight: 1.15, minHeight: '2.3em', textAlign: 'center',
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
       }}>{label}</span>
       <span style={{
         fontSize: 'clamp(17px, 5.4vw, 22px)',
@@ -348,17 +357,15 @@ function RouteSummary({ route, onOpen, onRemoveLeg, onRemoveEnd, onReorder, onAd
           // The same width as the field above, so the two read as one column
           // of the same card.
           //
-          // A grid rather than a spread row, because the words are whole
-          // again: four of them do not fit across a phone, and a wrapping
-          // flex row left VARIATION hanging alone under a ragged edge. Tracks
-          // of at least 150px give two tidy columns on a phone and four on
-          // anything wide enough to hold them, without a breakpoint deciding
-          // it from a number written down here. 130 rather than 150 because
-          // 150 gave a 320px phone a single column and stacked all four into
-          // a tower; 130 pairs them there and still yields one row of four on
-          // anything wide.
+          // Four columns, always, and a long word wraps inside its own column
+          // rather than pushing a figure onto a second row.
+          //
+          // Reflowing to two columns on a phone was tidy and cost 45px, which
+          // is the difference between this card fitting the resting stop and
+          // hanging below it. MAGNETIC COURSE over two lines in its own column
+          // costs 10. The stop is fixed, so the content gives.
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
           // Centred in its own column, not parked at the column's left edge.
           // The tracks already spanned the drawer, but each figure sat at the
           // start of a track wide enough for MAGNETIC COURSE, so on a wide
@@ -660,9 +667,11 @@ export default function MapHome() {
   // under the drawer's own title, which is the drawer hiding its contents from
   // itself. Open a step and the drawer stands up to full screen; close it and
   // it sits back down.
-  const [planStep, setPlanStep] = useState(false)
+  //
+  // No state behind it any more: it existed to tell the drag where the
+  // plan's ceiling was, and the plan has no ceiling of its own now. All that
+  // is left is the move itself.
   const onStepOpenChange = useCallback((open) => {
-    setPlanStep(open)
     setSnap(open ? 100 : 50)
   }, [])
   // The calculated route: drawn on the map, summarised on the collapsed
@@ -1326,16 +1335,16 @@ export default function MapHome() {
   }
 
   // ── The planner, opened and closed in place ──────────────────────────
-  function openPlanner() {
-    // 50 is both "on screen" and "the planner's stop", so one call does what
-    // used to take two: raising a hidden drawer and moving it to the plan.
-    setSnap(50)
+  function openPlanner(at = 50) {
+    // 50 is both "on screen" and the plan's usual stop, so one call does what
+    // used to take two: raising a hidden drawer and moving it to the plan. A
+    // drag that asked for a different rung gets the rung it asked for.
+    setSnap(at)
     setPlanning(true)
   }
 
   function leavePlanner() {
     setPlanning(false)
-    setPlanStep(false)
     setSnap(25)
     // Reset inside the planner deletes the saved route, and this held its own
     // copy in state, so the line stayed on the map after the plan behind it
@@ -1453,18 +1462,12 @@ export default function MapHome() {
   // rather than with the rest of the sheet geometry below because the chip
   // stack reads it, and a const cannot be read above its own line.
   const vh = viewportH
-  // 25 is the resting stop, and it stays the resting stop. A route is the one
-  // thing the drawer carries that is taller than the fraction allows: the
-  // field is two rows of chips by design and the four figures pair up on a
-  // phone, which came to 185px against the 136 the fraction leaves. Rather
-  // than shrink either back, the drawer rests a little lower when it is
-  // carrying one, and returns to 25 the moment the route goes.
-  //
-  // Expressed as a floor in pixels rather than a fifth named stop, because it
-  // is not a place the pilot can drag to: the ladder is still 25 / 50 / 80 /
-  // 100 and this only stops the resting one cutting its own contents off.
-  const ROUTE_REST_MIN = 236
-  const restPx = Math.max(vh - stopY(vh, 25), route ? ROUTE_REST_MIN : 0)
+  // 25 is 25. The ladder is 0 / 25 / 50 / 80 / 100 and nothing gets to bend
+  // it: a stop the pilot named is a position, not a suggestion, and a drawer
+  // that rests a little lower whenever it happens to be carrying something is
+  // a drawer with no position at all. Content fits the stop; the stop does
+  // not grow to the content.
+  const restPx = vh - stopY(vh, 25)
 
   // Where the bottom of the chip stack sits: clear of the sheet, then clear of
   // the two map controls, so the chips rest on top of the layers button that
@@ -1488,12 +1491,7 @@ export default function MapHome() {
   // 0 is full screen and larger numbers are further down.
   // One line each way now that a stop is a number: where the drawer is
   // resting, and where it is actually drawn once a finger is on it.
-  // The drawer's own top edge. At the resting stop it follows restPx, which
-  // carries the floor a route needs; every other stop is its fraction. Two
-  // sources for one number was the bug waiting to happen here: restPx moves
-  // the furniture floating above the sheet, and if the sheet itself kept
-  // using the raw fraction they would part company by exactly the floor.
-  const restY = snap === 25 ? vh - restPx : stopY(vh, snap)
+  const restY = stopY(vh, snap)
   // The keyboard does not move the shell, so it cannot be allowed to move the
   // stops, but it does cover the bottom of it. The drawer rises by exactly
   // what is covered, never past the top of the screen, so the field being
@@ -1629,10 +1627,11 @@ export default function MapHome() {
     // Clamped, with no rubber band past either end: a sheet that can be pulled
     // past its stops feels broken rather than playful on a control surface.
     //
-    // The planner's ceiling is its own stop. It is not allowed above 50 at all,
-    // so the finger stops there rather than travelling on to a height the
-    // release would only undo.
-    const next = Math.min(stopY(vh, 25), Math.max(stopY(vh, planning && !planStep ? 50 : 100), d.fromY + shifted))
+    // The ends are the ends of the ladder, 25 and 100, whatever the drawer is
+    // carrying. The plan used to be clamped at 50, from when it owned the
+    // drawer; with its list under the route the finger stopping dead halfway
+    // up is the drawer refusing to move.
+    const next = Math.min(stopY(vh, 25), Math.max(stopY(vh, 100), d.fromY + shifted))
     d.lastY = next
     setDragY(next)
   }
@@ -1657,27 +1656,20 @@ export default function MapHome() {
 
     // Past the trigger the sheet commits to full whatever the gesture was.
     // Dragging that far is unambiguous, and snapping back from there would
-    // feel like the sheet fighting the hand. Not while planning, which has no
-    // 100 to commit to.
-    if ((!planning || planStep) && d.lastY <= stopY(vh, SHEET_FULL_TRIGGER)) { setSnap(100); return }
+    // feel like the sheet fighting the hand.
+    if (d.lastY <= stopY(vh, SHEET_FULL_TRIGGER)) { setSnap(100); return }
 
-    // The planner has one stop, 50, and no way up from it. Half the screen is
-    // the plan and half is the map the route is being drawn across, and a plan
-    // that can cover the whole chart stops being a plan drawn on anything. The
-    // room it used to find by going to full screen it now finds by the step
-    // being read getting the drawer to itself.
+    // One ladder, whatever the drawer is carrying: 25, 50, 80, 100. The
+    // positions are the positions.
     //
-    // The other outcome is downward: pulled down far enough the plan is put
-    // away, which costs nothing to do by accident, because every field writes
-    // itself to storage as it is filled in and Plan Route comes back to
-    // exactly the same place.
-    const ladder = planning ? (planStep ? [50, 100] : [50]) : SHEET_STOPS
-
-    if (planning && (d.lastY > (stopY(vh, 50) + stopY(vh, 25)) / 2
-      || (flick && !up && snap === 50))) {
-      leavePlanner()
-      return
-    }
+    // The plan used to have a ladder of its own with a single rung at 50,
+    // from the days when opening it swapped the drawer's contents out: there
+    // was nothing above 50 worth going to, and a pull down put the plan away.
+    // Now the plan comes up underneath the route in the same drawer, so a
+    // rung it cannot reach is just a drawer that will not move, and pulling
+    // down means what it means everywhere else, which is a smaller drawer.
+    // Leaving the plan is the X's job.
+    const ladder = SHEET_STOPS
 
     // Flicks move one rung in the direction of travel, so a hard pull from 25
     // does not skip the two useful stops in the middle on its way to 100.
@@ -1697,7 +1689,10 @@ export default function MapHome() {
     // The tap on the handle still goes to 80, so the aircraft, the tools and
     // the logbook keep a gesture of their own rather than becoming unreachable
     // for as long as a route exists. Drag for the flight, tap for the rest.
-    if (actionsFloat && snap === 25 && target > 25) { openPlanner(); return }
+    // The stop the drag actually asked for, not a fixed one. A hard pull from
+    // 25 that lands on 80 opened the plan at 50 and threw the other 30 away,
+    // which is the drawer ignoring the gesture that opened it.
+    if (actionsFloat && snap === 25 && target > 25) { openPlanner(target); return }
 
     setSnap(target)
   }
