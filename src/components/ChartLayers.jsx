@@ -25,7 +25,7 @@
 // and its mosaic edges look ragged, so handing off to the basemap is the
 // deliberate behaviour, the same one ForeFlight has.
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { TileLayer, Polygon, CircleMarker, Popup } from 'react-leaflet'
 import VectorBasemap from './VectorBasemap'
 import TerrainLayer from '../pages/Checklists/sections/TerrainLayer'
@@ -59,7 +59,12 @@ export function Basemap({ dark = false }) {
   // is `git switch strava-layout`; the tag pre-vector-map marks the exact
   // point this branch grew from.
   const [vectorDown, setVectorDown] = useState(false)
-  if (!vectorDown) return <VectorBasemap dark={dark} onFail={() => setVectorDown(true)} />
+  // Stable identity. VectorBasemap holds this in a ref precisely so it cannot
+  // matter, but a fresh arrow function on every render of a component that
+  // re-renders this often is the exact shape of the bug that was there, and
+  // it should not be re-created here either.
+  const fallBack = useCallback(() => setVectorDown(true), [])
+  if (!vectorDown) return <VectorBasemap dark={dark} onFail={fallBack} />
   return <RasterBasemap dark={dark} />
 }
 
