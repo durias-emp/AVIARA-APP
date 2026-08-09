@@ -294,7 +294,9 @@ function RouteSummary({ route, onOpen, onRemoveLeg, onRemoveEnd, onReorder, onAd
   // decoration competing with the number they sat beside, and the word says
   // it better than a mark that has to be learned.
   const figure = ({ value, label, dim }) => (
-    <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+    <div key={label} style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 0,
+    }}>
       <span style={{
         // The whole word. These were cut to MC and VAR back when the figures
         // shared a row with the two ends and each had a quarter of a phone to
@@ -357,6 +359,13 @@ function RouteSummary({ route, onOpen, onRemoveLeg, onRemoveEnd, onReorder, onAd
           // anything wide.
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+          // Centred in its own column, not parked at the column's left edge.
+          // The tracks already spanned the drawer, but each figure sat at the
+          // start of a track wide enough for MAGNETIC COURSE, so on a wide
+          // screen the four of them huddled left with the last one ending
+          // short of the card. Centred, they read as spaced across the drawer
+          // at every width, which is what the eye is measuring.
+          justifyItems: 'center',
           alignItems: 'flex-start', gap: '12px 10px',
         }}>
           {figure({
@@ -1428,7 +1437,18 @@ export default function MapHome() {
   // rather than with the rest of the sheet geometry below because the chip
   // stack reads it, and a const cannot be read above its own line.
   const vh = viewportH
-  const restPx = vh - stopY(vh, 25)
+  // 25 is the resting stop, and it stays the resting stop. A route is the one
+  // thing the drawer carries that is taller than the fraction allows: the
+  // field is two rows of chips by design and the four figures pair up on a
+  // phone, which came to 185px against the 136 the fraction leaves. Rather
+  // than shrink either back, the drawer rests a little lower when it is
+  // carrying one, and returns to 25 the moment the route goes.
+  //
+  // Expressed as a floor in pixels rather than a fifth named stop, because it
+  // is not a place the pilot can drag to: the ladder is still 25 / 50 / 80 /
+  // 100 and this only stops the resting one cutting its own contents off.
+  const ROUTE_REST_MIN = 236
+  const restPx = Math.max(vh - stopY(vh, 25), route ? ROUTE_REST_MIN : 0)
 
   // Where the bottom of the chip stack sits: clear of the sheet, then clear of
   // the two map controls, so the chips rest on top of the layers button that
@@ -1452,7 +1472,12 @@ export default function MapHome() {
   // 0 is full screen and larger numbers are further down.
   // One line each way now that a stop is a number: where the drawer is
   // resting, and where it is actually drawn once a finger is on it.
-  const restY = stopY(vh, snap)
+  // The drawer's own top edge. At the resting stop it follows restPx, which
+  // carries the floor a route needs; every other stop is its fraction. Two
+  // sources for one number was the bug waiting to happen here: restPx moves
+  // the furniture floating above the sheet, and if the sheet itself kept
+  // using the raw fraction they would part company by exactly the floor.
+  const restY = snap === 25 ? vh - restPx : stopY(vh, snap)
   // The keyboard does not move the shell, so it cannot be allowed to move the
   // stops, but it does cover the bottom of it. The drawer rises by exactly
   // what is covered, never past the top of the screen, so the field being
@@ -2162,7 +2187,11 @@ export default function MapHome() {
               onRemoveEnd={removeRouteEnd}
               onReorder={reorderRouteLeg} onAddStop={addRouteStop} onFocusPoint={focusRoutePoint}
               fillTo={snap === 25
-                ? Math.max(0, restPx - GRAB_ABOVE_ROUTE - 10 - safeBottom - HINT_RESERVE)
+                // The hint's reserve only when there is a hint. It goes quiet
+                // while a route is on the drawer, and 28px was still being
+                // held back for a line that no longer renders, which is 28px
+                // taken off the card that replaced it.
+                ? Math.max(0, restPx - GRAB_ABOVE_ROUTE - 10 - safeBottom - (gestureHint ? HINT_RESERVE : 0))
                 : 0} />
           )}
         </div>

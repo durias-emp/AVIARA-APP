@@ -44,7 +44,7 @@ function Pill({ item, ghost = false, dimmed = false, onRemove, ...rest }) {
     <span {...rest} style={{
       display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
       background: item.via ? 'rgba(255,159,10,0.18)' : 'var(--map-fill)',
-      borderRadius: 999, padding: '7px 8px 7px 13px',
+      borderRadius: 999, padding: '6px 7px 6px 12px',
       touchAction: item.fixed ? undefined : 'none',
       cursor: item.fixed ? 'pointer' : 'grab',
       opacity: dimmed ? 0.25 : 1,
@@ -55,7 +55,7 @@ function Pill({ item, ghost = false, dimmed = false, onRemove, ...rest }) {
       } : null),
     }}>
       <span style={{
-        fontSize: 15, fontWeight: 800,
+        fontSize: 13.5, fontWeight: 800,
         color: item.via ? '#FF9F0A' : 'var(--map-ink)',
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         letterSpacing: '0.5px', lineHeight: 1, userSelect: 'none',
@@ -70,7 +70,7 @@ function Pill({ item, ghost = false, dimmed = false, onRemove, ...rest }) {
             alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
             color: item.via ? 'rgba(255,159,10,0.75)' : 'var(--map-ink-faint)',
           }}>
-          <svg width={10} height={10} viewBox="0 0 24 24" fill="none">
+          <svg width={9} height={9} viewBox="0 0 24 24" fill="none">
             <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
           </svg>
         </button>
@@ -251,12 +251,18 @@ export default function RouteChips({
         style={{
           display: 'flex', flexWrap: 'wrap', alignContent: 'flex-start',
           alignItems: 'center', gap: 7,
-          // Room to work in. The field is where the route is edited, so it
-          // gets the height a target needs rather than the height its
-          // contents happen to occupy; chips sit at the top of it and the
-          // space below is where a wrapped route grows into, which is why it
-          // never shrinks back as points come and go.
-          padding: '11px 11px', minHeight: 62, boxSizing: 'border-box',
+          // Two rows of chips, always, whether or not the route needs them.
+          //
+          // A field that is one row tall until a route outgrows it changes
+          // height under the pilot's hand, and the figures below it move every
+          // time a point is added or taken out. Sized for two rows from the
+          // start, a five-point route wraps into space that was already there
+          // and nothing else on the card shifts.
+          //
+          // 27px a chip plus the 7px between the rows plus 11px of padding
+          // top and bottom. Measured off the chips rather than guessed, and
+          // the chips are the smaller size again.
+          padding: '11px 11px', minHeight: 83, boxSizing: 'border-box',
           background: 'var(--map-fill-soft)', borderRadius: 16,
           border: '0.5px solid var(--map-hairline)',
         }}>
