@@ -1586,14 +1586,30 @@ function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick, brief, brie
     'flight-rules-not-modelled': `${advice.flightRules} rules are not modelled. The altitudes are listed as VFR, and neither the VFR cloud check nor the IFR floors have been applied`,
   }
 
+  // Nothing on the list tops the ground. Legal under VFR and left selectable on
+  // purpose, but the word RECOMMENDED over a level below the terrain claims
+  // more than the engine found, so the label and the colour say what it is.
+  const uncleared = advice.terrainUncleared
+
   return (
     <div style={{
       borderRadius: 10, background: 'var(--bg-card-2)', padding: '11px 13px', marginBottom: 10,
-      border: `0.5px solid ${differs ? 'var(--ok)' : 'var(--border)'}`,
+      border: `0.5px solid ${uncleared ? 'var(--warn)' : differs ? 'var(--ok)' : 'var(--border)'}`,
     }}>
+      {uncleared && (
+        <div style={{
+          marginBottom: 9, fontSize: 11, color: 'var(--warn)', lineHeight: 1.45, fontWeight: 600,
+        }}>
+          No altitude on this list clears the {uncleared.peakFt.toLocaleString()} ft peak in the
+          corridor, which needs {fmtAlt(uncleared.needsFt)}. What follows is the best of what is
+          left, not a level that tops the terrain.
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 9.5, letterSpacing: '0.6px', color: 'var(--text-tertiary)' }}>RECOMMENDED</div>
+          <div style={{ fontSize: 9.5, letterSpacing: '0.6px', color: 'var(--text-tertiary)' }}>
+            {uncleared ? 'BEST AVAILABLE' : 'RECOMMENDED'}
+          </div>
           <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', fontFamily: 'monospace', lineHeight: 1.15 }}>
             {fmtAlt(r.altFt)}
           </div>
@@ -1611,7 +1627,11 @@ function AltitudeAdvice({ advice, busy, selectedAlt, acPerf, onPick, brief, brie
 
       {differs && (
         <button onClick={() => onPick(r.altFt)} style={{
-          marginTop: 8, width: '100%', background: 'var(--ok)', border: 'none', borderRadius: 8,
+          // Green is the app saying this is the good one. It is not, when the
+          // ground is above it, so the button carries the same warning the
+          // border does rather than dressing the level as cleared.
+          marginTop: 8, width: '100%', background: uncleared ? 'var(--warn)' : 'var(--ok)',
+          border: 'none', borderRadius: 8,
           padding: '7px 0', fontSize: 12, fontWeight: 700, color: '#000', cursor: 'pointer',
         }}>
           Use {fmtAlt(r.altFt)}

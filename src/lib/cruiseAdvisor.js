@@ -419,6 +419,15 @@ export async function recommendCruise(waypoints, {
     // The rules the scoring above was actually run under, so the card names
     // them rather than reaching for its own copy of the same setting.
     flightRules,
+    // Set when not one surviving altitude tops the corridor terrain. Under VFR
+    // that is allowed, and deliberately so: the alternative is answering "no
+    // cruising altitude works" on most mountain routes, which is false. But
+    // there is a difference between the best of a set that all clear the ground
+    // and the best of a set where none of them do, and the card cannot show it
+    // from the score alone. So it is said here rather than inferred there.
+    terrainUncleared: floor != null && scored.length > 0 && scored.every(c => c.altFt < floor)
+      ? { peakFt: terrain.maxFt, needsFt: floor }
+      : null,
   }
 }
 
