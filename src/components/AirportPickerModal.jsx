@@ -99,6 +99,16 @@ function ResultRow({ r, first, onPick }) {
           }}>{sub}</span>
         )}
       </span>
+      {/* Why this one is in a list it did not match by name: it is at the same
+          place. Unlabelled it would read as the search being loose. */}
+      {r.metroNm != null && (
+        <span style={{
+          fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)',
+          letterSpacing: '0.04em', whiteSpace: 'nowrap',
+        }}>
+          {Math.round(r.metroNm)} NM
+        </span>
+      )}
       {/* Said out loud, because a helideck offered in a list of airports and
           not marked as one is how a fixed-wing pilot plans to land on it. */}
       {r.kind && r.kind !== 'airport' && (
