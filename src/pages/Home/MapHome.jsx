@@ -75,10 +75,13 @@ const CTRL_STACK_H = CTRL * 2 + 12 + 10
 //
 // Without this the chips simply fill whatever height is available, so a tall
 // phone gave a column of nine beside a column of three: it fits, but it reads
-// as a mistake. Six is half of the twelve chips, so the common case is two even
-// columns, and on a short window the height limit bites first and the wrap
-// balances them itself.
-const CHIP_COL_MAX = 6
+// as a mistake. Half the set, rounded up, so the common case is two columns
+// however many chips there are: at thirteen (twelve charts and the 3D door)
+// that is seven, and six was quietly spilling the thirteenth into a third
+// column. On a short window the height limit bites first and the wrap
+// balances them itself, which is the one case allowed to beat two columns,
+// because a chip pushed off the screen is worse than a third column.
+const CHIP_COL_MAX = 7
 const CHIP_STACK_MAX_H = CHIP_COL_MAX * (CHIP_H + CHIP_GAP) - CHIP_GAP
 
 // The exact box a set of chips should occupy in the room available to it.

@@ -52,6 +52,18 @@ export default function VectorBasemap({ dark = false, onFail }) {
           // ~300ms; after every re-render that fade reads as the whole map
           // blinking, so the crisp frame lands in one step instead.
           fadeDuration: 0,
+          // The iOS flash. With the default double-buffered canvas, Safari is
+          // allowed to show a CLEARED buffer any time it recomposites the
+          // screen without the engine having drawn a fresh frame, and this app
+          // recomposites constantly: the drawer's blur samples the map, chips
+          // animate over it, the sheet slides. Each one could catch the canvas
+          // empty and flash the style's cream background through, which reads
+          // as the map struggling. Preserving the buffer means the last drawn
+          // frame is always there to composite, for a small drawing cost that
+          // is the right trade on every phone this app targets. v5 takes it
+          // inside canvasContextAttributes and ignores the old top-level name,
+          // verified against the live context: the flat spelling left it false.
+          canvasContextAttributes: { preserveDrawingBuffer: true },
         })
         // A device without WebGL throws right here, during the layer's own
         // onAdd, which is the honest moment to find out.

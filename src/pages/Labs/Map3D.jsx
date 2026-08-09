@@ -63,6 +63,10 @@ export default function Map3D() {
         const opts = {
           container: box.current,
           style: 'https://tiles.openfreemap.org/styles/liberty',
+          // Same iOS composite-flash guard as the basemap bridge: the caption
+          // card's blur samples this canvas, and without a preserved buffer
+          // each recomposite may catch it cleared and flash. v5 spelling.
+          canvasContextAttributes: { preserveDrawingBuffer: true },
         }
         if (pts.length >= 2) {
           const lons = pts.map(p => p[0]), lats = pts.map(p => p[1])
