@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom'
 import { useTheme } from './hooks/useTheme'
 import { PilotProfileProvider, usePilotProfile } from './context/PilotProfile'
 import { ActiveAircraftProvider } from './context/ActiveAircraft'
@@ -10,39 +10,72 @@ import { SocialProfileProvider } from './context/SocialProfile'
 import BackOverrideProvider from './context/BackOverrideProvider'
 import { DEMO_SEED_ENABLED } from './lib/devSeed'
 import Shell from './components/Shell'
+import RouteErrorBoundary from './components/RouteErrorBoundary'
+
+// A lazy import that survives an update landing underneath a live page.
+//
+// Every screen below is its own file, named by content hash, and the page that
+// is open right now names the ones belonging to the build that served it. Ship
+// again and those files are replaced. The first tap on a screen the pilot has
+// not opened yet then asks for something that is no longer there, and since the
+// server answers unknown paths with index.html, the browser is handed HTML
+// where it expected JavaScript. One reload cures it: the reload fetches the new
+// page, and the new page knows the new names.
+//
+// Once per screen per session. A chunk missing for any other reason would
+// otherwise reload for ever, and a reload loop is worse than a message. The
+// second failure falls through to the boundary, which says so.
+//
+// Not while offline. There the file is missing because it was never downloaded,
+// a reload cannot conjure it, and the pilot is better off being told.
+function lazyRoute(name, loader) {
+  return lazy(() => loader().catch(err => {
+    const key = `aviara-chunk-retry:${name}`
+    let retried = true
+    try { retried = sessionStorage.getItem(key) != null } catch { /* private mode */ }
+    if (!retried && navigator.onLine !== false) {
+      try { sessionStorage.setItem(key, '1') } catch { /* nothing to do */ }
+      window.location.reload()
+      // Deliberately never settles: the reload is already on its way, and
+      // resolving anything here would flash a screen about to be thrown away.
+      return new Promise(() => {})
+    }
+    throw err
+  }))
+}
 
 // The redesign's home: a map you fly from. The previous menu-style Home is
 // kept at ./pages/Home/Home for reference while this branch settles.
-const Home        = lazy(() => import('./pages/Home/MapHome'))
-const Calculators = lazy(() => import('./pages/Calculators/Calculators'))
-const Checklists  = lazy(() => import('./pages/Checklists/Checklists'))
-const Hangar      = lazy(() => import('./pages/Aircraft/Hangar'))
-const Pilot       = lazy(() => import('./pages/Pilot/Pilot'))
-const FlightDebriefs = lazy(() => import('./pages/Pilot/FlightDebriefs'))
-const Reference   = lazy(() => import('./pages/Reference/Reference'))
-const Weather     = lazy(() => import('./pages/Weather/Weather'))
-const LogbookList      = lazy(() => import('./pages/Pilot/LogbookList'))
-const LogbookEntryForm = lazy(() => import('./pages/Pilot/LogbookEntryForm'))
-const LogbookFields    = lazy(() => import('./pages/Pilot/LogbookFields'))
-const LogbookImport    = lazy(() => import('./pages/Pilot/LogbookImport'))
-const LogbookScan      = lazy(() => import('./pages/Pilot/LogbookScan'))
+const Home        = lazyRoute('Home', () => import('./pages/Home/MapHome'))
+const Calculators = lazyRoute('Calculators', () => import('./pages/Calculators/Calculators'))
+const Checklists  = lazyRoute('Checklists', () => import('./pages/Checklists/Checklists'))
+const Hangar      = lazyRoute('Hangar', () => import('./pages/Aircraft/Hangar'))
+const Pilot       = lazyRoute('Pilot', () => import('./pages/Pilot/Pilot'))
+const FlightDebriefs = lazyRoute('FlightDebriefs', () => import('./pages/Pilot/FlightDebriefs'))
+const Reference   = lazyRoute('Reference', () => import('./pages/Reference/Reference'))
+const Weather     = lazyRoute('Weather', () => import('./pages/Weather/Weather'))
+const LogbookList      = lazyRoute('LogbookList', () => import('./pages/Pilot/LogbookList'))
+const LogbookEntryForm = lazyRoute('LogbookEntryForm', () => import('./pages/Pilot/LogbookEntryForm'))
+const LogbookFields    = lazyRoute('LogbookFields', () => import('./pages/Pilot/LogbookFields'))
+const LogbookImport    = lazyRoute('LogbookImport', () => import('./pages/Pilot/LogbookImport'))
+const LogbookScan      = lazyRoute('LogbookScan', () => import('./pages/Pilot/LogbookScan'))
 // Four sections that main reached only as panels inside its own menu-style
 // Home. This branch replaced that screen, so without addresses of their own
 // they would have shipped present but unreachable: code in the bundle with no
 // door. Discover mattered most, since the entire social half of the app hung
 // off it and only a shared link could open it.
-const Discover    = lazy(() => import('./pages/Discover/Discover'))
-const AirportInfo = lazy(() => import('./components/AirportInfo'))
-const ToolsMenu   = lazy(() => import('./components/ToolsMenu'))
-const Settings    = lazy(() => import('./pages/Settings/Settings'))
+const Discover    = lazyRoute('Discover', () => import('./pages/Discover/Discover'))
+const AirportInfo = lazyRoute('AirportInfo', () => import('./components/AirportInfo'))
+const ToolsMenu   = lazyRoute('ToolsMenu', () => import('./components/ToolsMenu'))
+const Settings    = lazyRoute('Settings', () => import('./pages/Settings/Settings'))
 // Where a shared link lands. Lazy like everything else — a pilot who never
 // opens one never downloads them.
-const SharedPost    = lazy(() => import('./pages/Discover/SharedLink').then(m => ({ default: m.SharedPost })))
-const SharedListing = lazy(() => import('./pages/Discover/SharedLink').then(m => ({ default: m.SharedListing })))
-const Onboarding    = lazy(() => import('./pages/Onboarding/Onboarding'))
-const Profile       = lazy(() => import('./pages/Profile/Profile'))
-const SignIn        = lazy(() => import('./pages/SignIn/SignIn'))
-const ResetPassword = lazy(() => import('./pages/SignIn/ResetPassword'))
+const SharedPost    = lazyRoute('SharedPost', () => import('./pages/Discover/SharedLink').then(m => ({ default: m.SharedPost })))
+const SharedListing = lazyRoute('SharedListing', () => import('./pages/Discover/SharedLink').then(m => ({ default: m.SharedListing })))
+const Onboarding    = lazyRoute('Onboarding', () => import('./pages/Onboarding/Onboarding'))
+const Profile       = lazyRoute('Profile', () => import('./pages/Profile/Profile'))
+const SignIn        = lazyRoute('SignIn', () => import('./pages/SignIn/SignIn'))
+const ResetPassword = lazyRoute('ResetPassword', () => import('./pages/SignIn/ResetPassword'))
 
 
 // Reads the id out of the URL so the Hangar can open on that aircraft. A
@@ -55,6 +88,7 @@ function AircraftDetail() {
 function AppRoutes({ theme }) {
   const { session, loading: authLoading, hydrated, recovery } = useAuth()
   const { profile, setProfile } = usePilotProfile()
+  const { pathname } = useLocation()
 
   // Seed the profile's contact email from the signed-in account (Google/
   // Apple/email all expose user.email) so it's pre-filled without the pilot
@@ -99,9 +133,11 @@ function AppRoutes({ theme }) {
   // screen before anything else, even though Supabase created a recovery
   // session (which would otherwise fall through to the app).
   if (recovery) return (
-    <Suspense fallback={null}>
-      <ResetPassword />
-    </Suspense>
+    <RouteErrorBoundary resetKey="recovery">
+      <Suspense fallback={null}>
+        <ResetPassword />
+      </Suspense>
+    </RouteErrorBoundary>
   )
 
   // Sign-in is NOT required to use the app — everything here is local-first
@@ -134,16 +170,23 @@ function AppRoutes({ theme }) {
   // .env.local: a developer working ON onboarding still gets to see it. Vite
   // strips the whole branch from production builds.
   if (!profile.onboardingComplete && !DEMO_SEED_ENABLED) return (
-    <Suspense fallback={null}>
-      <Onboarding />
-    </Suspense>
+    <RouteErrorBoundary resetKey="onboarding">
+      <Suspense fallback={null}>
+        <Onboarding />
+      </Suspense>
+    </RouteErrorBoundary>
   )
 
   return (
     <BackOverrideProvider>
+      {/* Inside Shell, so a screen that fails to load still has the app's
+          chrome around it and its corner button to leave by. Keyed on the
+          path, so walking to another screen clears the error rather than
+          carrying the first failure for the rest of the session. */}
       <Shell theme={theme}>
-        <Suspense fallback={null}>
-          <Routes>
+        <RouteErrorBoundary resetKey={pathname}>
+          <Suspense fallback={null}>
+            <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/calc" element={<Calculators />} />
             <Route path="/checklists" element={<Checklists />} />
@@ -178,8 +221,9 @@ function AppRoutes({ theme }) {
             <Route path="/m/:listingId" element={<SharedListing />} />
             <Route path="/signin" element={<SignIn legacy={profile != null && profile.onboardingComplete} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
+            </Routes>
+          </Suspense>
+        </RouteErrorBoundary>
       </Shell>
     </BackOverrideProvider>
   )
