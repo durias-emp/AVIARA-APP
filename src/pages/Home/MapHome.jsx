@@ -2559,18 +2559,13 @@ export default function MapHome() {
           {/* A route exists, so the drawer says so: it is the only thing that
               says what the line across the map is.
 
-              It stays while the plan is open, which it did not before. Pulling
-              the drawer up used to swap the route away for the planner, so the
-              strip a pilot had just been working in vanished at the moment
-              they asked for more of the same flight. The plan's list comes up
-              underneath it instead: the route at the top, its sections below,
-              one drawer.
-
-              Filled to the resting stop only at rest. Higher up the list
-              below needs the room more than the card does. */}
-          {hasRoute && (
+              At rest it lives up here in the grab area, filled to the stop, and
+              a finger anywhere on it moves the sheet. With the plan open it
+              moves down into the plan's own scroller instead, because there it
+              is the top of a document rather than a fixed header: see below. */}
+          {hasRoute && !planning && (
             <RouteSummary route={route} flight={flightFigures}
-              onOpen={planning ? undefined : openPlanner} onRemoveLeg={removeRouteLeg}
+              onOpen={openPlanner} onRemoveLeg={removeRouteLeg}
               onRemoveEnd={removeRouteEnd}
               onReorder={reorderRouteLeg} onAddStop={addRouteStop} onFocusPoint={focusRoutePoint}
               fillTo={snap === 25
@@ -2581,31 +2576,31 @@ export default function MapHome() {
                 ? Math.max(0, restPx - GRAB_ABOVE_ROUTE - 10 - safeBottom - (gestureHint ? HINT_RESERVE : 0))
                 : 0} />
           )}
-
-          {/* The rules, directly under the route, which is the whole point of
-              them being here: the pilot sees the flight and what it is being
-              filed as in one look, instead of answering the question on a
-              screen that had hidden the route to ask it.
-
-              With the plan open only. At rest the drawer is showing the route
-              card sized to the 25 stop, and that stop has nothing spare. */}
-          {planning && (
-            <div style={{ marginTop: 14 }}>
-              <FlightRulesRow />
-            </div>
-          )}
         </div>
 
         {/* The flight plan itself, filling what is left of the drawer. Mounted
             only while planning, so leaving it is what unmounts the megabyte of
             planner and its Leaflet previews rather than leaving them running
-            under a map that is already drawing one. */}
+            under a map that is already drawing one.
+
+            One scroller, and everything the plan is made of inside it: the
+            route, its figures, the flight rules, then the steps. They used to
+            be two surfaces, the first three nailed to the top of the drawer and
+            the steps scrolling underneath them, so opening a step slid the form
+            up under the rules row. They are one sheet and they move as one now,
+            which is what the drawer looked like it was promising. */}
         {planning && (
           <div
             onPointerDown={onBodyDragStart} onPointerMove={onDragMove}
             onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
             style={{
               flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
+              // Scrolls once the drawer is the whole screen, exactly as the
+              // tools list below does and for the same reason: below that there
+              // is more sheet to open than plan to read, and a scroller here
+              // would swallow the drag that opens it.
+              overflowY: snap === 100 ? 'auto' : 'hidden',
+              WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
               // Half open, the plan is dragged rather than read: a finger
               // anywhere on it takes the drawer to full screen, which is the
               // only way up other than the handle, and the handle is a target
@@ -2619,16 +2614,37 @@ export default function MapHome() {
               // this way; this is the same bargain, kept in the same words.
               touchAction: snap === 100 ? 'pan-y' : 'pan-x',
             }}>
+            {/* The route and the rules, at the top of the scroll rather than
+                above it. Same card, same row, same handlers: only which
+                surface they are on has changed, and it changed so that they
+                scroll away with the plan instead of the plan sliding under
+                them. */}
+            {hasRoute && (
+              <div style={{ padding: '0 18px', flexShrink: 0 }}>
+                <RouteSummary route={route} flight={flightFigures}
+                  onRemoveLeg={removeRouteLeg} onRemoveEnd={removeRouteEnd}
+                  onReorder={reorderRouteLeg} onAddStop={addRouteStop}
+                  onFocusPoint={focusRoutePoint} fillTo={0} />
+              </div>
+            )}
+            {/* The rules, directly under the route, which is the whole point of
+                them being here: the pilot sees the flight and what it is being
+                filed as in one look, instead of answering the question on a
+                screen that had hidden the route to ask it. */}
+            <div style={{ padding: '14px 18px 0', flexShrink: 0 }}>
+              <FlightRulesRow />
+            </div>
+
             <Suspense fallback={
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              <div style={{ padding: '40px 0', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 12, color: 'var(--map-ink-faint)' }}>
                 Opening the flight plan…
               </div>
             }>
-              {/* Its own chrome, title and buttons alike, only once the drawer
-                  is the whole screen. Below that the route card is the subject,
-                  the sheet has no height to spare for a second header, and its
-                  bottom belongs to the flight rules row. */}
+              {/* Its buttons only once the drawer is the whole screen. Below
+                  that the route card is the subject and the sheet has no
+                  height to spare for a footer. The title and its back button
+                  are gone from the drawer at every height: see Checklists. */}
               <Planner embedded expanded={snap === 100}
                 onClose={leavePlanner} onRouteCalculated={onRouteCalculated}
                 onStepOpenChange={onStepOpenChange} />

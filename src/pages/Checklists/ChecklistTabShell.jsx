@@ -44,6 +44,34 @@ export default function ChecklistTabShell({
   const gesture = useRef(null)
   const n = sections.length
 
+  // Does this shell scroll, or does it flow into a scroller it does not own?
+  //
+  // Standalone it scrolls: it is the screen, each pane is as tall as the
+  // window and reads like a page. In the map home's drawer it flows, because
+  // there the pane is not the top of anything. Above it sit the route, its
+  // figures and the flight rules, and while the pane scrolled inside itself
+  // those three stayed nailed to the drawer and the plan slid underneath
+  // them: open a step and the form disappeared under the rules row that was
+  // meant to be part of the same sheet. One scroller, one sheet, everything
+  // moving together, which is what the drawer looked like it was promising.
+  //
+  // Flowing means the panes have no height of their own, so the track is told
+  // the height of whichever one is showing. Measured rather than computed:
+  // a step opens and closes and the pane grows by however much its form needs.
+  const flow = embedded
+  const paneRefs = useRef([])
+  const [paneH, setPaneH] = useState(0)
+  useLayoutEffect(() => {
+    if (!flow || typeof ResizeObserver === 'undefined') return
+    const el = paneRefs.current[activeIndex]
+    if (!el) return
+    const read = () => setPaneH(el.offsetHeight)
+    read()
+    const observer = new ResizeObserver(read)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [flow, activeIndex, sections, resetKey])
+
   // Stable per-section callbacks (created once) so PaneActivityProvider's
   // registration function never changes identity and doesn't churn
   // ExpandableCard's registration effect on every unrelated re-render.
@@ -153,10 +181,21 @@ export default function ChecklistTabShell({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column',
+      ...(flow ? { flex: '0 0 auto' } : { flex: 1, minHeight: 0 }),
+    }}>
       <div
         ref={containerRef}
-        style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', touchAction: 'pan-y' }}
+        style={{
+          position: 'relative', overflow: 'hidden', touchAction: 'pan-y',
+          ...(flow
+            // As tall as the pane on screen, and it eases so that opening a
+            // step grows the sheet rather than snapping it.
+            ? { flex: '0 0 auto', height: paneH || undefined,
+                transition: 'height 0.28s cubic-bezier(0.4,0,0.2,1)' }
+            : { flex: 1, minHeight: 0 }),
+        }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
@@ -164,15 +203,22 @@ export default function ChecklistTabShell({
         <div style={{
           display: 'flex',
           width: `${n * 100}%`,
-          height: '100%',
+          // Flowing, the panes are their own heights and the track must not
+          // stretch them all to the tallest: only the one on screen is
+          // measured, and the rest are as tall as they happen to be.
+          ...(flow ? { alignItems: 'flex-start' } : { height: '100%' }),
           transform: `translateX(calc(-${activeIndex * (100 / n)}% + ${dragPx}px))`,
           transition: dragging ? 'none' : 'transform 0.32s cubic-bezier(0.4,0,0.2,1)',
         }}>
           {sections.map((section, i) => (
-            <div key={section.title} style={{
-              width: `${100 / n}%`, flexShrink: 0, height: '100%',
-              overflowY: 'auto', WebkitOverflowScrolling: 'touch',
-              overscrollBehaviorY: 'contain',
+            <div key={section.title}
+              ref={el => { paneRefs.current[i] = el }}
+              style={{
+              width: `${100 / n}%`, flexShrink: 0,
+              ...(flow
+                ? { height: 'auto', overflow: 'visible' }
+                : { height: '100%', overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+                    overscrollBehaviorY: 'contain' }),
               // A flex column so the content column can be told to fill the
               // pane's height. A percentage min-height would resolve against
               // an auto-height parent and quietly do nothing.
@@ -190,7 +236,13 @@ export default function ChecklistTabShell({
                 <PaneActivityProvider onActiveChange={onActiveChangeFns[i]}>
                   <StepPane
                     key={`${section.title}-${resetKey}`}
-                    stretch={!paneOpen[i]}
+                    // Stretching shares a pane's spare height between its
+                    // collapsed cards. Flowing there is no spare height to
+                    // share: the pane is exactly as tall as its cards, and
+                    // asking them to divide nothing collapses each to its
+                    // 46px floor. Content height is the right answer for
+                    // something that scrolls.
+                    stretch={!flow && !paneOpen[i]}
                     section={section}
                     checked={checked}
                     onToggle={onToggle}

@@ -308,7 +308,11 @@ function ChecklistDetail({ checklist, onBack, embedded = false, expanded = true,
     <PlannerHostContext.Provider value={plannerHost}>
     <div style={embedded
       ? {
-        flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
+        // Content height, not a share of the box. Embedded, this is now one
+        // block inside the drawer's own scroller, under the route and the
+        // flight rules, so claiming flex:1 would stretch it to fill a column
+        // that is meant to be as tall as what is in it.
+        flex: '0 0 auto', display: 'flex', flexDirection: 'column',
         // Inside the drawer this must not paint a surface of its own. The
         // drawer is a translucent glass panel; the planner was filling it
         // with opaque near-black, so it read as a second window sitting in a
@@ -341,23 +345,26 @@ function ChecklistDetail({ checklist, onBack, embedded = false, expanded = true,
         position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
         paddingTop: 'var(--safe-top)', background: 'var(--bg)',
       }}>
-      {/* Header. Tighter embedded: the drawer's own handle sits directly
-          above it, and the standalone screen's breathing room would push the
-          first card off a half-height drawer.
+      {/* Header, and the standalone screen only.
+          A screen needs a title and a way back. The drawer is not a screen: it
+          already has a handle to leave by, the route above it says what the
+          plan is about, and the title itself was the giveaway. It flapped
+          between "Flight Plan", "Flight Type" and whichever step was open,
+          which reads as a caption for the thing above it rather than a name
+          for the thing below, and it sat between the flight rules and the
+          first card doing neither job. Gone from the drawer entirely, at every
+          height.
 
-          In the drawer it waits for full screen. Anywhere below that the sheet
-          is short, the route and its rules are the subject, and a title with a
-          back button under them is a second set of chrome inside the first: it
-          costs a row of the little height there is and offers a way out that
-          the drawer's own handle and the X already give. At full screen there
-          is room for it and the plan is the whole screen, so it belongs. */}
-      {(!embedded || expanded) && (
+          Reset went with it. It was a control on this row and there is no row.
+          It is still on /checklists, which is where a plan gets thrown away
+          deliberately rather than mid-flight. */}
+      {!embedded && (
       <div style={{
-        padding: embedded ? '4px 16px 8px' : '20px 16px 12px',
+        padding: '20px 16px 12px',
         display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0,
       }}>
         <HomeButton onBack={onBack} />
-        <h2 style={{ flex: 1, fontSize: embedded ? 18 : 22, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)', margin: 0 }}>
+        <h2 style={{ flex: 1, fontSize: 22, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--text)', margin: 0 }}>
           <SplitFlapTitle text={headerTitle} />
         </h2>
         {flightPlanType !== null && (
