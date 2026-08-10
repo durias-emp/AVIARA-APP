@@ -1909,7 +1909,11 @@ export default function MapHome() {
           <Map3DPane
             key={routeLine.length > 1 ? JSON.stringify(routeLine) : 'no-route'}
             route={route} centre={mapCentre} zoom={mapRef.current?.getZoom()}
-            dark={darkBasemap}
+            // The app's theme, not darkBasemap. That flag exists to yield to
+            // the FAA charts, which are Leaflet layers and are not drawn over
+            // this view at all, so here it would only make the tilted map go
+            // light because a sectional the pilot cannot currently see is on.
+            dark={isDark}
             onFail={() => setView3d(false)} />
         </div>
       )}

@@ -43,7 +43,14 @@ export default function Map3DPane({ route, centre, zoom, dark = false, onFail })
   // changes identity would rebuild the whole engine several times a second.
   const onFailRef = useRef(onFail)
   const initial = useRef({ route, centre, zoom, dark })
+  // The theme as it is NOW, for the parts that are re-applied after a restyle.
+  // `initial` is only ever the starting point; reading it later is how the view
+  // ends up stranded in the theme it was born in.
+  const darkRef = useRef(dark)
+  const appliedDark = useRef(dark)
+  const tilted = useRef(false)
   useEffect(() => { onFailRef.current = onFail }, [onFail])
+  useEffect(() => { darkRef.current = dark }, [dark])
 
   useEffect(() => {
     let cancelled = false
@@ -89,14 +96,19 @@ export default function Map3DPane({ route, centre, zoom, dark = false, onFail })
 
         // styledata rather than load: load waits for a first render, and a
         // backgrounded tab never grants the frames that would produce one.
-        let dressed = false
+        //
+        // Written to be run again, not once. setStyle throws away every layer
+        // and source added to the old style, so switching theme would leave a
+        // bare map with no buildings and no route unless this can put them
+        // back. styledata fires again when the new style lands, so each guard
+        // below asks whether its own piece is missing rather than trusting a
+        // flag that only knows about the first time.
         const dress = () => {
-          if (dressed || !gl.isStyleLoaded()) return
-          dressed = true
+          if (!gl.isStyleLoaded()) return
           try {
             const src = Object.entries(gl.getStyle().sources)
               .find(([, s]) => s.type === 'vector')?.[0]
-            if (src) {
+            if (src && !gl.getLayer('aviara-3d-buildings')) {
               gl.addLayer({
                 id: 'aviara-3d-buildings',
                 type: 'fill-extrusion',
@@ -104,14 +116,14 @@ export default function Map3DPane({ route, centre, zoom, dark = false, onFail })
                 'source-layer': 'building',
                 minzoom: 14,
                 paint: {
-                  'fill-extrusion-color': start.dark ? '#3a3f46' : '#c9ced8',
+                  'fill-extrusion-color': darkRef.current ? '#3a3f46' : '#c9ced8',
                   'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 12],
                   'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
                   'fill-extrusion-opacity': 0.88,
                 },
               })
             }
-            if (pts.length >= 2) {
+            if (pts.length >= 2 && !gl.getSource('aviara-route')) {
               gl.addSource('aviara-route', {
                 type: 'geojson',
                 data: { type: 'Feature', geometry: { type: 'LineString', coordinates: pts } },
@@ -145,9 +157,16 @@ export default function Map3DPane({ route, centre, zoom, dark = false, onFail })
                   'circle-stroke-width': ['case', ['==', ['get', 'end'], 1], 2.5, 1.5],
                 },
               })
-              gl.easeTo({ pitch: 60, bearing: bearingDeg(pts[0], pts[1]), duration: 1200 })
-            } else {
-              gl.easeTo({ pitch: 60, duration: 1200 })
+            }
+            // The arrival, once. A theme change re-runs everything above so
+            // the buildings and the route come back, but re-tilting would
+            // swing the camera out from under a pilot who only changed the
+            // colour of the app.
+            if (!tilted.current) {
+              tilted.current = true
+              gl.easeTo(pts.length >= 2
+                ? { pitch: 60, bearing: bearingDeg(pts[0], pts[1]), duration: 1200 }
+                : { pitch: 60, duration: 1200 })
             }
           } catch (e) {
             console.warn('[map3d] dressing failed:', e?.message ?? e)
@@ -168,6 +187,20 @@ export default function Map3DPane({ route, centre, zoom, dark = false, onFail })
       gl?.remove()
     }
   }, [])
+
+  // Follow the app's theme while open. The style was read once at creation, so
+  // turning the app light while the tilted view was up left it stranded in the
+  // dark scheme with every other surface around it white. Restyling keeps the
+  // camera and the engine; `dress` above puts the buildings and the route back
+  // when the new style lands.
+  useEffect(() => {
+    const gl = glRef.current
+    if (!gl || appliedDark.current === dark) return
+    appliedDark.current = dark
+    try {
+      gl.setStyle(`https://tiles.openfreemap.org/styles/${dark ? 'dark' : 'liberty'}`)
+    } catch { /* keep the style already on screen */ }
+  }, [dark])
 
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
