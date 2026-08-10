@@ -23,14 +23,9 @@ import { useEffect, useRef, useState } from 'react'
 import { ROUTE_COLOR, ROUTE_OPACITY, ROUTE_WEIGHT } from './mapStyle'
 import { dressAeroways } from './aerowayStyle'
 
-function bearingDeg(a, b) {
-  const r = Math.PI / 180
-  const dLon = (b[0] - a[0]) * r
-  const y = Math.sin(dLon) * Math.cos(b[1] * r)
-  const x = Math.cos(a[1] * r) * Math.sin(b[1] * r) -
-    Math.sin(a[1] * r) * Math.cos(b[1] * r) * Math.cos(dLon)
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
-}
+// The first leg's bearing used to be computed here, to swing the 3D camera
+// round to face down the route on arrival. It went with the camera fitting:
+// this view follows the flat map now, and the flat map is north-up.
 
 // route: the stored record. centre/zoom: where the flat map is looking, so
 // switching to 3D lands on the same ground rather than somewhere else.
@@ -75,20 +70,32 @@ export default function Map3DPane({ route, centre, zoom, dark = false, onFail })
           pts.push([r.destPos[1], r.destPos[0]])
         }
 
+        // Wherever the flat map was looking. Always, route or no route.
+        //
+        // This used to have a second branch: with a route stored it ignored the
+        // camera entirely and fitted the whole flight into the frame. That
+        // reads as going somewhere, and 3D is not somewhere to go. A pilot
+        // zoomed onto the destination who taps 3D to look at the terrain around
+        // it does not want the 167 NM they already know about; they want the
+        // ground under them, tilted. The route is still drawn, it just does not
+        // grab the camera.
+        //
+        // `.lon`, not `.lng`. The centre comes from SizeWatcher's onMove, which
+        // publishes { lat, lon }; reading `.lng` gave undefined, the ?? 0 turned
+        // that into the prime meridian, and 3D opened in the Atlantic at the
+        // pilot's latitude no matter where they were. Latitude was right, which
+        // is what made it look like a camera bug rather than a typo.
         const opts = {
           container: box.current,
           style: `https://tiles.openfreemap.org/styles/${start.dark ? 'dark' : 'liberty'}`,
           attributionControl: false,
-        }
-        if (pts.length >= 2) {
-          const lons = pts.map(p => p[0]), lats = pts.map(p => p[1])
-          opts.bounds = [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]]
-          opts.fitBoundsOptions = { padding: 70 }
-        } else {
-          // No route: stay exactly where the flat map was looking, so the
-          // switch reads as the same place seen differently.
-          opts.center = [start.centre?.lng ?? 0, start.centre?.lat ?? 0]
-          opts.zoom = Math.max(13, (start.zoom ?? 13) + 1)
+          center: [start.centre?.lon ?? 0, start.centre?.lat ?? 0],
+          // The same zoom, not a nudged one. Leaflet and MapLibre share the
+          // Web Mercator scale, so matching it is what makes the two views the
+          // same ground. The old +1 with a floor of 13 was there to guarantee
+          // buildings, which start at 14, but buying them by moving the camera
+          // is the same jump in miniature.
+          zoom: start.zoom ?? 13,
         }
 
         const gl = new maplibregl.Map(opts)
@@ -104,15 +111,26 @@ export default function Map3DPane({ route, centre, zoom, dark = false, onFail })
         // back. styledata fires again when the new style lands, so each guard
         // below asks whether its own piece is missing rather than trusting a
         // flag that only knows about the first time.
+        // NOT gated on isStyleLoaded, and that is a fix rather than an
+        // oversight. isStyleLoaded asks whether every source has finished
+        // fetching its tiles, which is a much later question than "can a layer
+        // be added". Gated on it, every one of these events could fire while
+        // tiles were still arriving, every call would bail, and nothing would
+        // fire again: caught in the browser with the style loaded and no
+        // route, no buildings and no taxiways on the tilted map. A parsed
+        // style with sources in it is the real precondition, which is what the
+        // read below tests.
         const dress = () => {
-          if (!gl.isStyleLoaded()) return
+          let style
+          try { style = gl.getStyle() } catch { return }
+          if (!style?.sources) return
           // The same taxiways and letters the flat map draws. Tilting is a way
           // of looking at the aerodrome, not a different aerodrome, and a
           // taxiway system that disappeared on the way into 3D would say
           // otherwise.
           dressAeroways(gl)
           try {
-            const src = Object.entries(gl.getStyle().sources)
+            const src = Object.entries(style.sources)
               .find(([, s]) => s.type === 'vector')?.[0]
             if (src && !gl.getLayer('aviara-3d-buildings')) {
               gl.addLayer({
@@ -168,18 +186,30 @@ export default function Map3DPane({ route, centre, zoom, dark = false, onFail })
             // the buildings and the route come back, but re-tilting would
             // swing the camera out from under a pilot who only changed the
             // colour of the app.
+            //
+            // Pitch only. It used to swing the bearing round to the route's
+            // first leg as well, which made sense while the camera was being
+            // fitted to that route and makes none now that it stays where the
+            // flat map was: north is up on the map the pilot just left, so
+            // north stays up here. Turning the world under someone who asked
+            // to tilt it is the same surprise this commit is removing.
             if (!tilted.current) {
               tilted.current = true
-              gl.easeTo(pts.length >= 2
-                ? { pitch: 60, bearing: bearingDeg(pts[0], pts[1]), duration: 1200 }
-                : { pitch: 60, duration: 1200 })
+              gl.easeTo({ pitch: 60, duration: 1200 })
             }
           } catch (e) {
             console.warn('[map3d] dressing failed:', e?.message ?? e)
           }
         }
+        // Three, and the third is what makes it reliable. styledata fires
+        // while the style is still being assembled; load needs a first render,
+        // which a backgrounded tab never grants; idle fires whenever the map
+        // has finished whatever it was doing. Every guard inside dress asks
+        // whether its own piece is missing, so the repeats cost a lookup.
         gl.on('styledata', dress)
         gl.on('load', dress)
+        gl.on('idle', dress)
+        dress()
       } catch (err) {
         console.warn('[map3d] failed:', err?.message ?? err)
         if (!cancelled) { setFailed(true); onFailRef.current?.(err) }
