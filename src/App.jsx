@@ -51,9 +51,6 @@ const SharedListing = lazyRoute('SharedListing', () => import('./pages/Discover/
 const Onboarding    = lazyRoute('Onboarding', () => import('./pages/Onboarding/Onboarding'))
 const Profile       = lazyRoute('Profile', () => import('./pages/Profile/Profile'))
 const SignIn        = lazyRoute('SignIn', () => import('./pages/SignIn/SignIn'))
-// Spike only (vector-map-spike): the 3D judging room. Reached by address, not
-// by any button, so it can be evaluated and then deleted without a trace.
-const Map3D         = lazyRoute('Map3D', () => import('./pages/Labs/Map3D'))
 const ResetPassword = lazyRoute('ResetPassword', () => import('./pages/SignIn/ResetPassword'))
 
 
@@ -199,7 +196,6 @@ function AppRoutes({ theme }) {
             <Route path="/p/:postId" element={<SharedPost />} />
             <Route path="/m/:listingId" element={<SharedListing />} />
             <Route path="/signin" element={<SignIn legacy={profile != null && profile.onboardingComplete} />} />
-            <Route path="/labs/3d" element={<Map3D />} />
             <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>

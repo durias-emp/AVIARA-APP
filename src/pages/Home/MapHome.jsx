@@ -24,6 +24,7 @@ import ActivityCard from '../../components/ActivityCard'
 import RouteChips from '../../components/RouteChips'
 import FlightRulesRow from '../../components/FlightRulesRow'
 import RouteLineEditor from '../../components/RouteLineEditor'
+import Map3DPane from '../../components/Map3DPane'
 import TrafficLayer from '../../components/TrafficLayer'
 import TrafficLegend from '../../components/TrafficLegend'
 import useLiveTraffic from '../../hooks/useLiveTraffic'
@@ -776,6 +777,9 @@ export default function MapHome() {
   // updated on moveend rather than continuously: panning within one cell
   // changes nothing anyone needs to know about.
   const [mapCentre, setMapCentre] = useState(null)
+  // The tilted view, on or off. A view of the same flight, not a place of its
+  // own, so nothing else about this screen changes when it turns on.
+  const [view3d, setView3d] = useState(false)
   const [selected, setSelected] = useState(null)
   // Fetched once when the chip is first switched on, not on mount: TFRs change
   // slowly and most sessions never ask for them.
@@ -794,12 +798,13 @@ export default function MapHome() {
   const [recorder] = useState(() => createRecorder({ onUpdate: setRec }))
 
   const activeCount = Object.values(layers).filter(Boolean).length
-  // The chart toggles plus one door. 3D is not a layer that draws on this
-  // map, because this map's camera is Leaflet's and Leaflet's camera is flat:
-  // tilting the floor under it would strand every overlay in the air. It is a
-  // view of its own, so its chip navigates instead of toggling, and it lives
-  // here because the layers panel is where a pilot goes to change what the
-  // map shows them. Spike only (vector-map-spike).
+  // The chart toggles plus 3D, which behaves like the rest of them: it turns
+  // on, it lights up, it turns off. It is not a chart layer underneath, since
+  // this map's camera is Leaflet's and Leaflet's camera is flat, so 3D is a
+  // second map drawn over the map area. But that is the implementation, and a
+  // pilot should only meet the behaviour: the drawer, the route strip, the
+  // weather pill and these chips all stay put, because they all still describe
+  // the same flight. Spike only (vector-map-spike).
   const chipDefs = [...CHARTS, { key: 'view3d', label: '3D', view: true }]
   const chipLayout = chipStackBox(chipArea.h, chipArea.w, chipDefs.length)
 
@@ -1816,6 +1821,17 @@ export default function MapHome() {
     // bar and the home indicator. body is the containing block, which is what
     // makes this land on the real screen bottom.
     <div ref={shellRef} style={{ position: 'fixed', inset: 0, background: 'var(--bg)', overflow: 'hidden' }}>
+      {/* The flat map, wrapped so it can be hidden as a whole.
+          MapContainer reads its own `style` prop once at mount and never
+          again, so hiding it through that prop did nothing: the Leaflet route
+          went on drawing over the tilted view. The wrapper is plain DOM and
+          answers every render. Hidden rather than unmounted, because tearing
+          Leaflet down would throw away the camera, the layers and the route
+          editor for what is a change of view. */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        visibility: view3d ? 'hidden' : 'visible',
+      }}>
       <MapContainer center={INITIAL_CENTER} zoom={10} zoomControl={false} attributionControl={false}
         style={{ height: '100%', width: '100%' }}>
         <SizeWatcher mapRef={mapRef} onReady={onMapReady} onMove={setMapCentre} />
@@ -1879,6 +1895,24 @@ export default function MapHome() {
             pathOptions={{ color: '#fff', weight: 3, fillColor: '#1d7fff', fillOpacity: 1 }} />
         )}
       </MapContainer>
+      </div>
+
+      {/* The tilted view, filling the map area and nothing else.
+          After the flat map in the DOM and above it in the stack, but below
+          500, which is where every piece of chrome starts: the drawer, the
+          strip, the chips and the pill all stay exactly where they were,
+          because they describe the same flight however the ground is drawn.
+          Mounted only while on, so the second engine exists only when asked
+          for; keyed on the route so a leg added while it is open redraws. */}
+      {view3d && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 2 }}>
+          <Map3DPane
+            key={routeLine.length > 1 ? JSON.stringify(routeLine) : 'no-route'}
+            route={route} centre={mapCentre} zoom={mapRef.current?.getZoom()}
+            dark={darkBasemap}
+            onFail={() => setView3d(false)} />
+        </div>
+      )}
 
       {/* Top row: get the furniture out of the way, and the one reading a pilot
           opens the app for. The menu home showed conditions on arrival and the
@@ -1980,9 +2014,10 @@ export default function MapHome() {
               this deciding them in advance. */}
           {chipDefs.map((c, i) => (
             <button key={c.key} className="chart-chip"
-              onClick={() => (c.view ? navigate('/labs/3d') : toggleLayer(c.key))} style={{
-              background: layers[c.key] ? 'var(--map-ink)' : 'var(--map-panel)',
-              color: layers[c.key] ? 'var(--map-ink-invert)' : 'var(--map-ink)',
+              title={c.view ? 'Tilted view with buildings. Not terrain.' : undefined}
+              onClick={() => (c.view ? setView3d(v => !v) : toggleLayer(c.key))} style={{
+              background: (c.view ? view3d : layers[c.key]) ? 'var(--map-ink)' : 'var(--map-panel)',
+              color: (c.view ? view3d : layers[c.key]) ? 'var(--map-ink-invert)' : 'var(--map-ink)',
               border: 'none', borderRadius: 10, cursor: 'pointer',
               // One size for all of them. Sized to its own label, TFR came out
               // narrower than ARSP and the column read as a ragged edge rather
