@@ -21,6 +21,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { ROUTE_COLOR, ROUTE_OPACITY, ROUTE_WEIGHT } from './mapStyle'
+import { dressAeroways } from './aerowayStyle'
 
 function bearingDeg(a, b) {
   const r = Math.PI / 180
@@ -105,6 +106,11 @@ export default function Map3DPane({ route, centre, zoom, dark = false, onFail })
         // flag that only knows about the first time.
         const dress = () => {
           if (!gl.isStyleLoaded()) return
+          // The same taxiways and letters the flat map draws. Tilting is a way
+          // of looking at the aerodrome, not a different aerodrome, and a
+          // taxiway system that disappeared on the way into 3D would say
+          // otherwise.
+          dressAeroways(gl)
           try {
             const src = Object.entries(gl.getStyle().sources)
               .find(([, s]) => s.type === 'vector')?.[0]

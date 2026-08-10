@@ -39,6 +39,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useMap } from 'react-leaflet'
+import { keepAerowaysDressed } from './aerowayStyle'
 
 // Their styles, by app theme. Liberty is the rich road map, closest to the
 // voyager raster it replaces; dark is their night scheme on the same data.
@@ -58,6 +59,8 @@ export default function VectorBasemap({ dark = false, onFail }) {
   const onFailRef = useRef(onFail)
   const initialDark = useRef(dark)
   const appliedStyle = useRef(null)
+  // Unsubscribes the aeroway dressing from the GL map's events.
+  const undress = useRef(null)
   useEffect(() => { onFailRef.current = onFail }, [onFail])
 
   // Built once per Leaflet map. The dependency list is deliberately this
@@ -111,6 +114,16 @@ export default function VectorBasemap({ dark = false, onFail }) {
         // lifted. The real flicker was the engine being rebuilt seven times a
         // drag, which is fixed above, and this was never part of it.
 
+        // The taxiways and their letters, which the tiles already carry and
+        // the vendor style all but hides. Subscribed rather than called once:
+        // a theme change goes through setStyle, and setStyle discards every
+        // layer added to the style it replaces. See keepAerowaysDressed for
+        // why one event is not enough either. Module-level, with no closure
+        // over anything in this component, so it can never become a reason to
+        // rebuild the engine.
+        undress.current?.()
+        undress.current = keepAerowaysDressed(layer.getMaplibreMap?.())
+
         if (!cancelled) setReady(true)
       } catch (err) {
         console.warn('[vector-basemap] failed, falling back to raster:', err?.message ?? err)
@@ -119,6 +132,8 @@ export default function VectorBasemap({ dark = false, onFail }) {
     })()
     return () => {
       cancelled = true
+      undress.current?.()
+      undress.current = null
       const layer = layerRef.current
       layerRef.current = null
       if (layer && map.hasLayer(layer)) map.removeLayer(layer)

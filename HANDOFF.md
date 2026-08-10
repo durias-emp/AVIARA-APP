@@ -346,14 +346,16 @@ carries no official chart for them. Two honest routes: obtain the PDFs from the
 AAC and bundle them as licensed content, or build a "load your own chart"
 pocket so a pilot supplies theirs. Both are real; neither is started.
 
-### The natural next step from the airport layer
+### The airport layer, and where it goes next
 
-The OpenFreeMap tiles already carry an `aeroway` source layer with taxiways and
-aprons, and an `aerodrome_label` layer. Verified, not assumed. That means
-taxiway centrelines and labels over the airport are a styling job rather than
-another data pack, which is the difference between a week and an afternoon.
-Runway numbers on the pavement were the first half of that picture; taxiway
-letters are the second.
+Taxiways and their letters are **done**, and they cost no data pack at all. The
+OpenFreeMap tiles carry an `aeroway` source layer whose schema is exactly two
+fields, `class` and `ref`, and `ref` is the taxiway designator: 108 taxiway
+features at KJFK with 91 of them lettered, and Ilopango's A/B/C/D matching the
+AAC's own chart. `src/components/aerowayStyle.js` restyles the vendor's
+near-invisible taxiway lines into pavement and adds a symbol layer for the
+letters from zoom 14, on both the flat map and the tilted one. Runway numbers
+on the pavement were the first half of that picture; this is the second.
 
 Beyond that, the data already in `airport_details.json` and
 `runway_geometry.json` supports, in rough order of effort: displaced
