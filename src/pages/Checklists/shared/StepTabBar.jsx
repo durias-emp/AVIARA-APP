@@ -71,8 +71,10 @@ export default function StepTabBar({ sections, activeIndex, onSelect, checked, c
     <div style={{
       display: 'flex',
       background: flat ? 'transparent' : 'var(--bg-card)',
-      // Clear of the last card, since there is no filled edge to do it.
-      marginTop: flat ? 6 : 0,
+      // A rule instead of a slab. Without the fill the tabs had nothing
+      // separating them from the last card, and a hairline does that job at
+      // the cost of a pixel rather than a panel.
+      ...(flat ? { marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 2 } : null),
       flexShrink: 0,
     }}>
       {sections.map((section, i) => {
