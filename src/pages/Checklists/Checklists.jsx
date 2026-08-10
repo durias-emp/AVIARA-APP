@@ -99,12 +99,12 @@ function allIds(checklist) {
 // Two hosts, one planner. Standalone at /checklists it owns the screen;
 // embedded it fills whatever box the map home's drawer gives it, and reports
 // a calculated route back so the drawer can drop down and show the line.
-export default function Checklists({ embedded = false, showHeader = true, onClose, onRouteCalculated, onStepOpenChange }) {
+export default function Checklists({ embedded = false, expanded = true, onClose, onRouteCalculated, onStepOpenChange }) {
   return (
     <ChecklistDetail
       checklist={CHECKLISTS[0]}
       embedded={embedded}
-      showHeader={showHeader}
+      expanded={expanded}
       onBack={onClose}
       onRouteCalculated={onRouteCalculated}
       onStepOpenChange={onStepOpenChange}
@@ -114,7 +114,7 @@ export default function Checklists({ embedded = false, showHeader = true, onClos
 
 
 /* ── Checklist detail: full-screen tabbed steps ─────────────── */
-function ChecklistDetail({ checklist, onBack, embedded = false, showHeader = true, onRouteCalculated, onStepOpenChange }) {
+function ChecklistDetail({ checklist, onBack, embedded = false, expanded = true, onRouteCalculated, onStepOpenChange }) {
   const { aircraftId } = useActiveAircraft()
   const [checked, setChecked]         = useState(new Set())
   const [customItems, setCustomItems] = useState({ PILOT: [] })
@@ -351,7 +351,7 @@ function ChecklistDetail({ checklist, onBack, embedded = false, showHeader = tru
           costs a row of the little height there is and offers a way out that
           the drawer's own handle and the X already give. At full screen there
           is room for it and the plan is the whole screen, so it belongs. */}
-      {(!embedded || showHeader) && (
+      {(!embedded || expanded) && (
       <div style={{
         padding: embedded ? '4px 16px 8px' : '20px 16px 12px',
         display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0,
@@ -387,7 +387,13 @@ function ChecklistDetail({ checklist, onBack, embedded = false, showHeader = tru
         onUpdateCustomItemValue={updateCustomItemValue}
         activeIndex={activeIndex}
         onActiveIndexChange={setActiveIndex}
-        completeBar={
+        // Add Step and Complete Flight Plan are pinned to the bottom of the
+        // shell, which in the drawer means pinned under the flight rules. The
+        // bottom of a half-open drawer belongs to the rules row: it is the last
+        // thing the pilot should meet before deciding to scroll. So the pair
+        // waits for full screen, where the plan owns the whole page and a
+        // footer is what a page ends with. Same rule as the header above.
+        completeBar={(!embedded || expanded) ? (
           <CompleteButton
             pct={pct}
             complete={complete}
@@ -396,7 +402,7 @@ function ChecklistDetail({ checklist, onBack, embedded = false, showHeader = tru
             onAddStep={() => setAddDrawerOpen(true)}
             embedded={embedded}
           />
-        }
+        ) : null}
       />
       )}
 

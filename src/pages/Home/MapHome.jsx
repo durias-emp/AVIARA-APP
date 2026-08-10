@@ -340,7 +340,7 @@ function RouteSummary({ route, flight, onOpen, onRemoveLeg, onRemoveEnd, onReord
   // strip out. The icons went with the change: at this size they were
   // decoration competing with the number they sat beside, and the word says
   // it better than a mark that has to be learned.
-  const figure = ({ value, label, dim }) => (
+  const figure = ({ value, label, dim, placeholder }) => (
     <div key={label} style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 0,
     }}>
@@ -372,10 +372,14 @@ function RouteSummary({ route, flight, onOpen, onRemoveLeg, onRemoveEnd, onReord
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
       }}>{label}</span>
       <span style={{
-        fontSize: 'clamp(17px, 5.4vw, 22px)',
-        fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.3px',
+        // A figure with nothing behind it is a word, not a number, so it drops
+        // to a size a word fits in. At the numeral size "Not set" runs past its
+        // column and shoulders the one beside it.
+        fontSize: placeholder ? 'clamp(11px, 3.2vw, 13px)' : 'clamp(17px, 5.4vw, 22px)',
+        fontWeight: placeholder ? 600 : 800,
+        lineHeight: placeholder ? 2 : 1.1, letterSpacing: '-0.3px',
         fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
-        color: dim ? 'var(--map-ink-dim)' : 'var(--map-ink)',
+        color: placeholder ? 'var(--map-ink-faint)' : dim ? 'var(--map-ink-dim)' : 'var(--map-ink)',
       }}>{value}</span>
     </div>
   )
@@ -455,18 +459,29 @@ function RouteSummary({ route, flight, onOpen, onRemoveLeg, onRemoveEnd, onReord
               sits under the one above it. A figure with nothing behind it
               shows a dash rather than vanishing, because a missing column
               would slide the rest out of alignment. */}
-          {figure({ label: 'Time', value: fmtHM(flight?.hours) ?? '\u2013' })}
+          {figure({
+            label: 'Time',
+            value: fmtHM(flight?.hours) ?? 'No aircraft',
+            placeholder: fmtHM(flight?.hours) == null,
+          })}
           {figure({
             label: 'Trip fuel',
-            value: flight?.tripFuel != null ? `${flight.tripFuel.toFixed(1)} gal` : '\u2013',
+            value: flight?.tripFuel != null ? `${flight.tripFuel.toFixed(1)} gal` : 'No aircraft',
+            placeholder: flight?.tripFuel == null,
           })}
           {figure({
             label: 'Fuel aboard',
-            value: flight?.aboard != null ? `${flight.aboard} gal` : '\u2013',
+            value: flight?.aboard != null ? `${flight.aboard} gal` : 'No aircraft',
+            placeholder: flight?.aboard == null,
           })}
+          {/* Never a number until the pilot has chosen one. Zero is not a
+              neutral placeholder here, it is sea level, and a flight plan that
+              says it cruises at 0 ft is a claim rather than a blank. "Not set"
+              says the same thing without asserting an altitude. */}
           {figure({
             label: 'Cruise alt', dim: true,
-            value: flight?.altFt != null ? `${flight.altFt.toLocaleString()} ft` : '\u2013',
+            value: flight?.altFt != null ? `${flight.altFt.toLocaleString()} ft` : 'Not set',
+            placeholder: flight?.altFt == null,
           })}
         </div>
       )}
@@ -2472,10 +2487,11 @@ export default function MapHome() {
                 Opening the flight plan…
               </div>
             }>
-              {/* Its title and back button only once the drawer is the whole
-                  screen. Below that the route card above is the subject and
-                  the sheet has no height to spare for a second header. */}
-              <Planner embedded showHeader={snap === 100}
+              {/* Its own chrome, title and buttons alike, only once the drawer
+                  is the whole screen. Below that the route card is the subject,
+                  the sheet has no height to spare for a second header, and its
+                  bottom belongs to the flight rules row. */}
+              <Planner embedded expanded={snap === 100}
                 onClose={leavePlanner} onRouteCalculated={onRouteCalculated}
                 onStepOpenChange={onStepOpenChange} />
             </Suspense>
