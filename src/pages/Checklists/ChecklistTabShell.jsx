@@ -307,6 +307,7 @@ export default function ChecklistTabShell({
             onSelect={onActiveIndexChange}
             checked={checked}
             customItems={customItems}
+            flat={embedded}
           />
         )}
         {completeBar}

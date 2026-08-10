@@ -57,12 +57,22 @@ function TabIndicator({ section, progress, active }) {
   )
 }
 
-/* ── Fixed bottom tab bar, one tab per checklist section ────── */
-export default function StepTabBar({ sections, activeIndex, onSelect, checked, customItems }) {
+/* ── Bottom tab bar, one tab per checklist section ──────────────
+   flat: no surface of its own.
+   On the standalone screen this bar floats over content that scrolls
+   underneath it, so it has to be filled or the cards passing behind would
+   read through the labels. In the drawer it does not float: it is the last
+   thing in a single scroll, and a filled slab there draws a second panel
+   inside the first, which is exactly what made the plan look bolted onto the
+   sheet rather than part of it. The numbered rings carry the structure on
+   their own.                                                                */
+export default function StepTabBar({ sections, activeIndex, onSelect, checked, customItems, flat = false }) {
   return (
     <div style={{
       display: 'flex',
-      background: 'var(--bg-card)',
+      background: flat ? 'transparent' : 'var(--bg-card)',
+      // Clear of the last card, since there is no filled edge to do it.
+      marginTop: flat ? 6 : 0,
       flexShrink: 0,
     }}>
       {sections.map((section, i) => {
