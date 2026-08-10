@@ -42,6 +42,9 @@ import { loadTfrs } from '../../lib/tfr'
 import useIsDark from '../../hooks/useIsDark'
 import { TEMPLATES } from '../../data/aircraftTemplates'
 import { useActiveAircraft } from '../../context/ActiveAircraft'
+import { scopedSettingsKey } from '../../lib/aircraft'
+import { num } from '../../lib/climbPerf'
+import { bearingDeg, haversineNm } from '../../lib/geo'
 
 // The flight plan, loaded only when it is asked for. Same specifier App.jsx
 // lazy-loads and the same one the idle warm-up below fetches, so all three
@@ -286,7 +289,51 @@ function FloatingCard({ visible, bottom, compact = false, children }) {
 // Chips rather than a line of text because they are the same object the
 // fullscreen map puts above its own readout, and because a point you can see
 // is a point you can take out.
-function RouteSummary({ route, onOpen, onRemoveLeg, onRemoveEnd, onReorder, onAddStop, onFocusPoint, fillTo = 0 }) {
+// The figures for a route whose shape has just changed, worked out here.
+//
+// Editing the route used to delete them and leave the card saying "open the
+// plan to work out the new distance and course". That was the honest answer
+// while nothing here could do the arithmetic, and it is the wrong answer now,
+// because all three are exactly computable without asking anything:
+//
+//   distance   the sum of the legs, plain great-circle
+//   true course the bearing of the FIRST leg, which is what the planner stores
+//   variation  UNCHANGED. The planner reads it from NOAA at the midpoint of
+//              departure and destination, and neither of those moves when a
+//              turning point is added between them, so the number still stands
+//
+// Which makes the magnetic course exact too, since it is only true course less
+// variation. Same formulas as RouteAltitude's own calculation, so the card and
+// the planner cannot produce two different answers for one route.
+//
+// needsRecalc still rides along: the planner recomputes airways, procedures
+// and the filed string, none of which this pretends to know.
+function recomputeFigures(prev, wpts) {
+  const chain = [
+    prev?.depPos,
+    ...(wpts ?? []).filter(w => w?.lat != null && w?.lon != null).map(w => [w.lat, w.lon]),
+    prev?.destPos,
+  ]
+  if (!chain[0] || !chain[chain.length - 1]) return {}
+  let dist = 0
+  for (let i = 0; i < chain.length - 1; i++) {
+    dist += haversineNm(chain[i][0], chain[i][1], chain[i + 1][0], chain[i + 1][1])
+  }
+  const tc = bearingDeg(chain[0][0], chain[0][1], chain[1][0], chain[1][1])
+  const magVar = parseFloat(prev?.magVar)
+  const out = { distNm: Math.round(dist), tc: Math.round(tc) }
+  if (Number.isFinite(magVar)) out.mc = Math.round(((tc - magVar) + 360) % 360)
+  return out
+}
+
+// Hours as a pilot writes them: 1:24, not 1.4.
+function fmtHM(hours) {
+  if (hours == null || !Number.isFinite(hours)) return null
+  const total = Math.round(hours * 60)
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+}
+
+function RouteSummary({ route, flight, onOpen, onRemoveLeg, onRemoveEnd, onReorder, onAddStop, onFocusPoint, fillTo = 0 }) {
 
   // The word first and the number under it, left aligned, which is how a
   // flight plan prints a row of figures and how ForeFlight lays this same
@@ -316,8 +363,13 @@ function RouteSummary({ route, onOpen, onRemoveLeg, onRemoveEnd, onReorder, onAd
         // the four numbers sit on one baseline. Without it MAGNETIC COURSE
         // pushed its own figure down and the row read as broken rather than
         // as one word being longer than the others.
+        //
+        // Top aligned, so every label STARTS at the same height. Pushed to the
+        // bottom of that space instead, a one-line word sat a line lower than
+        // MAGNETIC COURSE's first line, and four headings at two different
+        // heights do not read as one row however well the numbers line up.
         lineHeight: 1.15, minHeight: '2.3em', textAlign: 'center',
-        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
       }}>{label}</span>
       <span style={{
         fontSize: 'clamp(17px, 5.4vw, 22px)',
@@ -397,8 +449,34 @@ function RouteSummary({ route, onOpen, onRemoveLeg, onRemoveEnd, onReorder, onAd
             label: 'Variation', dim: true,
             value: `${parseFloat(route.magVar) >= 0 ? '+' : ''}${route.magVar}\u00B0`,
           })}
+
+          {/* The second row: the flight rather than the line. Same four
+              columns, so the eight figures read as one block and every value
+              sits under the one above it. A figure with nothing behind it
+              shows a dash rather than vanishing, because a missing column
+              would slide the rest out of alignment. */}
+          {figure({ label: 'Time', value: fmtHM(flight?.hours) ?? '\u2013' })}
+          {figure({
+            label: 'Trip fuel',
+            value: flight?.tripFuel != null ? `${flight.tripFuel.toFixed(1)} gal` : '\u2013',
+          })}
+          {figure({
+            label: 'Fuel aboard',
+            value: flight?.aboard != null ? `${flight.aboard} gal` : '\u2013',
+          })}
+          {figure({
+            label: 'Cruise alt', dim: true,
+            value: flight?.altFt != null ? `${flight.altFt.toLocaleString()} ft` : '\u2013',
+          })}
         </div>
       )}
+
+      {/* The caveat line that used to sit here is gone at the owner's call: it
+          was a third row of grey type under a card whose job is to be read at a
+          glance. What it said still holds, so the words carry it instead. TRIP
+          FUEL is the standing term for fuel to destination WITHOUT reserves,
+          and Cruise & Fuel in the plan is where the reserve, the wind and the
+          go/no-go are actually worked out. */}
 
       {/* Said only when it is true. A route mid-edit has no figures, and an
           empty strip where they were is a question rather than an answer. */}
@@ -412,7 +490,11 @@ function RouteSummary({ route, onOpen, onRemoveLeg, onRemoveEnd, onReorder, onAd
           anywhere on the route opens the plan and nothing here has to be
           aimed at. Under the chips, so their own buttons win. */}
       <button
-        onClick={onOpen}
+        // Called with no arguments on purpose. Wired straight to onOpen, the
+        // click event arrived as openPlanner's `at`, so setSnap was handed a
+        // React event instead of 50 and the drawer never moved to the plan's
+        // stop: the plan opened behind a sheet still resting at 25.
+        onClick={() => onOpen?.()}
         aria-label="Open the flight plan"
         style={{
           position: 'absolute', inset: 0, background: 'none', border: 'none',
@@ -641,6 +723,18 @@ export default function MapHome() {
     // Saved values win: a pilot who edited a figure meant it.
     return tpl ? { ...tpl, ...row } : row
   }, [aircraftId, aircraftList])
+
+  // The pilot's own worked fuel plan, if there is one. Scoped to the aircraft,
+  // the same key Cruise & Fuel writes, so this reads their numbers rather than
+  // keeping a second copy that could disagree.
+  const [cruisePlan, setCruisePlan] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    get('settings', scopedSettingsKey('cruise', aircraftId))
+      .then(r => { if (!cancelled) setCruisePlan(r ?? null) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [aircraftId])
 
   const isDark = useIsDark()
 
@@ -1090,6 +1184,38 @@ export default function MapHome() {
     [routeLine],
   )
 
+  // The flight itself, as four figures a pilot can act on.
+  //
+  // Time is distance over cruise TAS, fuel is time times burn: the same
+  // arithmetic this app already commits to when it saves a flight, so this card
+  // and the logbook cannot quietly disagree about the same leg.
+  //
+  // It is AIR time. No wind is applied, because the wind-corrected figure only
+  // exists once the altitude advisor has run inside the plan, and inventing one
+  // here would be a number wearing more authority than it earned.
+  //
+  // Likewise TRIP fuel, not required fuel: the reserve is a regulatory figure
+  // that depends on the ruleset, the rules and the time of day, and Cruise &
+  // Fuel is where it is worked out. Calling this "fuel needed" next to "fuel
+  // aboard" would imply a go/no-go the card has not actually computed.
+  //
+  // The pilot's own worked plan wins. Where there is none the aircraft's book
+  // figures stand in, and the card says so underneath rather than passing them
+  // off as a plan nobody made.
+  const flightFigures = useMemo(() => {
+    const planTas = num(cruisePlan?.tas)
+    const planBurn = num(cruisePlan?.burnRate)
+    const tas = planTas ?? num(ac?.vspeeds?.cruise)
+    const burn = planBurn ?? num(ac?.burnRate?.cruise)
+    const hours = route?.distNm != null && tas ? route.distNm / tas : null
+    return {
+      hours,
+      tripFuel: hours != null && burn ? hours * burn : null,
+      aboard: num(cruisePlan?.fuelOnBoard) ?? num(ac?.fuel?.usable),
+      altFt: num(route?.cruiseAlt) ?? num(cruisePlan?.cruiseAlt),
+    }
+  }, [route?.distNm, route?.cruiseAlt, cruisePlan, ac])
+
   // What to call each turning point when one is tapped on the map. Built with
   // the same filter routeLine uses, so the nth dot on the line and the nth name
   // here are the same waypoint.
@@ -1126,7 +1252,11 @@ export default function MapHome() {
       }, 0)
       wpts.splice(at, 0, { lat, lon, name: `WPT${highest + 1}` })
       const next = { ...prev, wpts, needsRecalc: true }
-      for (const stale of ['distNm', 'trueCourse', 'magCourse', 'magVar']) delete next[stale]
+      for (const stale of ['trueCourse', 'magCourse', 'atsTokens']) delete next[stale]
+      // Held on the map and dropped into the route: the card answers with the
+      // new distance and course immediately, rather than sending the pilot to
+      // the planner to be told what the line in front of them already says.
+      Object.assign(next, recomputeFigures(prev, wpts))
       put('settings', { key: 'route', ...next }).catch(() => {})
       return next
     })
@@ -1154,9 +1284,10 @@ export default function MapHome() {
   // and a distance that no longer matches the line is worse than none.
   const withEdit = useCallback((prev, wpts) => {
     const next = { ...prev, wpts, needsRecalc: true }
-    // The filed string goes with the figures: it names a composition that no
-    // longer exists, and the one-pager falls back to dep, wpts and dest.
-    for (const stale of ['distNm', 'tc', 'mc', 'trueCourse', 'magCourse', 'magVar', 'atsTokens']) delete next[stale]
+    // The filed string still goes: it names a composition that no longer
+    // exists, and the one-pager falls back to dep, wpts and dest.
+    for (const stale of ['trueCourse', 'magCourse', 'atsTokens']) delete next[stale]
+    Object.assign(next, recomputeFigures(prev, wpts))
     put('settings', { key: 'route', ...next }).catch(() => {})
     return next
   }, [])
@@ -2285,7 +2416,8 @@ export default function MapHome() {
               Filled to the resting stop only at rest. Higher up the list
               below needs the room more than the card does. */}
           {hasRoute && (
-            <RouteSummary route={route} onOpen={planning ? undefined : openPlanner} onRemoveLeg={removeRouteLeg}
+            <RouteSummary route={route} flight={flightFigures}
+              onOpen={planning ? undefined : openPlanner} onRemoveLeg={removeRouteLeg}
               onRemoveEnd={removeRouteEnd}
               onReorder={reorderRouteLeg} onAddStop={addRouteStop} onFocusPoint={focusRoutePoint}
               fillTo={snap === 25
