@@ -80,6 +80,15 @@ const CHIP_GAP = 8
 // gap between them, and a gap above.
 const CTRL_STACK_H = CTRL * 2 + 12 + 10
 
+// The floating action row's own height, measured once from the built card
+// rather than recomputed: it is one row of round buttons in a padded panel,
+// and its only reader is the height cap on the card at the top of the screen.
+const ACTION_ROW_H = 66
+
+// The two collapsed rows at the top of that card, conditions and the field,
+// which are there whatever is open below them. Measured: 36 and 39.
+const TOP_CARD_HEADERS_H = 75
+
 // The tallest a column of chips may get before the next one starts.
 //
 // Without this the chips simply fill whatever height is available, so a tall
@@ -906,6 +915,21 @@ export default function MapHome() {
   // and null at every zoom above its floor. It carries the plate below the map
   // controls; nothing else on this screen changes because of it.
   const [focusField, setFocusField] = useState(null)
+  // Which half of the top card is open, if either: 'wx' for conditions, 'apt'
+  // for the field under the map. Arbitrated here rather than inside the two
+  // sections because they share one card and it can only be so tall.
+  const [topSection, setTopSection] = useState(null)
+  // Panning onto a different field folds that half shut again. A panel that
+  // stays open while what it describes changes underneath is the one thing it
+  // must not do: the numbers would be someone else's aerodrome. Conditions are
+  // left alone, because the home airport did not change.
+  const lastFocusIdent = useRef(null)
+  useEffect(() => {
+    const id = focusField?.ident ?? null
+    if (lastFocusIdent.current === id) return
+    lastFocusIdent.current = id
+    setTopSection(s => (s === 'apt' ? null : s))
+  }, [focusField])
   // A chart the pilot asked for, opened over everything. Held here rather than
   // inside the plate because it is a full screen, and the plate is a bar.
   const [chartOpen, setChartOpen] = useState(null)
@@ -993,6 +1017,11 @@ export default function MapHome() {
   // change at all, and a rotation, which really does resize the shell,
   // produces one.
   const [safeBottom, setSafeBottom] = useState(0)
+  // The status bar's strip, measured for the same reason the one below it is:
+  // the top card's height cap is worked out in JS, from the shell's measured
+  // height, and mixing that with a CSS dvh would reintroduce exactly the
+  // viewport lie the shell measurement exists to avoid.
+  const [safeTop, setSafeTop] = useState(0)
   useEffect(() => {
     const read = () => {
       const h = Math.round(shellRef.current?.getBoundingClientRect().height ?? 0)
@@ -1002,8 +1031,9 @@ export default function MapHome() {
       // The home indicator's strip, in a number rather than a CSS expression,
       // because the aircraft's height is worked out in JS and has to clear it.
       // Zero on the desktop, which is exactly why it cannot be eyeballed here.
-      setSafeBottom(parseFloat(
-        getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom')) || 0)
+      const css = getComputedStyle(document.documentElement)
+      setSafeBottom(parseFloat(css.getPropertyValue('--safe-bottom')) || 0)
+      setSafeTop(parseFloat(css.getPropertyValue('--safe-top')) || 0)
     }
     read()
     window.addEventListener('resize', read)
@@ -1697,6 +1727,24 @@ export default function MapHome() {
     ? `${restPx}px + ${recording ? 132 : 16}px + ${CTRL_STACK_H}px`
     : `var(--safe-bottom) + 28px + ${CTRL_STACK_H}px`
 
+  // How tall the card at the top may get before it starts hiding things.
+  //
+  // It carries two sections now, conditions and the field under the map, and
+  // both open at a large airport is four hundred pixels of content: three
+  // runways, six frequencies, a chart button and two source lines. Left to
+  // grow it runs under the action row floating above the drawer, and the
+  // button it was offering ends up behind the record button. So it stops at
+  // the action row and scrolls inside itself instead.
+  //
+  // Measured, not dvh. The shell's own height is the only number on this
+  // screen that tells the truth in the iOS web clip.
+  const topCardMaxH = Math.max(
+    170,
+    Math.round(vh
+      - ((planning ? vh - stopY(vh, 50) : restPx) + (recording ? 132 : 0) + 10 + ACTION_ROW_H)
+      - safeTop - 10 - 12),
+  )
+
   // The sheet is always the full height of the screen and is moved down out of
   // the way, rather than being resized. Animating transform is cheap and never
   // reflows its contents; animating height would relayout the whole list on
@@ -2103,17 +2151,38 @@ export default function MapHome() {
       {/* Centred on the screen rather than laid out beside the arrow, so the
           conditions sit where the eye lands instead of being pushed off centre
           by whatever happens to be to their left. The margins keep it clear of
-          the arrow on a narrow phone; past that the text ellipses. */}
+          the arrow on a narrow phone; past that the text ellipses.
+
+          The padding is 64 rather than 74 because this box now carries two
+          rows: conditions at the base, and the field the map is over. The card
+          inside caps its own width so the extra ten pixels are room the wider
+          row can use without either row ever reaching the arrow. */}
       <div style={{
         position: 'absolute', top: 'calc(var(--safe-top) + 10px)', left: 0, right: 0,
         zIndex: 500, display: 'flex', justifyContent: 'center',
-        padding: '0 74px', pointerEvents: 'none',
+        padding: '0 64px', pointerEvents: 'none',
       }}>
         <div style={{ pointerEvents: 'auto', minWidth: 0 }}>
           <WeatherRibbon
             icao={base?.ident ?? null} units={units}
             onChangeAirport={changeBase}
-            detailOpen={wxDetail} onDetailChange={setWxDetail} />
+            detailOpen={wxDetail} onDetailChange={setWxDetail}
+            style={{ maxHeight: topCardMaxH }}
+            expanded={topSection === 'wx'}
+            onExpandedChange={v => setTopSection(v ? 'wx' : null)}
+            // The aerodrome under the map, as the card's second row rather
+            // than as a pill of its own. Absent above the runway layer's zoom
+            // floor, and while the tilted view is up, where the runways this
+            // describes are not drawn.
+            below={focusField && !view3d
+              ? <AirportPlate field={focusField} onOpenChart={setChartOpen}
+                  expanded={topSection === 'apt'}
+                  onExpandedChange={v => setTopSection(v ? 'apt' : null)}
+                  // What the card has left once its two header rows are in
+                  // it. Only this section can outgrow the cap, so only this
+                  // section scrolls.
+                  maxBodyH={Math.max(140, topCardMaxH - TOP_CARD_HEADERS_H)} />
+              : null} />
         </div>
       </div>
 
@@ -2134,27 +2203,6 @@ export default function MapHome() {
         <Ctrl onClick={locate} title="Center on my position"><IconLocate /></Ctrl>
       </div>
 
-      {/* The field the map is over, under the drawer's own arrow.
-          Every other floating thing on this screen is anchored to the bottom
-          and rides the drawer: the map controls, the chips, the action card,
-          the traffic legend. There is no room left down there, and a panel
-          that has to dodge four moving neighbours would be wrong on some
-          phone. The top left is empty at every drawer height, it does not
-          move, and a title block naming the field is where a chart puts it
-          too. Absent at every zoom above the runway layer's floor: this is
-          the one piece of chrome here that a pilot never turns on, because
-          zooming down onto an aerodrome is the request. */}
-      {focusField && !view3d && (
-        <div style={{
-          position: 'absolute', left: 14, zIndex: 500,
-          top: 'calc(var(--safe-top) + 10px + 46px + 10px)',
-          opacity: expanded ? 0 : 1,
-          transition: 'opacity 200ms',
-          pointerEvents: expanded ? 'none' : 'auto',
-        }}>
-          <AirportPlate field={focusField} onOpenChart={setChartOpen} />
-        </div>
-      )}
 
       {/* Chart chips, revealed by the layers button rather than always on
           screen: six permanent chips is what a cluttered EFB looks like. */}

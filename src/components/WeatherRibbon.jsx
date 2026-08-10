@@ -27,17 +27,65 @@ import { ACCENT } from './mapStyle'
 // staleness is shown rather than hidden.
 const STALE_MS = 75 * 60 * 1000
 
+// The one card, and how wide it may get.
+//
+// Centred at the top of the map with the drawer's arrow to its left, so the
+// cap is what keeps the two apart: 128 is that 46px button, its 14px margin,
+// a 4px gap, and the same again on the right so the card stays centred rather
+// than drifting off the middle of the screen. The wider cap applies only when
+// the card is carrying a second section, which is the only content that needs
+// the room.
+const CARD_MAX = 'calc(100vw - 130px)'
+const CARD_MAX_WIDE = 'calc(100vw - 128px)'
+
+const CARD = {
+  background: 'var(--map-panel)', backdropFilter: 'blur(14px)',
+  borderRadius: 14, boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
+  // Clipped, and not a scroll container. Scrolling the whole card would
+  // scroll its two collapsed rows off the top, and those rows are the reason
+  // it is on the screen: the category and the field under the map. Only the
+  // one section that can genuinely run long scrolls, inside itself, and it is
+  // handed the room to do it in (see AirportPlate's maxBodyH). The caller's
+  // maxHeight then holds the whole card clear of the drawer.
+  overflow: 'hidden',
+  // Sized by its contents, not stretched: collapsed this is a state and a
+  // code, and a pill with a stretch of empty space between them reads as
+  // something that failed to load rather than something compact.
+  width: 'fit-content',
+}
+
+// A hairline, not a gap. The two halves are one object, and any spacing
+// between them would put the second pill back.
+const SECTION = { borderTop: '1px solid var(--map-hairline)' }
+
 export default function WeatherRibbon({
   icao, units = {}, style, onChangeAirport,
   // Controlled from the parent so the weather button in the sheet opens the
   // same report this strip opens. There is one working weather screen and
   // both routes into it should land there.
   detailOpen = false, onDetailChange,
+  // A second section, inside this same card, under a hairline.
+  //
+  // The map home grew an airport plate that appeared when a pilot zoomed onto
+  // a field, and it floated as a second pill directly under this one: two
+  // rounded panels stacked four pixels apart, and when this one expanded the
+  // other sat on top of it and covered the temperature. They are both "what is
+  // under me right now", so they are one card with two rows, weather above and
+  // the field below, rather than two things competing for the same corner.
+  below = null,
+  // Whether this section is open, when the parent is arbitrating. One card
+  // with two expanding sections has to be an accordion or it grows past the
+  // map: conditions and a large airport's full readout together are six
+  // hundred pixels, which is most of a phone. Left uncontrolled it keeps its
+  // own state, as it did when it was the only thing in the card.
+  expanded, onExpandedChange,
 }) {
   const [wx, setWx] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [open, setOpen] = useState(false)      // the inline expansion
+  const [selfOpen, setSelfOpen] = useState(false)   // the inline expansion
+  const open = expanded ?? selfOpen
+  const setOpen = onExpandedChange ?? setSelfOpen
 
   const [picker, setPicker] = useState(false)  // choosing a different base
   const [now, setNow] = useState(() => Date.now())
@@ -85,19 +133,24 @@ export default function WeatherRibbon({
   // who needs the control to be visible.
   if (!icao) {
     return (<>
-      <button onClick={() => setPicker(true)} style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '9px 14px', borderRadius: 14, border: 'none',
-        background: 'var(--map-panel)', backdropFilter: 'blur(14px)',
-        boxShadow: '0 2px 10px rgba(0,0,0,0.18)', cursor: 'pointer',
-        fontSize: 12.5, fontWeight: 700, color: 'var(--map-ink)', ...style,
-      }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          strokeWidth="2.2" strokeLinecap="round">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-        Set home airport
-      </button>
+      <div style={{ ...CARD, maxWidth: below ? CARD_MAX_WIDE : CARD_MAX, ...style }}>
+        <button onClick={() => setPicker(true)} style={{
+          display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+          padding: '9px 14px', border: 'none', background: 'none',
+          cursor: 'pointer',
+          fontSize: 12.5, fontWeight: 700, color: 'var(--map-ink)',
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2.2" strokeLinecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Set home airport
+        </button>
+        {/* The field under the map still gets said, even by a pilot who has
+            never set a home airport. That is the newest install there is, and
+            the one most likely to be looking at somewhere it does not know. */}
+        {below && <div style={SECTION}>{below}</div>}
+      </div>
       {picker && createPortal(
         <AirportPickerModal
           onConfirm={(id) => { setPicker(false); onChangeAirport?.(id) }}
@@ -125,16 +178,7 @@ export default function WeatherRibbon({
   ].filter(m => m.value) : []
 
   return (<>
-    <div style={{
-      background: 'var(--map-panel)', backdropFilter: 'blur(14px)',
-      borderRadius: 14, boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
-      overflow: 'hidden',
-      // Sized by its contents, not stretched: collapsed this is a state and a
-      // code, and a pill with a stretch of empty space between them reads as
-      // something that failed to load rather than something compact.
-      width: 'fit-content', maxWidth: 'calc(100vw - 130px)',
-      ...style,
-    }}>
+    <div style={{ ...CARD, maxWidth: below ? CARD_MAX_WIDE : CARD_MAX, ...style }}>
       {/* Collapsed, this is the whole thing: what the field is doing, and
           which field. That is the glance a pilot takes, and a strip of
           numbers across the top of a chart is furniture the rest of the time. */}
@@ -144,7 +188,7 @@ export default function WeatherRibbon({
           almost unreachable. Reading conditions is the frequent act and moving
           base is the rare one, so the frequent one gets the whole target and
           the rare one gets a labelled control inside. */}
-      <button onClick={() => setOpen(o => !o)} style={{
+      <button onClick={() => setOpen(!open)} style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         gap: 7, width: '100%',
         padding: '6px 12px', border: 'none', background: 'none',
@@ -258,6 +302,9 @@ export default function WeatherRibbon({
           </div>
         </div>
       </div>
+
+      {/* The field under the map, in the same card. */}
+      {below && <div style={SECTION}>{below}</div>}
     </div>
 
     {/* The same overlay the weather card opens, portaled so the map's stacking

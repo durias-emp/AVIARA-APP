@@ -6,12 +6,20 @@
 // aerodrome wants its identifier, its elevation, its runways and its
 // frequencies, and wants them without leaving the map to go and find a screen.
 //
-// It opens as a bar rather than a card on purpose. The moment this appears is
-// the moment the map matters most, and a panel covering a third of it to show
-// four frequencies the pilot may not want yet is a poor trade. The bar carries
-// the three things that are always wanted; a tap gets the rest, and that tap
-// is also what pays for the frequency pack, so a pilot who only ever glances
-// at the identifier never downloads two megabytes to do it.
+// It is a SECTION, not a card. It draws no background, no corners and no
+// shadow of its own, because it lives inside the weather ribbon's card, under
+// a hairline (see WeatherRibbon's `below`). It was a card once, floating four
+// pixels under that one, and two rounded panels stacked like that read as one
+// thing that had come apart; worse, expanding the weather put its panel
+// underneath this one and the temperature disappeared behind it. Conditions
+// here and the field here are the same question, so they are one object.
+//
+// It opens as a row rather than a panel on purpose. The moment this appears is
+// the moment the map matters most, and covering a third of it to show four
+// frequencies the pilot may not want yet is a poor trade. The row carries the
+// three things that are always wanted; a tap gets the rest, and that tap is
+// also what pays for the frequency pack, so a pilot who only ever glances at
+// the identifier never downloads two megabytes to do it.
 //
 // Nothing here is presented as more official than it is. Runway positions come
 // from a surveyed national source in the United States and from community data
@@ -74,16 +82,17 @@ function runwayLine(r) {
   return { name: `${le}/${he}`, size }
 }
 
-const SHEET = {
-  background: 'var(--map-panel-solid)',
-  color: 'var(--map-ink)',
-  borderRadius: 16,
-  boxShadow: '0 6px 24px rgba(0,0,0,0.28)',
-  overflow: 'hidden',
-}
-
-export default function AirportPlate({ field, onOpenChart }) {
-  const [open, setOpen] = useState(false)
+// expanded / onExpandedChange: see WeatherRibbon. The two sections of that one
+// card take turns, because both open at a large airport is more card than map.
+//
+// maxBodyH: the tallest this section's open body may be before it scrolls
+// inside itself. This is the only part of that card which can run long, a
+// field with five runways and six frequencies being most of a phone, so it is
+// the only part that scrolls: the two collapsed rows above stay put.
+export default function AirportPlate({ field, onOpenChart, expanded, onExpandedChange, maxBodyH }) {
+  const [selfOpen, setSelfOpen] = useState(false)
+  const open = expanded ?? selfOpen
+  const setOpen = onExpandedChange ?? setSelfOpen
   const [name, setName] = useState(null)
   const [freqs, setFreqs] = useState(null)
   const [freqSource, setFreqSource] = useState(null)
@@ -93,11 +102,17 @@ export default function AirportPlate({ field, onOpenChart }) {
   // Walking to a different field closes the detail again. Leaving it open
   // would mean the panel silently changes what it is describing underneath a
   // pilot who is panning, which is the one thing a plate must not do.
+  //
+  // Only the loaded FACTS are cleared here. Whether the section is open
+  // belongs to whoever is arbitrating it, and on the map home that is the
+  // parent, which folds this shut on a change of field for exactly this
+  // reason. From in here, "closed" and "nothing in the card is open" are the
+  // same call, and it would have folded the weather away every time a pilot
+  // panned across a new aerodrome.
   const lastIdent = useRef(ident)
   useEffect(() => {
     if (lastIdent.current !== ident) {
       lastIdent.current = ident
-      setOpen(false)
       setName(null)
       setFreqs(null)
       setFreqSource(null)
@@ -143,18 +158,29 @@ export default function AirportPlate({ field, onOpenChart }) {
     : 'Runway positions: OurAirports, community data.'
 
   return (
-    <div style={{ ...SHEET, width: open ? 'min(340px, calc(100vw - 28px))' : 'auto', maxWidth: 'calc(100vw - 28px)' }}>
-      <button onClick={() => setOpen(o => !o)} style={{
-        display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-        padding: '9px 12px', background: 'transparent', border: 0, cursor: 'pointer',
+    <div style={{ color: 'var(--map-ink)' }}>
+      {/* Three facts and a chevron in a row that has to survive a 375pt phone
+          with the drawer's arrow beside it. The sizes below are not taste:
+          measured, this row needs 244 of the 247 it gets on the narrowest
+          phone the app supports, which is why the gap is 8 and not 9 and why
+          the two dim figures are 11.5 and not 12. */}
+      <button onClick={() => setOpen(!open)} style={{
+        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+        padding: '8px 11px', background: 'transparent', border: 0, cursor: 'pointer',
         color: 'inherit', textAlign: 'left',
       }}>
-        <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.3px' }}>{ident}</span>
+        <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.3px', flexShrink: 0 }}>{ident}</span>
         {elev && (
-          <span style={{ fontSize: 12, color: 'var(--map-ink-dim)', whiteSpace: 'nowrap' }}>{elev}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--map-ink-dim)', whiteSpace: 'nowrap', flexShrink: 0 }}>{elev}</span>
         )}
+        {/* The runway summary is the first thing to give way on a narrow
+            phone: the identifier and the elevation are always readable, and
+            this ellipses rather than pushing the chevron off the card. */}
         {!open && longest && (
-          <span style={{ fontSize: 12, color: 'var(--map-ink-dim)', whiteSpace: 'nowrap' }}>
+          <span style={{
+            fontSize: 11.5, color: 'var(--map-ink-dim)', whiteSpace: 'nowrap',
+            minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
             {longest[0]}/{longest[1]} · {longest[6].toLocaleString()} ft
           </span>
         )}
@@ -166,7 +192,11 @@ export default function AirportPlate({ field, onOpenChart }) {
       </button>
 
       {open && (
-        <div style={{ padding: '0 12px 12px' }}>
+        <div style={{
+          padding: '0 12px 12px', minWidth: 236,
+          maxHeight: maxBodyH, overflowY: maxBodyH ? 'auto' : undefined,
+          overscrollBehavior: 'contain',
+        }}>
           {name && (
             <div style={{ fontSize: 12, color: 'var(--map-ink-dim)', lineHeight: 1.35, marginBottom: 10 }}>
               {name}
@@ -195,7 +225,7 @@ export default function AirportPlate({ field, onOpenChart }) {
             )}
             {freqs?.map(([label, mhz]) => (
               <div key={label} style={{ display: 'flex', gap: 10, fontSize: 12.5 }}>
-                <span style={{ color: 'var(--map-ink-dim)', minWidth: 118 }}>{label}</span>
+                <span style={{ color: 'var(--map-ink-dim)', minWidth: 104 }}>{label}</span>
                 <span style={{ fontWeight: 700, fontFamily: 'ui-monospace, Menlo, monospace' }}>
                   {fmtMhz(mhz)}
                 </span>
