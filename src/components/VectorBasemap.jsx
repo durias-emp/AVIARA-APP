@@ -94,13 +94,22 @@ export default function VectorBasemap({ dark = false, onFail }) {
         layer.addTo(map)
         layerRef.current = layer
 
-        // The flicker's other half, and a real one. During a pinch the bridge
-        // re-renders the GL scene at every zoom tick while Leaflet is
-        // simultaneously scaling the same canvas with CSS, and the two
-        // alternate on screen. Unhooking the per-tick re-render leaves the
-        // gesture to the CSS scale, exactly as raster tiles have always
-        // behaved, and the crisp frame lands once at zoomend.
-        map.off('zoom', layer._pinchZoom, layer)
+        // The bridge's per-tick handler stays hooked, and this comment exists
+        // because unhooking it was a mistake worth not repeating.
+        //
+        // It was removed on a guess that it fought Leaflet's CSS scaling. It
+        // does not: Leaflet fires `zoomanim` for animated zooms and `zoom` for
+        // pinches, never both, so the CSS path and this one never run over each
+        // other. What it actually does is keep the GL camera on the pilot's
+        // fingers, and it is the ONLY thing doing that during a pinch, because
+        // `zoomstart` sets the bridge's _zooming flag and its move handler
+        // bails for the rest of the gesture.
+        //
+        // Without it the route stayed glued to Leaflet while the ground stopped
+        // moving underneath it. Measured: 62px adrift a third of a zoom level
+        // in, 268px at one full level, snapping back only when the fingers
+        // lifted. The real flicker was the engine being rebuilt seven times a
+        // drag, which is fixed above, and this was never part of it.
 
         if (!cancelled) setReady(true)
       } catch (err) {
