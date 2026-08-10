@@ -34,7 +34,7 @@ function PaneActivityProvider({ onActiveChange, children }) {
 export default function ChecklistTabShell({
   sections, resetKey, checked, onToggle, total,
   customItems, onDeleteCustomItem, onUpdateCustomItemValue, completeBar,
-  activeIndex, onActiveIndexChange, embedded = false, onStepOpenChange,
+  activeIndex, onActiveIndexChange, embedded = false, expanded = true, onStepOpenChange,
 }) {
   const [dragPx, setDragPx] = useState(0)
   const [dragging, setDragging] = useState(false)
@@ -289,14 +289,18 @@ export default function ChecklistTabShell({
           }
           : { transform: footerHidden ? 'translateY(calc(100% + 24px + var(--safe-bottom)))' : 'translateY(0)' }}
       >
-        {/* The numbered step menu is dropped inside the drawer.
-            Full screen it costs nothing, but in the drawer it and the buttons
-            below it took 132px off a panel that is already short, which was
-            enough to hide the third of the three cards in the Route group.
-            The panes are swipeable (see onTouchStart above), so this is the
-            one control here that has another way to do its job. The buttons
-            below do not, which is why they stay. */}
-        {!embedded && (
+        {/* The numbered step menu, on the same rule as the buttons under it.
+            Full screen it costs nothing and it is the only way to reach the
+            other four groups without knowing that the panes swipe, which is a
+            gesture with nothing on screen to advertise it: from the Route
+            group, Performance, Airport, Aircraft and Pilot were unreachable
+            by anyone who had not discovered the swipe.
+
+            Below full screen it goes, and that has not changed. In a
+            half-height drawer it and the buttons took 132px off a panel that
+            is already short, which was enough to hide the third of the three
+            Route cards. There the swipe is the way. */}
+        {(!embedded || expanded) && (
           <StepTabBar
             sections={sections}
             activeIndex={activeIndex}

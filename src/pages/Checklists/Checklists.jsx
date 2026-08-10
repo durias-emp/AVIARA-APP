@@ -383,6 +383,7 @@ function ChecklistDetail({ checklist, onBack, embedded = false, expanded = true,
       {(flightPlanType || (embedded && flightPlanType !== undefined)) && (
       <ChecklistTabShell
         embedded={embedded}
+        expanded={expanded}
         onStepOpenChange={onStepOpenChange}
         sections={checklist.sections}
         resetKey={resetKey}
