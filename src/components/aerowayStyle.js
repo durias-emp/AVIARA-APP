@@ -29,11 +29,19 @@
 // near-black ground and the light one's pale apron this reads on both.
 const TAXIWAY = '#5b6472'
 
-// White on the pavement, exactly as the runway centreline and designators are,
-// so the two halves of the airport look like one drawing. The halo is what
-// carries a letter that overhangs its own taxiway onto the grass.
-const LABEL_INK = '#f4f6f9'
-const LABEL_HALO = 'rgba(10,12,16,0.85)'
+// Taxiway yellow on black, which is not decoration: it is what a taxiway
+// location sign is. A pilot holding short reads a yellow legend on a black
+// panel telling them which taxiway they are on, and that pairing is the one
+// thing on an airfield that means "taxiway" without being read.
+//
+// Runway markings are white and stay white, so the two are told apart at a
+// glance on the map exactly as they are on the ground.
+//
+// The halo is doing the black panel's job. It also carries a letter that
+// overhangs its own taxiway onto the grass, which at this scale most of them
+// do.
+const LABEL_INK = '#ffc42e'
+const LABEL_HALO = 'rgba(10,12,16,0.9)'
 
 export const TAXIWAY_LABEL_ID = 'aviara-taxiway-label'
 
@@ -127,8 +135,11 @@ export function dressAeroways(gl) {
       paint: {
         'text-color': LABEL_INK,
         'text-halo-color': LABEL_HALO,
-        'text-halo-width': 1.4,
-        'text-halo-blur': 0.3,
+        // Wider than it was when the ink was white. Yellow on the light
+        // theme's pale apron has far less contrast to lean on than white did,
+        // and the halo is what puts it back.
+        'text-halo-width': 1.7,
+        'text-halo-blur': 0.2,
       },
     })
   } catch (e) {
