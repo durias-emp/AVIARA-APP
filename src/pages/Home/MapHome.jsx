@@ -28,6 +28,9 @@ import Map3DPane from '../../components/Map3DPane'
 import AirportPlate from '../../components/AirportPlate'
 import { DRAWER_PALETTE } from '../../components/drawerPalette'
 import { useBackOverride } from '../../context/BackOverride'
+import { useRegion } from '../../context/Region'
+import { useFlightPlanType } from '../../hooks/useFlightPlanType'
+import { fmtEte, etaFrom, reserveMinutes, requiredReserveMinutes, reserveStatus } from '../../lib/routeFigures'
 import TrafficLayer from '../../components/TrafficLayer'
 import TrafficLegend from '../../components/TrafficLegend'
 import useLiveTraffic from '../../hooks/useLiveTraffic'
@@ -364,12 +367,9 @@ function recomputeFigures(prev, wpts) {
   return out
 }
 
-// Hours as a pilot writes them: 1:24, not 1.4.
-function fmtHM(hours) {
-  if (hours == null || !Number.isFinite(hours)) return null
-  const total = Math.round(hours * 60)
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
-}
+// Hours as a pilot writes them, 1:24 rather than 1.4, moved to
+// lib/routeFigures.js as fmtEte when the plan and the drawer started needing
+// the same six figures and could not be allowed to format them differently.
 
 function RouteSummary({ route, flight, onOpen, onRemoveLeg, onRemoveEnd, onReorder, onAddStop, onFocusPoint, fillTo = 0 }) {
 
@@ -378,7 +378,15 @@ function RouteSummary({ route, flight, onOpen, onRemoveLeg, onRemoveEnd, onReord
   // strip out. The icons went with the change: at this size they were
   // decoration competing with the number they sat beside, and the word says
   // it better than a mark that has to be learned.
-  const figure = ({ value, label, dim, placeholder }) => (
+  // tone: 'warn' for legal but thin, 'alarm' for short of the minimum. Only
+  // reserve ever passes one, and it is the only figure here entitled to: the
+  // rest are measurements, and a measurement has no opinion.
+  //
+  // note: a second, smaller line under the value, for the figure that needs a
+  // number to be read against. Reserve without its minimum is a quantity;
+  // reserve against 30 is an answer.
+  const TONE = { warn: '#FF9500', alarm: '#FF3B30' }
+  const figure = ({ value, label, dim, placeholder, tone, note }) => (
     <div key={label} style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 0,
     }}>
@@ -417,8 +425,17 @@ function RouteSummary({ route, flight, onOpen, onRemoveLeg, onRemoveEnd, onReord
         fontWeight: placeholder ? 600 : 800,
         lineHeight: placeholder ? 2 : 1.1, letterSpacing: '-0.3px',
         fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
-        color: placeholder ? 'var(--map-ink-faint)' : dim ? 'var(--map-ink-dim)' : 'var(--map-ink)',
+        color: tone ? TONE[tone]
+          : placeholder ? 'var(--map-ink-faint)'
+          : dim ? 'var(--map-ink-dim)' : 'var(--map-ink)',
       }}>{value}</span>
+      {note && (
+        <span style={{
+          fontSize: 'clamp(8px, 2.3vw, 9.5px)', fontWeight: 600, lineHeight: 1,
+          color: tone ? TONE[tone] : 'var(--map-ink-faint)',
+          fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+        }}>{note}</span>
+      )}
     </div>
   )
 
@@ -457,61 +474,74 @@ function RouteSummary({ route, flight, onOpen, onRemoveLeg, onRemoveEnd, onReord
           // The same width as the field above, so the two read as one column
           // of the same card.
           //
-          // Four columns, always, and a long word wraps inside its own column
-          // rather than pushing a figure onto a second row.
+          // Six figures, three columns, two rows. It was eight in four columns,
+          // and three of those eight were one fact: true course minus variation
+          // IS magnetic course. See lib/routeFigures.js for why each of the
+          // three that went, went, and why fuel aboard became reserve.
           //
-          // Reflowing to two columns on a phone was tidy and cost 45px, which
-          // is the difference between this card fitting the resting stop and
-          // hanging below it. MAGNETIC COURSE over two lines in its own column
-          // costs 10. The stop is fixed, so the content gives.
+          // Three columns rather than four gives each label room to sit on one
+          // line, which four never did: MAGNETIC COURSE wrapped, and the row
+          // had to reserve two lines of label height for every column to keep
+          // the numbers on one baseline.
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
           // Centred in its own column, not parked at the column's left edge.
           // The tracks already spanned the drawer, but each figure sat at the
-          // start of a track wide enough for MAGNETIC COURSE, so on a wide
-          // screen the four of them huddled left with the last one ending
-          // short of the card. Centred, they read as spaced across the drawer
-          // at every width, which is what the eye is measuring.
+          // start of a track wide enough for the longest label, so on a wide
+          // screen they huddled left with the last one ending short of the
+          // card. Centred, they read as spaced across the drawer at every
+          // width, which is what the eye is measuring.
           justifyItems: 'center',
           alignItems: 'flex-start', gap: '12px 10px',
         }}>
+          {/* Row one: the flight as flown. Distance is the sanity check the
+              other five are measured against, then the two times. */}
           {figure({
             label: 'Distance',
             value: `${route.distNm} NM`,
           })}
-          {route.mc != null && figure({
-            label: 'Magnetic course',
-            value: `${route.mc}\u00B0`,
+          {figure({
+            label: 'ETE',
+            value: fmtEte(flight?.hours) ?? 'No aircraft',
+            placeholder: fmtEte(flight?.hours) == null,
           })}
-          {route.tc != null && figure({
-            label: 'True course', dim: true,
-            value: `${route.tc}\u00B0`,
-          })}
-          {route.magVar != null && figure({
-            label: 'Variation', dim: true,
-            value: `${parseFloat(route.magVar) >= 0 ? '+' : ''}${route.magVar}\u00B0`,
+          {/* Clock time, and it says which clock. Without a departure time in
+              the plan the only honest reading is "if you left now", so that is
+              what it says rather than presenting a guess as a filed arrival.
+              A landing after midnight carries its own +1. */}
+          {figure({
+            label: flight?.eta?.assumedNow ? 'ETA if now' : 'ETA',
+            value: flight?.eta
+              ? `${flight.eta.text}${flight.eta.nextDay ? ' +1' : ''}`
+              : 'No aircraft',
+            placeholder: !flight?.eta,
+            dim: flight?.eta?.assumedNow,
           })}
 
-          {/* The second row: the flight rather than the line. Same four
-              columns, so the eight figures read as one block and every value
-              sits under the one above it. A figure with nothing behind it
-              shows a dash rather than vanishing, because a missing column
-              would slide the rest out of alignment. */}
+          {/* Row two: whether the flight goes. Fuel required, what is left
+              when it lands, and the altitude it is planned at. */}
           {figure({
-            label: 'Time',
-            value: fmtHM(flight?.hours) ?? 'No aircraft',
-            placeholder: fmtHM(flight?.hours) == null,
-          })}
-          {figure({
-            label: 'Trip fuel',
+            label: 'Fuel req',
             value: flight?.tripFuel != null ? `${flight.tripFuel.toFixed(1)} gal` : 'No aircraft',
             placeholder: flight?.tripFuel == null,
           })}
-          {figure({
-            label: 'Fuel aboard',
-            value: flight?.aboard != null ? `${flight.aboard} gal` : 'No aircraft',
-            placeholder: flight?.aboard == null,
-          })}
+          {/* The go/no-go, and the only figure here that is allowed to shout.
+              Minutes rather than gallons because minutes is the unit 91.151 is
+              written in, and short of the legal minimum is not a styling
+              choice: it is the answer the whole plan exists to produce. */}
+          {(() => {
+            const min = flight?.reserveMin
+            const status = reserveStatus(min, flight?.reqReserveMin)
+            return figure({
+              label: 'Reserve',
+              value: min == null ? 'No aircraft'
+                : min < 0 ? 'Short'
+                : `${Math.floor(min / 60) ? `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}` : `${min} min`}`,
+              placeholder: min == null,
+              tone: status === 'short' ? 'alarm' : status === 'thin' ? 'warn' : undefined,
+              note: flight?.reqReserveMin != null ? `min ${flight.reqReserveMin}` : null,
+            })
+          })()}
           {/* Never a number until the pilot has chosen one. Zero is not a
               neutral placeholder here, it is sea level, and a flight plan that
               says it cruises at 0 ft is a claim rather than a blank. "Not set"
@@ -1340,19 +1370,55 @@ export default function MapHome() {
   // The pilot's own worked plan wins. Where there is none the aircraft's book
   // figures stand in, and the card says so underneath rather than passing them
   // off as a plan nobody made.
+  // Both read here rather than inside the figures: the reserve minimum is a
+  // legal question and the answer depends on where the pilot is flying and
+  // what they are filing.
+  const { region } = useRegion()
+  // The stored value is a record, not a string: { type, flightRules,
+  // crossCountry }. Passing the record straight to the ruleset made
+  // isKnownRule fail, which fell through to the unmodelled 45 minutes, so a
+  // day VFR flight was being told its minimum was 45 rather than 30. A wrong
+  // legal minimum shown with the planner's authority is the worst class of bug
+  // this app can ship, and it read as plausible.
+  //
+  // flightRules rather than type is also what makes RTC right: rotorcraft fly
+  // under the VFR rules, so its record carries flightRules 'VFR' while its
+  // type stays 'RTC'.
+  const { value: planType } = useFlightPlanType()
+  const flightRules = planType?.flightRules ?? null
+
   const flightFigures = useMemo(() => {
     const planTas = num(cruisePlan?.tas)
     const planBurn = num(cruisePlan?.burnRate)
     const tas = planTas ?? num(ac?.vspeeds?.cruise)
     const burn = planBurn ?? num(ac?.burnRate?.cruise)
     const hours = route?.distNm != null && tas ? route.distNm / tas : null
+    const aboard = num(cruisePlan?.fuelOnBoard) ?? num(ac?.fuel?.usable)
+    // Reserve is what the whole plan exists to answer, so it is computed from
+    // the same lib Cruise & Fuel uses rather than repeated here. The required
+    // minimum comes out of the region's own ruleset for the same reason: two
+    // copies of a legal minimum is the one duplication this app cannot afford.
+    const required = requiredReserveMinutes({
+      region,
+      flightRules,
+      isHelicopter: ac?.category === 'helicopter',
+      // Day is the assumption, and it is the conservative direction only for
+      // the figure itself: the night minimum is higher, so a plan that clears
+      // the day minimum may not clear the night one. Cruise & Fuel is where a
+      // pilot sets this; the drawer reports against whatever they set there.
+      timeOfDay: cruisePlan?.timeOfDay ?? 'day',
+    })
     return {
       hours,
       tripFuel: hours != null && burn ? hours * burn : null,
-      aboard: num(cruisePlan?.fuelOnBoard) ?? num(ac?.fuel?.usable),
+      aboard,
       altFt: num(route?.cruiseAlt) ?? num(cruisePlan?.cruiseAlt),
+      eta: etaFrom(route?.etd ?? null, hours),
+      reserveMin: reserveMinutes({ aboardGal: aboard, burnGph: burn, eteHours: hours }),
+      reqReserveMin: required.minutes,
+      reserveNote: required.note,
     }
-  }, [route?.distNm, route?.cruiseAlt, cruisePlan, ac])
+  }, [route?.distNm, route?.cruiseAlt, route?.etd, cruisePlan, ac, region, flightRules])
 
   // What to call each turning point when one is tapped on the map. Built with
   // the same filter routeLine uses, so the nth dot on the line and the nth name
