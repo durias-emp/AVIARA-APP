@@ -10,6 +10,7 @@ import FlightPlanOnePager from './FlightPlanOnePager'
 import FlightPlanTypePicker from './FlightPlanTypePicker'
 import SplitFlapTitle from './shared/SplitFlapTitle'
 import { PlannerHostContext } from './shared/PlannerHost'
+import { DRAWER_PALETTE } from '../../components/drawerPalette'
 
 const TITLE_INTRO_MS = 3000    // how long "Flight Plan" shows before switching to the active step
 const TITLE_CYCLE_MS = 60000   // how often it flashes back to "Flight Plan"
@@ -313,33 +314,11 @@ function ChecklistDetail({ checklist, onBack, embedded = false, expanded = true,
         // flight rules, so claiming flex:1 would stretch it to fill a column
         // that is meant to be as tall as what is in it.
         flex: '0 0 auto', display: 'flex', flexDirection: 'column',
-        // Inside the drawer this must not paint a surface of its own. The
-        // drawer is a translucent glass panel; the planner was filling it
-        // with opaque near-black, so it read as a second window sitting in a
-        // hole rather than as part of the sheet.
-        background: 'transparent',
-        // The planner and everything under it is built on the app's surface
-        // tokens, and the drawer is built on the map's. Rather than rewrite
-        // every card, the tokens are remapped here and the whole subtree
-        // follows: same components, drawer palette. This is the one place
-        // that has to know the planner can live in two different rooms.
-        // NOT transparent, however much it looks like it should be. --bg is
-        // used as a FOREGROUND colour in five places, in the pattern
-        // `background: var(--text); color: var(--bg)`, which is how the app
-        // draws a filled button. Transparent turned Calculate Route into a
-        // white pill with invisible ink on it. --map-ink-invert is by
-        // definition the colour that contrasts with --map-ink, so it is the
-        // right value for both jobs. Nothing paints a surface with it here
-        // because the root's own background is set transparent directly.
-        '--bg': 'var(--map-ink-invert)',
-        '--bg-grouped': 'transparent',
-        '--bg-card': 'var(--map-fill-soft)',
-        '--bg-card-2': 'var(--map-fill)',
-        '--text': 'var(--map-ink)',
-        '--text-secondary': 'var(--map-ink-dim)',
-        '--text-tertiary': 'var(--map-ink-faint)',
-        '--border': 'var(--map-hairline)',
-        '--border-strong': 'var(--map-hairline)',
+        // The drawer's palette, shared with every other screen the drawer can
+        // now carry rather than spelled out here. See drawerPalette.js for
+        // why each token maps the way it does, and for why --bg is not
+        // transparent however much it looks like it should be.
+        ...DRAWER_PALETTE,
       }
       : {
         position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',

@@ -26,6 +26,7 @@ import FlightRulesRow from '../../components/FlightRulesRow'
 import RouteLineEditor from '../../components/RouteLineEditor'
 import Map3DPane from '../../components/Map3DPane'
 import AirportPlate from '../../components/AirportPlate'
+import { DRAWER_PALETTE } from '../../components/drawerPalette'
 import { useBackOverride } from '../../context/BackOverride'
 import TrafficLayer from '../../components/TrafficLayer'
 import TrafficLegend from '../../components/TrafficLegend'
@@ -55,6 +56,27 @@ const Planner = lazy(() => import('../Checklists/Checklists'))
 // The FAA airport diagram, rendered from the PDF the pilot asked for. Lazy
 // because it drags in the PDF renderer, and most sessions never open a chart.
 const ProcedureChartViewer = lazy(() => import('../../components/ProcedureChartViewer'))
+
+// The screens the drawer can carry.
+//
+// Each of these used to be a route: tapping Calculators left the map, took the
+// whole screen, and coming back meant a navigation. They are the same
+// components, mounted in the drawer instead, at whatever height the drawer is
+// already at. Nothing about them changed to make that work; they were already
+// plain flow content under their own headers, and the drawer's palette is
+// applied on the wrapper (see drawerPalette.js).
+//
+// Lazy, individually, because a pilot who never opens Settings should never
+// download it. The routes in App.jsx stay: a shared link to /calc still works,
+// and the standalone screens are what /checklists is to the planner.
+const DRAWER_VIEWS = {
+  calc:      lazy(() => import('../Calculators/Calculators')),
+  pilot:     lazy(() => import('../Pilot/Pilot')),
+  reference: lazy(() => import('../Reference/Reference')),
+  airports:  lazy(() => import('../../components/AirportInfo')),
+  tools:     lazy(() => import('../../components/ToolsMenu')),
+  settings:  lazy(() => import('../Settings/Settings')),
+}
 
 // The planned route, drawn to be told apart from the recorded track at a
 // glance: the track is the accent orange, so the plan is violet. The exact
@@ -213,21 +235,23 @@ const DRAG_SLOP = 6
 // Everything else the app does. The map home would otherwise be a dead end:
 // these are the screens the old menu-style home listed, and they keep their
 // icons so nothing has to be relearned.
+// `view` is the key into DRAWER_VIEWS. These open in the drawer, at the height
+// the drawer is already at, rather than navigating away from the map.
 const TOOLS = [
   // No Flight Planning entry: Plan Route in the sheet header goes to the same
   // screen, and listing it twice makes the grid look fuller than it is while
   // teaching two routes to one place.
-  { to: '/calc',       icon: '/E6B CALC.svg',   label: 'Calculators' },
+  { view: 'calc',      icon: '/E6B CALC.svg',   label: 'Calculators' },
   // Was '/currency', which no longer exists: that screen grew into Pilot,
   // which reports currency alongside medical, total time and the logbook.
-  { to: '/pilot',      icon: '/cheque.png',     label: 'Pilot' },
-  { to: '/reference',  icon: '/libros.png',     label: 'Quick Reference' },
-  { to: '/airports',   icon: '/control-tower.png', label: 'Airports' },
-  { to: '/tools',      icon: '/filtrar.png',    label: 'Tools' },
+  { view: 'pilot',     icon: '/cheque.png',     label: 'Pilot' },
+  { view: 'reference', icon: '/libros.png',     label: 'Quick Reference' },
+  { view: 'airports',  icon: '/control-tower.png', label: 'Airports' },
+  { view: 'tools',     icon: '/filtrar.png',    label: 'Tools' },
   // Placeholder icon: the project has no gear, and main drew these two as
   // inline SVG rather than PNG. Worth replacing when these screens are
   // restyled, along with the filter standing in for Tools.
-  { to: '/settings',   icon: '/llaves.png',     label: 'Settings' },
+  { view: 'settings',  icon: '/llaves.png',     label: 'Settings' },
 ]
 
 // The card the map wears: floating above the drawer, panel glass, one radius
@@ -936,6 +960,29 @@ export default function MapHome() {
   // and null at every zoom above its floor. It carries the plate below the map
   // controls; nothing else on this screen changes because of it.
   const [focusField, setFocusField] = useState(null)
+  // Which screen the drawer is carrying instead of its own contents, if any.
+  //
+  // Calculators, Pilot, Reference, Airports, Tools and Settings used to be
+  // routes: tapping one left the map entirely. They open here now, at whatever
+  // height the drawer is already at, and the drawer keeps every gesture it
+  // had, so a pilot can pull the screen up to full and push it back down
+  // without it ever having been somewhere else.
+  const [drawerView, setDrawerView] = useState(null)
+  const closeDrawerView = useCallback(() => setDrawerView(null), [])
+  // Back belongs to whatever is on top. useBack checks this override before it
+  // checks a screen's own onBack and before it falls through to home, so every
+  // back control inside the embedded screen closes the view rather than
+  // throwing away the map: the button in its header, the edge swipe, and the
+  // system gesture all land in the same place without any of those screens
+  // being told they are in a drawer.
+  useBackOverride(drawerView ? closeDrawerView : null)
+  // The drawer's scrolling body, so opening a screen starts at its top rather
+  // than wherever the tools grid had been scrolled to. Without it, tapping
+  // Settings from halfway down the logbook opens Settings halfway down.
+  const bodyRef = useRef(null)
+  useEffect(() => {
+    if (bodyRef.current) bodyRef.current.scrollTop = 0
+  }, [drawerView])
   // Which half of the top card is open, if either: 'wx' for conditions, 'apt'
   // for the field under the map. Arbitrated here rather than inside the two
   // sections because they share one card and it can only be so tall.
@@ -2666,6 +2713,7 @@ export default function MapHome() {
             the drawer and carries the same handlers. */}
         {!planning && (
         <div
+          ref={bodyRef}
           onPointerDown={onBodyDragStart} onPointerMove={onDragMove}
           onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
           style={{
@@ -2677,10 +2725,41 @@ export default function MapHome() {
           touchAction: snap === 100 ? 'pan-y' : 'none',
           WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
           padding: '6px 18px calc(var(--safe-bottom) + 24px)',
-          opacity: expanded ? 1 : 0,
+          // The tools grid fades out below the 25 stop, because down there the
+          // drawer is the actions and the list behind them is not meant to be
+          // read. A screen the pilot has deliberately opened is different: it
+          // stays whatever height they drag it to, or dragging it down would
+          // make the thing they just asked for disappear.
+          opacity: (expanded || drawerView) ? 1 : 0,
           transition: 'opacity 200ms ease-out',
-          pointerEvents: expanded ? 'auto' : 'none',
+          pointerEvents: (expanded || drawerView) ? 'auto' : 'none',
         }}>
+          {/* A screen, in the drawer, at the height the drawer already is.
+              Everything below is what the drawer says when it is being itself.
+
+              The palette is remapped on the wrapper so these screens read on
+              glass instead of painting an opaque page inside it, and the
+              horizontal padding is cancelled because each of them brings its
+              own: they were written as pages and are still pages, only in a
+              smaller room. */}
+          {drawerView ? (
+            <div style={{ ...DRAWER_PALETTE, margin: '0 -18px' }}>
+              <Suspense fallback={
+                <div style={{ padding: '40px 0', textAlign: 'center',
+                  fontSize: 12, color: 'var(--map-ink-faint)' }}>
+                  Opening…
+                </div>
+              }>
+                {(() => {
+                  const View = DRAWER_VIEWS[drawerView]
+                  // onBack is passed where the component takes one, and the
+                  // back override catches the rest. Both land on the same
+                  // function, so it does not matter which a screen uses.
+                  return View ? <View onBack={closeDrawerView} /> : null
+                })()}
+              </Suspense>
+            </div>
+          ) : (<>
           {/* The pilot's aircraft, on the sheet rather than in a box on it.
               A card draws a frame around a photograph and makes it an item in
               a list; without one the aircraft simply IS the top of the drawer,
@@ -2752,7 +2831,7 @@ export default function MapHome() {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {TOOLS.map(t => (
-              <button key={t.to} onClick={() => navigate(t.to)} style={{
+              <button key={t.view} onClick={() => setDrawerView(t.view)} style={{
                 display: 'flex', alignItems: 'center', gap: 12, padding: '14px 14px',
                 background: 'var(--map-fill-soft)', border: 'none', borderRadius: 16,
                 cursor: 'pointer', textAlign: 'left',
@@ -2804,6 +2883,7 @@ export default function MapHome() {
           }}>
             Reference aid only · Always consult current FAR/AIM
           </div>
+          </>)}
         </div>
         )}
       </div>
