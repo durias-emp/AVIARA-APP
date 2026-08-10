@@ -7,11 +7,14 @@
 // The breaks are where a pilot's interest changes rather than at round
 // numbers: circuit and approach traffic, the low en-route band, and everything
 // above that.
+// `short` is for the strip above the drawer, where the key shares one line
+// with the figures and there is no room for "3,000 to 10,000". Same bands,
+// same colours, fewer characters; nothing is abbreviated into ambiguity.
 export const ALTITUDE_BANDS = [
-  { max: 0,        color: '#8E8E93', label: 'On ground' },
-  { max: 3000,     color: '#FF3B30', label: 'Below 3,000' },
-  { max: 10000,    color: '#FF9500', label: '3,000 to 10,000' },
-  { max: Infinity, color: '#0A84FF', label: 'Above 10,000' },
+  { max: 0,        color: '#8E8E93', label: 'On ground',       short: 'Ground' },
+  { max: 3000,     color: '#FF3B30', label: 'Below 3,000',     short: '<3k' },
+  { max: 10000,    color: '#FF9500', label: '3,000 to 10,000', short: '3-10k' },
+  { max: Infinity, color: '#0A84FF', label: 'Above 10,000',    short: '>10k' },
 ]
 
 export function bandFor(ac) {

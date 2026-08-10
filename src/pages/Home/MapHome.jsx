@@ -545,12 +545,11 @@ function SelectedAircraft({ ac, onClose }) {
     ['Track', ac.trk != null ? `${Math.round(ac.trk)}°` : 'Unknown'],
     ['Position age', `${ac.age.toFixed(1)}s`],
   ].filter(Boolean)
+  // No card of its own: it is rendered inside the same floating card the
+  // traffic strip is, and a panel within a panel is what made the traffic
+  // legend read as bolted on before it moved here.
   return (
-    <div style={{
-      background: 'var(--map-panel)', backdropFilter: 'blur(18px)',
-      borderRadius: 16, padding: '12px 14px', minWidth: 210,
-      boxShadow: '0 4px 20px rgba(0,0,0,0.14)',
-    }}>
+    <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--map-ink)', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
           {ac.cs || ac.id.toUpperCase()}
@@ -2406,28 +2405,37 @@ export default function MapHome() {
         </div>
       )}
 
-      {/* Traffic legend, and the selected aircraft. Present only while the
-          layer is on, because a warning about data that is not on screen is
-          noise, and absent once the sheet is expanded so it does not fight the
-          logbook for the same space. */}
-      {layers.traffic && !expanded && (
-        <div style={{
-          position: 'absolute', left: 14, zIndex: 520,
-          bottom: `${restPx + (recording ? 132 : 16)}px`,
-          transition: 'bottom 280ms cubic-bezier(0.4,0,0.2,1)',
-        }}>
-          {selected ? (
-            <SelectedAircraft ac={selected} onClose={() => setSelected(null)} />
-          ) : (
-            <TrafficLegend
-              meta={traffic.meta}
-              filter={tfcFilter}
-              onFilter={setTfcFilter}
-              lightCount={traffic.meta.lightCount}
-              onClose={() => toggleLayer('traffic')} />
-          )}
-        </div>
-      )}
+      {/* Traffic, and the selected aircraft. Present only while the layer is
+          on, because a warning about data that is not on screen is noise, and
+          absent once the sheet is expanded so it does not fight the logbook
+          for the same space.
+
+          The same card the recording stats use, in the same place and at the
+          same width, because it is the same kind of thing: what is happening
+          right now, said above the drawer rather than over the map. It was a
+          300px panel in the bottom left corner with a paragraph of warning in
+          it, which covered a quarter of the map at the exact moment the pilot
+          had asked to look at the map. */}
+      <FloatingCard
+        visible={layers.traffic && !expanded}
+        bottom={`${restPx + (recording ? 132 : 10)}px`}>
+        {/* Mounted with the layer, not with the card. FloatingCard always
+            renders its children and animates the box around them, which is
+            right for the fade out when the drawer takes the screen, and wrong
+            for a layer that is off: the strip would sit in the DOM invisible,
+            ticking its one-second age clock forever, for a pilot who has never
+            turned traffic on. */}
+        {layers.traffic && (selected ? (
+          <SelectedAircraft ac={selected} onClose={() => setSelected(null)} />
+        ) : (
+          <TrafficLegend
+            meta={traffic.meta}
+            filter={tfcFilter}
+            onFilter={setTfcFilter}
+            lightCount={traffic.meta.lightCount}
+            onClose={() => toggleLayer('traffic')} />
+        ))}
+      </FloatingCard>
 
       {basePicker && createPortal(
         <AirportPickerModal
