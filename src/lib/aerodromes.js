@@ -183,6 +183,26 @@ export async function getAirportDetails() {
   return _details
 }
 
+// Where each runway physically lies: both thresholds, surveyed, plus the
+// width. Its own pack rather than more columns on airport_details, because the
+// two are wanted at completely different moments. Details answers "what is at
+// this field" from the moment the airport layer switches on at zoom 7; this
+// answers "draw the pavement", which nothing needs until a pilot has zoomed
+// right down onto one aerodrome. Keeping them apart means the 1.2 MB of
+// coordinates is downloaded by the pilots who zoom in and by nobody else.
+//
+// Built by scripts/build_runway_geometry.py. Rows are
+// [le, he, leLat, leLon, heLat, heLon, lengthFt, widthFt, lit] and each field
+// carries `s`, the source, because FAA surveyed thresholds and community ones
+// may not be presented as the same thing.
+let _runways = null
+export async function getRunwayGeometry() {
+  if (_runways) return _runways
+  const mod = await importWithRetry('data:runway_geometry', () => import('../data/geo/runway_geometry.json'))
+  _runways = mod.default
+  return _runways
+}
+
 // Heliports and seaplane bases — kept out of getAirports() entirely (they
 // aren't a size tier of airport, see scripts/build_geo_pack.py), so this is
 // its own dynamic-import cache with the same lazy-load-once shape.

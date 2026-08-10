@@ -36,6 +36,7 @@ import {
   AirportLayer, HeliportLayer, SeaplaneBaseLayer, RadarLayer, FlightCategoryLayer,
 } from './aerodromeLayers'
 import TilePrefetch from './TilePrefetch'
+import RunwayLayer from './RunwayLayer'
 
 // A transparent 1px PNG. A missing chart tile is a hole in the mosaic, not an
 // error, and the browser's broken-image glyph tiled across the map is worse
@@ -94,7 +95,12 @@ function RasterBasemap({ dark = false }) {
   </>)
 }
 
-export default function ChartLayers({ layers, openaipKey, tfrData, onSetDestination, onAddWaypoint }) {
+export default function ChartLayers({ layers, openaipKey, tfrData, onSetDestination, onAddWaypoint, onFocusField }) {
+  // Which fields already have their pavement drawn, so the marker layer can
+  // step aside for exactly those. Held here because it is a conversation
+  // between two sibling layers and neither should have to know about the
+  // other's existence to have it.
+  const [drawnFields, setDrawnFields] = useState(null)
   return (<>
     {layers.sectional && (
       <TileLayer url={`${FAA}/VFR_Sectional/MapServer/tile/{z}/{y}/{x}`}
@@ -161,7 +167,18 @@ export default function ChartLayers({ layers, openaipKey, tfrData, onSetDestinat
     {/* Both handlers are optional. The planner's own pick-a-point map passes
         neither, because there a tap already means something else, and
         onAddWaypoint is absent until a route exists to add one to. */}
-    {layers.airports && <AirportLayer onSetDestination={onSetDestination} onAddWaypoint={onAddWaypoint} />}
+    {/* Not chip-gated, and above the aerodrome markers so the numbers on the
+        pavement are not hidden by the disc that marked the field from ten
+        miles out. It draws nothing until the pilot is right down on one
+        aerodrome, and at that zoom the marker has stopped being the answer.
+        See RunwayLayer's own header for why this is a zoom floor rather than
+        another chip. */}
+    <RunwayLayer onFocusField={onFocusField} onDrawnFields={setDrawnFields}
+      onSetDestination={onSetDestination} onAddWaypoint={onAddWaypoint} />
+    {layers.airports && (
+      <AirportLayer onSetDestination={onSetDestination} onAddWaypoint={onAddWaypoint}
+        hideIdents={drawnFields} />
+    )}
     {layers.heliports && <HeliportLayer onSetDestination={onSetDestination} onAddWaypoint={onAddWaypoint} />}
     {layers.seaplane && <SeaplaneBaseLayer onSetDestination={onSetDestination} onAddWaypoint={onAddWaypoint} />}
     {layers.fltcat && <FlightCategoryLayer />}

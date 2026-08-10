@@ -25,6 +25,8 @@ import RouteChips from '../../components/RouteChips'
 import FlightRulesRow from '../../components/FlightRulesRow'
 import RouteLineEditor from '../../components/RouteLineEditor'
 import Map3DPane from '../../components/Map3DPane'
+import AirportPlate from '../../components/AirportPlate'
+import { useBackOverride } from '../../context/BackOverride'
 import TrafficLayer from '../../components/TrafficLayer'
 import TrafficLegend from '../../components/TrafficLegend'
 import useLiveTraffic from '../../hooks/useLiveTraffic'
@@ -50,6 +52,9 @@ import { bearingDeg, haversineNm } from '../../lib/geo'
 // lazy-loads and the same one the idle warm-up below fetches, so all three
 // share one chunk rather than making three copies of a megabyte and a half.
 const Planner = lazy(() => import('../Checklists/Checklists'))
+// The FAA airport diagram, rendered from the PDF the pilot asked for. Lazy
+// because it drags in the PDF renderer, and most sessions never open a chart.
+const ProcedureChartViewer = lazy(() => import('../../components/ProcedureChartViewer'))
 
 // The planned route, drawn to be told apart from the recorded track at a
 // glance: the track is the accent orange, so the plan is violet. The exact
@@ -688,6 +693,11 @@ function SizeWatcher({ mapRef, onReady, onMove }) {
   const map = useMap()
   useEffect(() => {
     mapRef.current = map
+    // Dev only, and the same handle the planner's map already exposes. The map
+    // is a fixed box behind a drawer, so there is no way to drive it to a given
+    // aerodrome from a test harness without one, and verifying a runway is
+    // drawn where the aerodrome chart says it is means going to that aerodrome.
+    if (import.meta.env.DEV) window.__homeMap = map
     onReady?.()
     const report = () => {
       const c = map.getCenter()
@@ -702,7 +712,10 @@ function SizeWatcher({ mapRef, onReady, onMove }) {
     const raf = requestAnimationFrame(kick)
     const ro = new ResizeObserver(kick)
     ro.observe(el)
-    return () => { cancelAnimationFrame(raf); ro.disconnect(); map.off('moveend', report) }
+    return () => {
+      cancelAnimationFrame(raf); ro.disconnect(); map.off('moveend', report)
+      if (import.meta.env.DEV && window.__homeMap === map) delete window.__homeMap
+    }
   }, [map, mapRef, onReady, onMove])
   return null
 }
@@ -889,6 +902,18 @@ export default function MapHome() {
   // The tilted view, on or off. A view of the same flight, not a place of its
   // own, so nothing else about this screen changes when it turns on.
   const [view3d, setView3d] = useState(false)
+  // The aerodrome the pilot has zoomed down onto, reported by the runway layer
+  // and null at every zoom above its floor. It carries the plate below the map
+  // controls; nothing else on this screen changes because of it.
+  const [focusField, setFocusField] = useState(null)
+  // A chart the pilot asked for, opened over everything. Held here rather than
+  // inside the plate because it is a full screen, and the plate is a bar.
+  const [chartOpen, setChartOpen] = useState(null)
+  // The chart is a screen without an address, so back has to be told about it
+  // or an edge swipe leaves the map altogether while the chart is still up.
+  // Same claim the Airports section makes for the same viewer.
+  const closeChart = useCallback(() => setChartOpen(null), [])
+  useBackOverride(chartOpen ? closeChart : null)
   const [selected, setSelected] = useState(null)
   // Fetched once when the chip is first switched on, not on mount: TFRs change
   // slowly and most sessions never ask for them.
@@ -1986,6 +2011,7 @@ export default function MapHome() {
         )}
         <Basemap dark={darkBasemap} />
         <ChartLayers layers={layers} openaipKey={openaipKey} tfrData={tfrData}
+          onFocusField={setFocusField}
           onSetDestination={addFieldToRoute}
           // Only offered once there is a route to add to. Without one there is
           // no leg to insert into and nothing the action could mean.
@@ -2107,6 +2133,28 @@ export default function MapHome() {
           active={chartsOpen} badge={activeCount}><IconLayers /></Ctrl>
         <Ctrl onClick={locate} title="Center on my position"><IconLocate /></Ctrl>
       </div>
+
+      {/* The field the map is over, under the drawer's own arrow.
+          Every other floating thing on this screen is anchored to the bottom
+          and rides the drawer: the map controls, the chips, the action card,
+          the traffic legend. There is no room left down there, and a panel
+          that has to dodge four moving neighbours would be wrong on some
+          phone. The top left is empty at every drawer height, it does not
+          move, and a title block naming the field is where a chart puts it
+          too. Absent at every zoom above the runway layer's floor: this is
+          the one piece of chrome here that a pilot never turns on, because
+          zooming down onto an aerodrome is the request. */}
+      {focusField && !view3d && (
+        <div style={{
+          position: 'absolute', left: 14, zIndex: 500,
+          top: 'calc(var(--safe-top) + 10px + 46px + 10px)',
+          opacity: expanded ? 0 : 1,
+          transition: 'opacity 200ms',
+          pointerEvents: expanded ? 'none' : 'auto',
+        }}>
+          <AirportPlate field={focusField} onOpenChart={setChartOpen} />
+        </div>
+      )}
 
       {/* Chart chips, revealed by the layers button rather than always on
           screen: six permanent chips is what a cluttered EFB looks like. */}
@@ -2315,6 +2363,31 @@ export default function MapHome() {
         <AirportPickerModal
           onConfirm={(id) => { setBasePicker(false); changeBase(id) }}
           onClose={() => setBasePicker(false)} />,
+        document.body,
+      )}
+
+      {/* The official airport diagram, over everything. A chart is read at
+          arm's length with both hands, so it takes the whole screen rather
+          than sharing it with the map that led to it. Portalled to body for
+          the same reason the airport picker is: this screen is a fixed box
+          with a drawer stacked in it, and a chart has to escape both. */}
+      {chartOpen && createPortal(
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1400,
+          background: 'var(--bg)', overflowY: 'auto',
+          paddingTop: 'var(--safe-top)', paddingBottom: 'var(--safe-bottom)',
+        }}>
+          <Suspense fallback={
+            <div style={{ padding: '80px 20px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 14 }}>
+              Loading chart…
+            </div>
+          }>
+            <ProcedureChartViewer
+              icao={chartOpen.icao} cycle={chartOpen.cycle}
+              chartName={`${chartOpen.icao} ${chartOpen.label}`} pdfName={chartOpen.pdf}
+              onBack={() => setChartOpen(null)} />
+          </Suspense>
+        </div>,
         document.body,
       )}
 

@@ -185,7 +185,20 @@ function airportIcon(color, size) {
   return icon
 }
 
-export function AirportLayer({ onSetDestination, onAddWaypoint }) {
+// hideIdents: fields whose runways are already drawn.
+//
+// A disc saying "a field is here" is exactly right from ten miles out and
+// redundant the moment the runway itself is on screen at its real size and
+// angle, where all it does is sit on the pavement it is pointing at. So the
+// map that draws runways (see RunwayLayer) hands back the fields it drew, and
+// those lose their disc.
+//
+// Per field, not by zoom. A zoom ceiling was the obvious version and it was
+// wrong: only 12,000 of the 26,000 fields in the pack have published threshold
+// coordinates, so at high zoom every strip without them would have lost its
+// marker and gained nothing, and a field that vanishes as you fly towards it
+// is the worst thing this layer could do.
+export function AirportLayer({ onSetDestination, onAddWaypoint, hideIdents = null }) {
   const map = useMap()
   const [airports, setAirports] = useState(null)
   const [details, setDetails] = useState(null)
@@ -237,6 +250,7 @@ export function AirportLayer({ onSetDestination, onAddWaypoint }) {
   if (!details) return null
 
   return visible.map(a => {
+    if (hideIdents?.has(a.ident)) return null
     const detail = details[a.ident]
     const hasTower = detail ? (detail.f ?? []).some(([label]) => /tower|twr/i.test(label)) : null
     const color = hasTower == null ? '#8e8e93' : hasTower ? '#0a84ff' : '#d946a8'
