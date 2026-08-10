@@ -838,6 +838,28 @@ export default function MapHome() {
   // honest test. The figures are a property of a route, not proof of one.
   const hasRoute = !!route?.depPos && !!route?.destPos
   const actionsFloat = !planning && hasRoute
+  // Which surface the action row is on, decided by nothing but how far up the
+  // drawer is.
+  //
+  //   resting, with an empty drawer  inside it, at the top. Its home.
+  //   resting, carrying a route      floating over the map above it.
+  //   half screen                    floating over the map above it.
+  //   higher than half               neither. It rides down under the drawer
+  //                                  and comes back when the drawer does.
+  //
+  // That last line is the whole rule and it replaces the opposite one. The row
+  // used to reappear INSIDE the drawer above half screen, on the argument that
+  // the record button has to stay reachable from whatever surface the pilot is
+  // on. In practice that put three buttons across the top of the flight plan
+  // at exactly the moment the pilot had pulled the plan up to read it, and the
+  // buttons were not the thing they had asked for. Pulling the drawer back
+  // down to half brings the row back, which is one gesture.
+  //
+  // Declared here rather than at each use because three separate places have
+  // to agree about it, and they disagreed before.
+  const actionsUp = snap > 50
+  const actionsFloating = !actionsUp && (snap === 50 || (snap === 25 && (planning || hasRoute)))
+  const actionsInDrawer = !actionsUp && snap === 25 && !actionsFloating
   // The height every stop is a fraction of, measured off the shell itself
   // rather than read from window.innerHeight.
   //
@@ -2331,11 +2353,11 @@ export default function MapHome() {
           instead of one disappearing and another arriving in a different
           place.
 
-          Not at full screen, and not while the drawer is expanded: there is no
-          map left to float over, and the drawer is what the pilot asked to see
-          all of. The row goes back inside it there. */}
+          Above half screen it does not float and it is not in the drawer
+          either: there is no map left to float over, and the drawer is what
+          the pilot asked to see all of. See actionsFloating above. */}
       <FloatingCard
-        visible={planning ? (snap === 50) : (actionsFloat && snap === 25)}
+        visible={actionsFloating}
         // Compact wherever it floats, with no exception for the planner.
         //
         // The planner kept the wide card on the argument that its stop is fixed
@@ -2350,11 +2372,11 @@ export default function MapHome() {
         // a bar of its own rather than as the small control that belongs to
         // the card below it.
         compact
-        bottom={planning
-          ? `${vh - stopY(vh, 50) + 10}px`
-          // Above the drawer, and above the recording stats when those are out
-          // too, rather than on top of them.
-          : `${restPx + (recording ? 132 : 0) + 10}px`}>
+        // Above whichever stop the drawer is at, and above the recording stats
+        // when those are out too, rather than on top of them. One expression
+        // for both heights now that the stop is the only thing that decides it,
+        // so the card slides between them instead of jumping.
+        bottom={`${vh - stopY(vh, Math.min(snap, 50)) + (snap === 25 && recording ? 132 : 0) + 10}px`}>
         {actionRow(true)}
       </FloatingCard>
 
@@ -2525,19 +2547,14 @@ export default function MapHome() {
               it is set once and rarely changed, which is not what a slot on
               the main surface is for.
 
-              Gone from here while the plan is open, and gone while a route is
-              on the collapsed drawer: it is on the card floating over the map
-              instead, and the drawer below is the subject and nothing else.
-              Same row, same buttons, one place at a time.
+              Here in one case only: the drawer resting with nothing of its own
+              to say. That is the screen a pilot opens the app to, and the row
+              is what it is for.
 
-              It comes back once the drawer is pulled up, because from there
-              the card would be behind it and the record button has to stay
-              reachable from the screen the pilot is actually on. */}
-          {/* Inside the drawer whenever there is no card floating over the
-              map holding it: at rest without a route, and at full screen
-              where the map is gone and the floating card with it. The menu
-              never leaves, it only changes which surface it is on. */}
-          {!(actionsFloat && snap === 25) && !(planning && snap === 50) && actionRow()}
+              Every other height moves it off this surface, and above half the
+              screen it is nowhere at all rather than back here on top of the
+              plan. See actionsInDrawer, where the whole rule is written out. */}
+          {actionsInDrawer && actionRow()}
 
           {/* A route exists, so the drawer says so: it is the only thing that
               says what the line across the map is.
