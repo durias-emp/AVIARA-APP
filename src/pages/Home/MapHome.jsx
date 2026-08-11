@@ -1052,7 +1052,6 @@ function MapHomeInner() {
   // `route` is only ever set with both ends resolved, so its presence is the
   // honest test. The figures are a property of a route, not proof of one.
   const hasRoute = !!route?.depPos && !!route?.destPos
-  const actionsFloat = !planning && hasRoute
   // Which surface the action row is on, decided by nothing but how far up the
   // drawer is.
   //
@@ -2030,10 +2029,11 @@ function MapHomeInner() {
   }
 
   // ── The planner, opened and closed in place ──────────────────────────
-  function openPlanner(at = 50) {
-    // 50 is both "on screen" and the plan's usual stop, so one call does what
-    // used to take two: raising a hidden drawer and moving it to the plan. A
-    // drag that asked for a different rung gets the rung it asked for.
+  function openPlanner(at = 100) {
+    // Full screen, because the plan is the only rung left that can hold it:
+    // the ladder is away, the dock, and this. It used to open at 50, which
+    // stopped being a rung when the middle one was removed, so the planner
+    // parked the sheet between positions.
     setSnap(at)
     setPlanning(true)
   }
@@ -2266,7 +2266,6 @@ function MapHomeInner() {
   // rather than corrected in an effect: the resting snap IS the closed rung, so
   // reading it that way needs no write and cannot lag a resize by a frame.
   const effSnap = (snap === 0 || snap === 100) ? snap : closedPct
-  const CLOSED = closedPct
   const restPx = vh - stopY(vh, closedPct)
 
   // The stops own their content, and this is what holds them to it.
@@ -2324,7 +2323,7 @@ function MapHomeInner() {
   const topCardMaxH = Math.max(
     170,
     Math.round(vh
-      - ((planning ? vh - stopY(vh, 50) : restPx) + (recording ? 132 : 0) + 10 + ACTION_ROW_H)
+      - ((planning ? vh - stopY(vh, 100) : restPx) + (recording ? 132 : 0) + 10 + ACTION_ROW_H)
       - safeTop - 10 - 12),
   )
 
@@ -2521,20 +2520,14 @@ function MapHomeInner() {
       ? flickTarget(snap, up, stops)
       : nearestStop(vh, d.lastY, stops)
 
-    // Pulling a route open opens its flight plan.
+    // Dragging the drawer open no longer opens the flight plan.
     //
-    // With a route on the drawer, the drawer IS that route: the ends at rest,
-    // and everything else there is to say about it one drag further. Landing
-    // on the tools grid instead would be answering a question nobody asked
-    // while the flight sits there half-read.
-    //
-    // The tap on the handle still goes to 80, so the aircraft, the tools and
-    // the logbook keep a gesture of their own rather than becoming unreachable
-    // for as long as a route exists. Drag for the flight, tap for the rest.
-    // The stop the drag actually asked for, not a fixed one. A hard pull from
-    // 25 that lands on 80 opened the plan at 50 and threw the other 30 away,
-    // which is the drawer ignoring the gesture that opened it.
-    if (actionsFloat && snap === CLOSED && target > CLOSED) { openPlanner(target); return }
+    // With a route on it, a pull used to land in the planner rather than on
+    // the apps, on the reasoning that the drawer IS the route once one
+    // exists. It is not: the drawer is where the apps live, and a pilot who
+    // wanted the plan would have pressed FPL. Filing a route quietly changed
+    // what the whole sheet did, which is a screen deciding on the pilot's
+    // behalf what they meant by opening it.
 
     setSnap(target)
   }
