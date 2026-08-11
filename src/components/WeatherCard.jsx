@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { get, put } from '../lib/db'
+import { get } from '../lib/db'
+import { setHomeIdent } from '../lib/homeBase'
 import AirportPickerModal from './AirportPickerModal'
 import {
   loadWeather, parseFltCat, parseWind, parseVisib, parseCeiling,
@@ -164,7 +165,7 @@ export default function WeatherCard({ compact = false, onOpenChange }) {
   }, [icao, refresh])
 
   async function confirmAirport(id) {
-    await put('settings', { key: 'homeAirport', value: id })
+    await setHomeIdent(id)
     setIcao(id)
     setPicker(false)
   }

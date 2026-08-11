@@ -31,6 +31,10 @@ import { useBackOverride } from '../../context/BackOverride'
 import { HomeLocationProvider, useHomeLocation } from '../../context/HomeLocation'
 import { useBreadcrumbTrail } from '../../hooks/useBreadcrumbTrail'
 import GpsInfoBar from '../../components/GpsInfoBar'
+import {
+  AirportsHeroCard, HangarCard, PilotRow, FlightPlanCard, DiscoverCard, ROW_GAP,
+} from '../../components/HomeRows'
+import { getCurrencyStatus } from '../../lib/currency'
 import { useRegion } from '../../context/Region'
 import { useFlightPlanType } from '../../hooks/useFlightPlanType'
 import { fmtEte, etaFrom, reserveMinutes, requiredReserveMinutes, reserveStatus } from '../../lib/routeFigures'
@@ -45,7 +49,7 @@ import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecord
 import { put, get, getAll, del } from '../../lib/db'
 import { findAirport, getAirports } from '../../lib/aerodromes'
 import { crossTrackNm } from '../../lib/corridor'
-import { resolveHomeIdent } from '../../lib/homeBase'
+import { resolveHomeIdent, setHomeIdent, HOME_AIRPORT_EVENT } from '../../lib/homeBase'
 import { computeDirectRoute } from '../../lib/directRoute'
 import { loadTfrs } from '../../lib/tfr'
 import useIsDark from '../../hooks/useIsDark'
@@ -87,6 +91,13 @@ const DRAWER_VIEWS = {
   airports:  lazy(() => import('../../components/AirportInfo')),
   tools:     lazy(() => import('../../components/ToolsMenu')),
   settings:  lazy(() => import('../Settings/Settings')),
+  // The three the reporting rows need. Hangar and the flight plan had doors
+  // elsewhere on this screen (the aircraft card, Plan Route); Discover had
+  // none at all, so the entire social half of the app was reachable only by
+  // someone opening a shared link.
+  hangar:    lazy(() => import('../Aircraft/Hangar')),
+  flight:    lazy(() => import('../Checklists/Checklists')),
+  discover:  lazy(() => import('../Discover/Discover')),
 }
 
 // The planned route, drawn to be told apart from the recorded track at a
@@ -217,16 +228,13 @@ const AC_BREATHING = 10
 // icons so nothing has to be relearned.
 // `view` is the key into DRAWER_VIEWS. These open in the drawer, at the height
 // the drawer is already at, rather than navigating away from the map.
+// Pilot and Airports are no longer here: they became reporting rows above,
+// which is the whole point of the rows. Listing them in both places would
+// teach two doors to one room and make the grid look fuller than it is, the
+// same reason Flight Planning was never in this list.
 const TOOLS = [
-  // No Flight Planning entry: Plan Route in the sheet header goes to the same
-  // screen, and listing it twice makes the grid look fuller than it is while
-  // teaching two routes to one place.
   { view: 'calc',      icon: '/E6B CALC.svg',   label: 'Calculators' },
-  // Was '/currency', which no longer exists: that screen grew into Pilot,
-  // which reports currency alongside medical, total time and the logbook.
-  { view: 'pilot',     icon: '/cheque.png',     label: 'Pilot' },
   { view: 'reference', icon: '/libros.png',     label: 'Quick Reference' },
-  { view: 'airports',  icon: '/control-tower.png', label: 'Airports' },
   { view: 'tools',     icon: '/filtrar.png',    label: 'Tools' },
   // Placeholder icon: the project has no gear, and main drew these two as
   // inline SVG rather than PNG. Worth replacing when these screens are
@@ -1101,6 +1109,21 @@ function MapHomeInner() {
   const { trail: breadcrumbTrail, reset: resetBreadcrumbs } = useBreadcrumbTrail({
     enabled: layers.breadcrumbs, coords: pos,
   })
+
+  // Every reporting row opens in the sheet rather than navigating away, which
+  // is the rule the rest of this screen already follows.
+  const openRow = useCallback(key => setDrawerView(key), [])
+
+  // The raw currency record rather than a rolled-up status: the Pilot row
+  // reports flight currency and medical separately, so it needs both of
+  // getCurrencyStatus's cards, not the worse of the two.
+  const [currencyData, setCurrencyData] = useState(null)
+  useEffect(() => {
+    get('currency', 'profile').then(d => setCurrencyData(d ?? {})).catch(() => {})
+  }, [])
+  const currencyCards = useMemo(
+    () => (currencyData ? getCurrencyStatus(currencyData) : null),
+    [currencyData])
   // Resolved at first render rather than in an effect: the key is synchronous
   // (localStorage or the built-in), so fetching it in an effect would just
   // render once without it and once with.
@@ -1327,7 +1350,7 @@ function MapHomeInner() {
   async function changeBase(ident) {
     const id = (ident || '').trim().toUpperCase()
     if (!id) return
-    await put('settings', { key: 'homeAirport', value: id }).catch(() => {})
+    await setHomeIdent(id)
     const airports = await getAirports()
     const hit = airports?.find(a => a[0] === id)
     if (!hit) {
@@ -1550,6 +1573,21 @@ function MapHomeInner() {
       .map(w => w.name || w.via || ''),
     [route],
   )
+
+  // The same points again, carrying their names, which is what the FPL row
+  // reports: the plan reads "KRNO to KSFO", not two coordinates. Built off
+  // routeLine and routeMiddleNames together so the nth point and the nth name
+  // cannot drift apart.
+  //
+  // Declared here, below routeMiddleNames rather than beside routeLine. A
+  // const read before its own declaration is in its temporal dead zone, and
+  // the map screen on main has a comment recording exactly that mistake
+  // blowing up the whole map at mount.
+  const fplRoute = useMemo(() => {
+    if (routeLine.length < 2) return null
+    const names = [route?.dep || '', ...routeMiddleNames, route?.dest || '']
+    return routeLine.map(([lat, lon], i) => ({ lat, lon, name: names[i] || '' }))
+  }, [routeLine, routeMiddleNames, route?.dep, route?.dest])
 
 
   // A point held on the map, put into the plan.
@@ -3119,26 +3157,44 @@ function MapHomeInner() {
               options to choose from rather than a task in itself. This is the
               one that used to be at 80 only by accident, because it was
               whatever was left after the aircraft above it. */}
-          <div ref={declareStop(80, 'tools grid')}
-            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {TOOLS.map(t => (
-              <button key={t.view} onClick={() => setDrawerView(t.view)} style={{
-                display: 'flex', alignItems: 'center', gap: 12, padding: '14px 14px',
-                background: 'var(--map-fill-soft)', border: 'none', borderRadius: 16,
-                cursor: 'pointer', textAlign: 'left',
-              }}>
-                {/* Tinted, not recoloured at the source. These are PNGs and a
-                    stray SVG, black line art drawn back when this menu sat on
-                    a white sheet, and there is no fill to set on an <img>.
-                    The filter paints every opaque pixel the drawer's ink
-                    colour, so they follow the theme the way the label beside
-                    them does rather than being white in both. */}
-                <img src={t.icon} width={24} height={24} alt="" style={{
-                  objectFit: 'contain', flexShrink: 0, filter: 'var(--map-icon-ink)',
-                }} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--map-ink)', lineHeight: 1.25 }}>{t.label}</span>
-              </button>
-            ))}
+          <div ref={declareStop(80, 'tools grid')}>
+            {/* The rows that report something. Full width, because what makes
+                them worth having is the live half on the right: the field's
+                category and temperature, the medical, the fixes in the active
+                plan, the messages waiting. A two-up grid has no room for any
+                of that, which is why these are not in one. */}
+            <AirportsHeroCard onOpen={openRow} />
+            <HangarCard
+              aircraftImage={ac?.image}
+              activeAircraft={ac}
+              aircraftCount={aircraftList?.length ?? 0}
+              onOpen={openRow} />
+            <PilotRow currencyCards={currencyCards} onOpen={openRow} />
+            <FlightPlanCard route={fplRoute} onOpen={openRow} />
+            <DiscoverCard onOpen={openRow} />
+
+            {/* The rest stay two-up, in their own icons: they are doors, with
+                nothing to report until they are opened. */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: ROW_GAP }}>
+              {TOOLS.map(t => (
+                <button key={t.view} onClick={() => setDrawerView(t.view)} style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: '14px 14px',
+                  background: 'var(--map-fill-soft)', border: 'none', borderRadius: 16,
+                  cursor: 'pointer', textAlign: 'left',
+                }}>
+                  {/* Tinted, not recoloured at the source. These are PNGs and a
+                      stray SVG, black line art drawn back when this menu sat on
+                      a white sheet, and there is no fill to set on an <img>.
+                      The filter paints every opaque pixel the drawer's ink
+                      colour, so they follow the theme the way the label beside
+                      them does rather than being white in both. */}
+                  <img src={t.icon} width={24} height={24} alt="" style={{
+                    objectFit: 'contain', flexShrink: 0, filter: 'var(--map-icon-ink)',
+                  }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--map-ink)', lineHeight: 1.25 }}>{t.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* THE 100 BLOCK. A list long enough to need its own scroll, which

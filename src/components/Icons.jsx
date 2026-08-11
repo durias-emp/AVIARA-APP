@@ -107,11 +107,173 @@ export function IconWrench({ size = 24 }) {
   )
 }
 
+// Eight-tooth gear, generated rather than hand-drawn: the previous path was
+// a hand-transcribed copy of a stock icon with malformed arcs (and a stray
+// horizontal-line command mid-path), which rendered as a lump at the 22px
+// the Settings card actually uses. Every point here is a polar coordinate
+// off one centre, so the teeth are identical by construction — 18° tips,
+// 16° valleys, tip radius 10.15 leaving room for the 1.5 stroke inside the
+// 24-unit box.
 export function IconGear({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V19.9a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H4.1a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H10a1.7 1.7 0 0 0 1.04-1.56V4.1a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V10a1.7 1.7 0 0 0 1.56 1.04h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.56 1.04z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+      <path
+        d="M10.41 1.97A10.15 10.15 0 0 1 13.59 1.97L13.90 4.64A7.6 7.6 0 0 1 15.86 5.45L17.97 3.79A10.15 10.15 0 0 1 20.21 6.03L18.55 8.14A7.6 7.6 0 0 1 19.36 10.10L22.03 10.41A10.15 10.15 0 0 1 22.03 13.59L19.36 13.90A7.6 7.6 0 0 1 18.55 15.86L20.21 17.97A10.15 10.15 0 0 1 17.97 20.21L15.86 18.55A7.6 7.6 0 0 1 13.90 19.36L13.59 22.03A10.15 10.15 0 0 1 10.41 22.03L10.10 19.36A7.6 7.6 0 0 1 8.14 18.55L6.03 20.21A10.15 10.15 0 0 1 3.79 17.97L5.45 15.86A7.6 7.6 0 0 1 4.64 13.90L1.97 13.59A10.15 10.15 0 0 1 1.97 10.41L4.64 10.10A7.6 7.6 0 0 1 5.45 8.14L3.79 6.03A10.15 10.15 0 0 1 6.03 3.79L8.14 5.45A7.6 7.6 0 0 1 10.10 4.64Z"
+        stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+      <circle cx="12" cy="12" r="3.4" stroke="currentColor" strokeWidth="1.5"/>
+    </svg>
+  )
+}
+
+// One glyph for the whole sky, keyed to WeatherAnimation's condition types
+// (clear / few / scattered / broken / overcast / rain / snow / storm / fog).
+// The Airports card used to carry a full painted scene; a pilot glancing at
+// a home screen wants to know "sun, cloud, or wet", and one symbol answers
+// that faster than an illustration does.
+export function IconSky({ type = 'clear', size = 22 }) {
+  const s = { stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none' }
+  const cloud = <path d="M7.4 18.4h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+  const sunSmall = (
+    <>
+      <circle cx="8.6" cy="7.8" r="3" {...s} />
+      <path d="M8.6 2.6v1.4M8.6 11.6v1.4M3.4 7.8h1.4M12.4 7.8h1.4M4.9 4.1l1 1M11.3 10.5l1 1M12.3 4.1l-1 1M5.9 10.5l-1 1" {...s} />
+    </>
+  )
+  switch (type) {
+    case 'clear':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="4.6" {...s} />
+          <path d="M12 3.2v2.2M12 18.6v2.2M3.2 12h2.2M18.6 12h2.2M5.8 5.8l1.6 1.6M16.6 16.6l1.6 1.6M18.2 5.8l-1.6 1.6M7.4 16.6l-1.6 1.6" {...s} />
+        </svg>
+      )
+    case 'few': case 'scattered':
+      return <svg width={size} height={size} viewBox="0 0 24 24" fill="none">{sunSmall}{cloud}</svg>
+    case 'broken': case 'overcast':
+      return <svg width={size} height={size} viewBox="0 0 24 24" fill="none">{cloud}</svg>
+    case 'rain':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M7.4 15.4h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+          <path d="M8.6 18.2l-.8 2.4M12 18.2l-.8 2.4M15.4 18.2l-.8 2.4" {...s} />
+        </svg>
+      )
+    case 'snow':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M7.4 15.4h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+          <path d="M8.4 19.2h.02M11.9 20.4h.02M15.4 19.2h.02" {...s} strokeWidth="2.4" />
+        </svg>
+      )
+    case 'storm':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M7.4 14.6h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+          <path d="M12.8 16.4l-2.4 3.4h2.6l-1.4 2.6" {...s} />
+        </svg>
+      )
+    case 'fog':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M7.4 13.6h8.6a3.4 3.4 0 0 0 0-6.8 5 5 0 0 0-9.4 1.5 2.9 2.9 0 0 0 .8 5.3z" {...s} />
+          <path d="M5.4 17h13M7.4 20.2h9" {...s} />
+        </svg>
+      )
+    default:
+      return <svg width={size} height={size} viewBox="0 0 24 24" fill="none">{cloud}</svg>
+  }
+}
+
+/* ── Home card glyphs ──────────────────────────────────────────────────
+   One line weight (1.6), one 24-unit box, no fills except where a shape
+   reads better solid. They sit at 22px on a black card, so anything more
+   detailed than this turns to mush — the restraint is the design. ── */
+
+// Crossed runways — the way a field is drawn on a chart. An earlier version
+// was a control tower, which at 22px read as a candle.
+//
+// Each runway is a pair of parallel edges, so four lines in total: the strip
+// shape is what makes it a runway rather than a plus sign. Angles are
+// deliberately not 90° apart — real fields cross at odd angles, and the
+// asymmetry is what stops it reading as a crosshair.
+export function IconRunways({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+      {/* long runway, NNE/SSW */}
+      <path d="M8.2 21.2 12.6 3.1M11.6 21.9 16 3.8" />
+      {/* crossing runway, WNW/ESE */}
+      <path d="M2.9 9.9 20.4 13.3M2.5 12.1 20 15.5" />
+    </svg>
+  )
+}
+
+// Hangar: pitched roof, walls, door. An earlier version used a rounded
+// arch, which read as a tunnel — a peak is what makes it a building.
+export function IconHangar({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1.9 12.1 12 5.1l10.1 7" />
+      <path d="M3.9 10.7v9.8M20.1 10.7v9.8" />
+      <path d="M1.6 20.5h20.8" />
+      {/* The door is what separates a hangar from a house: it spans almost
+          the whole frontage, because an aeroplane has to fit through it. */}
+      <path d="M6.6 20.5v-6.6h10.8v6.6" />
+    </svg>
+  )
+}
+
+// The Pilot mark, drawn rather than reproduced.
+//
+// A pass at rendering the real logo here (public/pilot-helmet.png, through
+// the luminance mask HomeHeroArt uses) was reverted: the source is a
+// photograph of a fine engraving, and at 22px its linework averages into a
+// grey mass that the mask turns into a filled square. Detailed artwork
+// cannot survive icon size — use the PNG at card size or larger, and this
+// line-art stand-in wherever a glyph is needed.
+export function IconHelmet({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      {/* Leather flying helmet, front on: the dome, ear flaps tapering in
+          toward the chin, and the goggles. Proportioned so the lenses sit
+          clear of both the dome line and the flaps — an earlier pass had
+          all three touching and the result read as headphones. */}
+      <path d="M4.1 13.4a7.9 7.9 0 0 1 15.8 0" />
+      <path d="M4.1 13.4v2.4c0 1.6 1.1 2.9 2.6 3.2M19.9 13.4v2.4c0 1.6-1.1 2.9-2.6 3.2" />
+      <circle cx="9.1" cy="13.1" r="2.2" />
+      <circle cx="14.9" cy="13.1" r="2.2" />
+      <path d="M11.3 13.1h1.4" />
+    </svg>
+  )
+}
+
+// A three-fix route: departure, a turning point, destination. Scalene on
+// purpose — an equilateral triangle reads as a warning sign or a play
+// button, while uneven legs read as a route someone actually planned.
+export function IconRoute({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4.6 19.2 9.9 5.2M9.9 5.2 20.1 12.4" strokeDasharray="2.5 2.3" />
+      <circle cx="4.6" cy="19.2" r="2.1" fill="currentColor" stroke="none" />
+      <circle cx="9.9" cy="5.2" r="2.1" fill="currentColor" stroke="none" />
+      <circle cx="20.1" cy="12.4" r="2.1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+// Atom — nucleus plus three electron shells at 60° to each other. Ellipses
+// with a rotate transform rather than paths, so the three orbits are the
+// same shape by construction and stay perfectly symmetric at any size.
+export function IconAtom({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <ellipse cx="12" cy="12" rx="10.2" ry="4.1" stroke="currentColor" strokeWidth="1.5"/>
+      <ellipse cx="12" cy="12" rx="10.2" ry="4.1" stroke="currentColor" strokeWidth="1.5" transform="rotate(60 12 12)"/>
+      <ellipse cx="12" cy="12" rx="10.2" ry="4.1" stroke="currentColor" strokeWidth="1.5" transform="rotate(120 12 12)"/>
+      <circle cx="12" cy="12" r="2.1" fill="currentColor"/>
     </svg>
   )
 }
