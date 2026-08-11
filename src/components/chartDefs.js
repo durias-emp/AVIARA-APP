@@ -8,6 +8,13 @@
 // replace each other; overlays are drawn on top and combine freely.
 export const CHARTS = [
   { key: 'sectional', label: 'SECT', faaOnly: true },
+  // The Terminal Area Chart, drawn at 1:250,000 against the sectional's
+  // 1:500,000. Over the thirty-odd metro areas it covers it is genuinely twice
+  // the detail rather than the same picture enlarged, which is the only real
+  // answer to a chart going soft as a pilot zooms into the airspace they most
+  // need to read. Outside its coverage it draws nothing and the sectional
+  // underneath shows through, so the two are stacked rather than exclusive.
+  { key: 'tac',       label: 'TAC',  faaOnly: true },
   { key: 'terrain',   label: 'TERR', faaOnly: false },
   { key: 'ifrlo',     label: 'LO',   faaOnly: true },
   { key: 'ifrhi',     label: 'HI',   faaOnly: true },
@@ -41,7 +48,7 @@ export const CHARTS = [
 ]
 
 export const EMPTY_LAYERS = {
-  sectional: false, terrain: false, ifrlo: false, ifrhi: false, airspace: false,
+  sectional: false, tac: false, terrain: false, ifrlo: false, ifrhi: false, airspace: false,
   traffic: false, tfr: false,
   airports: false, heliports: false, seaplane: false, radar: false, fltcat: false,
 }

@@ -1072,7 +1072,7 @@ export default function MapHome() {
   //
   // Traffic and TFRs are not in this list: they are opaque vector overlays and
   // read as well over dark tiles as over light ones.
-  const chartOverBasemap = ['sectional', 'terrain', 'ifrlo', 'ifrhi', 'airspace']
+  const chartOverBasemap = ['sectional', 'tac', 'terrain', 'ifrlo', 'ifrhi', 'airspace']
     .some(k => layers[k])
   // What the tiles under everything else actually are, which is not the same
   // question as what theme the app is in. Anything drawn on top of the map has

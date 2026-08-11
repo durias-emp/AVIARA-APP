@@ -102,10 +102,33 @@ export default function ChartLayers({ layers, openaipKey, tfrData, onSetDestinat
   // other's existence to have it.
   const [drawnFields, setDrawnFields] = useState(null)
   return (<>
+    {/* THE ZOOM NUMBERS ARE MEASURED. Do not "correct" them by reading the
+        service metadata, which is how this nearly shipped blank.
+        Leaflet clamps the tile zoom to maxNativeZoom and THEN adds zoomOffset,
+        so the deepest tile these layers ever ask for is maxNativeZoom + 1.
+        With 11 that is z12, which is exactly the deepest tile the FAA has:
+        fetched over San Diego, sectional and Terminal answer 200 at z12 and
+        404 at z13. Raising maxNativeZoom to 12 looks like it recovers a level
+        and instead asks for tiles that do not exist, which errorTileUrl turns
+        into a blank chart.
+        tileSize 128 with zoomOffset 1 is the retina trick and is why the
+        charts are as sharp as they are: a 256px tile in a 128 CSS box means a
+        3x screen upscales by 1.5 rather than 3. */}
     {layers.sectional && (
       <TileLayer url={`${FAA}/VFR_Sectional/MapServer/tile/{z}/{y}/{x}`}
         tileSize={128} zoomOffset={1}
         opacity={1} minZoom={8} maxNativeZoom={11} maxZoom={13}
+        className="sectional-layer" errorTileUrl={BLANK}
+        attribution="&copy; FAA AIS" />
+    )}
+    {/* After the sectional on purpose, so where a Terminal Area Chart exists
+        it covers the sectional with the more detailed drawing, and where it
+        does not the sectional shows through untouched. Its own coverage starts
+        around z10; below that there is nothing to draw. */}
+    {layers.tac && (
+      <TileLayer url={`${FAA}/VFR_Terminal/MapServer/tile/{z}/{y}/{x}`}
+        tileSize={128} zoomOffset={1}
+        opacity={1} minZoom={9} maxNativeZoom={11} maxZoom={14}
         className="sectional-layer" errorTileUrl={BLANK}
         attribution="&copy; FAA AIS" />
     )}
