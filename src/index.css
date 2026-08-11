@@ -871,11 +871,14 @@ input[type="number"]::-webkit-outer-spin-button {
 :root {
   --map-panel:       rgba(255,255,255,0.96);
   /* The same panel, letting the map through. Written as a plain alpha rather
-     than a colour mixed into a colour that already had one: the old form was
-     0.96 alpha mixed 62% with nothing, which is 0.60 opaque and reads as
-     neither number. This IS the opacity. 0.45 light, and the blur behind it is
-     what keeps the labels legible over a busy chart. */
-  --map-panel-sheer: rgba(255,255,255,0.45);
+     than a colour mixed into a colour that already had one, so this IS the
+     opacity and nobody has to multiply anything to know it.
+
+     At 0.10 the panel is barely a surface at all: what separates the dock from
+     the map is almost entirely the blur behind it. That is the intended look,
+     and it is also the point at which the blur stops being decoration and
+     becomes the only thing keeping the labels readable over a busy sectional. */
+  --map-panel-sheer: rgba(255,255,255,0.10);
   --map-panel-solid: #ffffff;
   --map-ink:         #1c1c1e;
   --map-ink-dim:     rgba(60,60,67,0.6);
@@ -901,7 +904,7 @@ input[type="number"]::-webkit-outer-spin-button {
   --map-panel:       rgba(28,28,30,0.94);
   /* Dark carries a touch more than light: white text over a dark panel loses
      contrast faster against a bright chart than black text over a light one. */
-  --map-panel-sheer: rgba(28,28,30,0.50);
+  --map-panel-sheer: rgba(28,28,30,0.14);
   --map-panel-solid: #1c1c1e;
   --map-ink:         #f2f2f7;
   --map-ink-dim:     rgba(235,235,245,0.62);
