@@ -23,7 +23,7 @@
 // than no runway drawn at all. Which of the two sources a field came from
 // travels with it, into the popup and into the plate above the map.
 
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, memo, useEffect, useRef, useState } from 'react'
 import { Polygon, Polyline, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { getRunwayGeometry } from '../lib/aerodromes'
@@ -109,7 +109,7 @@ function facts(r, source, cycles) {
   }
 }
 
-export default function RunwayLayer({ onFocusField, onDrawnFields, onSetDestination, onAddWaypoint }) {
+function RunwayLayer({ onFocusField, onDrawnFields, onSetDestination, onAddWaypoint }) {
   const map = useMap()
   const [rows, setRows] = useState(null)
   const [cycles, setCycles] = useState(null)
@@ -325,5 +325,14 @@ export default function RunwayLayer({ onFocusField, onDrawnFields, onSetDestinat
     )
   })
 }
+
+// Memoized. This is the most expensive layer on the map: at the zoom it draws
+// at it is building threshold-to-corner polygons, centrelines, bar markings
+// and a rotated label for every runway end in view, and none of that changes
+// because a GPS fix arrived. Its four props are all stable by construction
+// (see MapHome, where every one of them is a useCallback or a setState), and
+// what it actually redraws for, a pan or a zoom, it hears from the map itself
+// on moveend and zoomend rather than from its parent.
+export default memo(RunwayLayer)
 
 export { RUNWAY_MIN_ZOOM }

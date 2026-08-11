@@ -25,7 +25,7 @@
 // and its mosaic edges look ragged, so handing off to the basemap is the
 // deliberate behaviour, the same one ForeFlight has.
 
-import { useCallback, useState } from 'react'
+import { memo, useCallback, useState } from 'react'
 import { TileLayer, Polygon, CircleMarker, Popup } from 'react-leaflet'
 import VectorBasemap from './VectorBasemap'
 import TerrainLayer from '../pages/Checklists/sections/TerrainLayer'
@@ -53,7 +53,7 @@ const FAA = 'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/service
 // key forces Leaflet to rebuild the layer on the swap: changing only the url
 // prop leaves the already-loaded light tiles on screen until something else
 // invalidates them.
-export function Basemap({ dark = false }) {
+export const Basemap = memo(function Basemap({ dark = false }) {
   // SPIKE (vector-map-spike branch): the floor is OpenFreeMap vector tiles,
   // with yesterday's CARTO raster kept whole underneath as the fallback for
   // any device whose WebGL will not carry it. Reverting the whole experiment
@@ -67,7 +67,7 @@ export function Basemap({ dark = false }) {
   const fallBack = useCallback(() => setVectorDown(true), [])
   if (!vectorDown) return <VectorBasemap dark={dark} onFail={fallBack} />
   return <RasterBasemap dark={dark} />
-}
+})
 
 function RasterBasemap({ dark = false }) {
   const style = dark ? 'dark_all' : 'rastertiles/voyager'
@@ -95,7 +95,7 @@ function RasterBasemap({ dark = false }) {
   </>)
 }
 
-export default function ChartLayers({ layers, openaipKey, tfrData, onSetDestination, onAddWaypoint, onFocusField }) {
+function ChartLayers({ layers, openaipKey, tfrData, onSetDestination, onAddWaypoint, onFocusField }) {
   // Which fields already have their pavement drawn, so the marker layer can
   // step aside for exactly those. Held here because it is a conversation
   // between two sibling layers and neither should have to know about the
@@ -207,3 +207,14 @@ export default function ChartLayers({ layers, openaipKey, tfrData, onSetDestinat
     {layers.fltcat && <FlightCategoryLayer />}
   </>)
 }
+
+// Memoized, and this is the one that matters most, because skipping it skips
+// everything underneath it: the tile layers, the TFR polygons, the runway
+// layer and all four aerodrome layers are its children, so a re-render here is
+// a re-render of the entire chart stack.
+//
+// Its six props are stable between real changes. layers, openaipKey and
+// tfrData are state, and the three callbacks are useCallback in MapHome. The
+// tfrData map below builds fresh Polygon and CircleMarker elements with inline
+// pathOptions on every render, which is exactly the work now being skipped.
+export default memo(ChartLayers)

@@ -12,7 +12,7 @@
 // minZoom on the aux layers exists because a default of 0 made the guard read
 // `zoom < 0`, which is false forever and silently disabled the limit.
 
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { TileLayer, CircleMarker, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { FLTCAT } from '../lib/weather'
@@ -69,7 +69,7 @@ function PopupSource({ text, noIcao }) {
 // Radar — public NEXRAD mosaic tiles from the Iowa Environmental Mesonet
 // (IEM), no API key required. Refreshes every 5 min, matching IEM's own
 // update cadence.
-export function RadarLayer() {
+export const RadarLayer = memo(function RadarLayer() {
   const [bust, setBust] = useState(0)
   useEffect(() => {
     const t = setInterval(() => setBust(b => b + 1), 5 * 60 * 1000)
@@ -83,12 +83,12 @@ export function RadarLayer() {
       attribution="&copy; Iowa Environmental Mesonet, NEXRAD"
     />
   )
-}
+})
 
 // Flight Category — colored dot per reporting station in view (VFR green /
 // MVFR blue / IFR red / LIFR purple), same colors used everywhere else in
 // the app. Refetches on pan/zoom, debounced so panning doesn't spam the API.
-export function FlightCategoryLayer() {
+export const FlightCategoryLayer = memo(function FlightCategoryLayer() {
   const map = useMap()
   const [stations, setStations] = useState([])
   const timer = useRef(null)
@@ -122,7 +122,7 @@ export function FlightCategoryLayer() {
       </CircleMarker>
     )
   })
-}
+})
 
 // Airports — bundled OurAirports/FAA data (src/lib/aerodromes.js), same
 // blue-for-towered/magenta-for-non-towered convention as a real sectional.
@@ -198,7 +198,7 @@ function airportIcon(color, size) {
 // coordinates, so at high zoom every strip without them would have lost its
 // marker and gained nothing, and a field that vanishes as you fly towards it
 // is the worst thing this layer could do.
-export function AirportLayer({ onSetDestination, onAddWaypoint, hideIdents = null }) {
+export const AirportLayer = memo(function AirportLayer({ onSetDestination, onAddWaypoint, hideIdents = null }) {
   const map = useMap()
   const [airports, setAirports] = useState(null)
   const [details, setDetails] = useState(null)
@@ -282,7 +282,7 @@ export function AirportLayer({ onSetDestination, onAddWaypoint, hideIdents = nul
       </Marker>
     )
   })
-}
+})
 
 // Heliport ("H") and seaplane base (anchor) icons — module-level so every
 // marker of a kind shares one L.divIcon instance rather than each recreating
@@ -375,9 +375,13 @@ function AuxAerodromeLayer({ dataKey, icon, kindLabel, minZoom = 8, onSetDestina
   ))
 }
 
-export function HeliportLayer(props) {
+// All memoized, for the same reason RunwayLayer is: MapHome re-renders about
+// once a second from the GPS watch and the recording timer, and none of these
+// has anything new to draw on those. Each one already listens to the map's own
+// moveend for the thing it does care about, which is where the view is.
+export const HeliportLayer = memo(function HeliportLayer(props) {
   return <AuxAerodromeLayer {...props} dataKey="heliports" icon={HELIPORT_ICON} kindLabel="Heliport" minZoom={8} />
-}
-export function SeaplaneBaseLayer(props) {
+})
+export const SeaplaneBaseLayer = memo(function SeaplaneBaseLayer(props) {
   return <AuxAerodromeLayer {...props} dataKey="seaplaneBases" icon={SEAPLANE_ICON} kindLabel="Seaplane base" minZoom={8} />
-}
+})

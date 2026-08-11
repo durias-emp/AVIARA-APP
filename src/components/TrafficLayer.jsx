@@ -9,7 +9,7 @@
 // reach the sectional underneath; selecting an aircraft is done by hit-testing
 // the map's own click, not by the canvas receiving one.
 
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { bandFor, isLight } from './trafficBands'
@@ -116,7 +116,7 @@ function drawTarget(ctx, x, y, ac, zoom, emphasis) {
   ctx.restore()
 }
 
-export default function TrafficLayer({ snapshot, onSelect, filter = 'ga' }) {
+function TrafficLayer({ snapshot, onSelect, filter = 'ga' }) {
   const map = useMap()
   // Mirrored into a ref through an effect, not written during render. The draw
   // loop needs a value it can read every frame without the canvas being torn
@@ -236,3 +236,15 @@ export default function TrafficLayer({ snapshot, onSelect, filter = 'ga' }) {
 
   return null
 }
+
+// Memoized, because the screen this lives on re-renders about once a second
+// and this one has nothing new to say on almost all of those.
+//
+// MapHome carries a GPS watch and, while recording, a one-second snapshot
+// timer, so every layer inside its MapContainer was being re-rendered on both.
+// The three props here change on their own schedule: a traffic snapshot
+// arrives on the poll, the filter changes when a pilot changes it, and
+// onSelect is a stable setState. Everything that has to stay live regardless
+// is already driven from inside, off the map's own zoomend, move, resize and
+// click events, so nothing here is starved by the parent being skipped.
+export default memo(TrafficLayer)
