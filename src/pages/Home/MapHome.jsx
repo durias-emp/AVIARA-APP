@@ -2259,12 +2259,13 @@ function MapHomeInner() {
   // it is used twice, once as an offset and once subtracted from the available
   // height, and calc() nests but does not concatenate.
   //
-  // No safe-area term any more. The resting height is a fraction of the
-  // viewport, and the viewport already ends at the bottom of the screen, so
-  // the inset is inside the 30 rather than added to it.
-  const chipStackBottom = sheetOpen
-    ? `${restPx}px + ${recording ? 132 : 16}px + ${CTRL_STACK_H}px`
-    : `var(--safe-bottom) + 28px + ${CTRL_STACK_H}px`
+  // Stacked directly on top of the layers button, so it is written as that
+  // button's own position plus the height of the pair. Anything else is two
+  // descriptions of one place, and they drift: this had its own arrangement of
+  // rest heights and safe-area terms, and stayed where the controls used to be
+  // when the controls moved up to clear the data bar.
+  const chipStackBottom =
+    `var(--map-bottom-inset, 0px) + ${IFDB_CLEAR + (recording ? 132 : 0) + CTRL_STACK_H}px`
 
   // How tall the card at the top may get before it starts hiding things.
   //
@@ -2737,7 +2738,10 @@ function MapHomeInner() {
       // drawer instead of staying where the drawer used to be: it drops to the
       // dock when the drawer closes and lifts with it when it opens, including
       // frame by frame under a finger.
-      '--map-bottom-inset': `${Math.max(0, sheetOpen ? vh - y : 0)}px`,
+      // Never less than the home indicator's own inset. With the drawer hidden
+      // this used to be a flat zero, so anything riding it sat on the very
+      // bottom edge of the screen and, on a phone, under the indicator.
+      '--map-bottom-inset': `${Math.max(safeBottom, sheetOpen ? vh - y : 0)}px`,
       // Matched to the sheet's own curve and duration so the two move together
       // rather than the bar chasing it. Zero while dragging, for the same
       // reason the sheet drops its transition: easing a live drag is what makes
@@ -2972,9 +2976,13 @@ function MapHomeInner() {
         // put them exactly where the bar now is: the locate button was landing
         // on the ETE reading. They stack above it instead, on the same live
         // inset so the whole column travels together.
-        bottom: sheetOpen
-          ? `calc(var(--map-bottom-inset, 0px) + ${IFDB_CLEAR + (recording ? 132 : 0)}px)`
-          : 'calc(var(--safe-bottom) + 28px)',
+        // One rule, whether the drawer is open, closed or hidden away. The
+        // fallback used to be a flat offset from the bottom of the screen,
+        // which ignored the data bar completely: with the drawer hidden the
+        // bar sits at the bottom edge and the locate button landed on top of
+        // it. The bar is always the thing directly below these, so clearing
+        // the bar is the only rule they need.
+        bottom: `calc(var(--map-bottom-inset, 0px) + ${IFDB_CLEAR + (recording ? 132 : 0)}px)`,
         display: 'flex', flexDirection: 'column', gap: 12,
         transition: 'bottom var(--map-inset-duration, 280ms) cubic-bezier(0.32,0.72,0,1), opacity 200ms',
         opacity: expanded ? 0 : 1,
