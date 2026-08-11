@@ -3,6 +3,7 @@ import MaintenanceSection from './MaintenanceSection'
 import { Link } from 'react-router-dom'
 import { get, put } from '../../lib/db'
 import { useLogbook } from '../../context/Logbook'
+import { useActiveAircraft } from '../../context/ActiveAircraft'
 import { BackButton } from '../../components/Shell'
 import { generateAircraftIcon } from '../../lib/generateIcon'
 import { extractPohChart } from '../../lib/extractPohChart'
@@ -1099,6 +1100,7 @@ function PerformanceChartsSection({ profile, onAddAxisValue, onUpdateAxisValue, 
 
 /* ── Main component ──────────────────────────────────────── */
 export default function Aircraft({ aircraftId, onBack, onDeleted, onHangar }) {
+  const { refreshAircraftList } = useActiveAircraft() ?? {}
   const [profile, setProfile] = useState(null)
   const [saving, setSaving] = useState(false)
   const [showCustomModal, setShowCustomModal] = useState(false)
@@ -1190,8 +1192,14 @@ export default function Aircraft({ aircraftId, onBack, onDeleted, onHangar }) {
   const save = useCallback(async (updated) => {
     setSaving(true)
     await put('aircraft', { ...updated, id: aircraftId })
+    // Tell the rest of the app the record moved. The hangar list is held in
+    // context and read by the map home's drawer, which resolved it once and
+    // then had no way to learn that the type or the registration had been
+    // corrected here: the drawer went on naming an aircraft that no longer
+    // existed under that name. Writing the store is not the same as saying so.
+    refreshAircraftList?.()
     setTimeout(() => setSaving(false), 600)
-  }, [aircraftId])
+  }, [aircraftId, refreshAircraftList])
 
   function applyTemplate(tpl) {
     const next = { ...CUSTOM_BLANK, ...tpl, id: aircraftId, image: tpl.image ?? null, registration: profile?.registration ?? '', pilotName: profile?.pilotName ?? '' }

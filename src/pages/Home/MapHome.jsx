@@ -215,12 +215,6 @@ function useMeasuredHeight() {
   return [h, ref]
 }
 
-// The drawer body's own top padding, and the gap under the aircraft's
-// photograph. Named because the image's height is worked out from the space
-// left over, and that arithmetic has to agree with the styles below or the
-// picture is sized against a box it is not in.
-const BODY_PAD_TOP = 6
-const AC_IMG_GAP = 10
 // What sits above the route block inside the drawer's grab area: its top
 // padding, the handle, and the handle's margin. Named because the route block
 // is stretched to the foot of the resting stop and that arithmetic has to
@@ -232,11 +226,6 @@ const GRAB_ABOVE_ROUTE = 29
 // overlap VARIATION on the phone while the desktop, where the inset is zero,
 // looked fine.
 const HINT_RESERVE = 28
-
-// A little air under the registration. Without it the arithmetic is exact and
-// the text ends on the last pixel of the screen, which is technically not cut
-// and still reads as cut.
-const AC_BREATHING = 10
 
 
 // Everything else the app does. The map home would otherwise be a dead end:
@@ -1078,9 +1067,19 @@ function MapHomeInner() {
   //
   // Declared here rather than at each use because three separate places have
   // to agree about it, and they disagreed before.
+  //
+  // Amended: half screen keeps the row IN the drawer, at full size, rather than
+  // shrinking it onto a floating card. The card was the right answer when the
+  // drawer's top was a photograph the row would have covered; the top is a
+  // compact identity strip now and there is room for both. Three buttons that
+  // change size and place as the drawer moves are three buttons a pilot has to
+  // find again every time.
+  //
+  // A route or an open planner still floats it, unchanged: there the drawer
+  // genuinely belongs to the plan.
   const actionsUp = snap > 50
-  const actionsFloating = !actionsUp && (snap === 50 || (snap === 25 && (planning || hasRoute)))
-  const actionsInDrawer = !actionsUp && snap === 25 && !actionsFloating
+  const actionsFloating = !actionsUp && (planning || hasRoute)
+  const actionsInDrawer = !actionsUp && !actionsFloating
   // The height every stop is a fraction of, measured off the shell itself
   // rather than read from window.innerHeight.
   //
@@ -1098,12 +1097,13 @@ function MapHomeInner() {
   const shellRef = useRef(null)
   const [viewportH, setViewportH] = useState(() => window.innerHeight)
   // The drawer's header and the aircraft's name block, measured rather than
-  // assumed. Both change height with their contents: the header gains the
-  // route card and loses the action row, and the name wraps to two lines for
-  // a long type. The photograph's height is what is left after them, so a
-  // guess at either is a guess at whether the name is on the screen.
-  const [grabH, grabRef] = useMeasuredHeight()
-  const [acTextH, acTextRef] = useMeasuredHeight()
+  // assumed. The header still changes height with its contents, gaining the
+  // route card and losing the action row, but nothing is solved against it any
+  // more now that the photograph it used to size is gone.
+  const [, grabRef] = useMeasuredHeight()
+  // The identity strip is a fixed height now, so nothing downstream solves
+  // for it; the ref stays only because the strip still reports itself.
+  const [, acTextRef] = useMeasuredHeight()
   const [dragY, setDragY] = useState(null)      // live offset while a finger is down
   const drag = useRef(null)
   // The drawer itself, so a block's offset inside it can be measured against
@@ -2290,9 +2290,9 @@ function MapHomeInner() {
   // already clears the inset, but that padding sits at the bottom of a box
   // that hangs below the screen, so at 50 it is nowhere near the edge the
   // content is actually being cut at.
-  const bodyVisibleH = Math.max(0, (visibleH - liftedY) - grabH - safeBottom)
-  const acImgCap = Math.max(0, Math.min(210,
-    Math.round(bodyVisibleH - acTextH - BODY_PAD_TOP - AC_IMG_GAP - AC_BREATHING)))
+  // The aircraft photograph whose height was solved for here is gone: the top
+  // of the drawer is a fixed-height identity strip now, so the leftover room no
+  // longer has to be measured at all.
 
   // Declared below restY rather than with the other map effects: it reads it,
   // and a const cannot be read before it is initialised. Placed above, the
@@ -3414,7 +3414,6 @@ function MapHomeInner() {
               ac={ac}
               aircraftId={aircraftId}
               currencyCards={currencyCards}
-              imgCap={acImgCap}
               textRef={acTextRef}
               onOpenAircraft={() => navigate(ac?.id ? `/aircraft/${ac.id}` : '/aircraft')}
               onOpenPilot={() => setDrawerView('pilot')}
@@ -3425,7 +3424,7 @@ function MapHomeInner() {
               options to choose from rather than a task in itself. This is the
               one that used to be at 80 only by accident, because it was
               whatever was left after the aircraft above it. */}
-          <div ref={declareStop(80, 'tools grid')}>
+          <div ref={declareStop(100, 'rows and tools')}>
             {/* The rows that report something. Full width, because what makes
                 them worth having is the live half on the right: the field's
                 category and temperature, the medical, the fixes in the active

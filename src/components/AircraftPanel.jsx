@@ -47,7 +47,7 @@ function currencyColor(status) {
   return STATUS_COLOR[status] ?? 'rgba(255,255,255,0.35)'
 }
 
-export default function AircraftPanel({ ac, aircraftId, currencyCards, imgCap, textRef, onOpenAircraft, onOpenPilot }) {
+export default function AircraftPanel({ ac, aircraftId, currencyCards, textRef, onOpenAircraft, onOpenPilot }) {
   // The airframe total, typed rather than picked, so it is held as a draft and
   // written on blur. Writing on every keystroke would save "12" on the way to
   // "1234" and, worse, would fight the pilot's cursor as the record round-trips.
@@ -83,107 +83,112 @@ export default function AircraftPanel({ ac, aircraftId, currencyCards, imgCap, t
   const { loading, ...groups } = useMaintenanceItems(aircraftId, hobbs, null)
   const health = rollUp(groups, loading)
 
+  const thumb = ac?.image || (ac?.category === 'helicopter' ? '/helicopter.png' : '/modo-avion.png')
+  const plain = !ac?.image
+
   return (
-    <div>
-      {/* The aircraft itself, still the top of the drawer and still a door into
-          the Hangar. */}
-      <button onClick={onOpenAircraft} style={{
-        display: 'block', width: '100%', textAlign: 'left', padding: 0,
-        border: 'none', background: 'none', cursor: 'pointer',
-      }}>
-        {ac?.image ? (
-          <img src={ac.image} alt="" style={{
-            display: 'block', width: '100%', maxHeight: imgCap,
-            objectFit: 'contain', marginBottom: 10,
+    <div ref={textRef}>
+      {/* Two equal faces, aircraft on the left and pilot on the right, each a
+          door to the section it stands for.
+
+          This replaced a photograph running the full width of the sheet. The
+          picture was the nicest thing on the screen and also the reason the
+          action row had to shrink onto a floating card at half height: it took
+          the room. An identity strip says the same things (which aircraft,
+          is it due, am I current) in a fraction of the height, which is what
+          buys the buttons their place back. */}
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 10 }}>
+        <button onClick={onOpenAircraft} aria-label="Open this aircraft" style={{
+          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 11,
+          background: 'var(--map-fill-soft)', border: 'none', borderRadius: 16,
+          padding: '11px 12px', cursor: 'pointer', textAlign: 'left',
+        }}>
+          <img src={thumb} alt="" style={{
+            width: 46, height: 46, objectFit: 'contain', flexShrink: 0,
+            // A silhouette is a stand-in and is drawn as one. A photograph is
+            // the aircraft and gets its own colours.
+            opacity: plain ? 0.3 : 1,
+            filter: plain ? 'var(--icon-filter)' : 'none',
           }} />
-        ) : (
-          // A custom aircraft is saved with no photograph and its name matches
-          // no template. That is a legitimate aircraft, not a broken one: it
-          // gets a silhouette of the right kind rather than a gap.
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            height: Math.min(150, imgCap), marginBottom: 10,
-          }}>
-            <img src={ac?.category === 'helicopter' ? '/helicopter.png' : '/modo-avion.png'} alt=""
-              style={{ width: 96, height: 96, objectFit: 'contain', opacity: 0.22, filter: 'var(--icon-filter)' }} />
-          </div>
-        )}
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span style={{
+                fontSize: 18, fontWeight: 800, color: 'var(--map-ink)',
+                letterSpacing: ac?.registration ? '0.5px' : '-0.3px',
+                textTransform: ac?.registration ? 'uppercase' : 'none',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {ac?.registration || ac?.fullName || 'No aircraft'}
+              </span>
+              {ac && <Dot color={health.color} />}
+            </span>
+            <span style={{
+              display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--map-ink-faint)',
+              marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {ac ? (ac.fullName && ac.registration ? ac.fullName : health.label) : 'Tap to add one'}
+            </span>
+          </span>
+        </button>
 
-        {/* The registration is the aircraft's name in the way a pilot uses it:
-            on the radio, in the logbook, on the plan. Its maintenance dot rides
-            with it, because "which aircraft" and "is it due" are one question
-            asked twice.
-
-            Measured, because the drawer sizes the picture above from whatever
-            the text below it needs: without this the image cap is computed
-            against a height of zero and the photograph pushes the registration
-            off the bottom of the sheet. */}
-        <div ref={textRef}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
-            fontSize: 26, fontWeight: 800, color: 'var(--map-ink)',
-            letterSpacing: ac?.registration ? '0.5px' : '-0.7px', lineHeight: 1.1,
-            textTransform: ac?.registration ? 'uppercase' : 'none',
+        <button onClick={onOpenPilot} aria-label="Open pilot" style={{
+          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 11,
+          background: 'var(--map-fill-soft)', border: 'none', borderRadius: 16,
+          padding: '11px 12px', cursor: 'pointer', textAlign: 'left',
+        }}>
+          <span style={{
+            width: 46, height: 46, flexShrink: 0, display: 'flex',
+            alignItems: 'center', justifyContent: 'center', color: 'var(--map-ink)',
           }}>
-            {ac?.registration || ac?.fullName || 'No aircraft set'}
-          </div>
-          {ac && <Dot color={health.color} size={12} />}
-        </div>
-        {ac && (
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--map-ink-faint)', marginTop: 4 }}>
-            {ac.fullName ? `${ac.fullName} · ${health.label}` : health.label}
-          </div>
-        )}
-        </div>
-      </button>
+            <IconHelmet size={30} />
+          </span>
+          <span style={{ minWidth: 0 }}>
+            <span style={{
+              display: 'block', fontSize: 18, fontWeight: 800, color: 'var(--map-ink)',
+              letterSpacing: '-0.3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>Pilot</span>
+            {/* The same two dots the Pilot row carries, in the same order, so
+                one glance answers currency and medical without opening it. */}
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
+              <Dot color={currencyColor(currencyCards?.current.status)} size={9} />
+              <Dot color={currencyColor(currencyCards?.valid.status)} size={9} />
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--map-ink-faint)' }}>
+                Currency · Medical
+              </span>
+            </span>
+          </span>
+        </button>
+      </div>
 
       {ac && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
-          {/* Airframe time, editable here because this is the number that goes
-              stale fastest and the one every hour-based maintenance item is
-              measured against. Typing it in the Hangar meant opening the Hangar
-              to answer a question the drawer was already asking. */}
-          <label style={{
-            flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8,
-            background: 'var(--map-fill-soft)', borderRadius: 14, padding: '10px 12px',
-          }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--map-ink-faint)',
-              textTransform: 'uppercase', letterSpacing: '0.4px', flexShrink: 0 }}>
-              Airframe
-            </span>
-            <input
-              type="number" inputMode="decimal" step="0.1" placeholder="0.0"
-              value={draft}
-              onChange={e => setDraft(e.target.value)}
-              onBlur={commit}
-              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-              // The sheet reads a pointer anywhere on it as a drag. Without
-              // this the field cannot be focused: the gesture is taken before
-              // the tap lands.
-              onPointerDown={e => e.stopPropagation()}
-              style={{
-                flex: 1, minWidth: 0, width: '100%', border: 'none', background: 'none', outline: 'none',
-                fontSize: 15, fontWeight: 800, color: 'var(--map-ink)',
-                fontVariantNumeric: 'tabular-nums', textAlign: 'right',
-              }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--map-ink-faint)', flexShrink: 0 }}>hrs</span>
-          </label>
-
-          {/* The pilot, next to the aircraft, because a legal aeroplane and an
-              illegal pilot is still a flight that is not happening. Same two
-              dots the Pilot row carries, in the same order. */}
-          <button onClick={onOpenPilot} aria-label="Open pilot" style={{
-            display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-            background: 'var(--map-fill-soft)', border: 'none', borderRadius: 14,
-            padding: '10px 12px', cursor: 'pointer',
-          }}>
-            <span style={{ display: 'flex', color: 'var(--map-ink)' }}><IconHelmet size={20} /></span>
-            <span style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <Dot color={currencyColor(currencyCards?.current.status)} />
-              <Dot color={currencyColor(currencyCards?.valid.status)} />
-            </span>
-          </button>
-        </div>
+        // Airframe time, editable here because this is the number that goes
+        // stale fastest and the one every hour-based maintenance item is
+        // measured against.
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginTop: 10,
+          background: 'var(--map-fill-soft)', borderRadius: 14, padding: '10px 12px',
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--map-ink-faint)',
+            textTransform: 'uppercase', letterSpacing: '0.4px', flexShrink: 0 }}>
+            Airframe
+          </span>
+          <input
+            type="number" inputMode="decimal" step="0.1" placeholder="0.0"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+            // The sheet reads a pointer anywhere on it as a drag. Without this
+            // the field cannot be focused: the gesture is taken before the tap
+            // lands.
+            onPointerDown={e => e.stopPropagation()}
+            style={{
+              flex: 1, minWidth: 0, width: '100%', border: 'none', background: 'none', outline: 'none',
+              fontSize: 15, fontWeight: 800, color: 'var(--map-ink)',
+              fontVariantNumeric: 'tabular-nums', textAlign: 'right',
+            }} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--map-ink-faint)', flexShrink: 0 }}>hrs</span>
+        </label>
       )}
     </div>
   )
