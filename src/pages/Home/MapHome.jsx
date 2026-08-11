@@ -2188,7 +2188,10 @@ function MapHomeInner() {
   // that rests a little lower whenever it happens to be carrying something is
   // a drawer with no position at all. Content fits the stop; the stop does
   // not grow to the content.
-  const restPx = vh - stopY(vh, 25)
+  // The resting stop's height, read off the ladder rather than written out
+  // again. It was a literal 25 and stayed 25 when the closed stop became 14,
+  // so everything positioned against it sat a tenth of a screen too high.
+  const restPx = vh - stopY(vh, SHEET_STOPS[0])
 
   // The stops own their content, and this is what holds them to it.
   //
@@ -2691,9 +2694,17 @@ function MapHomeInner() {
     // makes this land on the real screen bottom.
     <div ref={shellRef} style={{
       position: 'fixed', inset: 0, background: 'var(--bg)', overflow: 'hidden',
-      // What the sheet is covering, published so a bottom-anchored control can
-      // sit above it rather than under it. Only the data bar reads this here.
-      '--map-bottom-inset': `${sheetOpen ? restPx : 0}px`,
+      // What the sheet is covering RIGHT NOW, not what it covers at rest. The
+      // data bar rides on this, so a live number means the bar travels with the
+      // drawer instead of staying where the drawer used to be: it drops to the
+      // dock when the drawer closes and lifts with it when it opens, including
+      // frame by frame under a finger.
+      '--map-bottom-inset': `${Math.max(0, sheetOpen ? vh - y : 0)}px`,
+      // Matched to the sheet's own curve and duration so the two move together
+      // rather than the bar chasing it. Zero while dragging, for the same
+      // reason the sheet drops its transition: easing a live drag is what makes
+      // one feel laggy.
+      '--map-inset-duration': dragY != null ? '0ms' : '380ms',
     }}>
       {/* The flat map, wrapped so it can be hidden as a whole.
           MapContainer reads its own `style` prop once at mount and never

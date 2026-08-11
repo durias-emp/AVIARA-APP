@@ -35,15 +35,26 @@ export function AppTile({ app, size, onOpen, holdProps, dimmed = false, index = 
         // slightly small, then falls into it, a fraction later than the one
         // before. Staggering by index is what makes it read as a handful of
         // objects landing rather than one block sliding.
+        // Longhand throughout, never the `animation` shorthand. React warns
+        // when a shorthand and one of its own longhands are both set across a
+        // rerender, because which one wins depends on the order the properties
+        // happen to be applied in.
         ...(animate && !jiggle ? {
-          animation: `aviara-drop 420ms cubic-bezier(0.2, 1.35, 0.4, 1) both`,
+          animationName: 'aviara-drop',
+          animationDuration: '420ms',
+          animationTimingFunction: 'cubic-bezier(0.2, 1.35, 0.4, 1)',
+          animationFillMode: 'both',
           animationDelay: `${Math.min(index, 11) * 32}ms`,
         } : null),
         // While the page is in edit mode every tile wobbles, which is the only
         // signal a phone gives that icons can be moved and is understood
         // without being taught. The one under the finger stops and lifts.
         ...(jiggle && !dragging ? {
-          animation: 'aviara-jiggle 260ms ease-in-out infinite alternate',
+          animationName: 'aviara-jiggle',
+          animationDuration: '260ms',
+          animationTimingFunction: 'ease-in-out',
+          animationIterationCount: 'infinite',
+          animationDirection: 'alternate',
           animationDelay: `${(index % 5) * 40}ms`,
         } : null),
         ...(dragging ? { transform: 'scale(1.12)', zIndex: 2, opacity: 0.9 } : null),
