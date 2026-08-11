@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react'
+import { loadGlass } from './lib/drawerGlass'
 import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom'
 import { useTheme } from './hooks/useTheme'
 import { PilotProfileProvider, usePilotProfile } from './context/PilotProfile'
@@ -207,6 +208,9 @@ function AppRoutes({ theme }) {
 
 export default function App() {
   const { theme } = useTheme()
+  // The drawer's glass, applied before anything renders that uses it. A pilot
+  // who set it sheerer should not watch it start opaque and then thin out.
+  useEffect(() => { loadGlass() }, [])
 
   return (
     <AuthProvider>

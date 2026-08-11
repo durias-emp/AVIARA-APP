@@ -870,15 +870,22 @@ input[type="number"]::-webkit-outer-spin-button {
    reach for these, not for a hex value. */
 :root {
   --map-panel:       rgba(255,255,255,0.96);
-  /* The same panel, letting the map through. Written as a plain alpha rather
-     than a colour mixed into a colour that already had one, so this IS the
-     opacity and nobody has to multiply anything to know it.
+  /* The same panel, letting the map through, and the one value a pilot can
+     move themselves (Settings, Drawer Glass).
 
-     At 0.10 the panel is barely a surface at all: what separates the dock from
-     the map is almost entirely the blur behind it. That is the intended look,
-     and it is also the point at which the blur stops being decoration and
-     becomes the only thing keeping the labels readable over a busy sectional. */
-  --map-panel-sheer: rgba(255,255,255,0.10);
+     Split into the colour and the alpha so the setting is ONE number that both
+     themes can use. Writing it as a finished rgba would mean the slider had to
+     know which palette is on and rebuild the right colour for it, which is the
+     stylesheet's job and not a setting's.
+
+     --drawer-opacity is overwritten on the root element at startup and again as
+     the slider moves; the value here is the shipped default and what a pilot
+     who never opens Settings gets. */
+  --map-panel-rgb:   255, 255, 255;
+  --drawer-opacity:  0.10;
+  /* Set alongside the opacity, never on its own. See lib/drawerGlass.js. */
+  --drawer-blur:     32px;
+  --map-panel-sheer: rgba(var(--map-panel-rgb), var(--drawer-opacity));
   --map-panel-solid: #ffffff;
   --map-ink:         #1c1c1e;
   --map-ink-dim:     rgba(60,60,67,0.6);
@@ -902,9 +909,13 @@ input[type="number"]::-webkit-outer-spin-button {
 
 [data-theme="dark"], [data-theme="red"] {
   --map-panel:       rgba(28,28,30,0.94);
-  /* Dark carries a touch more than light: white text over a dark panel loses
-     contrast faster against a bright chart than black text over a light one. */
-  --map-panel-sheer: rgba(28,28,30,0.14);
+  /* Dark carries a touch more than whatever light is set to, for the same
+     reason as before: white text over a dark panel loses contrast against a
+     bright chart faster than black text over a light one does. It rides the
+     pilot's own number rather than replacing it, so one slider still governs
+     both palettes. */
+  --map-panel-rgb:   28, 28, 30;
+  --map-panel-sheer: rgba(var(--map-panel-rgb), calc(var(--drawer-opacity) + 0.04));
   --map-panel-solid: #1c1c1e;
   --map-ink:         #f2f2f7;
   --map-ink-dim:     rgba(235,235,245,0.62);

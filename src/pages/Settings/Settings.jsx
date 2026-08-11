@@ -7,6 +7,7 @@ import { get, put } from '../../lib/db'
 import { DEFAULT_AUTO_DETECT_CONFIG, autoDetectEnabledFrom } from '../../hooks/useFlightDetector'
 import { SegControl } from '../../components/SegControl'
 import { LIVE_SHARE_KEY, LIVE_SHARE_MODES } from '../../hooks/useLiveShare'
+import { loadGlass, saveGlass, GLASS_MIN, GLASS_MAX, DEFAULT_GLASS } from '../../lib/drawerGlass'
 import { withdrawPosition } from '../../lib/livePositions'
 
 const REGIONS = [
@@ -62,11 +63,15 @@ export default function Settings({ onBack, order, onMoveRow }) {
   // Off unless the pilot has said otherwise. Nothing about broadcasting a
   // location may arrive switched on.
   const [liveShareMode, setLiveShareModeState] = useState('off')
+  // The drawer's glass. Held here only so the slider has a position; the value
+  // that matters is on the root element, written as the thumb moves.
+  const [glass, setGlass] = useState(DEFAULT_GLASS)
 
   useEffect(() => {
     get('settings', 'autoDetectEnabled').then(row => setAutoDetectEnabled(autoDetectEnabledFrom(row)))
     get('settings', 'autoDetectConfig').then(row => setAutoDetectConfig({ ...DEFAULT_AUTO_DETECT_CONFIG, ...(row?.value ?? {}) }))
     get('settings', LIVE_SHARE_KEY).then(row => { if (row?.value) setLiveShareModeState(row.value) }).catch(() => {})
+    loadGlass().then(setGlass).catch(() => {})
   }, [])
 
   function setLiveShareMode(next) {
@@ -143,6 +148,31 @@ export default function Settings({ onBack, order, onMoveRow }) {
               </div>
             </div>
           ))}
+        </div>
+
+        <SectionLabel>Drawer Glass</SectionLabel>
+        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '0 2px 10px', lineHeight: 1.5 }}>
+          How much of the map shows through the drawer on the home screen. Lower is sheerer. The blur behind the glass rises as you thin it, because the blur is what keeps the labels readable over a busy chart. Judge it on a sectional rather than the plain basemap: that is where a sheer drawer gets hard to read.
+        </div>
+        <div style={{ background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', padding: '14px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Opacity</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+              {glass}%
+            </span>
+          </div>
+          {/* Applied as it moves rather than on release: the drawer is behind
+              this screen and the whole point is watching it change. saveGlass
+              writes the store too, which is cheap and idempotent. */}
+          <input
+            type="range" min={GLASS_MIN} max={GLASS_MAX} step={1} value={glass}
+            onChange={e => setGlass(saveGlass(e.target.value))}
+            style={{ width: '100%', accentColor: 'var(--accent)' }}
+            aria-label="Drawer opacity" />
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Sheer</span>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Solid</span>
+          </div>
         </div>
 
         <SectionLabel>Sharing Your Position</SectionLabel>
