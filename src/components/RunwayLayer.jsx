@@ -66,18 +66,44 @@ function clamp(v, lo, hi) {
 // The designator, rotated to the direction it is painted in. A div rather than
 // a path so it stays crisp at every zoom, and unclickable so it never steals a
 // tap from the pavement underneath it.
+//
+// Cached, the same way aerodromeLayers caches its airport discs and for the
+// same reason. A fresh L.divIcon is a fresh object, and handing Leaflet a new
+// icon for a marker it already has makes it tear the marker's element out of
+// the DOM and build another one. This is called once per runway END, so a
+// large field is eight of them and a pan across a metro area is many more,
+// every time the layer renders.
+//
+// Keyed on the markup rather than on the three arguments. That is deliberate:
+// a key built from inputs goes stale the moment someone adds a value to the
+// template and forgets to add it to the key, and a stale designator is a
+// number painted on the wrong runway, which is far worse than a slow one.
+// Identical markup is identical output, by definition.
+const designatorCache = new Map()
+// Cleared wholesale rather than evicted one at a time. The working set is
+// whatever is on screen, so anything past this is history, and a flat clear
+// costs one render of the labels currently in view.
+const DESIGNATOR_CACHE_MAX = 600
+
 function designatorIcon(ident, bearing, fontPx) {
-  return L.divIcon({
-    className: '',
-    iconSize: [0, 0],
-    iconAnchor: [0, 0],
-    html: `<div style="
+  const html = `<div style="
       position:absolute; left:0; top:0; transform:translate(-50%,-50%) rotate(${bearing.toFixed(1)}deg);
       font:800 ${fontPx.toFixed(1)}px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
       letter-spacing:${(fontPx * 0.06).toFixed(2)}px; color:${MARKING};
       text-shadow:0 0 3px rgba(0,0,0,0.85); white-space:nowrap; pointer-events:none;
-    ">${ident}</div>`,
+    ">${ident}</div>`
+  const hit = designatorCache.get(html)
+  if (hit) return hit
+
+  if (designatorCache.size >= DESIGNATOR_CACHE_MAX) designatorCache.clear()
+  const icon = L.divIcon({
+    className: '',
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+    html,
   })
+  designatorCache.set(html, icon)
+  return icon
 }
 
 // Flattened once, on load: 12,000 fields as an object is fine to hold and

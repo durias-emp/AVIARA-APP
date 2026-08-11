@@ -313,6 +313,33 @@ function peakIcon(ink, px) {
   return icon
 }
 
+// The zero-size label icons: navaids and fixes, airway shields, and the
+// track/distance/MEA block on each leg. All three were being built inline in
+// the JSX, so every render of the enroute overlay handed Leaflet a brand new
+// icon object for markers it already had, and a new icon means the marker's
+// element is torn out of the DOM and rebuilt rather than left alone. With up
+// to 80 segment labels plus every fix in view, that is the whole overlay
+// rebuilt on each render, which is exactly what a route drag does repeatedly.
+//
+// Keyed on the markup, not on the values that produced it. A key built from
+// inputs goes stale the moment a value joins the template and misses the key,
+// and a stale label here is a wrong MEA or a wrong distance next to a leg,
+// which is worse than a slow one. Identical markup is identical output.
+const LABEL_ICON_CACHE = new Map()
+// Flat clear rather than per-entry eviction. These strings carry distances and
+// tracks, so editing a route mints new ones; the working set is whatever is
+// currently drawn, and everything beyond this is history.
+const LABEL_ICON_CACHE_MAX = 800
+
+function labelIcon(html) {
+  const hit = LABEL_ICON_CACHE.get(html)
+  if (hit) return hit
+  if (LABEL_ICON_CACHE.size >= LABEL_ICON_CACHE_MAX) LABEL_ICON_CACHE.clear()
+  const icon = L.divIcon({ className: '', iconSize: [0, 0], html })
+  LABEL_ICON_CACHE.set(html, icon)
+  return icon
+}
+
 function PeakMarker({ peak, layers, onOpen, focused }) {
   const map = useMap()
   const [zoom, setZoom] = useState(() => map.getZoom())
@@ -904,37 +931,28 @@ function NavSymbols({ geo, cls }) {
   return (<>
     {pts.map(p => (
       <Marker key={`${p.name}${p.lat}`} position={[p.lat, p.lon]} interactive={false}
-        icon={L.divIcon({
-          className: '', iconSize: [0, 0],
-          html: p.vor
-            ? `<div style="transform:translate(-50%,-50%);text-align:center;pointer-events:none;">
+        icon={labelIcon(p.vor
+          ? `<div style="transform:translate(-50%,-50%);text-align:center;pointer-events:none;">
                  <div style="font-size:13px;line-height:1;color:#1c3f7a;">⬡</div>
                  <div style="font:700 9px ui-monospace,monospace;color:#1c3f7a;background:rgba(255,255,255,0.75);border:0.5px solid #1c3f7a;border-radius:2px;padding:0 3px;white-space:nowrap;margin-top:1px;">${p.name}${p.freq ? ' ' + p.freq : ''}</div>
                </div>`
-            : `<div style="transform:translate(-50%,-50%);text-align:center;pointer-events:none;">
+          : `<div style="transform:translate(-50%,-50%);text-align:center;pointer-events:none;">
                  <div style="font-size:8px;line-height:1;color:#233042;">▲</div>
                  ${z >= 8 ? `<div style="font:600 8.5px ui-monospace,monospace;color:#233042;text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap;">${p.name}</div>` : ''}
-               </div>`,
-        })} />
+               </div>`)} />
     ))}
     {labels.map((l, i) => (
       <Marker key={`awy-${l.id}-${i}`} position={l.pos} interactive={false}
-        icon={L.divIcon({
-          className: '', iconSize: [0, 0],
-          html: `<div style="transform:translate(-50%,-50%);pointer-events:none;font:700 8.5px ui-monospace,monospace;color:#fff;background:#1c3f7a;border-radius:2px;padding:0.5px 4px;white-space:nowrap;">${l.id}</div>`,
-        })} />
+        icon={labelIcon(`<div style="transform:translate(-50%,-50%);pointer-events:none;font:700 8.5px ui-monospace,monospace;color:#fff;background:#1c3f7a;border-radius:2px;padding:0.5px 4px;white-space:nowrap;">${l.id}</div>`)} />
     ))}
     {segs.map((s, i) => (
       <Marker key={`seg-${i}-${s.pos[0]}`} position={s.pos} interactive={false}
-        icon={L.divIcon({
-          className: '', iconSize: [0, 0],
-          // track° over distance, with the MEA below in bold. The MEA is the
-          // safety-critical number, so it reads first at a glance
-          html: `<div style="transform:translate(-50%,-130%) rotate(${s.ang.toFixed(0)}deg);pointer-events:none;text-align:center;font:600 8px ui-monospace,monospace;color:#1c3f7a;text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap;line-height:1.15;">
+        // track° over distance, with the MEA below in bold. The MEA is the
+        // safety-critical number, so it reads first at a glance
+        icon={labelIcon(`<div style="transform:translate(-50%,-130%) rotate(${s.ang.toFixed(0)}deg);pointer-events:none;text-align:center;font:600 8px ui-monospace,monospace;color:#1c3f7a;text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap;line-height:1.15;">
             ${s.trk != null ? String(s.trk).padStart(3, '0') + '°<br>' : ''}${s.distNm}
             ${s.mea != null ? `<br><span style="font-weight:800;font-size:8.5px;color:#0f2d5c;">${s.mea >= 18000 ? 'FL' + Math.round(s.mea / 100) : s.mea.toLocaleString()}</span>` : ''}
-          </div>`,
-        })} />
+          </div>`)} />
     ))}
   </>)
 }
