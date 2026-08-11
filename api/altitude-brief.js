@@ -1,4 +1,3 @@
-/* global process */
 /* Preflight altitude briefing.
  *
  * The engine has already done the analysis: it sampled the route, pulled the

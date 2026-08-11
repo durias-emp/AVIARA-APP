@@ -38,7 +38,6 @@ async function resolveToken(raw, nearPos) {
 // destination/next-waypoint to measure against.
 export default function FlightPlanBar({ onRouteChange }) {
   const [text, setText] = useState('')
-  const [focused, setFocused] = useState(false)
   const [resolving, setResolving] = useState(false)
   const [badTokens, setBadTokens] = useState([])
 
@@ -83,8 +82,6 @@ export default function FlightPlanBar({ onRouteChange }) {
       <input
         value={text}
         onChange={e => setText(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
         onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur(); submit() } }}
         placeholder="KJFK KBOS"
         autoCapitalize="characters"

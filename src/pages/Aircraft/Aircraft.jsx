@@ -349,14 +349,12 @@ function AdSbLookup({ make, model, year }) {
   const [results, setResults] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [broadened, setBroadened] = useState(false)
 
   useEffect(() => {
     if (!make?.trim()) return
     let cancelled = false
     setLoading(true)
     setError(null)
-    setBroadened(false)
 
     const signal = AbortSignal.timeout(10000)
     const m = make.trim()
@@ -382,7 +380,6 @@ function AdSbLookup({ make, model, year }) {
         if (cancelled) return
         if (docs.length > 0 || i === terms.length - 1) {
           setResults(docs)
-          setBroadened(i > 0)
           return
         }
       }

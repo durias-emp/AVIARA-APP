@@ -73,8 +73,8 @@ export function DensityAltItem({ item, isChecked, onToggle }) {
     if (!open) return
     get('settings', 'densityalt').then(saved => {
       if (saved?.dep || saved?.dest) {
-        if (saved.dep)  setDep(prev => ({ ...EMPTY, ...saved.dep }))
-        if (saved.dest) setDest(prev => ({ ...EMPTY, ...saved.dest }))
+        if (saved.dep)  setDep({ ...EMPTY, ...saved.dep })
+        if (saved.dest) setDest({ ...EMPTY, ...saved.dest })
       }
       get('settings', 'route').then(async r => {
         if (!r?.dep && !r?.dest) { setNoRoute(true); return }
@@ -113,11 +113,6 @@ export function DensityAltItem({ item, isChecked, onToggle }) {
   const isaTemp     = valid ? 15 - 2 * (elevN / 1000) : null
   const densityAlt  = valid ? Math.round(pressureAlt + 120 * (oatN - isaTemp)) : null
 
-  const daColor = densityAlt == null ? 'var(--text-tertiary)'
-    : densityAlt > 8000 ? '#FF3B30'
-    : densityAlt > 5000 ? '#FF9500'
-    : densityAlt > 2000 ? '#FFD60A'
-    : 'var(--ok)'
   const daLabel = densityAlt == null ? '—'
     : densityAlt > 8000 ? 'HIGH. Significant perf loss'
     : densityAlt > 5000 ? 'ELEVATED. Check POH tables'
@@ -1145,7 +1140,6 @@ export function CruiseItem({ item, isChecked, onToggle }) {
   }
 
   const flightTimeH  = (distN && groundSpeed > 0) ? distN / groundSpeed : null
-  const flightTimeMin = flightTimeH ? Math.round(flightTimeH * 60) : null
   const fuelRequired  = (flightTimeH && !isNaN(burnN)) ? flightTimeH * burnN : null
   const enduranceH    = (!isNaN(fobN) && !isNaN(burnN) && burnN > 0) ? fobN / burnN : null
   const reserveH      = (enduranceH != null && flightTimeH != null) ? enduranceH - flightTimeH : null
@@ -1465,7 +1459,6 @@ export function CruiseItem({ item, isChecked, onToggle }) {
 
             {/* ── SINGLE-LEG: Fuel Required + Endurance + GO/NO-GO ── */}
             {!needsStops && hasAll && (() => {
-              const extraGal = Math.max(0, fobN - (fuelRequired ?? 0) - reserveFuel)
               return (<>
                 <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
                   <div style={{ flex: 1, background: 'var(--bg-card-2)', borderRadius: 10, padding: '10px 12px' }}>

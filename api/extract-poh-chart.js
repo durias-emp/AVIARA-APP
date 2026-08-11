@@ -1,4 +1,3 @@
-/* global process */
 // Axis labels/units/output keys for each chart type, duplicated from
 // src/lib/aircraftPerf.js's CHART_TYPES rather than imported — this file
 // runs in a separate (Vercel serverless) runtime from the Vite-bundled

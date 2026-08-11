@@ -482,7 +482,7 @@ function CompleteButton({ pct, complete, checklist, onComplete, onAddStep, embed
 
       await put('flights', record)
       trackEvent('checklist_completed', { checklistId: checklist.id, dep, dest })
-    } catch (e) {
+    } catch {
       // Save failed silently: don't block the pilot
     }
 

@@ -1,4 +1,3 @@
-/* global process */
 // Same AI-photo-extraction pattern as api/extract-poh-chart.js — read that
 // file's header comment for why the prompt/logic is hand-duplicated here
 // and again in vite.config.js's logbookPageDevProxy() rather than shared:

@@ -39,7 +39,11 @@ function readStoredFix() {
   try {
     const f = JSON.parse(localStorage.getItem(LAST_FIX_KEY))
     if (f && Number.isFinite(f.lat) && Number.isFinite(f.lon) && Number.isFinite(f.timestamp)) return f
-  } catch (e) {}
+  } catch {
+    // A stored fix that will not parse is a stored fix we do not have, which
+    // is the same answer as never having had one. Falling through to null
+    // means the map opens on its default view instead of not opening.
+  }
   return null
 }
 
@@ -125,7 +129,11 @@ export function useLiveLocation() {
             lat: next.lat, lon: next.lon, altFt: next.altFt,
             accuracyM: next.accuracyM, timestamp: next.timestamp,
           }))
-        } catch (e) {}
+        } catch {
+          // Private browsing and a full quota both throw here. This is a
+          // convenience for the next launch, not part of the fix the pilot is
+          // flying on, so it is not worth interrupting the position stream for.
+        }
       }
     }
 

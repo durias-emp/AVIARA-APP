@@ -1,4 +1,3 @@
-/* global process */
 // Live traffic proxy — aggregated ADS-B, for reference only.
 //
 // Same shape as /api/awc and /api/tfr: the client never talks to the upstream

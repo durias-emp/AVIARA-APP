@@ -1,4 +1,3 @@
-/* global process, Buffer */
 const PROMPT = (name) =>
   `Create a stylized 3D transportation icon of a ${name} in a unified premium mobility-app design language inspired by modern ride-sharing vehicle illustrations.
 
