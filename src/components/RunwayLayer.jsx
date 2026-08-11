@@ -30,18 +30,32 @@ import { getRunwayGeometry } from '../lib/aerodromes'
 import { runwayCorners, runwayEnds, crossBar, metresPerPixel, runwayFrame } from '../lib/runwayShape'
 import PopupActions from './PopupActions'
 
-// Zoom 13 puts a 7,000 ft runway at about 120 px: long enough to read as a
-// runway rather than a scratch. The markings and the numbers wait one more
-// level, because at 13 the width of a normal strip is barely two pixels and
-// anything drawn inside it would be mud.
-const RUNWAY_MIN_ZOOM = 13
-const MARKING_MIN_ZOOM = 14
+// Both a level earlier than they were, so the aerodrome arrives as one thing.
+//
+// The taxiway letters now start at 12 (see aerowayStyle.js), and a screen with
+// lettered taxiways and no runway on it is not an airport, it is a puzzle. At
+// 12 a 7,000 ft runway is about 60 px, which is short but unmistakably a
+// runway once it has shoulders. The markings still wait a level, because the
+// centreline and the threshold bars inside a three-pixel-wide strip are mud.
+const RUNWAY_MIN_ZOOM = 12
+const MARKING_MIN_ZOOM = 13
 
 // Pavement dark enough to read against the light basemap and light enough to
 // read against the dark one, which is the same trick a printed chart uses.
 const PAVEMENT = '#3b4048'
 const PAVEMENT_EDGE = '#14171c'
 const MARKING = '#f4f6f9'
+
+// The shoulders: the paved strip either side of the runway proper.
+//
+// They are drawn because without them a runway at chart zoom is a thin dark
+// line among other thin dark lines, and the one thing on an aerodrome that has
+// to be unmistakable is the thing you land on. Real shoulders run about a
+// third of the runway's width either side; this draws the pair as one wider
+// band underneath, lighter than the runway so the runway still reads as the
+// darkest mark on the field.
+const SHOULDER = '#5b6472'
+const SHOULDER_FACTOR = 1.7
 
 const FT_PER_M = 3.280839895
 
@@ -210,6 +224,7 @@ export default function RunwayLayer({ onFocusField, onDrawnFields, onSetDestinat
     const b = [bLat, bLon]
     const corners = runwayCorners(a, b, widthFt)
     if (!corners) return null
+    const shoulders = runwayCorners(a, b, (widthFt || 75) * SHOULDER_FACTOR)
     const f = runwayFrame(a, b)
     const key = `${ident}-${le}-${he}-${i}`
     const info = facts(r, source, cycles)
@@ -219,12 +234,27 @@ export default function RunwayLayer({ onFocusField, onDrawnFields, onSetDestinat
     // grass as you come down.
     const mpp = metresPerPixel(aLat, zoom)
     const widthPx = ((widthFt || 75) / FT_PER_M) / mpp
-    const font = clamp(widthPx * 0.72, 9, 32)
+    // The designator is the one marking allowed to break the proportion rule.
+    // Sized strictly to the pavement it was 9px at the zoom a pilot actually
+    // looks at a field from, which is a speck: the number a runway is called
+    // by has to be readable before it is in proportion, and the halo carries
+    // whatever overhangs onto the grass.
+    const font = clamp(widthPx * 1.15, 14, 36)
     const centreWeight = clamp(widthPx * 0.045, 0.8, 2.4)
     const barWeight = clamp(widthPx * 0.09, 1.2, 4)
 
     return (
       <Fragment key={key}>
+        {/* Shoulders first, so the runway lies on them. Not interactive: the
+            tap target is the runway, and a band of shoulder either side would
+            make the popup fire from the grass. */}
+        {shoulders && (
+          <Polygon positions={shoulders} interactive={false}
+            pathOptions={{
+              color: SHOULDER, weight: 0, opacity: 0,
+              fillColor: SHOULDER, fillOpacity: 0.55,
+            }} />
+        )}
         <Polygon positions={corners}
           pathOptions={{
             color: PAVEMENT_EDGE, weight: 1, opacity: 0.9,

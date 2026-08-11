@@ -45,9 +45,34 @@ const LABEL_HALO = 'rgba(10,12,16,0.9)'
 
 export const TAXIWAY_LABEL_ID = 'aviara-taxiway-label'
 
-// From here the runway markings are drawn too. Below it a taxiway letter is
-// smaller than the line it belongs to.
-const LABEL_MIN_ZOOM = 14
+// EVERY ZOOM NUMBER IN THIS FILE IS A GL ZOOM, WHICH IS LEAFLET'S MINUS ONE.
+//
+// The bridge runs the MapLibre map one level below the Leaflet map it is glued
+// to (leaflet-maplibre-gl.js: `zoom: this._map.getZoom() - 1`), because it
+// renders the GL canvas at twice the CSS size. Measured: Leaflet 14 reports GL
+// 13. So a minzoom of 14 here does not appear until the pilot is at Leaflet 15,
+// which is a whole level later than the runway markings drawn by RunwayLayer,
+// whose zooms are Leaflet's. That is why the taxiway letters were missing from
+// a screenshot of KRNO that plainly had room for them.
+const LEAFLET_TO_GL = -1
+
+// Leaflet 12. Far enough out to see the shape of a field before committing to
+// it, which is the zoom a pilot is at when they are deciding which way to join.
+const LABEL_MIN_ZOOM = 12 + LEAFLET_TO_GL
+
+// Roads stop competing once the aerodrome is the subject.
+//
+// At Leaflet 13 and beyond the screen is one airport, and the street network
+// around it is the loudest thing on the map: Terminal Way, Airway Drive and
+// Longley Lane in white type over the taxiways they cross. The lines fade and
+// the names go, so what is left is the field. Not removed outright, because
+// below that zoom the roads are how a pilot finds anything.
+const ROAD_FADE = ['interpolate', ['linear'], ['zoom'],
+  11 + LEAFLET_TO_GL, 1,
+  14 + LEAFLET_TO_GL, 0.14]
+const ROAD_NAME_FADE = ['interpolate', ['linear'], ['zoom'],
+  11 + LEAFLET_TO_GL, 1,
+  13 + LEAFLET_TO_GL, 0]
 
 export function dressAeroways(gl) {
   if (!gl) return
@@ -78,18 +103,33 @@ export function dressAeroways(gl) {
     // and silently skips the other. Caught exactly that way: the letters
     // appeared on the dark map over the vendor's own hairline taxiways.
     for (const l of style.layers ?? []) {
-      if (l.type !== 'line' || l['source-layer'] !== 'aeroway') continue
-      if (!/taxiway/i.test(l.id)) continue
-      gl.setPaintProperty(l.id, 'line-color', TAXIWAY)
-      // Subtle below the runway layer's floor, pavement above it. The shape of
-      // the curve is the vendor's; only the numbers are raised.
-      gl.setPaintProperty(l.id, 'line-width', [
-        'interpolate', ['exponential', 1.2], ['zoom'],
-        11, 0.6,
-        13, 1.6,
-        15, 4,
-        20, 14,
-      ])
+      const sl = l['source-layer']
+
+      if (l.type === 'line' && sl === 'aeroway' && /taxiway/i.test(l.id)) {
+        gl.setPaintProperty(l.id, 'line-color', TAXIWAY)
+        // Wider, and wider earlier, so a taxiway system is legible from the
+        // zoom a pilot is at while deciding how to join rather than only once
+        // they are over the threshold. Same curve shape as the vendor's, moved
+        // up and left.
+        gl.setPaintProperty(l.id, 'line-width', [
+          'interpolate', ['exponential', 1.2], ['zoom'],
+          10 + LEAFLET_TO_GL, 0.8,
+          12 + LEAFLET_TO_GL, 2.2,
+          14 + LEAFLET_TO_GL, 5,
+          21 + LEAFLET_TO_GL, 16,
+        ])
+        continue
+      }
+
+      // The road network gives way to the aerodrome. Lines dim, names go.
+      // Opacity rather than visibility, because visibility cannot be made to
+      // depend on zoom and this has to come back when the pilot zooms out.
+      if (sl === 'transportation' && (l.type === 'line' || l.type === 'fill')) {
+        gl.setPaintProperty(l.id, `${l.type}-opacity`, ROAD_FADE)
+      } else if (sl === 'transportation_name' && l.type === 'symbol') {
+        gl.setPaintProperty(l.id, 'text-opacity', ROAD_NAME_FADE)
+        gl.setPaintProperty(l.id, 'icon-opacity', ROAD_NAME_FADE)
+      }
     }
 
     const source = Object.entries(style.sources)
@@ -117,12 +157,20 @@ export function dressAeroways(gl) {
         // OSM splits taxiways at every junction, so one-per-feature would
         // cluster the letters at the junctions and leave the runs bare.
         'symbol-placement': 'line',
-        'symbol-spacing': 190,
+        // Closer together than before. A letter every 190px was one per
+        // taxiway on a phone, which is fine when you are already over the
+        // field and useless when you are looking at the whole of it.
+        'symbol-spacing': 150,
         'text-field': ['get', 'ref'],
         // The three the style ships glyphs for. Anything else renders nothing
         // at all, silently.
         'text-font': ['Noto Sans Bold'],
-        'text-size': ['interpolate', ['linear'], ['zoom'], 14, 10, 16, 13, 19, 17],
+        // Bigger at every zoom, and already readable at the new floor rather
+        // than starting as a speck that has to be zoomed into.
+        'text-size': ['interpolate', ['linear'], ['zoom'],
+          12 + LEAFLET_TO_GL, 11,
+          15 + LEAFLET_TO_GL, 14,
+          19 + LEAFLET_TO_GL, 18],
         'text-letter-spacing': 0.08,
         'text-rotation-alignment': 'map',
         'text-pitch-alignment': 'viewport',
