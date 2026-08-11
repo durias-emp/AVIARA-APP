@@ -870,6 +870,8 @@ input[type="number"]::-webkit-outer-spin-button {
    reach for these, not for a hex value. */
 :root {
   --map-panel:       rgba(255,255,255,0.96);
+  /* The same panel, letting the map through at full screen. */
+  --map-panel-sheer: color-mix(in srgb, rgba(255,255,255,0.96) 88%, transparent);
   --map-panel-solid: #ffffff;
   --map-ink:         #1c1c1e;
   --map-ink-dim:     rgba(60,60,67,0.6);
@@ -893,6 +895,8 @@ input[type="number"]::-webkit-outer-spin-button {
 
 [data-theme="dark"], [data-theme="red"] {
   --map-panel:       rgba(28,28,30,0.94);
+  /* The same panel, letting the map through at full screen. */
+  --map-panel-sheer: color-mix(in srgb, rgba(28,28,30,0.94) 88%, transparent);
   --map-panel-solid: #1c1c1e;
   --map-ink:         #f2f2f7;
   --map-ink-dim:     rgba(235,235,245,0.62);
@@ -970,4 +974,22 @@ input[type="number"]::-webkit-outer-spin-button {
    still while it does. */
 @media (prefers-reduced-motion: reduce) {
   .hint-bounce { animation: hint-say-it-once 7s linear forwards; }
+}
+
+
+/* ── The dock's gravity drop ─────────────────────────────────────────────
+   Tiles start a little above their place and slightly small, then fall into
+   it. Written here rather than inline because keyframes cannot be expressed
+   in a style object, and every tile shares the one animation. */
+@keyframes aviara-drop {
+  from { opacity: 0; transform: translateY(-14px) scale(0.86); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Motion is decoration here: the apps are in the same places either way. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes aviara-drop {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
 }

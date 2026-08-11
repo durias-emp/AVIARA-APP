@@ -214,6 +214,76 @@ if (import.meta.env.DEV) {
   setTimeout(report, 800)
 }
 
+// Dev builds also send whatever goes red in the browser to the dev server's
+// terminal (see clientLogSink in vite.config.js).
+//
+// The console is on the pilot's screen and the developer is in a terminal, and
+// asking someone to read their own console back is asking them to do the
+// debugging. This carries errors, unhandled rejections and failed requests
+// across the gap, so a fault can be diagnosed from where the work happens.
+//
+// Dev only, and it never swallows anything: the original console.error still
+// runs, so the browser shows exactly what it always did.
+if (import.meta.env.DEV) {
+  const send = (kind, detail) => {
+    try {
+      navigator.sendBeacon('/__client-log', JSON.stringify({ kind, detail, at: new Date().toISOString() }))
+    } catch { /* dev only */ }
+  }
+
+  const originalError = console.error
+  console.error = (...args) => {
+    originalError.apply(console, args)
+    // React logs with printf-style format strings ("%o", "%s") and passes the
+    // interesting parts as later arguments, so a naive String() of the first
+    // one sends "%o" and throws the actual fault away. Format specifiers are
+    // dropped and every argument is expanded instead.
+    const describe = a => {
+      if (a instanceof Error) return `${a.name}: ${a.message}\n${a.stack ?? ''}`
+      if (a && typeof a === 'object') {
+        try { return JSON.stringify(a, Object.getOwnPropertyNames(a)).slice(0, 2000) }
+        catch { return Object.prototype.toString.call(a) }
+      }
+      return String(a)
+    }
+    const parts = args
+      .map(describe)
+      .filter(t => t && !/^%[a-zA-Z]$/.test(t.trim()))
+    send('console.error', parts.join(' ').replace(/%[oOsdifc]/g, '').trim() || '(empty console.error)')
+  }
+
+  window.addEventListener('error', e => {
+    send('uncaught', `${e.message} (${e.filename}:${e.lineno}:${e.colno})\n${e.error?.stack ?? ''}`)
+  })
+  window.addEventListener('unhandledrejection', e => {
+    const r = e.reason
+    send('unhandled-rejection', r instanceof Error ? `${r.name}: ${r.message}\n${r.stack ?? ''}` : String(r))
+  })
+
+  // Location specifically, because "it is blocked" and "it is permitted and
+  // still not arriving" look identical from the outside and are different
+  // faults. Reports what the browser itself says the permission is, then what
+  // a single real request actually does with it.
+  window.addEventListener('load', async () => {
+    let permission
+    try {
+      permission = (await navigator.permissions.query({ name: 'geolocation' })).state
+    } catch (err) { permission = `query failed: ${err.message}` }
+    send('geo', JSON.stringify({
+      permission,
+      secureContext: window.isSecureContext,
+      origin: window.location.origin,
+      hasGeolocation: !!navigator.geolocation,
+    }))
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      pos => send('geo', `fix ok: ${pos.coords.latitude.toFixed(4)},${pos.coords.longitude.toFixed(4)} acc=${Math.round(pos.coords.accuracy)}m`),
+      err => send('geo', `fix FAILED: code=${err.code} (${['', 'PERMISSION_DENIED', 'POSITION_UNAVAILABLE', 'TIMEOUT'][err.code] ?? '?'}) message="${err.message}"`),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    )
+  })
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <App />

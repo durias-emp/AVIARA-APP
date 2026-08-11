@@ -34,6 +34,32 @@ function deviceLogSink() {
   }
 }
 
+// Dev-only sink for anything the browser puts in its console.
+//
+// Same gap deviceLogSink closes for viewport numbers: the console is on the
+// pilot's screen and the developer is in a terminal. Without this, diagnosing a
+// runtime fault means asking whoever is holding the phone to read their own
+// console back, which is asking them to do the debugging.
+function clientLogSink() {
+  return {
+    name: 'client-log-sink',
+    configureServer(server) {
+      server.middlewares.use('/__client-log', (req, res) => {
+        let body = ''
+        req.on('data', (c) => { body += c })
+        req.on('end', () => {
+          try {
+            const { kind, detail } = JSON.parse(body)
+            console.log(`\n[client:${kind}] ${detail}`)
+          } catch { console.log('\n[client] ' + body.slice(0, 1000)) }
+          res.statusCode = 204
+          res.end()
+        })
+      })
+    },
+  }
+}
+
 // Dev-only middleware mirroring api/traffic.js. Vercel functions do not run
 // under `npm run dev`, so without this the traffic layer 404s locally while
 // working perfectly once deployed, which is the most misleading failure of
@@ -695,6 +721,7 @@ export default defineConfig(({ mode }) => {
       alsoOnPreview(trafficDevProxy()),
       alsoOnPreview(altitudeBriefDevProxy()),
       deviceLogSink(),
+      clientLogSink(),
       alsoOnPreview(tfrDetailDevProxy()),
       alsoOnPreview(iconDevProxy()),
       alsoOnPreview(pohDevProxy()),

@@ -32,6 +32,7 @@ import { HomeLocationProvider, useHomeLocation } from '../../context/HomeLocatio
 import { useBreadcrumbTrail } from '../../hooks/useBreadcrumbTrail'
 import GpsInfoBar from '../../components/GpsInfoBar'
 import AircraftPanel from '../../components/AircraftPanel'
+import { AppDock, AppTile } from '../../components/AppDock'
 import {
   AirportsHeroCard, HangarCard, PilotRow, FlightPlanCard, DiscoverCard, ROW_GAP,
 } from '../../components/HomeRows'
@@ -45,7 +46,7 @@ import { useLiveShare } from '../../hooks/useLiveShare'
 import { useFriendsAloft } from '../../hooks/useFriendsAloft'
 import { liveSharingAvailable } from '../../lib/livePositions'
 import {
-  HOME_ACTIONS, HOME_ACTIONS_KEY, DEFAULT_HOME_ACTIONS, findAction, normaliseActions,
+  HOME_ACTIONS, HOME_ACTIONS_KEY, DEFAULT_HOME_ACTIONS, DOCK_MAX, findAction, normaliseActions,
 } from '../../lib/homeActions'
 import {
   IconRunways as RowIconRunways, IconRoute as RowIconRoute, IconFriends as RowIconFriends,
@@ -238,8 +239,11 @@ const HINT_RESERVE = 28
 // teach two doors to one room and make the grid look fuller than it is, the
 // same reason Flight Planning was never in this list.
 const TOOLS = [
-  { view: 'calc',      icon: '/E6B CALC.svg',   label: 'Calculators' },
-  { view: 'reference', icon: '/libros.png',     label: 'Quick Reference' },
+  // Calculators and Quick Reference are not here: both already live inside
+  // Tools, and a door standing next to the room it opens into is one of two
+  // doors a pilot has to learn for one place. They can be put back on the
+  // drawer from Settings, and either can be pinned to the dock by holding it
+  // on the app page.
   { view: 'tools',     icon: '/filtrar.png',    label: 'Tools' },
   // Placeholder icon: the project has no gear, and main drew these two as
   // inline SVG rather than PNG. Worth replacing when these screens are
@@ -1077,9 +1081,14 @@ function MapHomeInner() {
   //
   // A route or an open planner still floats it, unchanged: there the drawer
   // genuinely belongs to the plan.
-  const actionsUp = snap > 50
+  const actionsUp = snap > 40
   const actionsFloating = !actionsUp && (planning || hasRoute)
   const actionsInDrawer = !actionsUp && !actionsFloating
+  // The dock's tile size, and the whole of the shrink-and-grow. Closed it is
+  // small enough to be a strip along the bottom; at the app page it is a phone
+  // dock. One number, transitioned by the tiles themselves, so the change is a
+  // smooth grow rather than a re-layout.
+  const dockTile = snap >= 40 ? 60 : 42
   // The height every stop is a fraction of, measured off the shell itself
   // rather than read from window.innerHeight.
   //
@@ -1144,7 +1153,22 @@ function MapHomeInner() {
     coords: rawCoords, derived: liveDerived, status: liveStatus,
     lastKnown, stale: fixStale,
   } = useHomeLocation()
-  const pos = fixStale ? null : rawCoords
+  // The fix is KEPT when it goes stale, and marked rather than erased.
+  //
+  // Nulling it was a real bug and a instructive one: a receiver that is not
+  // moving is not a receiver that has failed. watchPosition only reports
+  // CHANGES, so a stationary desktop gets one fix and then silence, the
+  // staleness timer fires thirty seconds later, and every instrument on the
+  // screen blanked. In the air fixes never stop arriving so it never showed;
+  // parked at a desk it always did.
+  //
+  // So staleness now governs how a position is DRAWN, not whether there is
+  // one. The readouts keep reporting it, the ownship goes grey to say it is
+  // orientation rather than truth, and only the things that act on movement
+  // (following, the trail, the recorder, telling friends where you are) hold
+  // off, because those genuinely need a current fix and not a remembered one.
+  const pos = rawCoords
+  const freshPos = fixStale ? null : rawCoords
 
   // Follow mode: Locate engages it, a manual drag breaks it. While on,
   // FollowController recenters on every fix.
@@ -1168,15 +1192,15 @@ function MapHomeInner() {
   // the track.
   const [bearing, setBearing] = useState(0)
   useEffect(() => {
-    const target = (follow && orientation !== 'north' && pos?.headingDeg != null)
-      ? pos.headingDeg
+    const target = (follow && orientation !== 'north' && freshPos?.headingDeg != null)
+      ? freshPos.headingDeg
       : (!follow || orientation === 'north') ? 0 : null
     if (target == null) return   // tracking mode, no ground track yet: hold current rotation
     setBearing(prev => {
       const d = ((target - prev) % 360 + 540) % 360 - 180
       return Math.abs(d) < 0.5 ? prev : prev + d
     })
-  }, [pos, follow, orientation])
+  }, [freshPos, follow, orientation])
   // The rotating canvas is a square with the viewport's diagonal as its side,
   // centred, so however the map turns no corner of the screen ever shows past
   // its edge. Measured from the actual shell and re-measured on resize:
@@ -1198,7 +1222,7 @@ function MapHomeInner() {
   // Fed the gated fix, so a trail cannot grow a straight line across the gap
   // where the GPS was actually silent.
   const { trail: breadcrumbTrail, reset: resetBreadcrumbs } = useBreadcrumbTrail({
-    enabled: layers.breadcrumbs, coords: pos,
+    enabled: layers.breadcrumbs, coords: freshPos,
   })
 
   // Every reporting row opens in the sheet rather than navigating away, which
@@ -2131,7 +2155,7 @@ function MapHomeInner() {
       .catch(() => {})
   }, [])
   const { state: detectState, draft: detectedDraft, reset: resetDetector } = useFlightDetector({
-    enabled: autoDetectEnabled, config: autoDetectConfig, coords: pos,
+    enabled: autoDetectEnabled, config: autoDetectConfig, coords: freshPos,
   })
   const { addEntry } = useLogbook()
   const [flightSaved, setFlightSaved] = useState(false)
@@ -2160,7 +2184,7 @@ function MapHomeInner() {
   // layer is a chart chip like everything else that draws on the map; the
   // sharing decision is a setting, because it is about the pilot rather than
   // about the map.
-  const liveShare = useLiveShare({ coords: pos, recording })
+  const liveShare = useLiveShare({ coords: freshPos, recording })
   const friendsAloft = useFriendsAloft(layers.friends)
 
   // What the drawer is telling the pilot to do next.
@@ -2509,6 +2533,54 @@ function MapHomeInner() {
     }
   }
 
+  // What the dock is carrying, and everything it could carry. Both are built
+  // from actionSpec so a tile's face and what it does can never disagree: there
+  // is one description of an app and the dock, the page and the picker all read
+  // it.
+  const appFor = key => {
+    const spec = actionSpec(key)
+    if (!spec) return null
+    return {
+      key, label: spec.label, icon: spec.icon,
+      tint: spec.accent ? ACCENT : undefined,
+      ink: spec.accent ? '#fff' : undefined,
+    }
+  }
+  // Holding an app on the page pins it to the dock, or takes it off if it is
+  // already there. The same gesture the dock itself uses for reassignment, so
+  // there is one thing to learn rather than two.
+  function toggleDock(key) {
+    setHomeActions(prev => {
+      const next = prev.includes(key)
+        ? prev.filter(k => k !== key)
+        // A full dock refuses rather than silently dropping whichever app
+        // happened to be first: the pilot chose those five.
+        : prev.length >= DOCK_MAX ? prev : [...prev, key]
+      if (next !== prev) put('settings', { key: HOME_ACTIONS_KEY, value: next }).catch(() => {})
+      return next
+    })
+  }
+  const appHoldTimer = useRef(null)
+  function appHoldProps(key) {
+    const start = () => {
+      clearTimeout(appHoldTimer.current)
+      appHoldTimer.current = setTimeout(() => { holdFired.current = true; toggleDock(key) }, 500)
+    }
+    const cancel = () => clearTimeout(appHoldTimer.current)
+    return {
+      onPointerDown: start, onPointerUp: cancel,
+      onPointerLeave: cancel, onPointerCancel: cancel,
+      onContextMenu: e => e.preventDefault(),
+      style: { WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' },
+    }
+  }
+
+  const dockApps = homeActions.map(appFor).filter(Boolean)
+  // The page above the dock: every app there is, with the ones already on the
+  // dock dimmed rather than hidden, so the page is a stable set that does not
+  // reshuffle as the dock changes.
+  const allApps = HOME_ACTIONS.map(a => appFor(a.key)).filter(Boolean)
+
   // Press and hold to reassign, the way a phone's home screen works. The hold
   // is what makes the row discoverable without a settings trip; Settings has
   // the same list for anyone who looks there first.
@@ -2689,20 +2761,23 @@ function MapHomeInner() {
             nose-direction from GPS alone. The icon's rotation is
             screen-relative: ground track minus however far the map itself is
             rotated, so in Track Up it points straight up. */}
-        {pos && pos.headingDeg != null ? (
-          <Marker position={[pos.lat, pos.lon]} icon={ownshipIcon(pos.headingDeg - bearing)} interactive={false} />
+        {freshPos && freshPos.headingDeg != null ? (
+          <Marker position={[freshPos.lat, freshPos.lon]}
+            icon={ownshipIcon(freshPos.headingDeg - bearing)} interactive={false} />
         ) : pos && (
+          // Grey once the fix has aged out: still where the aircraft was, and
+          // plainly not a claim about where it is.
           <CircleMarker center={[pos.lat, pos.lon]} radius={8}
-            pathOptions={{ color: '#fff', weight: 3, fillColor: '#1d7fff', fillOpacity: 1 }} />
+            pathOptions={fixStale
+              ? { color: '#fff', weight: 3, fillColor: '#9a9aa2', fillOpacity: 0.85 }
+              : { color: '#fff', weight: 3, fillColor: '#1d7fff', fillOpacity: 1 }} />
         )}
-        {/* The last position we had, drawn grey and plainly not current. A fix
-            that has aged out is orientation, not truth. */}
         {!pos && lastKnown && (
           <CircleMarker center={[lastKnown.lat, lastKnown.lon]} radius={8}
             pathOptions={{ color: '#fff', weight: 3, fillColor: '#9a9aa2', fillOpacity: 0.85 }} />
         )}
         <FollowController
-          follow={follow} orientation={orientation} fix={pos} bearing={bearing}
+          follow={follow} orientation={orientation} fix={freshPos} bearing={bearing}
           coveredHeight={restPx} onUserDrag={handleUserDrag}
         />
       </MapContainer>
@@ -3158,8 +3233,16 @@ function MapHomeInner() {
         // The radius eases on the same curve so the corners and the movement
         // arrive together instead of the corners popping at the end.
         transition: dragY != null ? 'none'
-          : 'transform 380ms cubic-bezier(0.32,0.72,0,1), border-radius 380ms cubic-bezier(0.32,0.72,0,1)',
-        background: 'var(--map-panel)', backdropFilter: 'blur(20px)',
+          : 'transform 380ms cubic-bezier(0.32,0.72,0,1), border-radius 380ms cubic-bezier(0.32,0.72,0,1), background-color 380ms ease',
+        // At full screen the panel lets the map through, faintly. The blur is
+        // already there and doing the work of legibility; dropping the opacity
+        // over it means the pilot never quite loses the ground, which is the
+        // difference between a sheet covering the map and a sheet resting on
+        // it. Only at 100: at the lower stops the map is plainly visible above
+        // the sheet already, and a translucent panel there would just be a
+        // muddy one.
+        background: snap === 100 ? 'var(--map-panel-sheer)' : 'var(--map-panel)',
+        backdropFilter: 'blur(20px)',
         borderRadius: `${radius}px ${radius}px 0 0`,
         boxShadow: '0 -4px 24px rgba(0,0,0,0.10)',
         display: 'flex', flexDirection: 'column',
@@ -3241,7 +3324,19 @@ function MapHomeInner() {
               Every other height moves it off this surface, and above half the
               screen it is nowhere at all rather than back here on top of the
               plan. See actionsInDrawer, where the whole rule is written out. */}
-          {actionsInDrawer && actionRow()}
+          {actionsInDrawer && (
+            <div style={{
+              paddingBottom: snap >= 40 ? 4 : 0,
+              transition: 'padding-bottom 320ms cubic-bezier(0.32,0.72,0,1)',
+            }}>
+              <AppDock
+                apps={dockApps}
+                size={dockTile}
+                onOpen={app => actionSpec(app.key)?.run()}
+                holdPropsFor={holdProps}
+              />
+            </div>
+          )}
 
           {/* A route exists, so the drawer says so: it is the only thing that
               says what the line across the map is.
@@ -3353,8 +3448,12 @@ function MapHomeInner() {
           // Scrolls only once the sheet is at full height. Below that there is
           // more sheet to open than list to read, so the gesture belongs to
           // the sheet and a scroller here would swallow it.
-          overflowY: snap === 100 ? 'auto' : 'hidden',
-          touchAction: snap === 100 ? 'pan-y' : 'none',
+          // Scrolls from the app page upward. The page is deliberately taller
+          // than 40 leaves room for, which is what makes it a page rather than
+          // a row, so the gesture has to belong to it there as well as at full
+          // screen.
+          overflowY: snap >= 40 ? 'auto' : 'hidden',
+          touchAction: snap >= 40 ? 'pan-y' : 'none',
           WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
           padding: '6px 18px calc(var(--safe-bottom) + 24px)',
           // The tools grid fades out below the 25 stop, because down there the
@@ -3424,6 +3523,23 @@ function MapHomeInner() {
               options to choose from rather than a task in itself. This is the
               one that used to be at 80 only by accident, because it was
               whatever was left after the aircraft above it. */}
+          {/* The app page. Everything there is, laid out as a grid the way a
+              phone's home screen is, dropping into place when the drawer
+              opens. Apps already on the dock are dimmed rather than removed,
+              so the page is a stable set: an icon does not move house because
+              it was pinned. */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(76px, 1fr))',
+            gap: 14, marginTop: 18, marginBottom: 4,
+          }}>
+            {allApps.map((app, i) => (
+              <AppTile key={app.key} app={app} size={56} index={i} animate={sheetOpen}
+                dimmed={homeActions.includes(app.key)}
+                onOpen={() => actionSpec(app.key)?.run()}
+                holdProps={appHoldProps(app.key)} />
+            ))}
+          </div>
+
           <div ref={declareStop(100, 'rows and tools')}>
             {/* The rows that report something. Full width, because what makes
                 them worth having is the live half on the right: the field's

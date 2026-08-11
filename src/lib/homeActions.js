@@ -40,6 +40,10 @@ export function findAction(key) {
 // starts a recording, so a pilot who flies with the recorder should assign it.
 export const DEFAULT_HOME_ACTIONS = ['airports', 'flight', 'discover']
 
+// How many the dock holds. Five is a phone dock, and it is a ceiling rather
+// than a target: three is a perfectly good dock and the app ships with three.
+export const DOCK_MAX = 5
+
 export const HOME_ACTIONS_KEY = 'homeActions'
 
 // Anything unrecognised falls back to the default in that position rather than
@@ -47,7 +51,10 @@ export const HOME_ACTIONS_KEY = 'homeActions'
 // with a button that does nothing.
 export function normaliseActions(value) {
   const arr = Array.isArray(value) ? value : []
-  return DEFAULT_HOME_ACTIONS.map((fallback, i) => (
-    findAction(arr[i]) ? arr[i] : fallback
-  ))
+  // Anything unrecognised is dropped rather than left as a tile that does
+  // nothing: a key removed in a later version must not strand a pilot with a
+  // dead app on their dock. An empty result falls back to the shipped three,
+  // because a dock with nothing on it is a bug however it came about.
+  const kept = arr.filter(k => findAction(k)).slice(0, DOCK_MAX)
+  return kept.length ? kept : [...DEFAULT_HOME_ACTIONS]
 }
