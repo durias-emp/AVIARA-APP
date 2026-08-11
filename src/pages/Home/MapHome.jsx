@@ -35,6 +35,13 @@ import {
   AirportsHeroCard, HangarCard, PilotRow, FlightPlanCard, DiscoverCard, ROW_GAP,
 } from '../../components/HomeRows'
 import { getCurrencyStatus } from '../../lib/currency'
+import {
+  HOME_ACTIONS, HOME_ACTIONS_KEY, DEFAULT_HOME_ACTIONS, findAction, normaliseActions,
+} from '../../lib/homeActions'
+import {
+  IconRunways as RowIconRunways, IconRoute as RowIconRoute, IconFriends as RowIconFriends,
+  IconHangar as RowIconHangar, IconHelmet as RowIconHelmet, IconGear as RowIconGear,
+} from '../../components/Icons'
 import { useRegion } from '../../context/Region'
 import { useFlightPlanType } from '../../hooks/useFlightPlanType'
 import { fmtEte, etaFrom, reserveMinutes, requiredReserveMinutes, reserveStatus } from '../../lib/routeFigures'
@@ -49,7 +56,7 @@ import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecord
 import { put, get, getAll, del } from '../../lib/db'
 import { findAirport, getAirports } from '../../lib/aerodromes'
 import { crossTrackNm } from '../../lib/corridor'
-import { resolveHomeIdent, setHomeIdent, HOME_AIRPORT_EVENT } from '../../lib/homeBase'
+import { resolveHomeIdent, setHomeIdent } from '../../lib/homeBase'
 import { computeDirectRoute } from '../../lib/directRoute'
 import { loadTfrs } from '../../lib/tfr'
 import useIsDark from '../../hooks/useIsDark'
@@ -728,6 +735,22 @@ function scrollTopUnder(target) {
 // Takes the route planner's place in the action row while the plan is open.
 // Same slot, same size, so the row does not reshuffle as the plan opens and
 // closes: only what the third button does changes.
+// What the assignable actions wear in the row. The doors reuse the same glyphs
+// their rows use, so a button and the row it opens are recognisably the same
+// thing; the two that have no row keep the sheet's own PNGs.
+const ACTION_ICONS = {
+  airports:  <RowIconRunways size={24} />,
+  flight:    <RowIconRoute size={24} />,
+  discover:  <RowIconFriends size={24} />,
+  hangar:    <RowIconHangar size={24} />,
+  pilot:     <RowIconHelmet size={24} />,
+  settings:  <RowIconGear size={24} />,
+  calc:      <img src="/E6B CALC.svg" width={24} height={24} alt=""
+    style={{ objectFit: 'contain', filter: 'var(--map-icon-ink)' }} />,
+  reference: <img src="/libros.png" width={24} height={24} alt=""
+    style={{ objectFit: 'contain', filter: 'var(--map-icon-ink)' }} />,
+}
+
 const IconClosePlan = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round">
     <path d="M18 6L6 18M6 6l12 12" />
@@ -1113,6 +1136,29 @@ function MapHomeInner() {
   // Every reporting row opens in the sheet rather than navigating away, which
   // is the rule the rest of this screen already follows.
   const openRow = useCallback(key => setDrawerView(key), [])
+
+  // The three assignable buttons, and which slot is currently being reassigned.
+  const [homeActions, setHomeActions] = useState(DEFAULT_HOME_ACTIONS)
+  const [slotPicker, setSlotPicker] = useState(null)
+  useEffect(() => {
+    get('settings', HOME_ACTIONS_KEY)
+      .then(row => { if (row?.value) setHomeActions(normaliseActions(row.value)) })
+      .catch(() => {})
+  }, [])
+  function assignSlot(slot, key) {
+    setHomeActions(prev => {
+      const next = [...prev]
+      // Assigning something that is already in another slot swaps the two
+      // rather than leaving the row holding it twice, which would waste one of
+      // only three places on a duplicate.
+      const existing = next.indexOf(key)
+      if (existing !== -1) next[existing] = next[slot]
+      next[slot] = key
+      put('settings', { key: HOME_ACTIONS_KEY, value: next }).catch(() => {})
+      return next
+    })
+    setSlotPicker(null)
+  }
 
   // The raw currency record rather than a rolled-up status: the Pilot row
   // reports flight currency and medical separately, so it needs both of
@@ -2307,55 +2353,117 @@ function MapHomeInner() {
   // The tile's 92px belongs to its label, so it goes when the label does. Left
   // on, it padded a fit-content card back out to nearly the full width, which
   // is a compact card in every respect except the one that was asked for.
+  // What each assignable action actually does, and what it looks like while it
+  // is doing it. Only three of these change with the state of the screen:
+  // record becomes stop, and plan becomes close or clear depending on whether
+  // there is a plan and whether the pilot is standing in it, so the row never
+  // holds a button that would do nothing.
+  function actionSpec(key) {
+    const meta = findAction(key)
+    if (!meta) return null
+    if (key === 'weather') {
+      return {
+        label: 'Weather', icon: <IconWeather />,
+        run: () => (base ? setWxDetail(true) : setBasePicker(true)),
+      }
+    }
+    if (key === 'record') {
+      return {
+        label: recording ? 'Stop' : 'Record', accent: true,
+        icon: recording
+          ? <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+          : <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M8 5.5v13l11-6.5z" /></svg>,
+        run: () => (recording ? stopFlight() : startFlight()),
+      }
+    }
+    if (key === 'plan') {
+      return {
+        label: planning ? 'Close Plan' : hasRoute ? 'Clear Route' : 'Plan Route',
+        icon: planning || hasRoute ? <IconClosePlan /> : <IconRoute />,
+        run: () => (planning ? leavePlanner() : hasRoute ? forgetRoute() : openPlanner()),
+      }
+    }
+    return {
+      label: meta.label,
+      icon: ACTION_ICONS[key] ?? <IconRoute />,
+      run: () => setDrawerView(meta.view),
+    }
+  }
+
+  // Press and hold to reassign, the way a phone's home screen works. The hold
+  // is what makes the row discoverable without a settings trip; Settings has
+  // the same list for anyone who looks there first.
+  //
+  // A hold must not also fire the tap. holdFired is checked by the click
+  // handler rather than the press being cancelled, because a pointerup still
+  // produces a click and swallowing it in the capture phase would swallow the
+  // scroll gestures this row sits inside.
+  const holdTimer = useRef(null)
+  const holdFired = useRef(false)
+  function holdProps(slot) {
+    const start = () => {
+      holdFired.current = false
+      clearTimeout(holdTimer.current)
+      holdTimer.current = setTimeout(() => {
+        holdFired.current = true
+        setSlotPicker(slot)
+      }, 500)
+    }
+    const cancel = () => clearTimeout(holdTimer.current)
+    return {
+      onPointerDown: start,
+      onPointerUp: cancel,
+      onPointerLeave: cancel,
+      onPointerCancel: cancel,
+      // A hold on a button is not a text selection, and on iOS the callout it
+      // raises lands on top of the picker the hold just opened.
+      onContextMenu: e => e.preventDefault(),
+      style: { WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' },
+    }
+  }
+
   const actionRow = (compact = false) => (
     <div style={{
       display: 'flex', alignItems: 'center',
       justifyContent: compact ? 'center' : 'space-around',
       gap: compact ? 18 : 10,
     }}>
-      <button
-        onClick={() => (base ? setWxDetail(true) : setBasePicker(true))}
-        style={{ ...tileBtn, ...(compact ? { width: 38 } : null) }}>
-        <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)',
-          ...(compact ? { width: 38, height: 38 } : null) }}>
-          <IconWeather />
-        </span>
-        {!compact && <span style={tileLabel}>Weather</span>}
-      </button>
-
-      <button onClick={recording ? stopFlight : startFlight} style={{
-        width: compact ? 52 : 86, height: compact ? 52 : 86,
-        borderRadius: '50%', border: 'none', cursor: 'pointer',
-        background: recording ? 'var(--map-ink)' : ACCENT,
-        boxShadow: `0 6px 20px ${recording ? 'rgba(28,28,30,0.3)' : accentAlpha(0.38)}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'background 200ms', flexShrink: 0,
-      }}>
-        {recording
-          ? <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
-          : <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M8 5.5v13l11-6.5z" /></svg>}
-      </button>
-
-      {/* Open the plan, or leave it. Which of the two depends on whether the
-          pilot is already in it, and a route on the drawer means they are:
-          the card below is the plan's route section, and pulling the drawer
-          up opens the rest of it. Offering "Plan Route" there is offering a
-          door to the room you are standing in.
-
-          Leaving from the drawer forgets the route, because there is nothing
-          else to leave: the drawer goes back to what it says with no flight
-          on it. Leaving from inside the planner just closes the planner and
-          keeps the route, which is what it has always done. */}
-      <button onClick={planning ? leavePlanner : (hasRoute ? forgetRoute : openPlanner)}
-        style={{ ...tileBtn, ...(compact ? { width: 38 } : null) }}>
-        <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)',
-          ...(compact ? { width: 38, height: 38 } : null) }}>
-          {planning || hasRoute ? <IconClosePlan /> : <IconRoute />}
-        </span>
-        {!compact && <span style={tileLabel}>
-          {planning ? 'Close Plan' : hasRoute ? 'Clear Route' : 'Plan Route'}
-        </span>}
-      </button>
+      {homeActions.map((key, slot) => {
+        const spec = actionSpec(key)
+        if (!spec) return null
+        const hold = holdProps(slot)
+        const fire = () => { if (!holdFired.current) spec.run() }
+        // The middle slot keeps the big accent circle. It is the one the thumb
+        // lands on without aiming, so it stays the emphasised one whatever is
+        // assigned to it rather than the emphasis belonging to recording.
+        if (slot === 1) {
+          return (
+            <button key={key} onClick={fire} {...hold} title={`${spec.label} (hold to change)`}
+              style={{
+                ...hold.style,
+                width: compact ? 52 : 86, height: compact ? 52 : 86,
+                borderRadius: '50%', border: 'none', cursor: 'pointer',
+                background: spec.accent && recording ? 'var(--map-ink)' : ACCENT,
+                boxShadow: `0 6px 20px ${spec.accent && recording ? 'rgba(28,28,30,0.3)' : accentAlpha(0.38)}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'background 200ms', flexShrink: 0,
+                color: '#fff',
+              }}>
+              {spec.icon}
+            </button>
+          )
+        }
+        return (
+          <button key={key} onClick={fire} {...hold} title={`${spec.label} (hold to change)`}
+            style={{ ...tileBtn, ...hold.style, ...(compact ? { width: 38 } : null) }}>
+            <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)',
+              ...(compact ? { width: 38, height: 38 } : null) }}>
+              {spec.icon}
+            </span>
+            {!compact && <span style={tileLabel}>{spec.label}</span>}
+          </button>
+        )
+      })}
     </div>
   )
 
@@ -2807,6 +2915,58 @@ function MapHomeInner() {
         document.body,
       )}
 
+      {/* What a held button offers. A sheet from the bottom rather than a menu
+          at the finger: the row sits low on the screen already, and a menu
+          hanging off it would open under the thumb that raised it.
+
+          Portalled to body for the same reason the airport picker is. This
+          screen is a fixed box with its own stacking context, and a chooser
+          that has to cover the drawer cannot live inside the drawer. */}
+      {slotPicker != null && createPortal(
+        <div
+          onClick={() => setSlotPicker(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'flex-end',
+          }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            ...DRAWER_PALETTE,
+            width: '100%', background: 'var(--map-panel)',
+            borderTopLeftRadius: 22, borderTopRightRadius: 22,
+            padding: `18px 18px calc(var(--safe-bottom) + 18px)`,
+            maxHeight: '70vh', overflowY: 'auto',
+          }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--map-ink)', marginBottom: 4 }}>
+              {['Left button', 'Middle button', 'Right button'][slotPicker]}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--map-ink-faint)', marginBottom: 14 }}>
+              Hold any of the three to change it.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {HOME_ACTIONS.map(a => {
+                const current = homeActions[slotPicker] === a.key
+                return (
+                  <button key={a.key} onClick={() => assignSlot(slotPicker, a.key)} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '13px 14px',
+                    borderRadius: 16, cursor: 'pointer', textAlign: 'left',
+                    border: current ? `2px solid ${ACCENT}` : '2px solid transparent',
+                    background: 'var(--map-fill-soft)',
+                    color: 'var(--map-ink)', fontSize: 13, fontWeight: 700,
+                  }}>
+                    <span style={{ display: 'flex', flexShrink: 0, width: 24, height: 24,
+                      alignItems: 'center', justifyContent: 'center' }}>
+                      {ACTION_ICONS[a.key] ?? null}
+                    </span>
+                    {a.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
       {/* The official airport diagram, over everything. A chart is read at
           arm's length with both hands, so it takes the whole screen rather
           than sharing it with the map that led to it. Portalled to body for
@@ -3134,21 +3294,28 @@ function MapHomeInner() {
               </div>
             )}
             <div ref={acTextRef}>
+            {/* The registration leads, because that is the aircraft's name in
+                the way a pilot actually uses it: on the radio, in the logbook,
+                on the plan. The type goes underneath.
+
+                It also stops the panel being headed by a placeholder. An
+                aircraft added without a model is saved as "My Aircraft" by
+                onboarding, and that string was reading as a section title
+                rather than as the aircraft's own name. A tail number is never
+                a placeholder. Where there is no registration the type stands
+                in, since a heading is still needed. */}
             <div style={{
               fontSize: 26, fontWeight: 800, color: 'var(--map-ink)',
-              letterSpacing: '-0.7px', lineHeight: 1.1,
+              letterSpacing: ac?.registration ? '0.5px' : '-0.7px', lineHeight: 1.1,
+              textTransform: ac?.registration ? 'uppercase' : 'none',
             }}>
-              {ac?.fullName || 'No aircraft set'}
+              {ac?.registration || ac?.fullName || 'No aircraft set'}
             </div>
-            {ac?.registration && (
-              // The registration is the aircraft's name in the way a pilot
-              // uses it on the radio, so it is set apart from the type rather
-              // than run on from it.
+            {ac?.registration && ac?.fullName && (
               <div style={{
-                fontSize: 13, fontWeight: 700, letterSpacing: '2px',
+                fontSize: 13, fontWeight: 700, letterSpacing: '0.2px',
                 color: 'var(--map-ink-faint)', marginTop: 6,
-                textTransform: 'uppercase',
-              }}>{ac.registration}</div>
+              }}>{ac.fullName}</div>
             )}
             </div>
           </button>
