@@ -49,7 +49,7 @@ import {
 import {
   IconRunways as RowIconRunways, IconRoute as RowIconRoute, IconFriends as RowIconFriends,
   IconHangar as RowIconHangar, IconHelmet as RowIconHelmet, IconGear as RowIconGear,
-  IconAtom as RowIconAtom,
+  IconUap as RowIconUap,
 } from '../../components/Icons'
 import { useRegion } from '../../context/Region'
 import { useFlightPlanType } from '../../hooks/useFlightPlanType'
@@ -105,7 +105,7 @@ const DRAWER_VIEWS = {
   pilot:     lazy(() => import('../Pilot/Pilot')),
   reference: lazy(() => import('../Reference/Reference')),
   airports:  lazy(() => import('../../components/AirportInfo')),
-  tools:     lazy(() => import('../../components/ToolsMenu')),
+  uap:       lazy(() => import('../UAP/UAPReport')),
   settings:  lazy(() => import('../Settings/Settings')),
   // The three the reporting rows need. Hangar and the flight plan had doors
   // elsewhere on this screen (the aircraft card, Plan Route); Discover had
@@ -737,7 +737,7 @@ const ACTION_ICONS = {
   discover:  <RowIconFriends size={24} />,
   hangar:    <RowIconHangar size={24} />,
   pilot:     <RowIconHelmet size={24} />,
-  tools:     <RowIconAtom size={24} />,
+  uap:       <RowIconUap size={24} />,
   settings:  <RowIconGear size={24} />,
   calc:      <img src="/E6B CALC.svg" width={24} height={24} alt=""
     style={{ objectFit: 'contain', filter: 'var(--map-icon-ink)' }} />,

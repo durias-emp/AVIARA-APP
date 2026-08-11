@@ -21,11 +21,11 @@ export const HOME_ACTIONS = [
   { key: 'pilot',     label: 'Pilot',     view: 'pilot' },
   { key: 'calc',      label: 'Calculators', view: 'calc' },
   { key: 'reference', label: 'Reference', view: 'reference' },
-  // Tools. It was missing from this list while the drawer still had a grid of
-  // its own holding it, so removing that grid took away its only door and the
-  // whole toolbox with it. Everything reachable has to be in this list, because
-  // this list IS the app page now.
-  { key: 'tools',     label: 'Tools',     view: 'tools' },
+  // The UAP report, promoted out of the toolbox. Tools held exactly three
+  // things: Calculators and Quick Reference, both of which are apps in their
+  // own right here, and this. A folder standing in front of one remaining item
+  // is a tap that buys nothing, so the item comes out and the folder goes.
+  { key: 'uap',       label: 'UAP Report', view: 'uap' },
   { key: 'settings',  label: 'Settings',  view: 'settings' },
   // Behaviours, not doors.
   { key: 'weather',   label: 'Weather' },
