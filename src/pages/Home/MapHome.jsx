@@ -2447,11 +2447,15 @@ function MapHomeInner() {
     // Clamped, with no rubber band past either end: a sheet that can be pulled
     // past its stops feels broken rather than playful on a control surface.
     //
-    // The ends are the ends of the ladder, 25 and 100, whatever the drawer is
-    // carrying. The plan used to be clamped at 50, from when it owned the
-    // drawer; with its list under the route the finger stopping dead halfway
-    // up is the drawer refusing to move.
-    const next = Math.min(stopY(vh, 25), Math.max(stopY(vh, 100), d.fromY + shifted))
+    // The top end is the ladder's top. The bottom end is off the screen
+    // entirely, because pulling the drawer away is now a gesture rather than a
+    // button and the finger has to be able to take it there.
+    //
+    // It used to clamp at a literal 25, which stopped being a rung when the
+    // closed stop became measured from the dock. Since the measured rung sits
+    // BELOW where 25 was, the clamp was holding the drawer above its own
+    // closed position: it could not be dragged shut at all, let alone away.
+    const next = Math.min(vh, Math.max(stopY(vh, 100), d.fromY + shifted))
     d.lastY = next
     setDragY(next)
   }
@@ -2482,8 +2486,11 @@ function MapHomeInner() {
     //
     // Half the dock's height past the rung, or a downward flick from it, so a
     // short overshoot on the way to closed does not dismiss it by accident.
+    // effSnap, not snap: snap can still hold the seeded percentage while the
+    // measured rung is the one the sheet is actually resting on, and comparing
+    // against the wrong one meant the flick never matched.
     const closedY = stopY(vh, closedPct)
-    if (!up && (d.lastY > closedY + restPx * 0.5 || (flick && snap === closedPct))) {
+    if (!up && (d.lastY > closedY + restPx * 0.5 || (flick && effSnap === closedPct))) {
       setSnap(0)
       return
     }
