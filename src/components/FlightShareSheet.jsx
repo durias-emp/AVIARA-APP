@@ -3,6 +3,8 @@ import { SegControl } from './SegControl'
 import { renderFlightImage, SHARE_SIZES } from '../lib/flightImage'
 import { useLogbook } from '../context/Logbook'
 import { computeTotalHours } from '../lib/logbookFields'
+import { useAuth } from '../context/AuthContext'
+import { createPost } from '../lib/posts'
 
 const MODES = [
   { key: 'bare',  label: 'Trail only' },
@@ -71,24 +73,32 @@ export default function FlightShareSheet({ entry, onClose }) {
 
   const fileName = `aviara-${entry?.date ?? 'flight'}.png`
 
-  // The OS share sheet, where the pilot picks the destination. The app never
-  // posts anywhere itself — it hands over a file and the pilot decides.
-  const share = useCallback(async () => {
-    if (!blob) return
-    const file = new File([blob], fileName, { type: 'image/png' })
-    if (navigator.canShare?.({ files: [file] })) {
-      try { await navigator.share({ files: [file] }) } catch { /* dismissed */ }
-      return
-    }
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [blob, fileName])
+  // Posting goes to AVIARA's own feed and nowhere else. This used to hand the
+  // file to the operating system's share sheet, which put the picture into
+  // whichever app the pilot picked and left nothing behind here. A flight
+  // posted somewhere else is a flight this app's feed never sees, which is the
+  // opposite of what a feed of flights is for.
+  const { user } = useAuth()
+  const [posting, setPosting] = useState(false)
+  const [posted, setPosted] = useState(false)
+  const [postError, setPostError] = useState(null)
+  const [caption, setCaption] = useState('')
 
-  const canShareFiles = typeof navigator !== 'undefined' && !!navigator.canShare
+  const post = useCallback(async () => {
+    if (!blob || posting) return
+    setPosting(true)
+    setPostError(null)
+    const file = new File([blob], fileName, { type: 'image/png' })
+    const { error: err } = await createPost({
+      authorId: user?.id, caption, files: [file],
+    })
+    setPosting(false)
+    if (err) { setPostError(err.message); return }
+    setPosted(true)
+    // Left on screen for a moment so the pilot sees it worked, rather than the
+    // sheet vanishing and leaving them to guess.
+    setTimeout(() => onClose?.(), 1200)
+  }, [blob, posting, fileName, user?.id, caption, onClose])
 
   return (
     <div
@@ -106,7 +116,7 @@ export default function FlightShareSheet({ entry, onClose }) {
           maxHeight: '92dvh', overflowY: 'auto', boxSizing: 'border-box',
         }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>Share flight</span>
+          <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>Post flight</span>
           <button onClick={onClose} aria-label="Close" style={{
             width: 30, height: 30, borderRadius: '50%', border: 'none',
             background: 'var(--bg-card-2)', color: 'var(--text)', cursor: 'pointer', fontSize: 16,
@@ -179,16 +189,41 @@ export default function FlightShareSheet({ entry, onClose }) {
           <div style={{ fontSize: 12, color: 'var(--warn)', marginBottom: 12 }}>{error}</div>
         )}
 
+        {/* Something to say about the flight, optional. A picture of a track
+            with no words is a perfectly good post, so this never blocks one. */}
+        <textarea
+          value={caption}
+          onChange={e => setCaption(e.target.value)}
+          placeholder="Say something about this flight (optional)"
+          rows={2}
+          style={{
+            width: '100%', boxSizing: 'border-box', marginBottom: 12,
+            padding: '11px 12px', borderRadius: 'var(--r-sm)',
+            border: '1px solid var(--border)', background: 'var(--bg-card)',
+            color: 'var(--text)', fontSize: 14, fontFamily: 'inherit', resize: 'none',
+          }} />
+
+        {postError && (
+          <div style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 10 }}>{postError}</div>
+        )}
+
+        {!user && (
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
+            Sign in to post this to your feed.
+          </div>
+        )}
+
         <button
-          onClick={share}
-          disabled={!blob}
+          onClick={post}
+          disabled={!blob || !user || posting || posted}
           style={{
             width: '100%', padding: '13px', borderRadius: 'var(--r-sm)', border: 'none',
-            background: 'var(--accent)', color: 'var(--accent-fg)',
-            fontSize: 15, fontWeight: 700, cursor: blob ? 'pointer' : 'default',
-            opacity: blob ? 1 : 0.5,
+            background: posted ? 'var(--ok)' : 'var(--accent)', color: 'var(--accent-fg)',
+            fontSize: 15, fontWeight: 700,
+            cursor: blob && user && !posting && !posted ? 'pointer' : 'default',
+            opacity: blob && user && !posting ? 1 : 0.5,
           }}>
-          {canShareFiles ? 'Share' : 'Download image'}
+          {posted ? 'Posted' : posting ? 'Posting…' : 'Post to feed'}
         </button>
       </div>
     </div>
