@@ -35,7 +35,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // time to be the map's mount view.
 const LAST_FIX_KEY = 'aviara.lastFix'
 
-function readStoredFix() {
+// Exported so code that only needs "roughly where is this pilot", the flight
+// plan's departure default for one, can ask without mounting a watch or
+// requiring the location provider to be above it in the tree.
+export function readStoredFix() {
   try {
     const f = JSON.parse(localStorage.getItem(LAST_FIX_KEY))
     if (f && Number.isFinite(f.lat) && Number.isFinite(f.lon) && Number.isFinite(f.timestamp)) return f
@@ -46,6 +49,15 @@ function readStoredFix() {
   }
   return null
 }
+
+// How long a fix stays believable with nothing newer behind it. A fix already
+// in hand is the sneakiest failure in the whole hook: lose GPS in flight and
+// the last position just sits in state, and every consumer keeps drawing it as
+// if the aircraft were still there. Confident blue ownship, live-looking
+// groundspeed, no warning. Losing GPS mid-flight is precisely when a pilot
+// switches to dead reckoning, and the app must say so rather than quietly
+// showing them a position they left minutes ago.
+const STALE_AFTER_MS = 30000
 
 export function useLiveLocation() {
   const [coords, setCoords] = useState(null) // { lat, lon, altFt, accuracyM, headingDeg, speedKt, timestamp }
@@ -197,5 +209,16 @@ export function useLiveLocation() {
   // starts a fresh attempt at all.
   const retry = useCallback(() => setAttempt(a => a + 1), [])
 
-  return { coords, derived, status, error, errorCode, lastKnown, retry }
+  // Goes true when the newest fix ages past STALE_AFTER_MS with nothing behind
+  // it, and resets the moment a fresh one lands. A timer rather than a computed
+  // age so consumers re-render when it flips instead of needing their own clock.
+  const [stale, setStale] = useState(false)
+  useEffect(() => {
+    if (!coords) { setStale(false); return }
+    setStale(false)
+    const t = setTimeout(() => setStale(true), STALE_AFTER_MS)
+    return () => clearTimeout(t)
+  }, [coords])
+
+  return { coords, derived, status, error, errorCode, lastKnown, stale, retry }
 }

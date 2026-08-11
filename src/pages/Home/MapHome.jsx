@@ -28,6 +28,9 @@ import Map3DPane from '../../components/Map3DPane'
 import AirportPlate from '../../components/AirportPlate'
 import { DRAWER_PALETTE } from '../../components/drawerPalette'
 import { useBackOverride } from '../../context/BackOverride'
+import { HomeLocationProvider, useHomeLocation } from '../../context/HomeLocation'
+import { useBreadcrumbTrail } from '../../hooks/useBreadcrumbTrail'
+import GpsInfoBar from '../../components/GpsInfoBar'
 import { useRegion } from '../../context/Region'
 import { useFlightPlanType } from '../../hooks/useFlightPlanType'
 import { fmtEte, etaFrom, reserveMinutes, requiredReserveMinutes, reserveStatus } from '../../lib/routeFigures'
@@ -609,7 +612,10 @@ function SelectedAircraft({ ac, onClose }) {
 
 // A round glass control. Every floating button on this screen is one of these,
 // which is what makes the stack read as a set rather than as scattered chrome.
-function Ctrl({ onClick, title, active, badge, children, size = CTRL }) {
+// `caption` rides in the badge's corner and says what a staged button is
+// currently doing. The badge counts things and the caption names a mode, so
+// they share the shape without sharing the meaning; nothing uses both.
+function Ctrl({ onClick, title, active, badge, caption, children, size = CTRL }) {
   return (
     <button onClick={onClick} title={title} style={{
       position: 'relative', width: size, height: size, borderRadius: '50%',
@@ -629,6 +635,14 @@ function Ctrl({ onClick, title, active, badge, children, size = CTRL }) {
           alignItems: 'center', justifyContent: 'center', padding: '0 5px',
           border: '2px solid #fff',
         }}>{badge}</span>
+      )}
+      {caption && (
+        <span style={{
+          position: 'absolute', bottom: -6, left: '50%', transform: 'translateX(-50%)',
+          borderRadius: 8, background: 'var(--map-ink)', color: 'var(--map-ink-invert)',
+          fontSize: 9, fontWeight: 800, letterSpacing: '0.02em', lineHeight: 1,
+          padding: '3px 5px', border: '2px solid #fff', whiteSpace: 'nowrap',
+        }}>{caption}</span>
       )}
     </button>
   )
@@ -756,7 +770,88 @@ function SizeWatcher({ mapRef, onReady, onMove }) {
   return null
 }
 
+/* ── Flying the map, as opposed to reading it ──────────────────────────
+   Everything below came from the map screen on main, where it was built
+   against the same Leaflet the vector basemap sits under. The parts that
+   rotate live inside the map; the parts a pilot presses stay outside it,
+   because a control that turns with the ground is a control you have to
+   find twice. ── */
+
+// Simple top-view aircraft, drawn point-up and rotated per render to the
+// screen-relative track. One shape for everyone: the ask was "a random simple
+// aircraft design", not a fleet picker.
+function ownshipIcon(screenDeg) {
+  return L.divIcon({
+    className: '',
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    html: `<svg width="34" height="34" viewBox="0 0 24 24" style="transform:rotate(${Math.round(screenDeg)}deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5))">
+      <path d="M12 2 L13.4 9 L21 12 L13.4 13.6 L13.1 18.6 L15.4 20.6 L15.4 21.8 L12 20.8 L8.6 21.8 L8.6 20.6 L10.9 18.6 L10.6 13.6 L3 12 L10.6 9 Z"
+        fill="#0a84ff" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/>
+    </svg>`,
+  })
+}
+
+// Follow mode: while on, every GPS fix recenters the map on the aircraft,
+// until the pilot drags, which hands the map back to them (reported via
+// onUserDrag; Locate re-engages). setView never fires dragstart, so following
+// cannot cancel itself.
+//
+// The screen offset (the sheet covering the bottom, plus the Track Up Ahead
+// placement in the lower region of the visible strip) is applied in SCREEN
+// space and converted to map-frame pixels through the current rotation: with
+// the canvas CSS-rotated by -bearing, screen-down (0, dy) is the map vector
+// (-dy*sin(theta), dy*cos(theta)).
+function FollowController({ follow, orientation, fix, bearing, coveredHeight, onUserDrag }) {
+  const map = useMap()
+  useEffect(() => {
+    const h = () => onUserDrag()
+    map.on('dragstart', h)
+    return () => map.off('dragstart', h)
+  }, [map, onUserDrag])
+  useEffect(() => {
+    if (!follow || !fix) return
+    map.setView([fix.lat, fix.lon], map.getZoom(), { animate: false })
+    const visibleH = Math.max(0, window.innerHeight - coveredHeight)
+    // Positive dy lifts the ownship UP the screen (sheet compensation); Track
+    // Up Ahead SUBTRACTS, pushing the ownship down into the lower region of
+    // the visible strip so the map ahead gets the space. dy can legitimately
+    // go negative, so this must not gate on sign.
+    const dy = coveredHeight / 2 - (orientation === 'trackAhead' ? 0.22 * visibleH : 0)
+    if (Math.abs(dy) > 0.5) {
+      const th = bearing * Math.PI / 180
+      map.panBy([-dy * Math.sin(th), dy * Math.cos(th)], { animate: false })
+    }
+  }, [follow, fix, orientation, bearing, coveredHeight, map])
+  return null
+}
+
+// The pilot's own track, drawn behind them for as long as the overlay is on.
+// Two strokes: a wide translucent casing under a solid core, so the line stays
+// legible over both a dark satellite image and a pale sectional without
+// needing to know which is underneath.
+function BreadcrumbLayer({ trail }) {
+  if (trail.length < 2) return null
+  const path = trail.map(p => [p.lat, p.lon])
+  return (
+    <>
+      <Polyline positions={path} pathOptions={{ color: '#000', weight: 7, opacity: 0.28, lineCap: 'round', lineJoin: 'round' }} />
+      <Polyline positions={path} pathOptions={{ color: '#ff6b35', weight: 3, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }} />
+    </>
+  )
+}
+
+// The provider owns the one geolocation watch this screen runs, so it has to
+// sit above the component that reads it. Everything else lives in MapHomeInner.
 export default function MapHome() {
+  return (
+    <HomeLocationProvider>
+      <MapHomeInner />
+    </HomeLocationProvider>
+  )
+}
+
+function MapHomeInner() {
   const navigate = useNavigate()
 
   // The aircraft the pilot is flying today, from the hangar.
@@ -937,7 +1032,75 @@ export default function MapHome() {
   // and out before anyone asked for them.
   const [chartsEverOpened, setChartsEverOpened] = useState(false)
   const [rec, setRec] = useState(null)
-  const [pos, setPos] = useState(null)
+  // Position comes from the shared provider rather than a watch of this
+  // screen's own. Two concurrent high-accuracy watches is the bug
+  // useLiveLocation's header describes, and the instruments below (ownship
+  // heading, Track Up, the data bar) need the fields a bare watchPosition
+  // never collected: ground track, accuracy, rate of turn, vertical speed.
+  //
+  // A stale fix is not a fix. Gating it here once means the ownship, the
+  // readouts and follow mode cannot any of them treat a position the aircraft
+  // left minutes ago as current.
+  const {
+    coords: rawCoords, derived: liveDerived, status: liveStatus,
+    lastKnown, stale: fixStale,
+  } = useHomeLocation()
+  const pos = fixStale ? null : rawCoords
+
+  // Follow mode: Locate engages it, a manual drag breaks it. While on,
+  // FollowController recenters on every fix.
+  const [follow, setFollow] = useState(false)
+  const handleUserDrag = useCallback(() => setFollow(false), [])
+  // 'north' | 'track' | 'trackAhead', persisted, cycled by the Locate button.
+  const [orientation, setOrientationState] = useState('north')
+  useEffect(() => {
+    get('settings', 'mapOrientation').then(row => { if (row?.value) setOrientationState(row.value) }).catch(() => {})
+  }, [])
+  function cycleOrientation() {
+    const order = ['north', 'track', 'trackAhead']
+    const next = order[(order.indexOf(orientation) + 1) % order.length]
+    setOrientationState(next)
+    put('settings', { key: 'mapOrientation', value: next }).catch(() => {})
+  }
+  // The map canvas's rotation. Continuous (unwrapped) so 359 to 1 degrees turns
+  // 2 degrees through north instead of spinning 358 the long way under the CSS
+  // transition. Returns to 0 whenever follow is off or the mode is North Up, so
+  // after a manual pan the map reads like a chart again until Locate re-engages
+  // the track.
+  const [bearing, setBearing] = useState(0)
+  useEffect(() => {
+    const target = (follow && orientation !== 'north' && pos?.headingDeg != null)
+      ? pos.headingDeg
+      : (!follow || orientation === 'north') ? 0 : null
+    if (target == null) return   // tracking mode, no ground track yet: hold current rotation
+    setBearing(prev => {
+      const d = ((target - prev) % 360 + 540) % 360 - 180
+      return Math.abs(d) < 0.5 ? prev : prev + d
+    })
+  }, [pos, follow, orientation])
+  // The rotating canvas is a square with the viewport's diagonal as its side,
+  // centred, so however the map turns no corner of the screen ever shows past
+  // its edge. Measured from the actual shell and re-measured on resize:
+  // measuring window dimensions once at mount produced a 0x0 canvas, and an
+  // invisible map, when the hosting view initialised before layout settled.
+  const [canvasSize, setCanvasSize] = useState(() => Math.ceil(Math.hypot(window.innerWidth, window.innerHeight)) || 1200)
+  useEffect(() => {
+    const measure = () => {
+      const w = shellRef.current?.clientWidth || window.innerWidth
+      const h = shellRef.current?.clientHeight || window.innerHeight
+      const d = Math.ceil(Math.hypot(w, h))
+      if (d > 0) setCanvasSize(prev => (Math.abs(prev - d) > 2 ? d : prev))
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [])
+
+  // Fed the gated fix, so a trail cannot grow a straight line across the gap
+  // where the GPS was actually silent.
+  const { trail: breadcrumbTrail, reset: resetBreadcrumbs } = useBreadcrumbTrail({
+    enabled: layers.breadcrumbs, coords: pos,
+  })
   // Resolved at first render rather than in an effect: the key is synchronous
   // (localStorage or the built-in), so fetching it in an effect would just
   // render once without it and once with.
@@ -1209,19 +1372,6 @@ export default function MapHome() {
       .then(rows => setFlights([...rows].sort((a, b) => b.id - a.id)))
       .catch(() => {})
   }
-
-  // Where the pilot is, whether or not anything is being recorded: an aviation
-  // map that opens somewhere else is useless, and the blue dot is the one thing
-  // every map app is judged on.
-  useEffect(() => {
-    if (!navigator.geolocation) return
-    const id = navigator.geolocation.watchPosition(
-      p => setPos({ lat: p.coords.latitude, lon: p.coords.longitude }),
-      () => {},
-      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
-    )
-    return () => navigator.geolocation.clearWatch(id)
-  }, [])
 
   // The clock has to move between GPS fixes, which can be seconds apart.
   const running = rec != null && !rec.paused
@@ -1639,6 +1789,10 @@ export default function MapHome() {
 
   const toggleLayer = (k) => setLayers(prev => {
     if (k === 'traffic' && prev.traffic) setSelected(null)
+    // Turning the trail on starts a new one. Doing this on the actual toggle is
+    // what makes it a deliberate reset rather than something the app does to
+    // itself whenever layer state finishes loading.
+    if (k === 'breadcrumbs' && !prev.breadcrumbs) resetBreadcrumbs()
     return { ...prev, [k]: !prev[k] }
   })
 
@@ -1657,11 +1811,26 @@ export default function MapHome() {
     lon: mapCentre?.lon ?? base?.lon,
   })
 
-  // Where am I, or failing that, where do I fly from. A locate button that
-  // does nothing because the fix has not arrived reads as broken.
+  // One button, staged, rather than a locate button and a separate orientation
+  // control competing for the same corner of a screen a pilot reaches for
+  // without looking.
+  //
+  //   not following  -> jump to the aircraft and follow, in the current mode
+  //   already following -> each tap cycles North Up / Track Up / Track Up Ahead
+  //
+  // Falling back to the base airport matters: a locate button that does nothing
+  // because the fix has not arrived yet reads as broken.
   function locate() {
-    const target = pos ?? base
-    if (target && mapRef.current) mapRef.current.setView([target.lat, target.lon], 12, { animate: true })
+    if (!follow) {
+      const target = pos ?? base
+      if (target && mapRef.current) mapRef.current.setView([target.lat, target.lon], 12, { animate: true })
+      // Only engage follow against a real fix. Following the base airport would
+      // peg the map to a runway the aircraft may be nowhere near, and the pilot
+      // could not pan away from it.
+      if (pos) setFollow(true)
+      return
+    }
+    cycleOrientation()
   }
 
   function startFlight() {
@@ -2157,7 +2326,12 @@ export default function MapHome() {
     // screen here, and it has to reach every edge including under the status
     // bar and the home indicator. body is the containing block, which is what
     // makes this land on the real screen bottom.
-    <div ref={shellRef} style={{ position: 'fixed', inset: 0, background: 'var(--bg)', overflow: 'hidden' }}>
+    <div ref={shellRef} style={{
+      position: 'fixed', inset: 0, background: 'var(--bg)', overflow: 'hidden',
+      // What the sheet is covering, published so a bottom-anchored control can
+      // sit above it rather than under it. Only the data bar reads this here.
+      '--map-bottom-inset': `${sheetOpen ? restPx : 0}px`,
+    }}>
       {/* The flat map, wrapped so it can be hidden as a whole.
           MapContainer reads its own `style` prop once at mount and never
           again, so hiding it through that prop did nothing: the Leaflet route
@@ -2168,6 +2342,19 @@ export default function MapHome() {
       <div style={{
         position: 'absolute', inset: 0,
         visibility: view3d ? 'hidden' : 'visible',
+      }}>
+      {/* The rotating canvas. A diagonal-sized square centred on the viewport,
+          CSS-rotated by -bearing so the ground track points screen-up in the
+          Track Up modes; the transition keeps GPS heading jitter from twitching
+          the whole world. Everything that must NOT rotate (the sheet, the
+          chips, the buttons, the data bar) lives outside this div, which is why
+          it wraps the map alone rather than the screen. */}
+      <div style={{
+        position: 'absolute', left: '50%', top: '50%',
+        width: canvasSize, height: canvasSize,
+        marginLeft: -canvasSize / 2, marginTop: -canvasSize / 2,
+        transform: `rotate(${-bearing}deg)`, transformOrigin: '50% 50%',
+        transition: 'transform 0.8s linear',
       }}>
       <MapContainer center={INITIAL_CENTER} zoom={10} zoomControl={false} attributionControl={false}
         style={{ height: '100%', width: '100%' }}>
@@ -2228,11 +2415,32 @@ export default function MapHome() {
             )}
           </Marker>
         )}
-        {pos && (
+        {/* The trail the pilot asked for, under the ownship so the aircraft is
+            never hidden by where it has been. */}
+        {layers.breadcrumbs && <BreadcrumbLayer trail={breadcrumbTrail} />}
+        {/* Ownship when the GPS reports a ground track (moving); the plain dot
+            when stationary, since a parked aircraft has no meaningful
+            nose-direction from GPS alone. The icon's rotation is
+            screen-relative: ground track minus however far the map itself is
+            rotated, so in Track Up it points straight up. */}
+        {pos && pos.headingDeg != null ? (
+          <Marker position={[pos.lat, pos.lon]} icon={ownshipIcon(pos.headingDeg - bearing)} interactive={false} />
+        ) : pos && (
           <CircleMarker center={[pos.lat, pos.lon]} radius={8}
             pathOptions={{ color: '#fff', weight: 3, fillColor: '#1d7fff', fillOpacity: 1 }} />
         )}
+        {/* The last position we had, drawn grey and plainly not current. A fix
+            that has aged out is orientation, not truth. */}
+        {!pos && lastKnown && (
+          <CircleMarker center={[lastKnown.lat, lastKnown.lon]} radius={8}
+            pathOptions={{ color: '#fff', weight: 3, fillColor: '#9a9aa2', fillOpacity: 0.85 }} />
+        )}
+        <FollowController
+          follow={follow} orientation={orientation} fix={pos} bearing={bearing}
+          coveredHeight={restPx} onUserDrag={handleUserDrag}
+        />
       </MapContainer>
+      </div>
       </div>
 
       {/* The tilted view, filling the map area and nothing else.
@@ -2304,6 +2512,19 @@ export default function MapHome() {
         </div>
       </div>
 
+      {/* The flight data computer: the figures a pilot configures once and
+          then reads without looking for them. Hidden while the sheet is
+          expanded, on the same rule the control stack follows, because at that
+          point the pilot is reading the plan rather than flying the map.
+
+          Fed routeWpts rather than the route object: the bar's next-waypoint
+          and destination fields walk a list of points, and that is the list
+          the map is actually drawing. */}
+      {!expanded && (
+        <GpsInfoBar route={routeWpts} coords={pos} derived={liveDerived}
+          status={liveStatus} lastKnown={lastKnown} />
+      )}
+
       {/* Right stack: charts, then position. Ordered by how often a hand
           reaches for them in the air. */}
       <div style={{
@@ -2318,7 +2539,14 @@ export default function MapHome() {
       }}>
         <Ctrl onClick={() => { setChartsOpen(o => !o); setChartsEverOpened(true) }} title="Chart layers"
           active={chartsOpen} badge={activeCount}><IconLayers /></Ctrl>
-        <Ctrl onClick={locate} title="Center on my position"><IconLocate /></Ctrl>
+        <Ctrl onClick={locate} active={follow}
+          caption={follow && orientation === 'track' ? 'TRK' : follow && orientation === 'trackAhead' ? 'TRK▲' : null}
+          title={!follow ? 'Center on my position and follow'
+            : orientation === 'north' ? 'Following, North Up. Tap for Track Up'
+            : orientation === 'track' ? 'Following, Track Up. Tap for Track Up Ahead'
+            : 'Following, Track Up Ahead. Tap for North Up'}>
+          <IconLocate />
+        </Ctrl>
       </div>
 
 

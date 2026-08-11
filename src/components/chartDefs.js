@@ -45,12 +45,21 @@ export const CHARTS = [
   // Labelled CAT, not WX. Flight category is what pilots call this, and next
   // to RAD the generic "weather" read as though one of the two were the other.
   { key: 'fltcat',    label: 'CAT',  faaOnly: false },
+  // Where this aircraft has actually been, held in memory for as long as the
+  // chip is on. Not the recorded flight track, which is a filed document: this
+  // is the last few minutes of ground truth, for answering "was that the ridge
+  // we came over" without opening anything.
+  //
+  // Turning it on starts a fresh trail rather than resuming the old one, so the
+  // line always means "since I asked", never "since some earlier leg".
+  { key: 'breadcrumbs', label: 'TRAIL', faaOnly: false },
 ]
 
 export const EMPTY_LAYERS = {
   sectional: false, tac: false, terrain: false, ifrlo: false, ifrhi: false, airspace: false,
   traffic: false, tfr: false,
   airports: false, heliports: false, seaplane: false, radar: false, fltcat: false,
+  breadcrumbs: false,
 }
 
 // The openAIP tile key, resolved the same way the route planner resolves it:
