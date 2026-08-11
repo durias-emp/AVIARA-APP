@@ -885,6 +885,30 @@ input[type="number"]::-webkit-outer-spin-button {
   --drawer-opacity:  0.10;
   /* Set alongside the opacity, never on its own. See lib/drawerGlass.js. */
   --drawer-blur:     32px;
+
+  /* The in-flight data bar, made of the same material as the drawer so the two
+     read as one surface rather than a stained panel with a white slab floating
+     above it.
+
+     With a FLOOR under the alpha, which is the whole difference between this
+     and the drawer. The drawer can go to nothing because what it loses is
+     decoration; these are the numbers a pilot is flying on, sitting over a
+     chart rather than over a blurred panel, and they have to stay readable at
+     every setting. Below about 55% the digits start competing with whatever
+     terrain is under them. So the bar follows the pilot's choice upward and
+     simply stops following it down.
+
+     max() in the alpha rather than a value written by JavaScript: the floor is
+     a property of the bar, not a decision to be recomputed every time the
+     slider moves.
+
+     80%, and the number was measured rather than picked. Every stain was
+     checked for contrast between its label text and the bar composited over
+     the worst backdrop it could land on: white chart paper under a light-ink
+     stain, dark terrain under a dark-ink one. At 55% two of them came out at
+     4.0:1, under the 4.5:1 small text needs. At 80% the whole set clears it,
+     the worst being 4.9:1. */
+  --ifdb-bg:         rgba(var(--map-panel-rgb), max(var(--drawer-opacity), 0.80));
   --map-panel-sheer: rgba(var(--map-panel-rgb), var(--drawer-opacity));
   --map-panel-solid: #ffffff;
   --map-ink:         #1c1c1e;

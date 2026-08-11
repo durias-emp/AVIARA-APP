@@ -52,8 +52,12 @@ export const STAINS = [
   { key: 'ocean',  label: 'Ocean',  rgb: '18, 78, 120',   ink: 'light' },
   { key: 'forest', label: 'Forest', rgb: '28, 84, 62',    ink: 'light' },
   { key: 'plum',   label: 'Plum',   rgb: '92, 46, 110',   ink: 'light' },
-  { key: 'ember',  label: 'Ember',  rgb: '188, 84, 44',   ink: 'light' },
-  { key: 'rose',   label: 'Rose',   rgb: '196, 72, 112',  ink: 'light' },
+  // Deepened from a brighter orange and pink. At their original values
+  // white text on them measured 4.0:1 once the bar was composited over pale
+  // chart paper, which is under the 4.5:1 needed to read small digits. These
+  // are the darkest versions that still read as ember and rose.
+  { key: 'ember',  label: 'Ember',  rgb: '141, 63, 33',   ink: 'light' },
+  { key: 'rose',   label: 'Rose',   rgb: '147, 54, 84',   ink: 'light' },
   { key: 'sand',   label: 'Sand',   rgb: '226, 202, 162', ink: 'dark' },
   { key: 'mist',   label: 'Mist',   rgb: '214, 226, 236', ink: 'dark' },
 ]
@@ -85,11 +89,21 @@ function paint(pct, stainKey) {
     // right answer per palette, and writing one here would freeze whichever
     // theme happened to be on when the stain was cleared.
     clear(['--map-panel-rgb', '--app-tile-bg', '--map-ink', '--map-ink-dim',
-      '--map-ink-faint', '--map-icon-ink'])
+      '--map-ink-faint', '--map-icon-ink', '--ifdb-ink', '--ifdb-ink-dim',
+      '--ifdb-ink-faint', '--ifdb-rule'])
     return
   }
 
   root.style.setProperty('--map-panel-rgb', stain.rgb)
+  // The data bar's ink follows the stain at EVERY setting, unlike the drawer's,
+  // because the bar is never sheerer than 55%: the stain is always what its
+  // digits are sitting on, so there is no point below which the theme's ink is
+  // the safer answer.
+  const barLight = stain.ink === 'light'
+  root.style.setProperty('--ifdb-ink', barLight ? '#ffffff' : '#1c1c1e')
+  root.style.setProperty('--ifdb-ink-dim', barLight ? 'rgba(255,255,255,0.74)' : 'rgba(28,28,30,0.66)')
+  root.style.setProperty('--ifdb-ink-faint', barLight ? 'rgba(255,255,255,0.56)' : 'rgba(28,28,30,0.5)')
+  root.style.setProperty('--ifdb-rule', barLight ? 'rgba(255,255,255,0.22)' : 'rgba(28,28,30,0.16)')
   // The tiles take the same colour at a fixed strength rather than at the
   // panel's, so they stay visible as objects on the glass however sheer it is.
   root.style.setProperty('--app-tile-bg', `rgba(${stain.rgb}, 0.28)`)

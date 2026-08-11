@@ -222,7 +222,11 @@ export default function GpsInfoBar({ route, coords, derived, status, lastKnown }
         style={{
           position: 'absolute', bottom: 'calc(6px + var(--map-bottom-inset, 0px))', left: 12, right: 12, zIndex: 500,
           transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
-          background: 'var(--bg-card)', borderRadius: 14, boxShadow: 'var(--shadow-sm)',
+          // Same material as the drawer, with its own floor on the alpha so
+          // the numbers stay readable however sheer the drawer is set.
+          background: 'var(--ifdb-bg, var(--bg-card))',
+          backdropFilter: 'blur(var(--drawer-blur, 0px)) saturate(1.4)',
+          borderRadius: 14, boxShadow: 'var(--shadow-sm)',
           display: 'flex', overflowX: 'auto', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
         }}>
         {shown.map((key, i) => {
@@ -233,19 +237,19 @@ export default function GpsInfoBar({ route, coords, derived, status, lastKnown }
           return (
             <div key={i} style={{
               flexShrink: 0, minWidth: 64, padding: '7px 10px',
-              borderLeft: i === 0 ? 'none' : '0.5px solid var(--border)',
+              borderLeft: i === 0 ? 'none' : '0.5px solid var(--ifdb-rule, var(--border))',
             }}>
-              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--ifdb-ink-faint, var(--text-tertiary))', whiteSpace: 'nowrap' }}>
                 {def.label}
               </div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
-                {v}{u && <span style={{ fontSize: 10, fontWeight: 700, marginLeft: 3, color: 'var(--text-secondary)' }}>{u}</span>}
+              <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ifdb-ink, var(--text))', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
+                {v}{u && <span style={{ fontSize: 10, fontWeight: 700, marginLeft: 3, color: 'var(--ifdb-ink-dim, var(--text-secondary))' }}>{u}</span>}
               </div>
             </div>
           )
         })}
         {status !== 'success' && (
-          <div style={{ padding: '7px 10px', fontSize: 11, color: 'var(--text-tertiary)', alignSelf: 'center', whiteSpace: 'nowrap' }}>
+          <div style={{ padding: '7px 10px', fontSize: 11, color: 'var(--ifdb-ink-faint, var(--text-tertiary))', alignSelf: 'center', whiteSpace: 'nowrap' }}>
             {/* The 1s tick that drives the Zulu clock keeps this age honest
                 too. When a stale fix is on screen (the grey dot), this line
                 is what says how far to trust it. */}
