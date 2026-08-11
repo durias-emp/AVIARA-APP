@@ -14,6 +14,7 @@ import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
 import { usePlannerHost } from '../shared/PlannerHost'
 import { FAA_CHART_CYCLE } from '../shared/faaData'
 import { awcUrl, proxyFetch, fetchAWCResult, lookupAirport, parseMetar, bearingDeg, haversineNm } from '../shared/awc'
+import awcFetch from '../../../lib/awcCache'
 import { resolveWaypoint, saveUserWaypoint, looksLikeAirway, lookupAirway, expandAirway, getAirwayGeometry, getWorldRef } from '../../../lib/waypoints'
 import { sampleRoute } from '../../../lib/corridor'
 import { analyzeTerrain, MOUNTAIN_FT } from '../../../lib/terrain'
@@ -2180,7 +2181,7 @@ export function AltitudeItem({ item, isChecked, onToggle }) {
     const [saved, airport, rawMetar] = await Promise.all([
       get('settings', 'alternates'),
       lookupAirport(f.ident).catch(() => null),
-      fetch(awcUrl('metar', { ids: f.ident, format: 'raw', hours: '3' }))
+      awcFetch(awcUrl('metar', { ids: f.ident, format: 'raw', hours: '3' }))
         .then(r => r.text()).catch(() => ''),
     ])
     if (!airport) { setOpenField(null); return }

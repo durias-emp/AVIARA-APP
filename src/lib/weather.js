@@ -1,13 +1,16 @@
 import { get, put } from './db'
 import { getAirportIdents } from './aerodromes'
+// Same arguments as fetch and the same Response back, so the 204 handling
+// below is untouched. See awcCache for why that mattered here in particular.
+import awcFetch from './awcCache'
 
 function awcUrl(endpoint, params = {}) {
   const qs = new URLSearchParams({ path: endpoint, ...params }).toString()
   return `/api/awc?${qs}`
 }
 
-async function awcFetch(endpoint, params) {
-  const res = await fetch(awcUrl(endpoint, params), { signal: AbortSignal.timeout(12000) })
+async function awcJson(endpoint, params) {
+  const res = await awcFetch(awcUrl(endpoint, params), { signal: AbortSignal.timeout(12000) })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   // AWC answers a station it has nothing for with 204 No Content, and the
   // proxy passes that straight through. That is a successful "nothing here",
@@ -24,7 +27,7 @@ async function awcFetch(endpoint, params) {
 
 export async function fetchMetar(icao) {
   const id = icao.toUpperCase()
-  const data = await awcFetch('metar', { ids: id, format: 'json', hours: '3' })
+  const data = await awcJson('metar', { ids: id, format: 'json', hours: '3' })
   if (!Array.isArray(data) || !data.length) {
     // AWC answered, and the answer was "nothing here". That is a different
     // fact from "the request failed", and the difference decides whether the
@@ -43,7 +46,7 @@ export async function fetchMetar(icao) {
 export async function fetchTaf(icao) {
   const id = icao.toUpperCase()
   try {
-    const data = await awcFetch('taf', { ids: id, format: 'json' })
+    const data = await awcJson('taf', { ids: id, format: 'json' })
     if (!Array.isArray(data) || !data.length) return null
     return data[0]
   } catch {
@@ -71,7 +74,7 @@ async function stationsNear(lat, lon, withinNm) {
   // is a prefilter: the haversine below is what decides.
   const dLat = withinNm / 60
   const dLon = withinNm / (60 * Math.max(0.05, Math.cos(lat * Math.PI / 180)))
-  const data = await awcFetch('metar', {
+  const data = await awcJson('metar', {
     bbox: `${(lat - dLat).toFixed(3)},${(lon - dLon).toFixed(3)},${(lat + dLat).toFixed(3)},${(lon + dLon).toFixed(3)}`,
     format: 'json',
   })

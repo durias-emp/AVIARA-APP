@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { findAirport } from '../lib/aerodromes'
 import { searchAirports, nearbyAirports, placeLabel, loadSearchIndex } from '../lib/airportSearch'
 import { useHomeLocation } from '../context/HomeLocation'
+import awcFetch from '../lib/awcCache'
 
 // Examples deliberately mix codes with place names. The input used to accept
 // four characters and nothing else, so a placeholder cycling ICAO codes was
@@ -200,7 +201,7 @@ export default function AirportPickerModal({
     if (looksLikeIdent(q)) {
       const id = q.toUpperCase()
       try {
-        const res = await fetch(`/api/awc?path=metar&ids=${id}&format=json&hours=3`, { signal: AbortSignal.timeout(8000) })
+        const res = await awcFetch(`/api/awc?path=metar&ids=${id}&format=json&hours=3`, { signal: AbortSignal.timeout(8000) })
         const data = await res.json()
         if (req !== reqRef.current) return
         if (Array.isArray(data) && data.length && data[0]?.icaoId) {

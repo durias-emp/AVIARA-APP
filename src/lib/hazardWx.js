@@ -22,12 +22,13 @@
 // plain feet here so nothing downstream has to know which source it came
 // from.
 import { awcUrl } from '../pages/Checklists/shared/awc'
+import awcFetch from './awcCache'
 import { routeCrossesPoly } from './airspace'
 import { haversineNm } from './corridor'
 
 async function fetchAwcJson(path, params) {
   try {
-    const res = await fetch(awcUrl(path, params), { signal: AbortSignal.timeout(10000) })
+    const res = await awcFetch(awcUrl(path, params), { signal: AbortSignal.timeout(10000) })
     if (!res.ok) return null
     return await res.json()
   } catch {

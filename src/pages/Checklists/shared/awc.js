@@ -1,4 +1,6 @@
 /* ── Airport lookup: AWC proxy + bundled OurAirports details ── */
+import awcFetch from '../../../lib/awcCache'
+
 const AWC = '/api/awc'  // Vercel serverless proxy. No CORS issues
 
 // Build URL for our proxy: /api/awc?path=airport&ids=KJFK&format=json
@@ -132,7 +134,7 @@ export async function fetchAWCResult(id) {
   let reachable = false
 
   const ask = async (path, params) => {
-    const res = await fetch(awcUrl(path, params), { signal: AbortSignal.timeout(8000) })
+    const res = await awcFetch(awcUrl(path, params), { signal: AbortSignal.timeout(8000) })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const text = await res.text()
 

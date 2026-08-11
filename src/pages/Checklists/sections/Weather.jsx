@@ -4,6 +4,7 @@ import { get, put } from '../../../lib/db'
 import { scopedSettingsKey } from '../../../lib/aircraft'
 import { useActiveAircraft } from '../../../context/ActiveAircraft'
 import { ExpandableCard, DoneButton, Bone } from '../shared/ui'
+import awcFetch from '../../../lib/awcCache'
 import { FAA_AIRPORTS, FAA_DTPP_BASE } from '../shared/faaData'
 import FAA_CHARTS_DATA from '../../../data/faa_charts.json'
 import { awcUrl, proxyJSON, lookupAirport, parseMetar, bearingDeg, haversineNm } from '../shared/awc'
@@ -93,7 +94,7 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
       const ids = nearby.map(a => a.icao).join(',')
       let metars = {}
       try {
-        const mRes  = await fetch(awcUrl('metar', { ids, format: 'json', hours: '3' }), { signal: AbortSignal.timeout(8000) })
+        const mRes  = await awcFetch(awcUrl('metar', { ids, format: 'json', hours: '3' }), { signal: AbortSignal.timeout(8000) })
         const mData = await mRes.json()
         if (Array.isArray(mData)) mData.forEach(m => { metars[m.station_id || m.icaoId] = m.raw_text || '' })
       } catch { /* ignore */ }
@@ -149,7 +150,7 @@ export function AlternatesItem({ item, isChecked, onToggle }) {
     try {
       const [apt, metarRaw] = await Promise.allSettled([
         lookupAirport(icao),
-        fetch(awcUrl('metar', { ids: icao, format: 'raw', hours: '3' })).then(r => r.text()),
+        awcFetch(awcUrl('metar', { ids: icao, format: 'raw', hours: '3' })).then(r => r.text()),
       ])
       // The lookup's own reason, not a fresh guess at it. Rewriting every
       // rejection as "Airport not found" told a pilot with no signal that the

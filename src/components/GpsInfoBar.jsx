@@ -4,6 +4,7 @@ import { getAirports } from '../lib/aerodromes'
 import { findNearestNavaid } from '../lib/waypoints'
 import { getGroundElevationFt } from '../lib/terrain'
 import { bearingDeg, haversineNm, crossTrackNm, fmtAvCoord, horizonNm } from '../lib/geo'
+import awcFetch from '../lib/awcCache'
 
 // Field catalog — grouped and ordered to match the picker sheet. `need`
 // marks what has to exist for a value to compute: 'live' (GPS alone),
@@ -115,7 +116,7 @@ export default function GpsInfoBar({ route, coords, derived, status, lastKnown }
     getGroundElevationFt(coords.lat, coords.lon).then(setGroundElevFt).catch(() => {})
 
     const pad = 0.6
-    fetch(`/api/awc?path=metar&format=json&bbox=${coords.lat - pad},${coords.lon - pad},${coords.lat + pad},${coords.lon + pad}`)
+    awcFetch(`/api/awc?path=metar&format=json&bbox=${coords.lat - pad},${coords.lon - pad},${coords.lat + pad},${coords.lon + pad}`)
       .then(r => r.ok ? r.json() : [])
       .then(list => {
         if (!Array.isArray(list) || !list.length) return

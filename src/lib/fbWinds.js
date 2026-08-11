@@ -16,6 +16,7 @@
 
 import STATIONS from '../data/geo/fb_stations.json'
 import { haversineNm } from './corridor'
+import awcFetch from './awcCache'
 
 const AWC = '/api/awc'
 
@@ -214,7 +215,7 @@ export async function fbWindAt(lat, lon, altFt, { departAtISO = null, timeoutMs 
 
   let stations
   try {
-    const res = await fetch(`${AWC}?path=windtemp&region=us&fcst=${fcstFor(departAtISO)}`,
+    const res = await awcFetch(`${AWC}?path=windtemp&region=us&fcst=${fcstFor(departAtISO)}`,
       { signal: AbortSignal.timeout(timeoutMs) })
     if (!res.ok) return null
     stations = parseBulletin(await res.text())
@@ -256,7 +257,7 @@ export async function loadFbWinds(samples, { departAtISO = null, maxAltFt = 1800
   let stations
   try {
     const url = `${AWC}?path=windtemp&region=us&fcst=${fcstFor(departAtISO)}`
-    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+    const res = await awcFetch(url, { signal: AbortSignal.timeout(timeoutMs) })
     if (!res.ok) return { status: 'unavailable' }
     stations = parseBulletin(await res.text())
   } catch {

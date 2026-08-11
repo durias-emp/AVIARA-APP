@@ -18,6 +18,7 @@ import L from 'leaflet'
 import { FLTCAT } from '../lib/weather'
 import { getAirports, getAirportDetails, getAuxAerodromes } from '../lib/aerodromes'
 import PopupActions from './PopupActions'
+import awcFetch from '../lib/awcCache'
 
 // The three parts every field popup is made of.
 //
@@ -99,7 +100,7 @@ export const FlightCategoryLayer = memo(function FlightCategoryLayer() {
       if (z < 6) { setStations([]); return }
       const b = map.getBounds()
       const bbox = `${b.getSouth().toFixed(2)},${b.getWest().toFixed(2)},${b.getNorth().toFixed(2)},${b.getEast().toFixed(2)}`
-      fetch(`/api/awc?path=metar&format=json&bbox=${bbox}`)
+      awcFetch(`/api/awc?path=metar&format=json&bbox=${bbox}`)
         .then(r => r.ok ? r.json() : [])
         .then(list => setStations(Array.isArray(list) ? list.slice(0, 400) : []))
         .catch(() => {})

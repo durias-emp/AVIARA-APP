@@ -16,6 +16,7 @@
 // blend of a forecast and an inference.
 
 import { sampleRoute } from './corridor'
+import awcFetch from './awcCache'
 
 const AWC = '/api/awc'
 const US_BOXES = [
@@ -48,7 +49,7 @@ function ft(v, fallback) {
 
 async function fetchGairmet(hazard, timeoutMs) {
   const url = `${AWC}?path=gairmet&format=json&hazard=${hazard}`
-  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+  const res = await awcFetch(url, { signal: AbortSignal.timeout(timeoutMs) })
   if (!res.ok) throw new Error(String(res.status))
   // AWC answers 204 with an empty body when the product is current and holds
   // nothing: no icing G-AIRMETs anywhere in the country, which is ordinary on
