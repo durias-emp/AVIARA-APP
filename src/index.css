@@ -870,8 +870,12 @@ input[type="number"]::-webkit-outer-spin-button {
    reach for these, not for a hex value. */
 :root {
   --map-panel:       rgba(255,255,255,0.96);
-  /* The same panel, letting the map through at full screen. */
-  --map-panel-sheer: color-mix(in srgb, rgba(255,255,255,0.96) 62%, transparent);
+  /* The same panel, letting the map through. Written as a plain alpha rather
+     than a colour mixed into a colour that already had one: the old form was
+     0.96 alpha mixed 62% with nothing, which is 0.60 opaque and reads as
+     neither number. This IS the opacity. 0.45 light, and the blur behind it is
+     what keeps the labels legible over a busy chart. */
+  --map-panel-sheer: rgba(255,255,255,0.45);
   --map-panel-solid: #ffffff;
   --map-ink:         #1c1c1e;
   --map-ink-dim:     rgba(60,60,67,0.6);
@@ -895,8 +899,9 @@ input[type="number"]::-webkit-outer-spin-button {
 
 [data-theme="dark"], [data-theme="red"] {
   --map-panel:       rgba(28,28,30,0.94);
-  /* The same panel, letting the map through at full screen. */
-  --map-panel-sheer: color-mix(in srgb, rgba(28,28,30,0.94) 62%, transparent);
+  /* Dark carries a touch more than light: white text over a dark panel loses
+     contrast faster against a bright chart than black text over a light one. */
+  --map-panel-sheer: rgba(28,28,30,0.50);
   --map-panel-solid: #1c1c1e;
   --map-ink:         #f2f2f7;
   --map-ink-dim:     rgba(235,235,245,0.62);

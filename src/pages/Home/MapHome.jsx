@@ -3316,7 +3316,10 @@ function MapHomeInner() {
         // the ground is never quite gone, which is the difference between a
         // sheet covering the map and one resting on it.
         background: 'var(--map-panel-sheer)',
-        backdropFilter: 'blur(26px) saturate(1.4)',
+        // More blur as the panel gets sheerer: the transparency is what shows
+        // the map through, and the blur is the whole reason anything on top of it
+        // is still readable.
+        backdropFilter: 'blur(32px) saturate(1.5)',
         borderRadius: `${radius}px ${radius}px 0 0`,
         boxShadow: '0 -4px 24px rgba(0,0,0,0.10)',
         display: 'flex', flexDirection: 'column',
