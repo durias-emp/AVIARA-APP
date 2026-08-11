@@ -2909,6 +2909,15 @@ function MapHomeInner() {
             // The altitude chosen up here is the route's altitude, so the
             // planner opens on the level the pilot already picked.
             onAltitude={ft => setRoute(r => (r ? { ...r, cruiseAlt: ft } : r))}
+            // The alternate rides with the route, so the planner opens on the
+            // same one and the figures never see it as a leg.
+            alternate={route?.alternate ?? null}
+            onAlternate={id => setRoute(r => {
+              if (!r) return r
+              const next = { ...r, alternate: id }
+              put('settings', { key: 'route', ...next }).catch(() => {})
+              return next
+            })}
             detailOpen={wxDetail} onDetailChange={setWxDetail}
             style={{ maxHeight: topCardMaxH }}
             expanded={topOpen} onExpandedChange={setTopOpen}

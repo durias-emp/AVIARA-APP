@@ -18,6 +18,14 @@ export const VFR_MAX_FT = 17500
 // FL600 is the top of Class A. Above it is Class E again, but an aircraft that
 // can get there is not being planned in this box.
 export const IFR_MAX_FT = 60000
+
+// True for a level that is in the list only because it is the ceiling, rather
+// than because the hemispheric rule produced it.
+export function isCeilingOnly(ft, { eastbound = true } = {}) {
+  if (ft !== IFR_MAX_FT) return false
+  const start = eastbound ? 45000 : 43000
+  return (ft - start) % 4000 !== 0
+}
 // Where feet stop being spoken and flight levels start.
 export const FL_FLOOR_FT = 18000
 
@@ -63,7 +71,13 @@ export function cruisingAltitudes({ rules = 'VFR', eastbound = true } = {}) {
     if ((ft / 1000) % 2 === 1 === wantOdd) out.push(ft)
   }
   // Above FL410, eastbound is FL450, FL490 ... and westbound FL430, FL470 ...
-  for (let ft = wantOdd ? 45000 : 43000; ft <= IFR_MAX_FT; ft += 4000) out.push(ft)
+  for (let ft = wantOdd ? 45000 : 43000; ft < IFR_MAX_FT; ft += 4000) out.push(ft)
+  // FL600 itself, which the sequence above steps over in both directions:
+  // eastbound reaches FL570 then FL610, westbound FL590 then FL630. It is
+  // offered anyway because it is the top of Class A and a pilot asking for the
+  // ceiling means the ceiling. It is NOT a hemispheric cruising level, and the
+  // box says so rather than letting the list imply otherwise.
+  if (!out.includes(IFR_MAX_FT)) out.push(IFR_MAX_FT)
   return out
 }
 

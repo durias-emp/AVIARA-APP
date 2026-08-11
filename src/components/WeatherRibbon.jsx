@@ -10,7 +10,7 @@
 // uses. A second weather path would drift, and two answers to "is it VFR" is
 // worse than none.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   loadWeather, parseFltCat, parseWind, parseVisib, parseCeiling, parseTemp, parseDewp,
@@ -65,6 +65,9 @@ export default function WeatherRibbon({
   // What the figures need that this strip has no business working out itself:
   // the aircraft's cruise numbers and the planned departure time.
   cruiseTas, burnGph, etd, onAltitude,
+  // The alternate, kept with the route rather than here: it is part of the
+  // flight, and the planner has to see the same one.
+  alternate = null, onAlternate,
   // The route, and the way to set one. This strip started life as a weather
   // readout for the home field; a route bar is what a pilot actually reaches
   // for at the top of a moving map, and the conditions belong to whichever
@@ -128,6 +131,29 @@ export default function WeatherRibbon({
     onRouteText?.(points.length >= 2 ? points : null)
   }
 
+  // Departure, arrival, alternate: the three fields a pilot checks before
+  // going, in the order they matter. Built from whatever exists, so a route
+  // with no alternate has two pages rather than an empty third, and no route
+  // at all has one showing the home field.
+  const wxPages = useMemo(() => {
+    const out = []
+    if (route?.length >= 2) {
+      out.push({ key: 'dep', label: 'Departure', id: route[0].name })
+      out.push({ key: 'dest', label: 'Arrival', id: route[route.length - 1].name })
+    } else if (icao) {
+      out.push({ key: 'home', label: 'Home', id: icao })
+    }
+    if (alternate) out.push({ key: 'alt', label: 'Alternate', id: alternate })
+    return out
+  }, [route, icao, alternate])
+  const [wxPage, setWxPage] = useState(0)
+  // Its own draft, so a half-typed identifier is not resolved on every letter.
+  const [altDraft, setAltDraft] = useState(alternate ?? '')
+  // Clamped rather than reset: removing the alternate while looking at it
+  // should land on the arrival, not throw the pilot back to the departure.
+  const page = Math.min(wxPage, Math.max(0, wxPages.length - 1))
+  const shownIcao = wxPages[page]?.id ?? icao
+
   const [picker, setPicker] = useState(false)  // choosing a different base
   const [now, setNow] = useState(() => Date.now())
 
@@ -153,21 +179,21 @@ export default function WeatherRibbon({
   // load() flips the loading flag immediately, and a setState synchronous with
   // the effect makes React render twice before paint for no benefit.
   useEffect(() => {
-    if (!icao) return
+    if (!shownIcao) return
     let cancelled = false
-    queueMicrotask(() => { if (!cancelled) load(icao) })
+    queueMicrotask(() => { if (!cancelled) load(shownIcao) })
     return () => { cancelled = true }
-  }, [icao, load])
+  }, [shownIcao, load])
 
   // Coming back to the app after a while is exactly when the observation on
   // screen is most likely to be out of date.
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') load(icao)
+      if (document.visibilityState === 'visible') load(shownIcao)
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [icao, load])
+  }, [shownIcao, load])
 
   // No base set yet. The strip becomes the invitation to set one rather than
   // disappearing: a pilot who has not chosen a home airport is exactly the one
@@ -353,6 +379,32 @@ export default function WeatherRibbon({
                   Not found: {routeBad.join(', ')}
                 </div>
               )}
+
+              {/* The alternate, under the route rather than in it. It is not a
+                  point on the way: putting it in the route string would draw a
+                  line to it and add its distance to the trip, which is the one
+                  thing an alternate must not do to the figures. */}
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                <span style={{
+                  fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                  color: 'var(--map-ctrl-ink-faint, var(--map-ink-faint))', flexShrink: 0,
+                }}>Alternate</span>
+                <input
+                  value={altDraft}
+                  onChange={e => setAltDraft(e.target.value.toUpperCase())}
+                  onBlur={() => onAlternate?.(altDraft.trim() || null)}
+                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                  onPointerDown={e => e.stopPropagation()}
+                  placeholder="Add alternate"
+                  spellCheck={false}
+                  style={{
+                    flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 10,
+                    border: '1px solid var(--map-hairline)', background: 'var(--map-fill-soft)',
+                    color: 'var(--map-ctrl-ink, var(--map-ink))',
+                    fontSize: 13, fontWeight: 700, fontFamily: 'monospace',
+                    letterSpacing: '0.06em', outline: 'none',
+                  }} />
+              </div>
             </div>
           )}
 
@@ -369,6 +421,30 @@ export default function WeatherRibbon({
                 wpts: route.slice(1, -1),
               }}
               etd={etd} cruiseTas={cruiseTas} burnGph={burnGph} onAltitude={onAltitude} />
+          )}
+
+          {/* Which field the conditions below are for. Tabs rather than a
+              swipe, because unlike the route board's two pages these are not
+              the same information twice: a pilot glancing at this has to know
+              WHICH aerodrome is reporting, and a dot at the bottom does not
+              say that. */}
+          {open && wxPages.length > 1 && (
+            <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px' }}>
+              {wxPages.map((pg, i) => (
+                <button key={pg.key} onClick={() => setWxPage(i)} style={{
+                  flex: 1, minWidth: 0, padding: '6px 4px', borderRadius: 8, cursor: 'pointer',
+                  border: 'none',
+                  background: i === page ? 'var(--map-ctrl-ink, var(--map-ink))' : 'var(--map-fill-soft)',
+                  color: i === page ? 'var(--map-ctrl-bg, var(--map-panel))' : 'var(--map-ctrl-ink, var(--map-ink))',
+                  fontSize: 10.5, fontWeight: 800, letterSpacing: '0.02em',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {pg.label}
+                  <span style={{ display: 'block', fontSize: 9.5, fontWeight: 700, opacity: 0.75,
+                    fontFamily: 'monospace' }}>{pg.id}</span>
+                </button>
+              ))}
+            </div>
           )}
 
           <div style={{
@@ -432,9 +508,9 @@ export default function WeatherRibbon({
 
     {detailOpen && createPortal(
       <WeatherDetailOverlay
-        wx={wx} icao={icao} loading={loading} error={error} isStale={stale}
+        wx={wx} icao={shownIcao} loading={loading} error={error} isStale={stale}
         onClose={() => onDetailChange?.(false)}
-        onRefresh={() => load(icao)} />,
+        onRefresh={() => load(shownIcao)} />,
       document.body,
     )}
   </>)

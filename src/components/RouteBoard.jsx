@@ -14,7 +14,7 @@ import { analyzeTerrain } from '../lib/terrain'
 import { haversineNm, bearingDeg } from '../lib/geo'
 import { magneticVariation, toMagnetic } from '../lib/magvar'
 import {
-  cruisingAltitudes, suggestAltitude, formatAltitude, isEastbound,
+  cruisingAltitudes, suggestAltitude, formatAltitude, isEastbound, isCeilingOnly,
 } from '../lib/cruisingAltitudes'
 import { SegControl } from './SegControl'
 
@@ -284,7 +284,9 @@ export default function RouteBoard({ route, etd, cruiseTas, burnGph, onAltitude 
             fontSize: 14, fontWeight: 800, fontVariantNumeric: 'tabular-nums', outline: 'none',
           }}>
           {altitudes.map(a => (
-            <option key={a} value={a}>{formatAltitude(a)}</option>
+            <option key={a} value={a}>
+              {formatAltitude(a)}{isCeilingOnly(a, { eastbound }) ? '  (top of Class A)' : ''}
+            </option>
           ))}
         </select>
         {/* What the app chose and why, so a preselected level is a suggestion
@@ -297,6 +299,7 @@ export default function RouteBoard({ route, etd, cruiseTas, burnGph, onAltitude 
             ? `${String(Math.round(magCourse)).padStart(3, '0')}° M · ${eastbound ? 'odd' : 'even'}`
             : 'course unknown'}
           {alt == null && suggested != null ? ' · suggested' : ''}
+          {isCeilingOnly(effAlt, { eastbound }) ? ' · not a hemispheric level' : ''}
         </span>
       </div>
 
