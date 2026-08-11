@@ -49,8 +49,13 @@ function clientLogSink() {
         req.on('data', (c) => { body += c })
         req.on('end', () => {
           try {
-            const { kind, detail } = JSON.parse(body)
-            console.log(`\n[client:${kind}] ${detail}`)
+            const { kind, detail, at } = JSON.parse(body)
+            // The time matters more than it looks. Without it a report from
+            // before a fix and one from after are the same two lines, and the
+            // question "is this still happening" cannot be answered from the
+            // log at all.
+            const clock = at ? new Date(at).toLocaleTimeString() : 'unknown'
+            console.log(`\n[client ${clock}:${kind}] ${detail}`)
           } catch { console.log('\n[client] ' + body.slice(0, 1000)) }
           res.statusCode = 204
           res.end()

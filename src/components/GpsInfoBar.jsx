@@ -220,7 +220,7 @@ export default function GpsInfoBar({ route, coords, derived, status, lastKnown }
       <div
         onClick={() => setPicking(true)}
         style={{
-          position: 'absolute', bottom: 'calc(16px + var(--map-bottom-inset, 0px))', left: 12, right: 12, zIndex: 500,
+          position: 'absolute', bottom: 'calc(6px + var(--map-bottom-inset, 0px))', left: 12, right: 12, zIndex: 500,
           transition: 'bottom var(--map-inset-duration, 0ms) cubic-bezier(0.32, 0.72, 0, 1)',
           background: 'var(--bg-card)', borderRadius: 14, boxShadow: 'var(--shadow-sm)',
           display: 'flex', overflowX: 'auto', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',

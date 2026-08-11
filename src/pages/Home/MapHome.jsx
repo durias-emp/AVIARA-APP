@@ -981,7 +981,10 @@ function MapHomeInner() {
   // 0 is one of the stops rather than a separate open/closed flag, because it
   // is one: the arrow button hides the drawer, and hiding it is a glance at
   // the map rather than a change of screen.
-  const [snap, setSnap] = useState(25)
+  // Seeded with the module's rung and corrected to the measured one as soon as
+  // the dock reports its height, which is the first layout. A number here is
+  // unavoidable: the dock cannot be measured before it exists.
+  const [snap, setSnap] = useState(SHEET_STOPS[0])
   const sheetOpen = snap !== 0
   // Where a hidden drawer comes back to. Whatever it was doing before it was
   // put away, since putting it away was about seeing the map, not about
@@ -1071,7 +1074,7 @@ function MapHomeInner() {
   // small enough to be a strip along the bottom; at the app page it is a phone
   // dock. One number, transitioned by the tiles themselves, so the change is a
   // smooth grow rather than a re-layout.
-  const dockTile = snap >= 40 ? 62 : 52
+  const dockTile = snap >= 40 ? 62 : 44
   // The height every stop is a fraction of, measured off the shell itself
   // rather than read from window.innerHeight.
   //
@@ -1093,6 +1096,8 @@ function MapHomeInner() {
   // route card and losing the action row, but nothing is solved against it any
   // more now that the photograph it used to size is gone.
   const [, grabRef] = useMeasuredHeight()
+  // The dock's own height, which is what the closed stop is sized from.
+  const [dockH, dockRef] = useMeasuredHeight()
   // The identity strip is a fixed height now, so nothing downstream solves
   // for it; the ref stays only because the strip still reports itself.
   const [, acTextRef] = useMeasuredHeight()
@@ -1357,7 +1362,11 @@ function MapHomeInner() {
   // question as what theme the app is in. Anything drawn on top of the map has
   // to contrast with this, not with the sheet.
   const darkBasemap = isDark && !chartOverBasemap
-  const expanded = snap > 25
+  // "Higher than the resting rung", expressed against the ladder's own middle
+  // rung rather than against the closed one. The closed rung is measured and
+  // therefore declared much further down, and reading it here would be reading
+  // a const above its own line.
+  const expanded = snap >= 40
 
   // Warm the planner while the pilot is looking at the map.
   //
@@ -2191,7 +2200,25 @@ function MapHomeInner() {
   // The resting stop's height, read off the ladder rather than written out
   // again. It was a literal 25 and stayed 25 when the closed stop became 14,
   // so everything positioned against it sat a tenth of a screen too high.
-  const restPx = vh - stopY(vh, SHEET_STOPS[0])
+  // The closed stop is MEASURED, not a fraction of the screen.
+  //
+  // A percentage cannot describe "as tall as the dock and no taller": the dock
+  // is a fixed number of pixels, so any fraction that fits it on a phone leaves
+  // a field of empty panel on a desktop, and any fraction tight enough for a
+  // desktop clips the labels on a phone. Both were tried. So the rung is
+  // computed from the dock's own height each time it changes, and the ladder is
+  // built here rather than taken from the module.
+  const closedPct = vh > 0
+    ? Math.max(6, Math.min(30, ((dockH || 96) + safeBottom + GRAB_ABOVE_ROUTE) / vh * 100))
+    : SHEET_STOPS[0]
+  const stops = useMemo(() => [closedPct, 40, 100], [closedPct])
+  // The rung moves when the dock is measured or the window resizes, and a snap
+  // left on the old value would leave the sheet parked between rungs. Derived
+  // rather than corrected in an effect: the resting snap IS the closed rung, so
+  // reading it that way needs no write and cannot lag a resize by a frame.
+  const effSnap = (snap === 40 || snap === 100) ? snap : closedPct
+  const CLOSED = closedPct
+  const restPx = vh - stopY(vh, closedPct)
 
   // The stops own their content, and this is what holds them to it.
   //
@@ -2257,7 +2284,9 @@ function MapHomeInner() {
   // 0 is full screen and larger numbers are further down.
   // One line each way now that a stop is a number: where the drawer is
   // resting, and where it is actually drawn once a finger is on it.
-  const restY = stopY(vh, snap)
+  // effSnap, not snap: the closed rung is measured, so a snap still holding the
+  // seeded percentage would park the sheet at a height the dock no longer needs.
+  const restY = stopY(vh, effSnap)
   // The keyboard does not move the shell, so it cannot be allowed to move the
   // stops, but it does cover the bottom of it. The drawer rises by exactly
   // what is covered, never past the top of the screen, so the field being
@@ -2431,8 +2460,8 @@ function MapHomeInner() {
     // down means what it means everywhere else, which is a smaller drawer.
     // Leaving the plan is the X's job.
     const target = flick
-      ? flickTarget(snap, up, SHEET_STOPS)
-      : nearestStop(vh, d.lastY, SHEET_STOPS)
+      ? flickTarget(snap, up, stops)
+      : nearestStop(vh, d.lastY, stops)
 
     // Pulling a route open opens its flight plan.
     //
@@ -2447,7 +2476,7 @@ function MapHomeInner() {
     // The stop the drag actually asked for, not a fixed one. A hard pull from
     // 25 that lands on 80 opened the plan at 50 and threw the other 30 away,
     // which is the drawer ignoring the gesture that opened it.
-    if (actionsFloat && snap === 25 && target > 25) { openPlanner(target); return }
+    if (actionsFloat && snap === CLOSED && target > CLOSED) { openPlanner(target); return }
 
     setSnap(target)
   }
@@ -2916,7 +2945,11 @@ function MapHomeInner() {
           Fed routeWpts rather than the route object: the bar's next-waypoint
           and destination fields walk a list of points, and that is the list
           the map is actually drawing. */}
-      {!expanded && (
+      {/* Glued to the top edge of the drawer at every stop it can be seen at,
+          which is the point of it: the figures a pilot flies on do not move
+          around the screen as the drawer does. It goes only at full screen,
+          where the drawer is the screen and there is no map left to sit over. */}
+      {snap < 100 && (
         <GpsInfoBar route={routeWpts} coords={pos} derived={liveDerived}
           status={liveStatus} lastKnown={lastKnown} />
       )}
@@ -3110,7 +3143,7 @@ function MapHomeInner() {
         // when those are out too, rather than on top of them. One expression
         // for both heights now that the stop is the only thing that decides it,
         // so the card slides between them instead of jumping.
-        bottom={`${vh - stopY(vh, Math.min(snap, 50)) + (snap === 25 && recording ? 132 : 0) + 10}px`}>
+        bottom={`${vh - stopY(vh, Math.min(snap, 50)) + (snap === CLOSED && recording ? 132 : 0) + 10}px`}>
         {actionRow(true)}
       </FloatingCard>
 
@@ -3366,7 +3399,7 @@ function MapHomeInner() {
               screen it is nowhere at all rather than back here on top of the
               plan. See actionsInDrawer, where the whole rule is written out. */}
           {actionsInDrawer && (
-            <div style={{
+            <div ref={dockRef} style={{
               paddingBottom: snap >= 40 ? 4 : 0,
               transition: 'padding-bottom 320ms cubic-bezier(0.32,0.72,0,1)',
             }}>
@@ -3391,7 +3424,7 @@ function MapHomeInner() {
               onOpen={openPlanner} onRemoveLeg={removeRouteLeg}
               onRemoveEnd={removeRouteEnd}
               onReorder={reorderRouteLeg} onAddStop={addRouteStop} onFocusPoint={focusRoutePoint}
-              fillTo={snap === 25
+              fillTo={snap === CLOSED
                 // The hint's reserve only when there is a hint. It goes quiet
                 // while a route is on the drawer, and 28px was still being
                 // held back for a line that no longer renders, which is 28px
