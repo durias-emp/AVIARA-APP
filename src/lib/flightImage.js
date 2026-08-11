@@ -14,7 +14,12 @@ export const SHARE_SIZES = {
   story:  { w: 1080, h: 1920, label: 'Story' },    // stories, reels, TikTok
 }
 
-const BRAND = { name: 'AVIARA', accent: '#ff6b35' }
+// Magenta, and not the app's orange. The track on a shared card is competing
+// with whatever photograph a pilot chose behind it, and magenta holds against
+// foliage, tarmac, cloud and evening light in a way a warm orange does not:
+// almost nothing outdoors is this colour, which is exactly what a line drawn
+// over the outdoors needs.
+const BRAND = { name: 'AVIARA', accent: '#ff2d95' }
 
 // The basemap the app already draws with, so a shared image looks like the
 // screen it came from. Requested with CORS because a canvas that has drawn an
@@ -122,54 +127,72 @@ function drawTrackPath(ctx, points, { glow }) {
 }
 
 function drawFurniture(ctx, { width, height, mode, stats }) {
+  // Over a photograph or tiles the text needs its own ground. On transparency
+  // it must not paint one, or the "no background" mode has a background.
   const light = mode === 'bare'
   const ink = light ? '#0d1430' : '#fff'
-  const sub = light ? 'rgba(13,20,48,0.62)' : 'rgba(255,255,255,0.82)'
+  const sub = light ? 'rgba(13,20,48,0.62)' : 'rgba(255,255,255,0.88)'
 
-  // Over tiles the text needs its own ground; on transparency it must not
-  // paint one, or the "no background" mode has a background.
   if (!light) {
-    const grad = ctx.createLinearGradient(0, height * 0.58, 0, height)
-    grad.addColorStop(0, 'rgba(0,0,0,0)')
-    grad.addColorStop(1, 'rgba(0,0,0,0.72)')
-    ctx.fillStyle = grad
-    ctx.fillRect(0, height * 0.58, width, height * 0.42)
+    // Top and bottom, not bottom alone: the figures sit high on the card and a
+    // gradient only under them leaves white text on whatever the sky happened
+    // to be.
+    const top = ctx.createLinearGradient(0, 0, 0, height * 0.52)
+    top.addColorStop(0, 'rgba(0,0,0,0.55)')
+    top.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = top
+    ctx.fillRect(0, 0, width, height * 0.52)
+
+    const bottom = ctx.createLinearGradient(0, height * 0.72, 0, height)
+    bottom.addColorStop(0, 'rgba(0,0,0,0)')
+    bottom.addColorStop(1, 'rgba(0,0,0,0.6)')
+    ctx.fillStyle = bottom
+    ctx.fillRect(0, height * 0.72, width, height * 0.28)
   }
 
-  const pad = Math.round(width * 0.075)
-  let y = height - pad
-
-  ctx.textAlign = 'left'
-  ctx.fillStyle = sub
-  ctx.font = '600 30px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif'
-  ctx.fillText(BRAND.name, pad, y)
-  y -= 46
-
+  // Label above value, stacked down the middle. Each figure is its own line
+  // rather than a row of columns, because four numbers across a phone-width
+  // card leaves each one too small to read at a glance in a feed, which is the
+  // only place this picture is ever seen.
   const cells = [
-    stats.clock && ['TIME', stats.clock],
-    stats.distanceNm > 0 && ['DISTANCE', `${stats.distanceNm.toFixed(1)} NM`],
-    stats.date && ['DATE', stats.date],
-  ].filter(Boolean)
+    ['Distance Flown', stats.distance],
+    ['Top Ground Speed', stats.topSpeed],
+    ['Flight Time', stats.clock],
+    ['Total Pilot Time', stats.totalTime],
+  ].filter(([, v]) => v)
 
-  const VALUE_PX = 56
+  const LABEL_PX = Math.round(width * 0.030)
+  const VALUE_PX = Math.round(width * 0.082)
+  const GROUP = Math.round(VALUE_PX * 1.72)
+
+  ctx.textAlign = 'center'
+  const cx = width / 2
+  let y = Math.round(height * 0.10) + LABEL_PX
+
+  cells.forEach(([label, value]) => {
+    ctx.fillStyle = sub
+    ctx.font = `700 ${LABEL_PX}px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif`
+    ctx.fillText(label, cx, y)
+
+    ctx.fillStyle = ink
+    ctx.font = `800 ${VALUE_PX}px -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif`
+    ctx.fillText(value, cx, y + VALUE_PX * 0.98)
+
+    y += GROUP
+  })
+
+  // The name at the foot, centred under the track, where the pilot's eye
+  // finishes rather than where it starts.
   ctx.fillStyle = ink
-  ctx.font = `800 ${VALUE_PX}px -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif`
-  const colW = (width - pad * 2) / Math.max(1, cells.length)
-  cells.forEach(([, value], i) => ctx.fillText(value, pad + colW * i, y))
-
-  // Clear of the value's ascender, not merely of its baseline. Canvas text is
-  // positioned by baseline, so a gap measured from there puts the label
-  // straight through the top of the digits above it.
-  y -= VALUE_PX * 0.78 + 14
-  ctx.fillStyle = sub
-  ctx.font = '700 22px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif'
-  cells.forEach(([label], i) => ctx.fillText(label, pad + colW * i, y))
+  ctx.font = `800 ${Math.round(width * 0.052)}px -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif`
+  ctx.textAlign = 'center'
+  ctx.fillText(BRAND.name, cx, height - Math.round(height * 0.055))
 
   if (mode === 'map') {
     ctx.textAlign = 'right'
     ctx.fillStyle = 'rgba(255,255,255,0.72)'
     ctx.font = '500 18px -apple-system, BlinkMacSystemFont, sans-serif'
-    ctx.fillText(TILE_ATTRIBUTION, width - pad, height - pad + 34)
+    ctx.fillText(TILE_ATTRIBUTION, width - Math.round(width * 0.05), height - 24)
   }
 }
 
@@ -179,7 +202,16 @@ function drawFurniture(ctx, { width, height, mode, stats }) {
 // The map mode falls back to bare rather than failing: a tile server that is
 // slow, blocked or missing CORS headers should cost the background, not the
 // picture.
-export async function renderFlightImage(entry, { mode = 'bare', size = 'square' } = {}) {
+// Top ground speed is read off the track rather than stored: the recorder
+// samples speed with every point, so the fastest the aircraft went is already
+// in hand and does not need a second number kept in step with it.
+function topSpeedKt(track) {
+  return track.reduce((best, p) => (p.speedKt > best ? p.speedKt : best), 0)
+}
+
+export async function renderFlightImage(entry, {
+  mode = 'bare', size = 'square', photo = null, totalPilotHours = null,
+} = {}) {
   const track = (entry?.track ?? []).filter(p => p && p.lat != null && p.lon != null)
   if (track.length < 2) throw new Error('This flight has no track to draw.')
 
@@ -191,6 +223,23 @@ export async function renderFlightImage(entry, { mode = 'bare', size = 'square' 
 
   let usedMode = mode
   let placement = null
+
+  // The pilot's own picture, covering the canvas the way a background should:
+  // scaled to fill and centre-cropped, never squashed to the frame. A portrait
+  // photo in a square card loses its top and bottom, which is what every app
+  // that does this does, and is far better than an aircraft made narrow.
+  if (mode === 'photo' && photo) {
+    try {
+      const img = await loadImage(photo)
+      const scale = Math.max(width / img.width, height / img.height)
+      const dw = img.width * scale
+      const dh = img.height * scale
+      ctx.drawImage(img, (width - dw) / 2, (height - dh) / 2, dw, dh)
+    } catch {
+      usedMode = 'bare'
+    }
+  }
+
   if (mode === 'map') {
     try {
       placement = await drawTiles(ctx, track, width, height)
@@ -208,16 +257,27 @@ export async function renderFlightImage(entry, { mode = 'bare', size = 'square' 
     }))
     drawTrackPath(ctx, pts, { glow: true })
   } else {
-    const { points } = projectTrack(track, { width, height: height * 0.78, padding: 0.14 })
-    drawTrackPath(ctx, points, { glow: false })
+    // Placed low on the card, under the figures, the way the stacked numbers
+    // above it leave room for. Glowing over a photograph, because a bare line
+    // on somebody's holiday snap disappears into it.
+    const overlay = usedMode === 'photo'
+    const { points } = projectTrack(track, {
+      width, height: height * 0.42, padding: 0.16,
+    })
+    const shift = height * 0.46
+    drawTrackPath(ctx, points.map(p => ({ x: p.x, y: p.y + shift })), { glow: overlay })
   }
 
   drawFurniture(ctx, {
     width, height, mode: usedMode,
     stats: {
+      distance: `${(entry.distanceNm ?? trackDistanceNm(track)).toFixed(1)} NM`,
+      topSpeed: topSpeedKt(track) > 0 ? `${Math.round(topSpeedKt(track))} kt` : null,
       clock: formatClock(entryDurationMs(entry)),
-      distanceNm: entry.distanceNm ?? trackDistanceNm(track),
-      date: entry.date ?? null,
+      // From the logbook, and omitted rather than guessed at when the caller
+      // has not worked it out: a total pilot time this card invented would be
+      // the one figure on it that is not about this flight and not true.
+      totalTime: totalPilotHours != null ? `${totalPilotHours.toFixed(1)} hrs` : null,
     },
   })
 

@@ -31,10 +31,16 @@ import { useBackOverride } from '../../context/BackOverride'
 import { HomeLocationProvider, useHomeLocation } from '../../context/HomeLocation'
 import { useBreadcrumbTrail } from '../../hooks/useBreadcrumbTrail'
 import GpsInfoBar from '../../components/GpsInfoBar'
+import AircraftPanel from '../../components/AircraftPanel'
 import {
   AirportsHeroCard, HangarCard, PilotRow, FlightPlanCard, DiscoverCard, ROW_GAP,
 } from '../../components/HomeRows'
 import { getCurrencyStatus } from '../../lib/currency'
+import {
+  useFlightDetector, DEFAULT_AUTO_DETECT_CONFIG, AUTO_DETECT_DEFAULT_ENABLED, autoDetectEnabledFrom,
+} from '../../hooks/useFlightDetector'
+import { useWakeLock } from '../../hooks/useWakeLock'
+import { useLogbook } from '../../context/Logbook'
 import { useLiveShare } from '../../hooks/useLiveShare'
 import { useFriendsAloft } from '../../hooks/useFriendsAloft'
 import { liveSharingAvailable } from '../../lib/livePositions'
@@ -2106,6 +2112,50 @@ function MapHomeInner() {
 
   const recording = rec != null
 
+  /* ── The flight data recorder ─────────────────────────────────────────
+     Auto-detection came across from the map screen on main, where it was
+     mounted and where this branch stopped routing. The hook, the thresholds
+     and the settings section all survived the redesign; the mount did not, so
+     the feature has been present and dead: a pilot could set a speed and an
+     altitude in Settings and nothing would ever watch them.
+
+     It reads this screen's fix rather than opening a watch of its own, which
+     is the rule useFlightDetector's own header sets out and the reason the
+     shared location provider exists. ── */
+  const [autoDetectEnabled, setAutoDetectEnabled] = useState(AUTO_DETECT_DEFAULT_ENABLED)
+  const [autoDetectConfig, setAutoDetectConfig] = useState(DEFAULT_AUTO_DETECT_CONFIG)
+  useEffect(() => {
+    get('settings', 'autoDetectEnabled').then(row => setAutoDetectEnabled(autoDetectEnabledFrom(row))).catch(() => {})
+    get('settings', 'autoDetectConfig')
+      .then(row => setAutoDetectConfig({ ...DEFAULT_AUTO_DETECT_CONFIG, ...(row?.value ?? {}) }))
+      .catch(() => {})
+  }, [])
+  const { state: detectState, draft: detectedDraft, reset: resetDetector } = useFlightDetector({
+    enabled: autoDetectEnabled, config: autoDetectConfig, coords: pos,
+  })
+  const { addEntry } = useLogbook()
+  const [flightSaved, setFlightSaved] = useState(false)
+
+  // The screen staying awake is the difference between recording a flight and
+  // recording the first thirty seconds of one. Held while either recorder runs:
+  // the pilot's own, or auto-detect having caught a departure.
+  useWakeLock(recording || detectState === 'recording')
+
+  // A detected flight is never committed behind the pilot's back. It lands
+  // tagged pendingReview, which is what puts it in front of them under Pilot to
+  // confirm, edit, or throw away before it is a logbook record.
+  useEffect(() => {
+    if (detectState !== 'done' || !detectedDraft) return
+    addEntry({ ...detectedDraft, aircraftId: aircraftId ?? null, source: 'auto', pendingReview: true })
+      .then(() => {
+        setFlightSaved(true)
+        setTimeout(() => setFlightSaved(false), 6000)
+      })
+      .catch(() => {})
+    resetDetector()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detectState, detectedDraft])
+
   // Who is up, and whether this pilot is telling anyone where they are. The
   // layer is a chart chip like everything else that draws on the map; the
   // sharing decision is a setting, because it is about the pilot rather than
@@ -2728,6 +2778,24 @@ function MapHomeInner() {
         </div>
       </div>
 
+      {/* A flight the app caught by itself has to say so. Recording silently
+          and filing silently means the pilot's first hint is a logbook entry
+          they did not make, which reads as the app inventing flights rather
+          than as it having been paying attention. */}
+      {flightSaved && (
+        <div style={{
+          position: 'absolute', left: 14, right: 14, zIndex: 620,
+          top: 'calc(var(--safe-top) + 68px)',
+          background: 'var(--map-ink)', color: 'var(--map-ink-invert)',
+          borderRadius: 16, padding: '12px 14px',
+          boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
+          fontSize: 13, fontWeight: 700, lineHeight: 1.35,
+        }}>
+          Flight recorded. It is waiting under Pilot for you to review before it
+          goes in the logbook.
+        </div>
+      )}
+
       {/* The flight data computer: the figures a pilot configures once and
           then reads without looking for them. Hidden while the sheet is
           expanded, on the same rule the control stack follows, because at that
@@ -3341,68 +3409,17 @@ function MapHomeInner() {
           {/* THE 50 BLOCK. The aircraft the pilot is flying: the subject of
               whatever they are in the middle of, and the one thing at half
               height that is about this flight rather than about the app. */}
-          <button ref={declareStop(50, 'aircraft')}
-            onClick={() => navigate(ac?.id ? `/aircraft/${ac.id}` : '/aircraft')} style={{
-            display: 'block', width: '100%', textAlign: 'left', padding: 0,
-            marginBottom: 20, border: 'none', background: 'none', cursor: 'pointer',
-          }}>
-            {ac?.image ? (
-              // Whatever is left after the name, worked out above. 210 is the
-              // right size at full screen and more than the whole body has at
-              // 50, where the picture pushed the aircraft's name off the
-              // bottom edge.
-              <img src={ac.image} alt="" style={{
-                display: 'block', width: '100%',
-                maxHeight: acImgCap,
-                objectFit: 'contain', marginBottom: 10,
-              }} />
-            ) : (
-              // A custom aircraft is saved with no photograph, and its name is
-              // whatever the pilot typed, so it matches no template. That is a
-              // legitimate aircraft, not a broken one: it gets a silhouette of
-              // the right kind rather than a gap where the picture should be.
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                // Capped the same way as a photograph. A custom aircraft has
-                // no picture and is no less entitled to have its name on the
-                // screen.
-                height: Math.min(150, acImgCap), marginBottom: 10,
-              }}>
-                <img
-                  src={isHelicopter ? '/helicopter.png' : '/modo-avion.png'}
-                  alt=""
-                  style={{
-                    width: 96, height: 96, objectFit: 'contain', opacity: 0.22,
-                    filter: 'var(--icon-filter)',
-                  }} />
-              </div>
-            )}
-            <div ref={acTextRef}>
-            {/* The registration leads, because that is the aircraft's name in
-                the way a pilot actually uses it: on the radio, in the logbook,
-                on the plan. The type goes underneath.
-
-                It also stops the panel being headed by a placeholder. An
-                aircraft added without a model is saved as "My Aircraft" by
-                onboarding, and that string was reading as a section title
-                rather than as the aircraft's own name. A tail number is never
-                a placeholder. Where there is no registration the type stands
-                in, since a heading is still needed. */}
-            <div style={{
-              fontSize: 26, fontWeight: 800, color: 'var(--map-ink)',
-              letterSpacing: ac?.registration ? '0.5px' : '-0.7px', lineHeight: 1.1,
-              textTransform: ac?.registration ? 'uppercase' : 'none',
-            }}>
-              {ac?.registration || ac?.fullName || 'No aircraft set'}
-            </div>
-            {ac?.registration && ac?.fullName && (
-              <div style={{
-                fontSize: 13, fontWeight: 700, letterSpacing: '0.2px',
-                color: 'var(--map-ink-faint)', marginTop: 6,
-              }}>{ac.fullName}</div>
-            )}
-            </div>
-          </button>
+          <div ref={declareStop(50, 'aircraft')} style={{ marginBottom: 20 }}>
+            <AircraftPanel
+              ac={ac}
+              aircraftId={aircraftId}
+              currencyCards={currencyCards}
+              imgCap={acImgCap}
+              textRef={acTextRef}
+              onOpenAircraft={() => navigate(ac?.id ? `/aircraft/${ac.id}` : '/aircraft')}
+              onOpenPilot={() => setDrawerView('pilot')}
+            />
+          </div>
 
           {/* THE 80 BLOCK. A menu of next actions, which is what 80 is for:
               options to choose from rather than a task in itself. This is the

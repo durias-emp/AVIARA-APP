@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { SegControl } from './SegControl'
 import { renderFlightImage, SHARE_SIZES } from '../lib/flightImage'
+import { useLogbook } from '../context/Logbook'
+import { computeTotalHours } from '../lib/logbookFields'
 
 const MODES = [
-  { key: 'bare', label: 'Trail only' },
-  { key: 'map',  label: 'Over map' },
+  { key: 'bare',  label: 'Trail only' },
+  { key: 'map',   label: 'Over map' },
+  { key: 'photo', label: 'My photo' },
 ]
 
 // Turning a flight into something postable.
@@ -15,13 +18,25 @@ const MODES = [
 export default function FlightShareSheet({ entry, onClose }) {
   const [mode, setMode] = useState('bare')
   const [size, setSize] = useState('square')
+  // The pilot's own background, held as a data URL so it survives being handed
+  // to an Image and drawn on a canvas that then has to be exported. A blob URL
+  // from a local file would work too, but a data URL cannot be revoked out from
+  // under a render that is still in flight.
+  const [photo, setPhoto] = useState(null)
+  const fileInput = useRef(null)
+
+  // The pilot's running total, which is the one figure on the card that is not
+  // about this flight. Read here rather than in the renderer so the renderer
+  // stays a pure function of what it is given.
+  const { entries } = useLogbook()
+  const totalPilotHours = computeTotalHours(entries)
   // One piece of state carrying the finished render and what it was rendered
   // for. "Still working" is then derived — it is true exactly while the result
   // in hand does not match the options on screen — rather than being flipped
   // on at the top of the effect, which would set state during render.
   const [result, setResult] = useState(null)
 
-  const busy = !result || result.mode !== mode || result.size !== size
+  const busy = !result || result.mode !== mode || result.size !== size || result.photo !== photo
   const preview = busy ? null : result.url
   const blob = busy ? null : result.blob
   const error = busy ? null : result.error
@@ -29,28 +44,30 @@ export default function FlightShareSheet({ entry, onClose }) {
   useEffect(() => {
     let cancelled = false
     let url = null
-    renderFlightImage(entry, { mode, size })
+    renderFlightImage(entry, { mode, size, photo, totalPilotHours })
       .then(rendered => {
         if (cancelled) return
         url = URL.createObjectURL(rendered.blob)
         setResult({
-          mode, size, url, blob: rendered.blob,
+          mode, size, photo, url, blob: rendered.blob,
           // The renderer falls back to the plain trail if the tiles cannot be
           // exported. Saying so beats silently returning something other than
           // what was asked for.
           error: rendered.mode !== mode
-            ? 'The map background could not be loaded, so this is the plain trail.'
+            ? (mode === 'photo'
+              ? 'That picture could not be read, so this is the plain trail.'
+              : 'The map background could not be loaded, so this is the plain trail.')
             : null,
         })
       })
       .catch(err => {
-        if (!cancelled) setResult({ mode, size, url: null, blob: null, error: err.message })
+        if (!cancelled) setResult({ mode, size, photo, url: null, blob: null, error: err.message })
       })
     return () => {
       cancelled = true
       if (url) URL.revokeObjectURL(url)
     }
-  }, [entry, mode, size])
+  }, [entry, mode, size, photo, totalPilotHours])
 
   const fileName = `aviara-${entry?.date ?? 'flight'}.png`
 
@@ -102,6 +119,38 @@ export default function FlightShareSheet({ entry, onClose }) {
             value={MODES.find(m => m.key === mode).label}
             onChange={label => setMode(MODES.find(m => m.label === label).key)}
           />
+
+          {/* Only once the pilot has asked for their own background. Offering a
+              file picker under the map mode would be a control with nothing to
+              control. */}
+          {mode === 'photo' && (
+            <>
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const reader = new FileReader()
+                  reader.onload = () => setPhoto(reader.result)
+                  // A picture that cannot be read is not worth a dialog: the
+                  // card falls back to the plain trail and says so.
+                  reader.onerror = () => setPhoto(null)
+                  reader.readAsDataURL(file)
+                }} />
+              <button
+                onClick={() => fileInput.current?.click()}
+                style={{
+                  padding: '12px 14px', borderRadius: 14, border: '1px solid var(--border)',
+                  background: 'var(--bg-card)', color: 'var(--text)',
+                  fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                }}>
+                {photo ? 'Choose a different picture' : 'Choose a picture'}
+              </button>
+            </>
+          )}
           <SegControl
             options={Object.values(SHARE_SIZES).map(s => s.label)}
             value={SHARE_SIZES[size].label}
