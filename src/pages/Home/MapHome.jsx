@@ -138,7 +138,15 @@ const CHIP_GAP = 8
 
 // How much room the right-hand controls need below the chips: two buttons, the
 // gap between them, and a gap above.
-const CTRL_STACK_H = CTRL * 2 + 12 + 10
+// The right-hand column's height, for whatever has to sit on top of it. Taken
+// from how many buttons are actually in it rather than from the two it used to
+// always have: the column grows a Go Live button in manual sharing and a
+// restore button while the drawer is away, and a fixed height meant the chip
+// stack opened straight through them.
+const CTRL_GAP = 12
+function ctrlStackH(count) {
+  return CTRL * count + CTRL_GAP * Math.max(0, count - 1) + 10
+}
 
 // The floating action row's own height, measured once from the built card
 // rather than recomputed: it is one row of round buttons in a padded panel,
@@ -998,7 +1006,11 @@ function MapHomeInner() {
   // Where a hidden drawer comes back to. Whatever it was doing before it was
   // put away, since putting it away was about seeing the map, not about
   // abandoning the drawer's contents.
-  const lastStop = useRef(25)
+  // Where the drawer goes when it is brought back: wherever it was when it was
+  // dismissed. Seeded with the module's rung rather than the measured one for
+  // the same reason snap is, and never 0, or the button would restore it to
+  // being hidden.
+  const lastStop = useRef(SHEET_STOPS[0])
   useEffect(() => { if (snap !== 0) lastStop.current = snap }, [snap])
   // Planning happens here now, not on a screen of its own. Plan Route raises
   // the drawer to the 'plan' stop and fills it with the flight plan, so the
@@ -2264,8 +2276,11 @@ function MapHomeInner() {
   // descriptions of one place, and they drift: this had its own arrangement of
   // rest heights and safe-area terms, and stayed where the controls used to be
   // when the controls moved up to clear the data bar.
+  const ctrlCount = 2
+    + (liveShare.mode === 'manual' && liveSharingAvailable() ? 1 : 0)
+    + (sheetOpen ? 0 : 1)
   const chipStackBottom =
-    `var(--map-bottom-inset, 0px) + ${IFDB_CLEAR + (recording ? 132 : 0) + CTRL_STACK_H}px`
+    `var(--map-bottom-inset, 0px) + ${IFDB_CLEAR + (recording ? 132 : 0) + ctrlStackH(ctrlCount)}px`
 
   // How tall the card at the top may get before it starts hiding things.
   //
@@ -2458,6 +2473,20 @@ function MapHomeInner() {
     setDragY(null)
 
     if (isFullPull(vh, d.lastY)) { setSnap(100); return }
+
+    // Pulled down past the closed rung, the sheet goes away entirely. This is
+    // the only way to dismiss it now, and it is the gesture that was always
+    // going to mean this: dragging a sheet below its lowest position is asking
+    // for it to be gone. The button that used to be the only way is now the
+    // way back, and lives with the other map controls.
+    //
+    // Half the dock's height past the rung, or a downward flick from it, so a
+    // short overshoot on the way to closed does not dismiss it by accident.
+    const closedY = stopY(vh, closedPct)
+    if (!up && (d.lastY > closedY + restPx * 0.5 || (flick && snap === closedPct))) {
+      setSnap(0)
+      return
+    }
 
     // One ladder, whatever the drawer is carrying: 25, 50, 80, 100. The
     // positions are the positions.
@@ -2888,11 +2917,6 @@ function MapHomeInner() {
           opens the app for. The menu home showed conditions on arrival and the
           map home has to keep doing that, or weather becomes something you go
           looking for rather than something you are told. */}
-      <div style={{ position: 'absolute', top: 'calc(var(--safe-top) + 10px)', left: 14, zIndex: 501 }}>
-        <Ctrl onClick={() => setSnap(s2 => (s2 === 0 ? lastStop.current : 0))} title={sheetOpen ? 'Hide panel' : 'Show panel'} size={46}>
-          <IconArrow up={!sheetOpen} />
-        </Ctrl>
-      </div>
 
       {/* Centred on the screen rather than laid out beside the arrow, so the
           conditions sit where the eye lands instead of being pushed off centre
@@ -2983,7 +3007,7 @@ function MapHomeInner() {
         // it. The bar is always the thing directly below these, so clearing
         // the bar is the only rule they need.
         bottom: `calc(var(--map-bottom-inset, 0px) + ${IFDB_CLEAR + (recording ? 132 : 0)}px)`,
-        display: 'flex', flexDirection: 'column', gap: 12,
+        display: 'flex', flexDirection: 'column', gap: CTRL_GAP,
         transition: 'bottom var(--map-inset-duration, 280ms) cubic-bezier(0.32,0.72,0,1), opacity 200ms',
         opacity: expanded ? 0 : 1,
         pointerEvents: expanded ? 'none' : 'auto',
@@ -3004,6 +3028,12 @@ function MapHomeInner() {
         )}
         <Ctrl onClick={() => { setChartsOpen(o => !o); setChartsEverOpened(true) }} title="Chart layers"
           active={chartsOpen} badge={activeCount}><IconLayers /></Ctrl>
+        {/* Only while the drawer is away, because that is the only state it
+            has anything to say. It sits below the others rather than above, so
+            the two controls a pilot uses in the air keep the exact place their
+            thumb already knows, and this one arrives underneath them: the
+            column is anchored at the bottom, so adding it lifts the pair
+            instead of shuffling them. */}
         <Ctrl onClick={locate} active={follow}
           caption={follow && orientation === 'track' ? 'TRK' : follow && orientation === 'trackAhead' ? 'TRK▲' : null}
           title={!follow ? 'Center on my position and follow'
@@ -3012,6 +3042,12 @@ function MapHomeInner() {
             : 'Following, Track Up Ahead. Tap for North Up'}>
           <IconLocate />
         </Ctrl>
+
+        {!sheetOpen && (
+          <Ctrl onClick={() => setSnap(lastStop.current)} title="Show the drawer">
+            <IconArrow up />
+          </Ctrl>
+        )}
       </div>
 
 
