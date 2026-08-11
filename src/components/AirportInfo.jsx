@@ -5,6 +5,7 @@ import AirportPickerModal from './AirportPickerModal'
 import AirportDiagram from './AirportDiagram'
 import ProcedureChartViewer from './ProcedureChartViewer'
 import { get, put } from '../lib/db'
+import { resolveHomeIdent, setHomeIdent } from '../lib/homeBase'
 import { usePilotProfile } from '../context/PilotProfile'
 import { getAirports } from '../lib/aerodromes'
 import { classAtPoint } from '../lib/airspace'
@@ -361,10 +362,23 @@ function Notams({ icao, result }) {
   )
 }
 
+// Saved airports. The key lives in the settings store, which the cloud backup
+// already covers, so favourites follow the pilot to a new device for free.
+export const FAVOURITES_KEY = 'favouriteAirports'
+
 export default function AirportInfo() {
   const { profile } = usePilotProfile()
   const units = profile ?? {}
   const [icao, setIcao] = useState('')
+  // Favourites and home base both live in the settings store, so they ride the
+  // existing cloud backup and follow the pilot to a new device with no new
+  // plumbing of their own.
+  const [favourites, setFavourites] = useState([])
+  const [homeIcao, setHomeIcao] = useState(null)
+  useEffect(() => {
+    get('settings', FAVOURITES_KEY).then(row => setFavourites(row?.list ?? [])).catch(() => {})
+    resolveHomeIdent().then(setHomeIcao).catch(() => {})
+  }, [])
   const [pickerOpen, setPickerOpen] = useState(false)
   const [info, setInfo] = useState(null)
   const [wx, setWx] = useState(null)
@@ -495,6 +509,24 @@ export default function AirportInfo() {
     put('settings', { key: 'lastAirportLookup', value: id })
   }
 
+  function toggleFavourite() {
+    if (!icao) return
+    setFavourites(prev => {
+      const next = prev.includes(icao) ? prev.filter(x => x !== icao) : [...prev, icao]
+      put('settings', { key: FAVOURITES_KEY, list: next }).catch(() => {})
+      return next
+    })
+  }
+
+  // Through setHomeIdent rather than writing the key directly, so the home row
+  // on the map and the planner's departure default both hear about it instead
+  // of naming the old field until something remounts them.
+  function setAsHomeAirport() {
+    if (!icao) return
+    setHomeIcao(icao)
+    setHomeIdent(icao)
+  }
+
   const details = icao ? airportDetails[icao] : null
 
   // A station on the field under a different identifier is this airport's
@@ -542,6 +574,72 @@ export default function AirportInfo() {
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', flexShrink: 0 }}>Change</span>
         </div>
       </div>
+
+      {/* What can be done with the field currently on screen. Both actions are
+          about THIS airport, so they sit directly under its name rather than in
+          a settings screen somewhere else. */}
+      {icao && (
+        <div style={{ padding: '12px 20px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={toggleFavourite}
+            aria-label={favourites.includes(icao) ? 'Remove from favourites' : 'Add to favourites'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 12px', borderRadius: 20, cursor: 'pointer',
+              border: favourites.includes(icao) ? 'none' : '1px solid var(--border)',
+              background: favourites.includes(icao) ? 'var(--accent)' : 'var(--bg-card)',
+              color: favourites.includes(icao) ? 'var(--accent-fg)' : 'var(--text)',
+              fontSize: 12, fontWeight: 700, WebkitTapHighlightColor: 'transparent',
+            }}>
+            {favourites.includes(icao) ? '\u2605' : '\u2606'} {favourites.includes(icao) ? 'Saved' : 'Save'}
+          </button>
+
+          {homeIcao === icao ? (
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 12px', borderRadius: 20,
+              background: 'var(--bg-card-2)', color: 'var(--text-secondary)',
+              fontSize: 12, fontWeight: 700,
+            }}>\u2302 Home airport</span>
+          ) : (
+            <button
+              onClick={setAsHomeAirport}
+              style={{
+                padding: '7px 12px', borderRadius: 20, cursor: 'pointer',
+                border: '1px solid var(--border)', background: 'var(--bg-card)',
+                color: 'var(--text)', fontSize: 12, fontWeight: 700,
+                WebkitTapHighlightColor: 'transparent',
+              }}>\u2302 Set home airport</button>
+          )}
+        </div>
+      )}
+
+      {/* The saved fields, one tap away, directly under the identifier they
+          belong beside. Home is pinned first and marked, since it is the one a
+          pilot reaches for most and is not necessarily saved as a favourite
+          as well. */}
+      {(favourites.length > 0 || homeIcao) && (
+        <div style={{
+          padding: '10px 20px 0', display: 'flex', gap: 8,
+          overflowX: 'auto', WebkitOverflowScrolling: 'touch',
+        }}>
+          {[...(homeIcao ? [homeIcao] : []), ...favourites.filter(f => f !== homeIcao)].map(id => (
+            <button
+              key={id}
+              onClick={() => selectAirport(id)}
+              style={{
+                flexShrink: 0, padding: '6px 12px', borderRadius: 20, cursor: 'pointer',
+                border: id === icao ? '1px solid var(--accent)' : '1px solid var(--border)',
+                background: id === icao ? 'var(--accent)' : 'var(--bg-card)',
+                color: id === icao ? 'var(--accent-fg)' : 'var(--text)',
+                fontSize: 12, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.04em',
+                WebkitTapHighlightColor: 'transparent',
+              }}>
+              {id === homeIcao ? '\u2302 ' : ''}{id}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={{ padding: '16px 18px 40px' }}>
         {icao && (

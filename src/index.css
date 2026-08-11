@@ -871,7 +871,7 @@ input[type="number"]::-webkit-outer-spin-button {
 :root {
   --map-panel:       rgba(255,255,255,0.96);
   /* The same panel, letting the map through at full screen. */
-  --map-panel-sheer: color-mix(in srgb, rgba(255,255,255,0.96) 88%, transparent);
+  --map-panel-sheer: color-mix(in srgb, rgba(255,255,255,0.96) 62%, transparent);
   --map-panel-solid: #ffffff;
   --map-ink:         #1c1c1e;
   --map-ink-dim:     rgba(60,60,67,0.6);
@@ -896,7 +896,7 @@ input[type="number"]::-webkit-outer-spin-button {
 [data-theme="dark"], [data-theme="red"] {
   --map-panel:       rgba(28,28,30,0.94);
   /* The same panel, letting the map through at full screen. */
-  --map-panel-sheer: color-mix(in srgb, rgba(28,28,30,0.94) 88%, transparent);
+  --map-panel-sheer: color-mix(in srgb, rgba(28,28,30,0.94) 62%, transparent);
   --map-panel-solid: #1c1c1e;
   --map-ink:         #f2f2f7;
   --map-ink-dim:     rgba(235,235,245,0.62);
@@ -992,4 +992,14 @@ input[type="number"]::-webkit-outer-spin-button {
     from { opacity: 0; }
     to   { opacity: 1; }
   }
+}
+
+/* Edit mode's wobble. Small: this says "these can be moved", not "something is
+   wrong", and a large rotation reads as the second. */
+@keyframes aviara-jiggle {
+  from { transform: rotate(-1.1deg); }
+  to   { transform: rotate(1.1deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes aviara-jiggle { from { transform: none; } to { transform: none; } }
 }

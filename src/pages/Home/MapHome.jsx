@@ -20,7 +20,6 @@ import DropPointPopup from '../../components/DropPointPopup'
 // Route styling lives in one place now, shared with the planner and its
 // preview map: three copies of a hex is how the three drifted apart.
 import { ACCENT, accentAlpha } from '../../components/mapStyle'
-import ActivityCard from '../../components/ActivityCard'
 import RouteChips from '../../components/RouteChips'
 import FlightRulesRow from '../../components/FlightRulesRow'
 import RouteLineEditor from '../../components/RouteLineEditor'
@@ -33,10 +32,9 @@ import { useBreadcrumbTrail } from '../../hooks/useBreadcrumbTrail'
 import GpsInfoBar from '../../components/GpsInfoBar'
 import AircraftPanel from '../../components/AircraftPanel'
 import { AppDock, AppTile } from '../../components/AppDock'
-import {
-  AirportsHeroCard, HangarCard, PilotRow, FlightPlanCard, DiscoverCard, ROW_GAP,
-} from '../../components/HomeRows'
 import { getCurrencyStatus } from '../../lib/currency'
+import { useHomeAirportWx, useUnreadCount } from '../../hooks/useAppBadges'
+import { useAuth } from '../../context/AuthContext'
 import {
   useFlightDetector, DEFAULT_AUTO_DETECT_CONFIG, AUTO_DETECT_DEFAULT_ENABLED, autoDetectEnabledFrom,
 } from '../../hooks/useFlightDetector'
@@ -63,7 +61,7 @@ import AirportPickerModal from '../../components/AirportPickerModal'
 import { createPortal } from 'react-dom'
 import WeatherRibbon from '../../components/WeatherRibbon'
 import { createRecorder, toFlightRecord, fmtClock } from '../../lib/flightRecorder'
-import { put, get, getAll, del } from '../../lib/db'
+import { put, get, del } from '../../lib/db'
 import { findAirport, getAirports } from '../../lib/aerodromes'
 import { crossTrackNm } from '../../lib/corridor'
 import { resolveHomeIdent, setHomeIdent } from '../../lib/homeBase'
@@ -234,23 +232,6 @@ const HINT_RESERVE = 28
 // icons so nothing has to be relearned.
 // `view` is the key into DRAWER_VIEWS. These open in the drawer, at the height
 // the drawer is already at, rather than navigating away from the map.
-// Pilot and Airports are no longer here: they became reporting rows above,
-// which is the whole point of the rows. Listing them in both places would
-// teach two doors to one room and make the grid look fuller than it is, the
-// same reason Flight Planning was never in this list.
-const TOOLS = [
-  // Calculators and Quick Reference are not here: both already live inside
-  // Tools, and a door standing next to the room it opens into is one of two
-  // doors a pilot has to learn for one place. They can be put back on the
-  // drawer from Settings, and either can be pinned to the dock by holding it
-  // on the app page.
-  { view: 'tools',     icon: '/filtrar.png',    label: 'Tools' },
-  // Placeholder icon: the project has no gear, and main drew these two as
-  // inline SVG rather than PNG. Worth replacing when these screens are
-  // restyled, along with the filter standing in for Tools.
-  { view: 'settings',  icon: '/llaves.png',     label: 'Settings' },
-]
-
 // The card the map wears: floating above the drawer, panel glass, one radius
 // and one shadow. The recording stats introduced this shape and the actions
 // borrow it verbatim while the flight plan has the drawer, so the two read as
@@ -1088,7 +1069,7 @@ function MapHomeInner() {
   // small enough to be a strip along the bottom; at the app page it is a phone
   // dock. One number, transitioned by the tiles themselves, so the change is a
   // smooth grow rather than a re-layout.
-  const dockTile = snap >= 40 ? 60 : 42
+  const dockTile = snap >= 40 ? 62 : 52
   // The height every stop is a fraction of, measured off the shell itself
   // rather than read from window.innerHeight.
   //
@@ -1225,9 +1206,11 @@ function MapHomeInner() {
     enabled: layers.breadcrumbs, coords: freshPos,
   })
 
-  // Every reporting row opens in the sheet rather than navigating away, which
-  // is the rule the rest of this screen already follows.
-  const openRow = useCallback(key => setDrawerView(key), [])
+  // What the tiles report. One fetch for the screen rather than one per place
+  // that shows it.
+  const { user } = useAuth()
+  const homeWx = useHomeAirportWx()
+  const unread = useUnreadCount(user?.id)
 
   // The three assignable buttons, and which slot is currently being reassigned.
   const [homeActions, setHomeActions] = useState(DEFAULT_HOME_ACTIONS)
@@ -1266,7 +1249,6 @@ function MapHomeInner() {
   // (localStorage or the built-in), so fetching it in an effect would just
   // render once without it and once with.
   const [openaipKey, setOpenaipKey] = useState(resolveOpenaipKey)
-  const [flights, setFlights] = useState([])
   // The pilot's base, and whether we are still looking for it. The map must
   // not settle anywhere until this resolves one way or the other, or a GPS fix
   // that lands first would frame the map somewhere else and the base would
@@ -1474,7 +1456,6 @@ function MapHomeInner() {
     get('settings', 'openaip_key')
       .then(r => { if (r?.value) setOpenaipKey(r.value) })
       .catch(() => {})
-    loadFlights()
     resolveBase()
     // The old handover left pendingDest rows behind on phones that ran the
     // broken builds; nothing reads them any more, so they are cleared.
@@ -1525,13 +1506,6 @@ function MapHomeInner() {
     } finally {
       setBaseResolved(true)
     }
-  }
-
-  // Newest first, which is the only order a logbook is ever read in.
-  function loadFlights() {
-    getAll('flights')
-      .then(rows => setFlights([...rows].sort((a, b) => b.id - a.id)))
-      .catch(() => {})
   }
 
   // The clock has to move between GPS fixes, which can be seconds apart.
@@ -2026,7 +2000,6 @@ function MapHomeInner() {
       registration: ac?.registration ?? null,
     })
     await put('flights', record).catch(() => {})
-    loadFlights()
   }
 
   // ── The planner, opened and closed in place ──────────────────────────
@@ -2540,46 +2513,97 @@ function MapHomeInner() {
   const appFor = key => {
     const spec = actionSpec(key)
     if (!spec) return null
+    // What this app reports without being opened, carried over from the rows
+    // it replaced. Only where there is something to say: an app with a badge
+    // permanently reading zero has taught the eye to ignore its badges.
+    let badge = null
+    let badgeTint
+    if (key === 'airports' && homeWx.cat) { badge = homeWx.cat.label; badgeTint = homeWx.cat.color }
+    if (key === 'flight' && fplRoute?.length >= 2) { badge = fplRoute.length; badgeTint = ACCENT }
+    if (key === 'discover' && unread > 0) badge = unread > 99 ? '99+' : unread
     return {
       key, label: spec.label, icon: spec.icon,
       tint: spec.accent ? ACCENT : undefined,
       ink: spec.accent ? '#fff' : undefined,
+      badge, badgeTint,
     }
   }
-  // Holding an app on the page pins it to the dock, or takes it off if it is
-  // already there. The same gesture the dock itself uses for reassignment, so
-  // there is one thing to learn rather than two.
-  function toggleDock(key) {
-    setHomeActions(prev => {
-      const next = prev.includes(key)
-        ? prev.filter(k => k !== key)
-        // A full dock refuses rather than silently dropping whichever app
-        // happened to be first: the pilot chose those five.
-        : prev.length >= DOCK_MAX ? prev : [...prev, key]
-      if (next !== prev) put('settings', { key: HOME_ACTIONS_KEY, value: next }).catch(() => {})
-      return next
+  // Hold an app to enter edit mode, then drag it where you want it: the phone
+  // gesture, in the order a phone does it. Holding used to pin straight to the
+  // dock, which is a different and less obvious thing for the same gesture to
+  // mean, and left no way to change the order at all.
+  //
+  // The order is the pilot's and is saved. The first few of it are the dock, so
+  // moving an app into the first positions IS pinning it, and there is one
+  // arrangement to understand rather than a list and a dock that disagree.
+  const [editing, setEditing] = useState(false)
+  const [dragKey, setDragKey] = useState(null)
+  const [order, setOrder] = useState(null)
+  const appHoldTimer = useRef(null)
+
+  // The saved arrangement, with anything new appended rather than lost: an app
+  // added in a later version must appear, and must not displace what the pilot
+  // put where.
+  const appOrder = useMemo(() => {
+    const known = HOME_ACTIONS.map(a => a.key)
+    const saved = (order ?? []).filter(k => known.includes(k))
+    const rest = known.filter(k => !saved.includes(k))
+    return [...saved, ...rest].map(appFor).filter(Boolean)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order, homeActions, homeWx.cat, unread, fplRoute, recording, planning, hasRoute])
+
+  useEffect(() => {
+    get('settings', 'appOrder').then(row => { if (Array.isArray(row?.value)) setOrder(row.value) }).catch(() => {})
+  }, [])
+
+  function moveApp(fromKey, toKey) {
+    if (fromKey === toKey) return
+    setOrder(() => {
+      const keys = appOrder.map(a => a.key)
+      const from = keys.indexOf(fromKey)
+      const to = keys.indexOf(toKey)
+      if (from === -1 || to === -1) return keys
+      keys.splice(to, 0, keys.splice(from, 1)[0])
+      put('settings', { key: 'appOrder', value: keys }).catch(() => {})
+      // The dock is the first few of the arrangement, so it follows the move
+      // rather than being maintained as a second list that can disagree.
+      const dock = keys.slice(0, Math.max(1, homeActions.length))
+      put('settings', { key: HOME_ACTIONS_KEY, value: dock }).catch(() => {})
+      setHomeActions(dock)
+      return keys
     })
   }
-  const appHoldTimer = useRef(null)
+
   function appHoldProps(key) {
     const start = () => {
       clearTimeout(appHoldTimer.current)
-      appHoldTimer.current = setTimeout(() => { holdFired.current = true; toggleDock(key) }, 500)
+      appHoldTimer.current = setTimeout(() => {
+        holdFired.current = true
+        setEditing(true)
+        setDragKey(key)
+      }, 450)
     }
-    const cancel = () => clearTimeout(appHoldTimer.current)
+    const cancel = () => { clearTimeout(appHoldTimer.current); setDragKey(null) }
     return {
-      onPointerDown: start, onPointerUp: cancel,
-      onPointerLeave: cancel, onPointerCancel: cancel,
+      onPointerDown: start,
+      onPointerUp: cancel,
+      onPointerCancel: cancel,
+      // Where the finger is, rather than where it started: the tile under it
+      // is the one being displaced. elementFromPoint because the tiles are a
+      // grid and there is no drag-over event on a pointer gesture.
+      onPointerMove: e => {
+        if (!editing || !dragKey) return
+        const el = document.elementFromPoint(e.clientX, e.clientY)
+        const tile = el?.closest?.('[data-app-key]')
+        const overKey = tile?.getAttribute('data-app-key')
+        if (overKey && overKey !== dragKey) moveApp(dragKey, overKey)
+      },
       onContextMenu: e => e.preventDefault(),
-      style: { WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' },
+      style: { WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', touchAction: editing ? 'none' : undefined },
     }
   }
 
-  const dockApps = homeActions.map(appFor).filter(Boolean)
-  // The page above the dock: every app there is, with the ones already on the
-  // dock dimmed rather than hidden, so the page is a stable set that does not
-  // reshuffle as the dock changes.
-  const allApps = HOME_ACTIONS.map(a => appFor(a.key)).filter(Boolean)
+  const dockApps = appOrder.filter(a => homeActions.includes(a.key)).slice(0, DOCK_MAX)
 
   // Press and hold to reassign, the way a phone's home screen works. The hold
   // is what makes the row discoverable without a settings trip; Settings has
@@ -3241,8 +3265,12 @@ function MapHomeInner() {
         // it. Only at 100: at the lower stops the map is plainly visible above
         // the sheet already, and a translucent panel there would just be a
         // muddy one.
-        background: snap === 100 ? 'var(--map-panel-sheer)' : 'var(--map-panel)',
-        backdropFilter: 'blur(20px)',
+        // Stained glass at every stop rather than only at full screen. The
+        // blur does the work of legibility; the transparency under it means
+        // the ground is never quite gone, which is the difference between a
+        // sheet covering the map and one resting on it.
+        background: 'var(--map-panel-sheer)',
+        backdropFilter: 'blur(26px) saturate(1.4)',
         borderRadius: `${radius}px ${radius}px 0 0`,
         boxShadow: '0 -4px 24px rgba(0,0,0,0.10)',
         display: 'flex', flexDirection: 'column',
@@ -3523,101 +3551,46 @@ function MapHomeInner() {
               options to choose from rather than a task in itself. This is the
               one that used to be at 80 only by accident, because it was
               whatever was left after the aircraft above it. */}
-          {/* The app page. Everything there is, laid out as a grid the way a
-              phone's home screen is, dropping into place when the drawer
-              opens. Apps already on the dock are dimmed rather than removed,
-              so the page is a stable set: an icon does not move house because
-              it was pinned. */}
+          {/* The app page. Everything there is, laid out the way a phone's home
+              screen is and sized to fill the drawer rather than to sit in the
+              top of it: four across, big enough to hit without aiming, and no
+              dead space underneath.
+
+              Apps already on the dock are dimmed rather than removed, so the
+              page is a stable set. An icon does not move house because it was
+              pinned. */}
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(76px, 1fr))',
-            gap: 14, marginTop: 18, marginBottom: 4,
+            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: 18, marginTop: 20, marginBottom: 8,
           }}>
-            {allApps.map((app, i) => (
-              <AppTile key={app.key} app={app} size={56} index={i} animate={sheetOpen}
-                dimmed={homeActions.includes(app.key)}
-                onOpen={() => actionSpec(app.key)?.run()}
+            {appOrder.map((app, i) => (
+              <AppTile key={app.key} app={app} size={72} index={i}
+                animate={sheetOpen && !editing}
+                jiggle={editing}
+                dragging={dragKey === app.key}
+                dimmed={!editing && homeActions.includes(app.key)}
+                onOpen={() => (editing ? setEditing(false) : actionSpec(app.key)?.run())}
                 holdProps={appHoldProps(app.key)} />
             ))}
           </div>
 
-          <div ref={declareStop(100, 'rows and tools')}>
-            {/* The rows that report something. Full width, because what makes
-                them worth having is the live half on the right: the field's
-                category and temperature, the medical, the fixes in the active
-                plan, the messages waiting. A two-up grid has no room for any
-                of that, which is why these are not in one. */}
-            <AirportsHeroCard onOpen={openRow} />
-            <HangarCard
-              aircraftImage={ac?.image}
-              activeAircraft={ac}
-              aircraftCount={aircraftList?.length ?? 0}
-              onOpen={openRow} />
-            <PilotRow currencyCards={currencyCards} onOpen={openRow} />
-            <FlightPlanCard route={fplRoute} onOpen={openRow} />
-            <DiscoverCard onOpen={openRow} />
-
-            {/* The rest stay two-up, in their own icons: they are doors, with
-                nothing to report until they are opened. */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: ROW_GAP }}>
-              {TOOLS.map(t => (
-                <button key={t.view} onClick={() => setDrawerView(t.view)} style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '14px 14px',
-                  background: 'var(--map-fill-soft)', border: 'none', borderRadius: 16,
-                  cursor: 'pointer', textAlign: 'left',
-                }}>
-                  {/* Tinted, not recoloured at the source. These are PNGs and a
-                      stray SVG, black line art drawn back when this menu sat on
-                      a white sheet, and there is no fill to set on an <img>.
-                      The filter paints every opaque pixel the drawer's ink
-                      colour, so they follow the theme the way the label beside
-                      them does rather than being white in both. */}
-                  <img src={t.icon} width={24} height={24} alt="" style={{
-                    objectFit: 'contain', flexShrink: 0, filter: 'var(--map-icon-ink)',
-                  }} />
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--map-ink)', lineHeight: 1.25 }}>{t.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* THE 100 BLOCK. A list long enough to need its own scroll, which
-              is the whole reason a full-screen stop exists. Declared but never
-              measured: 100 is the stop that scrolls, so running past the
-              bottom of the screen is what this block is supposed to do. */}
-          <div ref={declareStop(100, 'logbook')}
-            style={{ marginTop: 22, fontSize: 11, fontWeight: 700, letterSpacing: '0.6px',
-            color: 'var(--map-ink-faint)', textTransform: 'uppercase' }}>
-            {snap === 100 ? `Logbook · ${flights.length}` : 'Recent flights'}
-          </div>
-          {flights.length === 0 ? (
-            <div style={{ marginTop: 10, padding: '22px 16px', borderRadius: 16,
-              background: 'var(--map-fill-soft)', textAlign: 'center' }}>
-              <div style={{ fontSize: 13, color: 'var(--map-ink-dim)' }}>No flights logged yet</div>
-              <div style={{ fontSize: 11.5, color: 'var(--map-ink-faint)', marginTop: 4 }}>
-                Press start to record one, or complete a flight plan
-              </div>
-            </div>
-          ) : (
-            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* Collapsed the sheet shows a handful; at full screen it is the
-                  whole logbook, which is the reason for having a full screen
-                  at all. */}
-              {(snap === 100 ? flights : flights.slice(0, 4)).map(f => (
-                <ActivityCard key={f.id} flight={f} />
-              ))}
+          {editing && (
+            <div style={{
+              textAlign: 'center', fontSize: 12, fontWeight: 600,
+              color: 'var(--map-ink-faint)', marginBottom: 10,
+            }}>
+              Drag to reorder. Tap anywhere to finish.
             </div>
           )}
 
-          {/* The standing notice, at the foot of everything rather than under
-              the buttons. It is a footnote, not an instruction: it is true all
-              the time, so it belongs where a pilot arrives at the end of the
-              drawer, not in the line that tells them what to do next. */}
-          <div style={{
-            textAlign: 'center', margin: '26px 0 4px', fontSize: 10,
-            color: 'var(--map-ink-faint)',
-          }}>
-            Reference aid only · Always consult current FAR/AIM
-          </div>
+          {/* The rows, the tools grid, the logbook and the standing notice all
+              came off this drawer together, and for one reason: the app page
+              above already says what each of them said. The rows became tiles
+              carrying their own badges, Tools and Settings became tiles beside
+              them, and a logbook rendered under a page of apps was a second
+              screen stapled to the bottom of the first. The notice moves to
+              the screens that actually give guidance rather than sitting at
+              the foot of a launcher. */}
           </>)}
         </div>
         )}

@@ -15,7 +15,7 @@
 // with soft corners, at 22.5% they read as apps.
 const RADIUS_RATIO = 0.225
 
-export function AppTile({ app, size, onOpen, holdProps, dimmed = false, index = 0, animate = false }) {
+export function AppTile({ app, size, onOpen, holdProps, dimmed = false, index = 0, animate = false, jiggle = false, dragging = false }) {
   const radius = Math.round(size * RADIUS_RATIO)
   return (
     <button
@@ -23,8 +23,10 @@ export function AppTile({ app, size, onOpen, holdProps, dimmed = false, index = 
       {...(holdProps ?? {})}
       title={app.label}
       aria-label={app.label}
+      data-app-key={app.key}
       style={{
         ...(holdProps?.style ?? {}),
+        position: 'relative',
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
         background: 'none', border: 'none', padding: 0, cursor: 'pointer',
         flexShrink: 0,
@@ -33,10 +35,19 @@ export function AppTile({ app, size, onOpen, holdProps, dimmed = false, index = 
         // slightly small, then falls into it, a fraction later than the one
         // before. Staggering by index is what makes it read as a handful of
         // objects landing rather than one block sliding.
-        ...(animate ? {
+        ...(animate && !jiggle ? {
           animation: `aviara-drop 420ms cubic-bezier(0.2, 1.35, 0.4, 1) both`,
           animationDelay: `${Math.min(index, 11) * 32}ms`,
         } : null),
+        // While the page is in edit mode every tile wobbles, which is the only
+        // signal a phone gives that icons can be moved and is understood
+        // without being taught. The one under the finger stops and lifts.
+        ...(jiggle && !dragging ? {
+          animation: 'aviara-jiggle 260ms ease-in-out infinite alternate',
+          animationDelay: `${(index % 5) * 40}ms`,
+        } : null),
+        ...(dragging ? { transform: 'scale(1.12)', zIndex: 2, opacity: 0.9 } : null),
+        transition: dragging ? 'none' : 'transform 160ms ease',
       }}>
       <span style={{
         width: size, height: size, borderRadius: radius, flexShrink: 0,
@@ -51,9 +62,24 @@ export function AppTile({ app, size, onOpen, holdProps, dimmed = false, index = 
       }}>
         {app.icon}
       </span>
-      {/* The label goes when the tile is small. A caption under a 40px icon is
-          unreadable and only makes the dock taller. */}
-      {size >= 52 && (
+      {/* What the app reports without being opened. A count, a category, a
+          pair of dots: the same things the rows carried before the tiles
+          replaced them. */}
+      {app.badge != null && (
+        <span style={{
+          position: 'absolute', top: -4, right: -4,
+          minWidth: 20, height: 20, padding: '0 5px', borderRadius: 10,
+          background: app.badgeTint ?? 'var(--danger)', color: '#fff',
+          fontSize: 10, fontWeight: 800, lineHeight: 1,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          border: '2px solid var(--map-panel)', fontVariantNumeric: 'tabular-nums',
+        }}>{app.badge}</span>
+      )}
+      {/* The label always shows. An unlabelled grid of glyphs is a memory
+          test, and the dock's whole claim is that a pilot does not have to
+          hunt: taking the names away at the small size took exactly the case
+          where hunting is most likely. */}
+      {(
         <span style={{
           fontSize: 11, fontWeight: 600, color: 'var(--map-ink)',
           maxWidth: size + 18, overflow: 'hidden', textOverflow: 'ellipsis',

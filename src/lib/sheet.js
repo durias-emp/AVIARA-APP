@@ -46,11 +46,16 @@
 // exists to remove. A fifth stop is a conversation, not an edit.
 // Three, not four. Closed with the dock on the bottom, the app page at 40 with
 // the map still showing above it, and full screen.
+//
+// 14 rather than 25 for the closed stop: it holds the dock and its labels and
+// not one pixel more. At 25 the sheet sat a quarter of the way up the screen
+// with nothing in the space, which reads as a drawer that failed to close
+// rather than as a dock resting on the bottom.
 // The fourth rung sat at 80 and was the one nobody could name: it showed the
 // same list as full screen with less of it, so a drag that landed there read as
 // having missed rather than as having arrived. The guidance quoted above cuts
 // both ways, and three predictable stops beat four where one is noise.
-export const SHEET_STOPS = [25, 40, 100]
+export const SHEET_STOPS = [14, 40, 100]
 
 // Off the screen. Deliberately NOT a rung: no drag can reach it, because a
 // sheet that can be dragged out of existence is a sheet a pilot loses. It is
