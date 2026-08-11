@@ -88,8 +88,8 @@ function paint(pct, stainKey) {
     // Removed rather than set back to a value: the stylesheet already has the
     // right answer per palette, and writing one here would freeze whichever
     // theme happened to be on when the stain was cleared.
-    clear(['--map-panel-rgb', '--app-tile-bg', '--map-ink', '--map-ink-dim',
-      '--map-ink-faint', '--map-icon-ink', '--ifdb-ink', '--ifdb-ink-dim',
+    clear(['--map-panel-rgb', '--app-tile-bg', '--stain-ink', '--stain-ink-dim',
+      '--stain-ink-faint', '--stain-icon-ink', '--ifdb-ink', '--ifdb-ink-dim',
       '--ifdb-ink-faint', '--ifdb-rule'])
     return
   }
@@ -108,18 +108,18 @@ function paint(pct, stainKey) {
   // panel's, so they stay visible as objects on the glass however sheer it is.
   root.style.setProperty('--app-tile-bg', `rgba(${stain.rgb}, 0.28)`)
 
-  if (v >= INK_TAKES_OVER && stain.ink === 'light') {
-    root.style.setProperty('--map-ink', '#ffffff')
-    root.style.setProperty('--map-ink-dim', 'rgba(255,255,255,0.72)')
-    root.style.setProperty('--map-ink-faint', 'rgba(255,255,255,0.55)')
-    root.style.setProperty('--map-icon-ink', 'brightness(0) invert(1)')
-  } else if (v >= INK_TAKES_OVER && stain.ink === 'dark') {
-    root.style.setProperty('--map-ink', '#1c1c1e')
-    root.style.setProperty('--map-ink-dim', 'rgba(28,28,30,0.66)')
-    root.style.setProperty('--map-ink-faint', 'rgba(28,28,30,0.48)')
-    root.style.setProperty('--map-icon-ink', 'brightness(0)')
+  // --stain-*, never --map-* directly. Only .drawer-surface reads these, so a
+  // stain cannot reach the map controls, the weather ribbon or the traffic
+  // legend, all of which sit on the chart rather than on the panel and were
+  // being repainted along with it.
+  if (v >= INK_TAKES_OVER) {
+    const light = stain.ink === 'light'
+    root.style.setProperty('--stain-ink', light ? '#ffffff' : '#1c1c1e')
+    root.style.setProperty('--stain-ink-dim', light ? 'rgba(255,255,255,0.72)' : 'rgba(28,28,30,0.66)')
+    root.style.setProperty('--stain-ink-faint', light ? 'rgba(255,255,255,0.55)' : 'rgba(28,28,30,0.48)')
+    root.style.setProperty('--stain-icon-ink', light ? 'brightness(0) invert(1)' : 'brightness(0)')
   } else {
-    clear(['--map-ink', '--map-ink-dim', '--map-ink-faint', '--map-icon-ink'])
+    clear(['--stain-ink', '--stain-ink-dim', '--stain-ink-faint', '--stain-icon-ink'])
   }
 }
 

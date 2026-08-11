@@ -619,7 +619,7 @@ function Ctrl({ onClick, title, active, badge, caption, children, size = CTRL })
     <button onClick={onClick} title={title} style={{
       position: 'relative', width: size, height: size, borderRadius: '50%',
       border: 'none', cursor: 'pointer', flexShrink: 0,
-      background: active ? 'var(--map-ink)' : 'var(--map-panel)',
+      background: active ? 'var(--map-ink)' : 'var(--map-ctrl-bg, var(--map-panel))',
       color: active ? 'var(--map-ink-invert)' : 'var(--map-ink)',
       boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -3294,7 +3294,7 @@ function MapHomeInner() {
           resting at half the screen so the map stays in view above it. Resting
           heights and nothing in between, because a control surface that stops
           wherever the finger left it is a surface you have to aim at. */}
-      <div ref={sheetRef} style={{
+      <div ref={sheetRef} className="drawer-surface" style={{
         position: 'absolute', left: 0, right: 0, top: 0, zIndex: 600,
         height: '100%',
         transform: sheetOpen ? `translateY(${y}px)` : `translateY(${vh}px)`,
