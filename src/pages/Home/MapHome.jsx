@@ -110,9 +110,9 @@ const CTRL_STACK_H = CTRL * 2 + 12 + 10
 // and its only reader is the height cap on the card at the top of the screen.
 const ACTION_ROW_H = 66
 
-// The two collapsed rows at the top of that card, conditions and the field,
-// which are there whatever is open below them. Measured: 36 and 39.
-const TOP_CARD_HEADERS_H = 75
+// The one row at the top of that card, the flight category and the code,
+// which is there whatever is open below it. Measured: 36.
+const TOP_CARD_HEADER_H = 38
 
 // The tallest a column of chips may get before the next one starts.
 //
@@ -1013,21 +1013,15 @@ export default function MapHome() {
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = 0
   }, [drawerView])
-  // Which half of the top card is open, if either: 'wx' for conditions, 'apt'
-  // for the field under the map. Arbitrated here rather than inside the two
-  // sections because they share one card and it can only be so tall.
-  const [topSection, setTopSection] = useState(null)
-  // Panning onto a different field folds that half shut again. A panel that
-  // stays open while what it describes changes underneath is the one thing it
-  // must not do: the numbers would be someone else's aerodrome. Conditions are
-  // left alone, because the home airport did not change.
-  const lastFocusIdent = useRef(null)
-  useEffect(() => {
-    const id = focusField?.ident ?? null
-    if (lastFocusIdent.current === id) return
-    lastFocusIdent.current = id
-    setTopSection(s => (s === 'apt' ? null : s))
-  }, [focusField])
+  // Whether the card at the top of the map is open. One state, because it is
+  // one card with one tap: at rest the flight category and the code, and open
+  // the conditions and the aerodrome under the map together. It was an
+  // accordion of two halves for a build, and two collapsed rows with two
+  // chevrons is furniture on top of a chart.
+  //
+  // Held here rather than inside the card because this is the only place that
+  // knows how much room is left above the drawer.
+  const [topOpen, setTopOpen] = useState(false)
   // A chart the pilot asked for, opened over everything. Held here rather than
   // inside the plate because it is a full screen, and the plate is a bar.
   const [chartOpen, setChartOpen] = useState(null)
@@ -1863,8 +1857,8 @@ export default function MapHome() {
 
   // How tall the card at the top may get before it starts hiding things.
   //
-  // It carries two sections now, conditions and the field under the map, and
-  // both open at a large airport is four hundred pixels of content: three
+  // One tap opens both halves of it, conditions and the field under the map,
+  // and at a large airport that is four hundred pixels of content: three
   // runways, six frequencies, a chart button and two source lines. Left to
   // grow it runs under the action row floating above the drawer, and the
   // button it was offering ends up behind the record button. So it stops at
@@ -2287,10 +2281,10 @@ export default function MapHome() {
           by whatever happens to be to their left. The margins keep it clear of
           the arrow on a narrow phone; past that the text ellipses.
 
-          The padding is 64 rather than 74 because this box now carries two
-          rows: conditions at the base, and the field the map is over. The card
-          inside caps its own width so the extra ten pixels are room the wider
-          row can use without either row ever reaching the arrow. */}
+          The padding is 64 rather than 74 because this box carries the field
+          the map is over as well as the conditions at the base. The card
+          inside caps its own width, so the extra ten pixels are room the
+          opened panel can use without the resting pill reaching the arrow. */}
       <div style={{
         position: 'absolute', top: 'calc(var(--safe-top) + 10px)', left: 0, right: 0,
         zIndex: 500, display: 'flex', justifyContent: 'center',
@@ -2302,20 +2296,20 @@ export default function MapHome() {
             onChangeAirport={changeBase}
             detailOpen={wxDetail} onDetailChange={setWxDetail}
             style={{ maxHeight: topCardMaxH }}
-            expanded={topSection === 'wx'}
-            onExpandedChange={v => setTopSection(v ? 'wx' : null)}
-            // The aerodrome under the map, as the card's second row rather
-            // than as a pill of its own. Absent above the runway layer's zoom
-            // floor, and while the tilted view is up, where the runways this
-            // describes are not drawn.
+            expanded={topOpen} onExpandedChange={setTopOpen}
+            // What the card has left once its one visible row is in it.
+            bodyMaxH={Math.max(140, topCardMaxH - TOP_CARD_HEADER_H)}
+            // The aerodrome under the map, in the lower half of that same
+            // expansion rather than as a pill, or a row, of its own. Absent
+            // above the runway layer's zoom floor, and while the tilted view is
+            // up, where the runways this describes are not drawn.
             below={focusField && !view3d
-              ? <AirportPlate field={focusField} onOpenChart={setChartOpen}
-                  expanded={topSection === 'apt'}
-                  onExpandedChange={v => setTopSection(v ? 'apt' : null)}
-                  // What the card has left once its two header rows are in
-                  // it. Only this section can outgrow the cap, so only this
-                  // section scrolls.
-                  maxBodyH={Math.max(140, topCardMaxH - TOP_CARD_HEADERS_H)} />
+              ? <AirportPlate field={focusField} onOpenChart={setChartOpen} inline
+                  // Only so the frequency pack is fetched on the tap that
+                  // reveals this rather than on the pan that found the field.
+                  // With no home airport there is no expansion to tap: the
+                  // card is the plate, and it is open on sight.
+                  expanded={topOpen || !base?.ident} />
               : null} />
         </div>
       </div>

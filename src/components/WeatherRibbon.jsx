@@ -41,21 +41,19 @@ const CARD_MAX_WIDE = 'calc(100vw - 128px)'
 const CARD = {
   background: 'var(--map-panel)', backdropFilter: 'blur(14px)',
   borderRadius: 14, boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
-  // Clipped, and not a scroll container. Scrolling the whole card would
-  // scroll its two collapsed rows off the top, and those rows are the reason
-  // it is on the screen: the category and the field under the map. Only the
-  // one section that can genuinely run long scrolls, inside itself, and it is
-  // handed the room to do it in (see AirportPlate's maxBodyH). The caller's
-  // maxHeight then holds the whole card clear of the drawer.
+  // Clipped, and not a scroll container. The one row that is always visible,
+  // the category and the code, is the reason the card is on the screen and
+  // must not scroll away from under a finger; everything the tap reveals
+  // scrolls inside the expansion instead, capped by the caller's bodyMaxH.
   overflow: 'hidden',
-  // Sized by its contents, not stretched: collapsed this is a state and a
-  // code, and a pill with a stretch of empty space between them reads as
-  // something that failed to load rather than something compact.
+  // Sized by its contents, not stretched: at rest this is a state and a code,
+  // and a pill with a stretch of empty space between them reads as something
+  // that failed to load rather than something compact.
   width: 'fit-content',
 }
 
-// A hairline, not a gap. The two halves are one object, and any spacing
-// between them would put the second pill back.
+// A hairline, not a gap. Conditions and the aerodrome are one readout with two
+// halves, and any spacing between them would put the second pill back.
 const SECTION = { borderTop: '1px solid var(--map-hairline)' }
 
 export default function WeatherRibbon({
@@ -64,21 +62,26 @@ export default function WeatherRibbon({
   // same report this strip opens. There is one working weather screen and
   // both routes into it should land there.
   detailOpen = false, onDetailChange,
-  // A second section, inside this same card, under a hairline.
+  // The aerodrome under the map, rendered inside this card's expansion under
+  // a hairline: not a second pill, and not a second collapsed row either.
   //
-  // The map home grew an airport plate that appeared when a pilot zoomed onto
-  // a field, and it floated as a second pill directly under this one: two
-  // rounded panels stacked four pixels apart, and when this one expanded the
-  // other sat on top of it and covered the temperature. They are both "what is
-  // under me right now", so they are one card with two rows, weather above and
-  // the field below, rather than two things competing for the same corner.
+  // It floated as its own pill once, four pixels below this one, and two
+  // rounded panels stacked like that read as one thing that had come apart.
+  // Folding it in as a second collapsed row fixed the floating but left the
+  // resting state carrying two rows and two chevrons, which is furniture: at
+  // rest a pilot wants the category and the code, and nothing else. So the
+  // card shows that one row, and the tap opens everything at once, conditions
+  // above and the field below. They are the same question asked twice.
   below = null,
-  // Whether this section is open, when the parent is arbitrating. One card
-  // with two expanding sections has to be an accordion or it grows past the
-  // map: conditions and a large airport's full readout together are six
-  // hundred pixels, which is most of a phone. Left uncontrolled it keeps its
-  // own state, as it did when it was the only thing in the card.
+  // Whether the card is open. Controlled from the parent on the map home,
+  // which is the only place that knows what else is on the screen. Left
+  // uncontrolled it keeps its own state.
   expanded, onExpandedChange,
+  // The tallest the opened content may get before it scrolls inside itself.
+  // Conditions and a large airport's full readout together are six hundred
+  // pixels, which is most of a phone, so the caller hands down whatever room
+  // is left above the drawer.
+  bodyMaxH,
 }) {
   const [wx, setWx] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -148,8 +151,17 @@ export default function WeatherRibbon({
         </button>
         {/* The field under the map still gets said, even by a pilot who has
             never set a home airport. That is the newest install there is, and
-            the one most likely to be looking at somewhere it does not know. */}
-        {below && <div style={SECTION}>{below}</div>}
+            the one most likely to be looking at somewhere it does not know.
+            Open on sight here, because there is no conditions panel above it
+            for a tap to reveal and nothing else in the card to compete with
+            it. It still scrolls inside the room the caller gives it. */}
+        {below && (
+          <div style={{
+            ...SECTION,
+            maxHeight: bodyMaxH, overflowY: bodyMaxH ? 'auto' : undefined,
+            overscrollBehavior: 'contain',
+          }}>{below}</div>
+        )}
       </div>
       {picker && createPortal(
         <AirportPickerModal
@@ -181,7 +193,9 @@ export default function WeatherRibbon({
     <div style={{ ...CARD, maxWidth: below ? CARD_MAX_WIDE : CARD_MAX, ...style }}>
       {/* Collapsed, this is the whole thing: what the field is doing, and
           which field. That is the glance a pilot takes, and a strip of
-          numbers across the top of a chart is furniture the rest of the time. */}
+          numbers across the top of a chart is furniture the rest of the time.
+          It is also the only row that survives the tap, so it never scrolls
+          away from the finger that opened the card. */}
       {/* The whole strip expands. Changing the base used to live on the code
           itself, which turned out to be most of the pill: tapping what looks
           like a weather readout opened an airport picker, and the weather was
@@ -243,68 +257,78 @@ export default function WeatherRibbon({
             the metric grid were setting the width of a pill showing two short
             words: it measured 231px for something that needs about 120. */}
         <div style={{ overflow: 'hidden', minHeight: 0, width: open ? 'auto' : 0 }}>
-          {/* The min width belongs to the open state only. Applied always, it
+          {/* The scroller, and the only one in the card. Everything the tap
+              reveals lives in here, so a field with five runways and six
+              frequencies under a full set of conditions runs off the bottom of
+              this box rather than off the bottom of the map.
+              The min width belongs to the open state only. Applied always, it
               set the width of the collapsed pill too, which is why a strip
               showing two short words still stretched halfway across the map. */}
-          <div style={{ padding: '2px 12px 11px', minWidth: open ? 236 : 0 }}>
-            {metar ? (<>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 8 }}>
-                <span style={{ fontSize: 24, fontWeight: 800, color: 'var(--map-ink)', letterSpacing: '-0.8px' }}>
-                  {parseTemp(metar, units) ?? '--'}
-                </span>
-                <span style={{ fontSize: 11.5, color: 'var(--map-ink-dim)', minWidth: 0,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {parseAirportName(metar) || ''}
-                </span>
-              </div>
+          <div style={{
+            minWidth: open ? 236 : 0,
+            maxHeight: bodyMaxH, overflowY: bodyMaxH ? 'auto' : undefined,
+            overscrollBehavior: 'contain',
+          }}>
+            <div style={{ padding: '2px 12px 11px' }}>
+              {metar ? (<>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 8 }}>
+                  <span style={{ fontSize: 24, fontWeight: 800, color: 'var(--map-ink)', letterSpacing: '-0.8px' }}>
+                    {parseTemp(metar, units) ?? '--'}
+                  </span>
+                  <span style={{ fontSize: 11.5, color: 'var(--map-ink-dim)', minWidth: 0,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {parseAirportName(metar) || ''}
+                  </span>
+                </div>
 
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px 14px' }}>
+                  {metrics.map(m => (
+                    <div key={m.icon} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <img src={m.icon} alt="" width={13} height={13}
+                        style={{ filter: 'brightness(0)', opacity: 0.55, flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--map-ink)' }}>{m.value}</span>
+                    </div>
+                  ))}
+                </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px 14px' }}>
-                {metrics.map(m => (
-                  <div key={m.icon} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <img src={m.icon} alt="" width={13} height={13}
-                      style={{ filter: 'brightness(0)', opacity: 0.55, flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--map-ink)' }}>{m.value}</span>
-                  </div>
-                ))}
-              </div>
+                <button onClick={() => onDetailChange?.(true)} style={{
+                  marginTop: 10, width: '100%', border: 'none', cursor: 'pointer',
+                  background: 'var(--map-fill)', borderRadius: 9, padding: '9px 0',
+                  fontSize: 11.5, fontWeight: 700, color: 'var(--map-ink)',
+                }}>
+                  Full report, METAR and TAF
+                </button>
+              </>) : (
+                <div style={{ fontSize: 11.5, color: 'var(--map-ink-dim)', padding: '2px 0 4px' }}>
+                  {loading ? 'Loading conditions…' : error ? 'Weather unavailable right now' : 'No observation'}
+                </div>
+              )}
 
-              <button onClick={() => onDetailChange?.(true)} style={{
-                marginTop: 10, width: '100%', border: 'none', cursor: 'pointer',
-                background: 'var(--map-fill)', borderRadius: 9, padding: '9px 0',
-                fontSize: 11.5, fontWeight: 700, color: 'var(--map-ink)',
+              {/* Outside the branch above, so it is there whether or not the
+                  field reports. It used to sit inside, which meant the one case
+                  where a pilot most wants to move on, a home airport with no
+                  observation, was the one case with no way to leave it: the
+                  panel said "No observation" and offered nothing else.
+                  Plenty of small strips never report, so this is the normal
+                  state for them rather than an error.
+
+                  Last, and in the accent, because it is the only thing in this
+                  panel that changes something rather than reporting it. */}
+              <button onClick={() => setPicker(true)} style={{
+                marginTop: metar ? 7 : 10, width: '100%', border: 'none', cursor: 'pointer',
+                background: ACCENT, borderRadius: 9, padding: '9px 0',
+                fontSize: 11.5, fontWeight: 700, color: '#fff',
               }}>
-                Full report, METAR and TAF
+                Change home airport
               </button>
-            </>) : (
-              <div style={{ fontSize: 11.5, color: 'var(--map-ink-dim)', padding: '2px 0 4px' }}>
-                {loading ? 'Loading conditions…' : error ? 'Weather unavailable right now' : 'No observation'}
-              </div>
-            )}
+            </div>
 
-            {/* Outside the branch above, so it is there whether or not the
-                field reports. It used to sit inside, which meant the one case
-                where a pilot most wants to move on, a home airport with no
-                observation, was the one case with no way to leave it: the
-                panel said "No observation" and offered nothing else.
-                Plenty of small strips never report, so this is the normal
-                state for them rather than an error.
-
-                Last, and in the accent, because it is the only thing in this
-                panel that changes something rather than reporting it. */}
-            <button onClick={() => setPicker(true)} style={{
-              marginTop: metar ? 7 : 10, width: '100%', border: 'none', cursor: 'pointer',
-              background: ACCENT, borderRadius: 9, padding: '9px 0',
-              fontSize: 11.5, fontWeight: 700, color: '#fff',
-            }}>
-              Change home airport
-            </button>
+            {/* And under the hairline, the field the map is over. Same tap,
+                same card, one scroll: conditions there, the aerodrome here. */}
+            {below && <div style={SECTION}>{below}</div>}
           </div>
         </div>
       </div>
-
-      {/* The field under the map, in the same card. */}
-      {below && <div style={SECTION}>{below}</div>}
     </div>
 
     {/* The same overlay the weather card opens, portaled so the map's stacking

@@ -14,12 +14,15 @@
 // underneath this one and the temperature disappeared behind it. Conditions
 // here and the field here are the same question, so they are one object.
 //
-// It opens as a row rather than a panel on purpose. The moment this appears is
-// the moment the map matters most, and covering a third of it to show four
-// frequencies the pilot may not want yet is a poor trade. The row carries the
-// three things that are always wanted; a tap gets the rest, and that tap is
-// also what pays for the frequency pack, so a pilot who only ever glances at
-// the identifier never downloads two megabytes to do it.
+// In `inline` mode, which is how the map home uses it, it has no chevron of
+// its own: it is the lower half of the card's one expansion, so the ident row
+// is a heading rather than a control and the body is simply there. It kept its
+// own accordion for one build, and the result was a resting pill carrying two
+// collapsed rows and two chevrons for what a pilot reads as one glance.
+//
+// Either way the frequencies wait for the tap that reveals this, which is what
+// pays for the frequency pack: a pilot who only ever glances at the map never
+// downloads two megabytes to do it.
 //
 // Nothing here is presented as more official than it is. Runway positions come
 // from a surveyed national source in the United States and from community data
@@ -27,7 +30,7 @@
 // airport diagram where the FAA publishes one, and where it does not it names
 // the authority that does instead of sending a pilot to a scan of one.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { createElement, useEffect, useMemo, useRef, useState } from 'react'
 import { getAirports, getAirportDetails } from '../lib/aerodromes'
 import { officialChart } from '../lib/airportCharts'
 
@@ -82,14 +85,19 @@ function runwayLine(r) {
   return { name: `${le}/${he}`, size }
 }
 
-// expanded / onExpandedChange: see WeatherRibbon. The two sections of that one
-// card take turns, because both open at a large airport is more card than map.
+// inline: no chevron, no toggle, body always drawn. The card above owns the
+// opening, and `expanded` is then only telling this component whether it is
+// visible, so that the frequency pack is still fetched on the tap rather than
+// on the pan that brought the field into view.
 //
-// maxBodyH: the tallest this section's open body may be before it scrolls
-// inside itself. This is the only part of that card which can run long, a
-// field with five runways and six frequencies being most of a phone, so it is
-// the only part that scrolls: the two collapsed rows above stay put.
-export default function AirportPlate({ field, onOpenChart, expanded, onExpandedChange, maxBodyH }) {
+// expanded / onExpandedChange: see WeatherRibbon.
+//
+// maxBodyH: the tallest the open body may be before it scrolls inside itself.
+// Unused in inline mode, where the card's own expansion is the scroller and a
+// second one nested inside it would trap the flick that reaches it.
+export default function AirportPlate({
+  field, onOpenChart, expanded, onExpandedChange, maxBodyH, inline = false,
+}) {
   const [selfOpen, setSelfOpen] = useState(false)
   const open = expanded ?? selfOpen
   const setOpen = onExpandedChange ?? setSelfOpen
@@ -163,20 +171,29 @@ export default function AirportPlate({ field, onOpenChart, expanded, onExpandedC
           with the drawer's arrow beside it. The sizes below are not taste:
           measured, this row needs 244 of the 247 it gets on the narrowest
           phone the app supports, which is why the gap is 8 and not 9 and why
-          the two dim figures are 11.5 and not 12. */}
-      <button onClick={() => setOpen(!open)} style={{
-        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-        padding: '8px 11px', background: 'transparent', border: 0, cursor: 'pointer',
-        color: 'inherit', textAlign: 'left',
-      }}>
+          the two dim figures are 11.5 and not 12.
+          Inline it is a heading, so it is a div: a button inside an already
+          opened panel that toggles nothing is a target that lies. */}
+      {createElement(inline ? 'div' : 'button', {
+        onClick: inline ? undefined : () => setOpen(!open),
+        style: {
+          display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+          padding: inline ? '10px 12px 2px' : '8px 11px',
+          background: 'transparent', border: 0, cursor: inline ? 'default' : 'pointer',
+          color: 'inherit', textAlign: 'left',
+        },
+      }, <>
         <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.3px', flexShrink: 0 }}>{ident}</span>
         {elev && (
           <span style={{ fontSize: 11.5, color: 'var(--map-ink-dim)', whiteSpace: 'nowrap', flexShrink: 0 }}>{elev}</span>
         )}
         {/* The runway summary is the first thing to give way on a narrow
             phone: the identifier and the elevation are always readable, and
-            this ellipses rather than pushing the chevron off the card. */}
-        {!open && longest && (
+            this ellipses rather than pushing the chevron off the card. It is
+            the collapsed row's whole reason for existing, so inline, where the
+            runways themselves are two lines below, it would be saying the same
+            thing twice. */}
+        {!inline && !open && longest && (
           <span style={{
             fontSize: 11.5, color: 'var(--map-ink-dim)', whiteSpace: 'nowrap',
             minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
@@ -184,17 +201,20 @@ export default function AirportPlate({ field, onOpenChart, expanded, onExpandedC
             {longest[0]}/{longest[1]} · {longest[6].toLocaleString()} ft
           </span>
         )}
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
-          style={{ marginLeft: 'auto', opacity: 0.55, transform: open ? 'rotate(180deg)' : 'none', flexShrink: 0 }}>
-          <polyline points="18 15 12 9 6 15" />
-        </svg>
-      </button>
+        {!inline && (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+            style={{ marginLeft: 'auto', opacity: 0.55, transform: open ? 'rotate(180deg)' : 'none', flexShrink: 0 }}>
+            <polyline points="18 15 12 9 6 15" />
+          </svg>
+        )}
+      </>)}
 
-      {open && (
+      {(inline || open) && (
         <div style={{
           padding: '0 12px 12px', minWidth: 236,
-          maxHeight: maxBodyH, overflowY: maxBodyH ? 'auto' : undefined,
+          maxHeight: inline ? undefined : maxBodyH,
+          overflowY: !inline && maxBodyH ? 'auto' : undefined,
           overscrollBehavior: 'contain',
         }}>
           {name && (
