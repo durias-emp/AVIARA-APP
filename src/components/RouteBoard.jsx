@@ -12,11 +12,11 @@ import { fmtEte, etaFrom } from '../lib/routeFigures'
 import { fetchWindsAloft, windAt, WIND_LEVELS_FT } from '../lib/windsAloft'
 import { analyzeTerrain } from '../lib/terrain'
 import { haversineNm, bearingDeg } from '../lib/geo'
-
-// The altitudes a pilot actually files. VFR cruising levels either side of
-// 3,000 ft AGL, which is what the box is for; the planner is where an exact
-// figure gets worked out.
-const ALTITUDES = [2500, 3500, 4500, 5500, 6500, 7500, 8500, 9500, 10500, 11500]
+import { magneticVariation, toMagnetic } from '../lib/magvar'
+import {
+  cruisingAltitudes, suggestAltitude, formatAltitude, isEastbound,
+} from '../lib/cruisingAltitudes'
+import { SegControl } from './SegControl'
 
 function Figure({ label, value, sub, wide = false }) {
   return (
@@ -139,7 +139,13 @@ function Profile({ terrain, cruiseAlt, freezingFt, winds, lengthNm }) {
 
 export default function RouteBoard({ route, etd, cruiseTas, burnGph, onAltitude }) {
   const [page, setPage] = useState(0)
-  const [alt, setAlt] = useState(route?.cruiseAlt ?? 5500)
+  const [rules, setRules] = useState('VFR')
+  // Null until the pilot says otherwise, so the direction follows the course
+  // as the route is edited. Set once, it stops following: a pilot who chose
+  // westbound on a route that wanders back east meant it.
+  const [dirChoice, setDirChoice] = useState(null)
+  const [alt, setAlt] = useState(null)
+  const [magVar, setMagVar] = useState(null)
   const [winds, setWinds] = useState(null)
   const [terrain, setTerrain] = useState(null)
   const pagerRef = useRef(null)
@@ -161,6 +167,35 @@ export default function RouteBoard({ route, etd, cruiseTas, burnGph, onAltitude 
     ? bearingDeg(points[0].lat, points[0].lon, points[points.length - 1].lat, points[points.length - 1].lon)
     : null
 
+  // Magnetic, not true. The hemispheric rule is written in magnetic, and a
+  // route flown where the variation is large would be handed the wrong side of
+  // it otherwise: 15 degrees is the difference between odd and even over much
+  // of Canada.
+  useEffect(() => {
+    if (points.length < 2) return
+    let cancelled = false
+    const mid = points[Math.floor(points.length / 2)]
+    magneticVariation(mid.lat, mid.lon).then(v => { if (!cancelled) setMagVar(v) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(points)])
+
+  const magCourse = courseDeg != null ? toMagnetic(courseDeg, magVar ?? 0) : null
+  const eastbound = dirChoice ?? isEastbound(magCourse)
+  const altitudes = useMemo(
+    () => cruisingAltitudes({ rules, eastbound }), [rules, eastbound])
+
+  // The suggestion stands until the pilot picks one, and is recomputed as the
+  // terrain arrives or the rules change. A chosen altitude that is no longer
+  // legal for the direction is dropped rather than kept: an even level on an
+  // eastbound VFR leg is not a preference, it is a mistake waiting at the top
+  // of the climb.
+  const suggested = useMemo(
+    () => suggestAltitude({ rules, magCourseDeg: magCourse, terrainMaxFt: terrain?.maxFt ?? null }),
+    [rules, magCourse, terrain?.maxFt])
+  const effAlt = alt != null && altitudes.includes(alt) ? alt : suggested
+  useEffect(() => { onAltitude?.(effAlt) }, [effAlt, onAltitude])
+
   useEffect(() => {
     if (!route?.dep) return
     let cancelled = false
@@ -174,14 +209,14 @@ export default function RouteBoard({ route, etd, cruiseTas, burnGph, onAltitude 
   useEffect(() => {
     if (points.length < 2) { return }
     let cancelled = false
-    analyzeTerrain(points, { altFt: alt })
+    analyzeTerrain(points, { altFt: null })
       .then(r => { if (!cancelled) setTerrain(r) })
       .catch(() => { if (!cancelled) setTerrain({ status: 'unavailable' }) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(points)])
 
-  const windHere = winds ? windAt(winds, alt) : null
+  const windHere = winds ? windAt(winds, effAlt) : null
   // Along-track component: positive is a headwind, which is the sign a pilot
   // reads it with.
   const headKt = windHere && courseDeg != null
@@ -213,24 +248,56 @@ export default function RouteBoard({ route, etd, cruiseTas, burnGph, onAltitude 
 
   return (
     <div style={{ padding: '10px 12px 4px' }}>
-      {/* The altitude, above both pages because both are about it. */}
+      {/* The altitude, above both pages because both are about it.
+
+          Three controls in one row: the ruleset, the direction, and the level.
+          The first two decide which levels are legal and the third picks one
+          from what is left, which is the order the rule itself is applied in.
+
+          Direction is preselected from the magnetic course and stays with it
+          until the pilot touches it. A route that wanders back east after they
+          chose westbound should not overrule them. */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <SegControl
+            options={['VFR', 'IFR']}
+            value={rules}
+            onChange={setRules} />
+        </div>
+        <div style={{ flex: 1.3, minWidth: 0 }}>
+          <SegControl
+            options={['East', 'West']}
+            value={eastbound ? 'East' : 'West'}
+            onChange={v => setDirChoice(v === 'East')} />
+        </div>
+      </div>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <span style={{
-          fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-          color: 'var(--map-ctrl-ink-faint, var(--map-ink-faint))', flexShrink: 0,
-        }}>Altitude</span>
         <select
-          value={alt}
-          onChange={e => { const v = Number(e.target.value); setAlt(v); onAltitude?.(v) }}
+          value={effAlt ?? ''}
+          onChange={e => setAlt(Number(e.target.value))}
           onPointerDown={e => e.stopPropagation()}
           style={{
-            flex: 1, minWidth: 0, padding: '7px 9px', borderRadius: 9,
+            flex: 1, minWidth: 0, padding: '8px 9px', borderRadius: 9,
             border: '1px solid var(--map-hairline)', background: 'var(--map-fill-soft)',
             color: 'var(--map-ctrl-ink, var(--map-ink))',
-            fontSize: 13, fontWeight: 800, fontVariantNumeric: 'tabular-nums', outline: 'none',
+            fontSize: 14, fontWeight: 800, fontVariantNumeric: 'tabular-nums', outline: 'none',
           }}>
-          {ALTITUDES.map(a => <option key={a} value={a}>{a.toLocaleString()} ft</option>)}
+          {altitudes.map(a => (
+            <option key={a} value={a}>{formatAltitude(a)}</option>
+          ))}
         </select>
+        {/* What the app chose and why, so a preselected level is a suggestion
+            with a reason rather than a number that appeared. */}
+        <span style={{
+          fontSize: 10, fontWeight: 700, lineHeight: 1.25, flexShrink: 0, maxWidth: 118,
+          color: 'var(--map-ctrl-ink-faint, var(--map-ink-faint))',
+        }}>
+          {magCourse != null
+            ? `${String(Math.round(magCourse)).padStart(3, '0')}° M · ${eastbound ? 'odd' : 'even'}`
+            : 'course unknown'}
+          {alt == null && suggested != null ? ' · suggested' : ''}
+        </span>
       </div>
 
       <div
@@ -263,7 +330,7 @@ export default function RouteBoard({ route, etd, cruiseTas, burnGph, onAltitude 
         </div>
 
         <div style={{ flex: '0 0 100%', scrollSnapAlign: 'start', minWidth: 0 }}>
-          <Profile terrain={terrain} cruiseAlt={alt} freezingFt={freezingFt}
+          <Profile terrain={terrain} cruiseAlt={effAlt} freezingFt={freezingFt}
             winds={windHere} lengthNm={terrain?.lengthNm ?? distNm} />
         </div>
       </div>
