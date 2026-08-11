@@ -106,6 +106,23 @@ export function nearestStop(vh, y, stops = SHEET_STOPS) {
     Math.abs(y - stopY(vh, s)) < Math.abs(y - stopY(vh, best)) ? s : best)
 }
 
+// How much of the sheet is on the screen at a stop. The complement of stopY,
+// and the number a block has to fit inside to be readable there.
+export const visibleHeight = (vh, stop) => vh - stopY(vh, stop)
+
+// The smallest rung that puts a block on the screen, or null if no rung does.
+//
+// bottomPx is the block's bottom edge measured from the TOP OF THE SHEET, not
+// from the top of the screen: a stop is a height of sheet, so what decides
+// whether a block is readable there is how far down the sheet it sits, not
+// where the sheet happens to be while it slides.
+//
+// null is a real answer and not a failure. A block that no rung can contain is
+// a list, and a list belongs at 100 where the sheet finally scrolls.
+export function stopCovering(vh, bottomPx, stops = SHEET_STOPS) {
+  return stops.find(s => bottomPx <= visibleHeight(vh, s)) ?? null
+}
+
 // The top corners, for wherever the sheet is right now.
 //
 // Full at rest and square by the time it reaches 80, which is where the sheet

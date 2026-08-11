@@ -55,6 +55,7 @@ import {
   SHEET_STOPS, DRAG_SLOP,
   stopY, isFlick, isFullPull, flickTarget, nearestStop, radiusFor,
 } from '../../lib/sheet'
+import useStopAudit from '../../hooks/useStopAudit'
 
 // The flight plan, loaded only when it is asked for. Same specifier App.jsx
 // lazy-loads and the same one the idle warm-up below fetches, so all three
@@ -911,6 +912,9 @@ export default function MapHome() {
   const [acTextH, acTextRef] = useMeasuredHeight()
   const [dragY, setDragY] = useState(null)      // live offset while a finger is down
   const drag = useRef(null)
+  // The drawer itself, so a block's offset inside it can be measured against
+  // the stop it claims. Read by the stop audit and nothing else.
+  const sheetRef = useRef(null)
   // The room the chips have, measured rather than recomputed. Its CSS height is
   // a min() of a constant and a viewport expression that includes the safe-area
   // inset, and the inset is not a number this side of the stylesheet: on the
@@ -1815,6 +1819,30 @@ export default function MapHome() {
   // not grow to the content.
   const restPx = vh - stopY(vh, 25)
 
+  // The stops own their content, and this is what holds them to it.
+  //
+  // Each block below declares the stop it belongs to on an element it already
+  // has, and when the drawer settles there the block is measured against the
+  // room that stop actually gives it. Nothing is moved by any of this: it is a
+  // development check, it is compiled out of the shipped app, and its whole
+  // job is to make "the tools grid lives at 80" a fact the code enforces
+  // rather than a coincidence of whatever happens to sit above it.
+  //
+  // Skipped while a tool screen has the drawer. Those are screens borrowing
+  // the room, with their own scrolling and their own idea of how tall they
+  // are, and they are not the drawer saying what it is for.
+  const declareStop = useStopAudit({
+    sheetRef, vh, snap, enabled: import.meta.env.DEV, skip: !!drawerView,
+  })
+  // Composed rather than replacing: this element is already measured for the
+  // photograph's height. Both refs are stable, so the pair is too, and the
+  // ResizeObserver underneath is not rebuilt on every render.
+  const grabAudit = declareStop(25, 'drawer header (actions, route)')
+  const grabAndAudit = useCallback((node) => {
+    grabRef(node)
+    grabAudit?.(node)
+  }, [grabRef, grabAudit])
+
   // Where the bottom of the chip stack sits: clear of the sheet, then clear of
   // the two map controls, so the chips rest on top of the layers button that
   // opens them. Kept as a bare expression rather than a finished calc() because
@@ -2543,7 +2571,7 @@ export default function MapHome() {
           resting at half the screen so the map stays in view above it. Resting
           heights and nothing in between, because a control surface that stops
           wherever the finger left it is a surface you have to aim at. */}
-      <div style={{
+      <div ref={sheetRef} style={{
         position: 'absolute', left: 0, right: 0, top: 0, zIndex: 600,
         height: '100%',
         transform: sheetOpen ? `translateY(${y}px)` : `translateY(${vh}px)`,
@@ -2588,8 +2616,12 @@ export default function MapHome() {
         {/* The grab area: handle and actions. Dragging anywhere on this moves
             the sheet, which is a bigger target than the handle alone and is
             what people reach for anyway. */}
+        {/* THE 25 BLOCK. What is true at a glance: the flight category and the
+            code above, the three actions, and the route if there is one. All
+            of it has to fit in the resting stop, and the audit says so out
+            loud when it stops fitting. */}
         <div
-          ref={grabRef}
+          ref={grabAndAudit}
           onPointerDown={onDragStart} onPointerMove={onDragMove}
           onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
           style={{
@@ -2796,7 +2828,11 @@ export default function MapHome() {
               aircraft is an extra tap to get where you obviously meant. With
               no aircraft set there is nothing to open, so it falls back to the
               hangar, which is where you would add one. */}
-          <button onClick={() => navigate(ac?.id ? `/aircraft/${ac.id}` : '/aircraft')} style={{
+          {/* THE 50 BLOCK. The aircraft the pilot is flying: the subject of
+              whatever they are in the middle of, and the one thing at half
+              height that is about this flight rather than about the app. */}
+          <button ref={declareStop(50, 'aircraft')}
+            onClick={() => navigate(ac?.id ? `/aircraft/${ac.id}` : '/aircraft')} style={{
             display: 'block', width: '100%', textAlign: 'left', padding: 0,
             marginBottom: 20, border: 'none', background: 'none', cursor: 'pointer',
           }}>
@@ -2851,7 +2887,12 @@ export default function MapHome() {
             </div>
           </button>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {/* THE 80 BLOCK. A menu of next actions, which is what 80 is for:
+              options to choose from rather than a task in itself. This is the
+              one that used to be at 80 only by accident, because it was
+              whatever was left after the aircraft above it. */}
+          <div ref={declareStop(80, 'tools grid')}
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {TOOLS.map(t => (
               <button key={t.view} onClick={() => setDrawerView(t.view)} style={{
                 display: 'flex', alignItems: 'center', gap: 12, padding: '14px 14px',
@@ -2872,7 +2913,12 @@ export default function MapHome() {
             ))}
           </div>
 
-          <div style={{ marginTop: 22, fontSize: 11, fontWeight: 700, letterSpacing: '0.6px',
+          {/* THE 100 BLOCK. A list long enough to need its own scroll, which
+              is the whole reason a full-screen stop exists. Declared but never
+              measured: 100 is the stop that scrolls, so running past the
+              bottom of the screen is what this block is supposed to do. */}
+          <div ref={declareStop(100, 'logbook')}
+            style={{ marginTop: 22, fontSize: 11, fontWeight: 700, letterSpacing: '0.6px',
             color: 'var(--map-ink-faint)', textTransform: 'uppercase' }}>
             {snap === 100 ? `Logbook · ${flights.length}` : 'Recent flights'}
           </div>
