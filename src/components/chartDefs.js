@@ -53,13 +53,17 @@ export const CHARTS = [
   // Turning it on starts a fresh trail rather than resuming the old one, so the
   // line always means "since I asked", never "since some earlier leg".
   { key: 'breadcrumbs', label: 'TRAIL', faaOnly: false },
+  // Friends who are airborne right now, drawn from the positions they have
+  // each chosen to publish. Nothing appears here for a pilot with no mutual
+  // follows, and nothing appears about a pilot who has not opted in.
+  { key: 'friends',     label: 'FRNDS', faaOnly: false },
 ]
 
 export const EMPTY_LAYERS = {
   sectional: false, tac: false, terrain: false, ifrlo: false, ifrhi: false, airspace: false,
   traffic: false, tfr: false,
   airports: false, heliports: false, seaplane: false, radar: false, fltcat: false,
-  breadcrumbs: false,
+  breadcrumbs: false, friends: false,
 }
 
 // The openAIP tile key, resolved the same way the route planner resolves it:

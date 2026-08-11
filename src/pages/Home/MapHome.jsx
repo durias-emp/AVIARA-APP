@@ -35,6 +35,9 @@ import {
   AirportsHeroCard, HangarCard, PilotRow, FlightPlanCard, DiscoverCard, ROW_GAP,
 } from '../../components/HomeRows'
 import { getCurrencyStatus } from '../../lib/currency'
+import { useLiveShare } from '../../hooks/useLiveShare'
+import { useFriendsAloft } from '../../hooks/useFriendsAloft'
+import { liveSharingAvailable } from '../../lib/livePositions'
 import {
   HOME_ACTIONS, HOME_ACTIONS_KEY, DEFAULT_HOME_ACTIONS, findAction, normaliseActions,
 } from '../../lib/homeActions'
@@ -668,6 +671,15 @@ const IconLayers = () => (
     <path d="M12 3l9 5-9 5-9-5 9-5z" /><path d="M3 13l9 5 9-5" strokeLinecap="round" />
   </svg>
 )
+// Two figures, for the control that says whether other people can see you.
+const IconFriendsCtrl = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+)
 const IconLocate = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
     <circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none" />
@@ -855,6 +867,56 @@ function FollowController({ follow, orientation, fix, bearing, coveredHeight, on
     }
   }, [follow, fix, orientation, bearing, coveredHeight, map])
   return null
+}
+
+// Friends who are up, drawn as aircraft rather than dots so the map says at a
+// glance which way they are going. Deliberately a different colour from the
+// ownship: the one blue aircraft on this map is you, and a screen where you
+// have to work out which one you are is worse than no feature.
+//
+// The label carries the name and the altitude, because "Diego, 4,500" is the
+// whole answer to why a pilot looked, and a tap should not be required for it.
+// A display name is a string another user chose, and this builds raw HTML for
+// Leaflet's divIcon. Escaped rather than interpolated: the one place in this
+// app where somebody else's text becomes markup is exactly where a display
+// name of "<img onerror=...>" would run.
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ))
+}
+
+function friendIcon(trackDeg, name, altFt) {
+  const rot = Math.round(trackDeg ?? 0)
+  const alt = altFt != null ? `${Math.round(altFt).toLocaleString()} ft` : ''
+  const safeName = escapeHtml(name)
+  return L.divIcon({
+    className: '',
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    html: `<div style="position:relative">
+      <svg width="30" height="30" viewBox="0 0 24 24" style="transform:rotate(${rot}deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5))">
+        <path d="M12 2 L13.4 9 L21 12 L13.4 13.6 L13.1 18.6 L15.4 20.6 L15.4 21.8 L12 20.8 L8.6 21.8 L8.6 20.6 L10.9 18.6 L10.6 13.6 L3 12 L10.6 9 Z"
+          fill="#ff9f0a" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/>
+      </svg>
+      <div style="position:absolute;left:50%;top:30px;transform:translateX(-50%);white-space:nowrap;
+        font-size:10px;font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.9);line-height:1.2;text-align:center">
+        ${safeName}${alt ? `<br><span style="font-weight:600;opacity:0.85">${alt}</span>` : ''}
+      </div>
+    </div>`,
+  })
+}
+
+function FriendsLayer({ friends }) {
+  if (!friends.length) return null
+  return (
+    <>
+      {friends.map(f => (
+        <Marker key={f.user_id} position={[f.lat, f.lon]}
+          icon={friendIcon(f.track_deg, f.name, f.alt_ft)} interactive={false} />
+      ))}
+    </>
+  )
 }
 
 // The pilot's own track, drawn behind them for as long as the overlay is on.
@@ -2044,6 +2106,13 @@ function MapHomeInner() {
 
   const recording = rec != null
 
+  // Who is up, and whether this pilot is telling anyone where they are. The
+  // layer is a chart chip like everything else that draws on the map; the
+  // sharing decision is a setting, because it is about the pilot rather than
+  // about the map.
+  const liveShare = useLiveShare({ coords: pos, recording })
+  const friendsAloft = useFriendsAloft(layers.friends)
+
   // What the drawer is telling the pilot to do next.
   //
   // Only at the resting stop, and only for as long as it takes to be read.
@@ -2564,6 +2633,7 @@ function MapHomeInner() {
         {/* The trail the pilot asked for, under the ownship so the aircraft is
             never hidden by where it has been. */}
         {layers.breadcrumbs && <BreadcrumbLayer trail={breadcrumbTrail} />}
+        {layers.friends && <FriendsLayer friends={friendsAloft} />}
         {/* Ownship when the GPS reports a ground track (moving); the plain dot
             when stationary, since a parked aircraft has no meaningful
             nose-direction from GPS alone. The icon's rotation is
@@ -2683,6 +2753,20 @@ function MapHomeInner() {
         opacity: expanded ? 0 : 1,
         pointerEvents: expanded ? 'none' : 'auto',
       }}>
+        {/* Only in manual mode, because in every other mode this button would
+            be a control that does not control anything: the answer is already
+            decided by whether a recording is running, or by the app being
+            open. Hidden rather than disabled for the same reason. */}
+        {liveShare.mode === 'manual' && liveSharingAvailable() && (
+          <Ctrl onClick={() => liveShare.setGoLive(v => !v)}
+            active={liveShare.sharing}
+            caption={liveShare.sharing ? 'LIVE' : null}
+            title={liveShare.sharing
+              ? 'You are visible to your friends. Tap to stop'
+              : 'Show your position to your friends'}>
+            <IconFriendsCtrl />
+          </Ctrl>
+        )}
         <Ctrl onClick={() => { setChartsOpen(o => !o); setChartsEverOpened(true) }} title="Chart layers"
           active={chartsOpen} badge={activeCount}><IconLayers /></Ctrl>
         <Ctrl onClick={locate} active={follow}

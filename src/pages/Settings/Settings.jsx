@@ -6,6 +6,8 @@ import { useRegion } from '../../context/Region'
 import { get, put } from '../../lib/db'
 import { DEFAULT_AUTO_DETECT_CONFIG, autoDetectEnabledFrom } from '../../hooks/useFlightDetector'
 import { SegControl } from '../../components/SegControl'
+import { LIVE_SHARE_KEY, LIVE_SHARE_MODES } from '../../hooks/useLiveShare'
+import { withdrawPosition } from '../../lib/livePositions'
 
 const REGIONS = [
   { key: 'us', label: 'United States', sub: 'FAA / FAR-AIM' },
@@ -57,11 +59,23 @@ export default function Settings({ onBack, order, onMoveRow }) {
   const { region, setRegion } = useRegion()
   const [autoDetectEnabled, setAutoDetectEnabled] = useState(true)
   const [autoDetectConfig, setAutoDetectConfig] = useState(DEFAULT_AUTO_DETECT_CONFIG)
+  // Off unless the pilot has said otherwise. Nothing about broadcasting a
+  // location may arrive switched on.
+  const [liveShareMode, setLiveShareModeState] = useState('off')
 
   useEffect(() => {
     get('settings', 'autoDetectEnabled').then(row => setAutoDetectEnabled(autoDetectEnabledFrom(row)))
     get('settings', 'autoDetectConfig').then(row => setAutoDetectConfig({ ...DEFAULT_AUTO_DETECT_CONFIG, ...(row?.value ?? {}) }))
+    get('settings', LIVE_SHARE_KEY).then(row => { if (row?.value) setLiveShareModeState(row.value) }).catch(() => {})
   }, [])
+
+  function setLiveShareMode(next) {
+    setLiveShareModeState(next)
+    put('settings', { key: LIVE_SHARE_KEY, value: next })
+    // Choosing "off" here has to mean off now, not at the next fix: the map
+    // screen may not even be mounted to notice the change.
+    if (next === 'off') withdrawPosition()
+  }
 
   function toggleAutoDetect(next) {
     setAutoDetectEnabled(next)
@@ -124,6 +138,38 @@ export default function Settings({ onBack, order, onMoveRow }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 {region === r.key && (
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent-fg)' }} />
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <SectionLabel>Sharing Your Position</SectionLabel>
+        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '0 2px 10px', lineHeight: 1.5 }}>
+          Lets pilots you follow, who also follow you back, see where you are flying on their map. One-way followers never see it, blocking someone ends it, and turning this off removes your position straight away rather than letting it expire. Your position is only ever a current one: the app does not keep a history of where you have been.
+        </div>
+        <div style={{ background: 'var(--bg-card)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+          {LIVE_SHARE_MODES.map((m, i) => (
+            <div
+              key={m.key}
+              onClick={() => setLiveShareMode(m.key)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '13px 16px', borderTop: i === 0 ? 'none' : '0.5px solid var(--border)',
+                cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+              }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{m.label}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 1 }}>{m.sub}</div>
+              </div>
+              <div style={{
+                width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                border: liveShareMode === m.key ? 'none' : '1.5px solid var(--border)',
+                background: liveShareMode === m.key ? 'var(--accent)' : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {liveShareMode === m.key && (
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent-fg)' }} />
                 )}
               </div>
