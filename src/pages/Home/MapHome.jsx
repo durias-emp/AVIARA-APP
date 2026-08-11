@@ -51,6 +51,10 @@ import { useActiveAircraft } from '../../context/ActiveAircraft'
 import { scopedSettingsKey } from '../../lib/aircraft'
 import { num } from '../../lib/climbPerf'
 import { bearingDeg, haversineNm } from '../../lib/geo'
+import {
+  SHEET_STOPS, DRAG_SLOP,
+  stopY, isFlick, isFullPull, flickTarget, nearestStop, radiusFor,
+} from '../../lib/sheet'
 
 // The flight plan, loaded only when it is asked for. Same specifier App.jsx
 // lazy-loads and the same one the idle warm-up below fetches, so all three
@@ -152,35 +156,11 @@ function chipStackBox(availH, availW, count) {
   }
 }
 
-// Where the drawer can rest, named by how much of the screen it covers.
-//
-//    0   off the screen entirely
-//   25   where it opens, and where it comes back to
-//   50   half and half: the flight plan, drawn across the map it needs
-//   80   tools and the recent flights
-//  100   a screen of its own, for reading the logbook rather than glancing
-//
-// The number is the name. One vocabulary for the code and for talking about
-// it, so "the plan sits at 50" needs no translating in either direction.
-//
-// The resting stop is 25 and was 30. At 30 the drawer stood 244px tall around
-// 146px of contents, so a third of it was empty and the map was paying for the
-// gap. 25 leaves about the safe-area inset and a little air, which is as tight
-// as a fixed fraction can be cut without the hint line landing under the home
-// indicator on the phone, where the inset is real and the desktop's is zero.
-//
-// Fractions of the viewport, not pixels, for two reasons. A stop then means
-// the same thing on every screen; and a stop is a position rather than a
-// measurement of whatever happens to be inside it. The resting stop used to be
-// 178px of measured contents plus two correction constants for the pieces that
-// came and went, which is three numbers describing one height and three places
-// to be wrong.
-const SHEET_STOPS = [25, 50, 80, 100]
-// Where the drawer commits to full whatever the gesture was. Above the 80 stop
-// rather than below it, or every drag that reached 80 would be taken as a
-// drag for 100 and the stop would be unreachable by hand.
-const SHEET_FULL_TRIGGER = 90
-const SHEET_RADIUS = 22
+// Where the drawer can rest, what a gesture means, and how square its corners
+// are, all of which now live in src/lib/sheet.js. They were here, private to
+// this screen, which is how the app came to have four other sheets at four
+// different heights and no stops at all. See that file for why the ladder has
+// four rungs and why 25 is the resting one.
 
 // An element's height, kept current.
 //
@@ -227,13 +207,6 @@ const HINT_RESERVE = 28
 // and still reads as cut.
 const AC_BREATHING = 10
 
-// Distance from the top of the screen to the top of the drawer, for a stop.
-// Stops are how much is covered and this is where the edge lands, so the two
-// are complements: 100 is at the top of the screen, 0 is below the bottom.
-const stopY = (vh, stop) => Math.round(vh * (1 - stop / 100))
-// How far a finger must travel before the sheet treats it as a drag rather
-// than a tap. Below this the buttons in the header keep their taps.
-const DRAG_SLOP = 6
 
 // Everything else the app does. The map home would otherwise be a dead end:
 // these are the screens the old menu-style home listed, and they keep their
@@ -1958,7 +1931,7 @@ export default function MapHome() {
   // Corners square off as the sheet approaches the top, rather than snapping
   // from rounded to square at the end of the animation. Interpolated over the
   // last stretch only, so it reads as the sheet meeting the screen edge.
-  const radius = Math.round(SHEET_RADIUS * Math.min(1, y / Math.max(1, stopY(vh, 80))))
+  const radius = radiusFor(vh, y)
 
   // Pointer events with capture, not touch or mouse handlers. Pulling the
   // sheet up moves the finger off the header almost immediately, and without
@@ -2040,15 +2013,10 @@ export default function MapHome() {
     const dist = d.lastY - d.fromY
     const ms = Date.now() - d.t0
     const up = dist < 0
-    // A fast flick decides on its own, regardless of how far it got: a short
-    // sharp pull up should open the sheet even from the very bottom.
-    const flick = ms < 260 && Math.abs(dist) > 24
+    const flick = isFlick(ms, dist)
     setDragY(null)
 
-    // Past the trigger the sheet commits to full whatever the gesture was.
-    // Dragging that far is unambiguous, and snapping back from there would
-    // feel like the sheet fighting the hand.
-    if (d.lastY <= stopY(vh, SHEET_FULL_TRIGGER)) { setSnap(100); return }
+    if (isFullPull(vh, d.lastY)) { setSnap(100); return }
 
     // One ladder, whatever the drawer is carrying: 25, 50, 80, 100. The
     // positions are the positions.
@@ -2060,15 +2028,9 @@ export default function MapHome() {
     // rung it cannot reach is just a drawer that will not move, and pulling
     // down means what it means everywhere else, which is a smaller drawer.
     // Leaving the plan is the X's job.
-    const ladder = SHEET_STOPS
-
-    // Flicks move one rung in the direction of travel, so a hard pull from 25
-    // does not skip the two useful stops in the middle on its way to 100.
     const target = flick
-      ? ladder[Math.min(ladder.length - 1, Math.max(0, Math.max(0, ladder.indexOf(snap)) + (up ? 1 : -1)))]
-      // Otherwise the nearest rung wins.
-      : ladder.reduce((best, s2) =>
-        Math.abs(d.lastY - stopY(vh, s2)) < Math.abs(d.lastY - stopY(vh, best)) ? s2 : best)
+      ? flickTarget(snap, up, SHEET_STOPS)
+      : nearestStop(vh, d.lastY, SHEET_STOPS)
 
     // Pulling a route open opens its flight plan.
     //
