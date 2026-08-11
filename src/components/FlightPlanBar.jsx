@@ -1,35 +1,5 @@
 import { useState } from 'react'
-import { getAirports } from '../lib/aerodromes'
-import { resolveWaypoint } from '../lib/waypoints'
-
-// Resolves one typed token against, in order: worldwide airports (ICAO, or a
-// 3-letter US ident with/without its leading K), then GPS fixes / VORs / user
-// waypoints (lib/waypoints.js already covers the whole world for those).
-async function resolveToken(raw, nearPos) {
-  const ident = raw.trim().toUpperCase()
-  if (!ident) return null
-
-  // May be null when the airport table could not be loaded. Falling through to
-  // the waypoint resolver below is the right answer then: it reaches fixes,
-  // navaids and coordinates, none of which live in this table, so a typed
-  // route still resolves what it can instead of throwing on the first leg.
-  const airports = (await getAirports()) ?? []
-  const tryIdents = [ident]
-  if (ident.length === 3) tryIdents.push('K' + ident)
-  if (ident.length === 4 && ident[0] === 'K') tryIdents.push(ident.slice(1))
-  for (const cand of tryIdents) {
-    const hit = airports.find(a => a[0] === cand)
-    if (hit) {
-      const [id, lat, lon, , name] = hit
-      return { kind: 'APT', name: id, label: name, lat, lon }
-    }
-  }
-
-  const wp = await resolveWaypoint(ident, nearPos)
-  if (wp) return { kind: wp.kind, name: wp.name, label: wp.vorName || null, lat: wp.lat, lon: wp.lon }
-
-  return null
-}
+import { resolveRouteText } from '../lib/routeText'
 
 // Top-of-map route entry — ForeFlight-style "type a route, see it drawn".
 // Deliberately scoped down from the full Route & Altitude planner in Flight
@@ -42,28 +12,16 @@ export default function FlightPlanBar({ onRouteChange }) {
   const [badTokens, setBadTokens] = useState([])
 
   async function submit() {
-    const tokens = text.trim().toUpperCase().split(/\s+/).filter(Boolean)
-    if (tokens.length < 2) {
+    if (text.trim().split(/\s+/).filter(Boolean).length < 2) {
       setBadTokens([])
       onRouteChange(null)
       return
     }
     setResolving(true)
-    const resolved = []
-    const bad = []
-    let nearPos = null
-    for (const t of tokens) {
-      const hit = await resolveToken(t, nearPos)
-      if (hit) {
-        resolved.push(hit)
-        nearPos = [hit.lat, hit.lon]
-      } else {
-        bad.push(t)
-      }
-    }
+    const { points, bad } = await resolveRouteText(text)
     setResolving(false)
     setBadTokens(bad)
-    onRouteChange(resolved.length >= 2 ? resolved : null)
+    onRouteChange(points.length >= 2 ? points : null)
   }
 
   function clear() {

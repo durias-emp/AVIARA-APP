@@ -17,6 +17,7 @@ import {
   parseAirportName,
 } from '../lib/weather'
 import WeatherDetailOverlay from './WeatherDetailOverlay'
+import { resolveRouteText, routeToText } from '../lib/routeText'
 import AirportPickerModal from './AirportPickerModal'
 // The app's one saturated colour, shared so it changes in one place
 // rather than four.
@@ -61,6 +62,11 @@ const SECTION = { borderTop: '1px solid var(--map-hairline)' }
 
 export default function WeatherRibbon({
   icao, units = {}, style, onChangeAirport,
+  // The route, and the way to set one. This strip started life as a weather
+  // readout for the home field; a route bar is what a pilot actually reaches
+  // for at the top of a moving map, and the conditions belong to whichever
+  // field the route starts at rather than to a base they may be nowhere near.
+  route = null, onRouteText,
   // Controlled from the parent so the weather button in the sheet opens the
   // same report this strip opens. There is one working weather screen and
   // both routes into it should land there.
@@ -92,6 +98,32 @@ export default function WeatherRibbon({
   const [selfOpen, setSelfOpen] = useState(false)   // the inline expansion
   const open = expanded ?? selfOpen
   const setOpen = onExpandedChange ?? setSelfOpen
+
+  const [routeDraft, setRouteDraft] = useState('')
+  const [routeBusy, setRouteBusy] = useState(false)
+  const [routeBad, setRouteBad] = useState([])
+  // Seeded from the route each time the box is opened, rather than kept in
+  // step with it: a pilot halfway through typing should not have their text
+  // rewritten because the map finished resolving the previous version.
+  //
+  // Stamped with the opening rather than written by an effect, so there is no
+  // synchronous setState during a render and no frame where the box shows the
+  // last route while the new one is already on the map.
+  const [draftFor, setDraftFor] = useState(null)
+  const routeText = routeToText(route)
+  const draft = draftFor === routeText ? routeDraft : routeText
+  function openWith(next) {
+    if (next) { setDraftFor(routeText); setRouteDraft(routeText) }
+    setOpen(next)
+  }
+
+  async function submitRoute() {
+    setRouteBusy(true)
+    const { points, bad } = await resolveRouteText(draft)
+    setRouteBusy(false)
+    setRouteBad(bad)
+    onRouteText?.(points.length >= 2 ? points : null)
+  }
 
   const [picker, setPicker] = useState(false)  // choosing a different base
   const [now, setNow] = useState(() => Date.now())
@@ -205,7 +237,7 @@ export default function WeatherRibbon({
           almost unreachable. Reading conditions is the frequent act and moving
           base is the rare one, so the frequent one gets the whole target and
           the rare one gets a labelled control inside. */}
-      <button onClick={() => setOpen(!open)} style={{
+      <button onClick={() => openWith(!open)} style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         gap: 7, width: '100%',
         padding: '6px 12px', border: 'none', background: 'none',
@@ -217,10 +249,24 @@ export default function WeatherRibbon({
           flexShrink: 0,
         }}>{metar ? cat.label : loading ? '···' : '--'}</span>
 
+        {/* The route, when there is one, is what this bar is for. The single
+            field is what it falls back to, because a bar that says nothing
+            until a route exists is a bar a pilot has no reason to look at. */}
         <span style={{
           fontSize: 13.5, fontWeight: 700, color: 'var(--map-ctrl-ink, var(--map-ink))',
-          letterSpacing: '0.4px', flexShrink: 0,
-        }}>{icao}</span>
+          letterSpacing: '0.4px', flexShrink: 0, maxWidth: '52vw',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {route?.length >= 2
+            ? `${route[0].name} \u2192 ${route[route.length - 1].name}`
+            : icao}
+        </span>
+        {route?.length > 2 && (
+          <span style={{
+            fontSize: 10.5, fontWeight: 700, flexShrink: 0,
+            color: 'var(--map-ctrl-ink-faint, var(--map-ink-faint))',
+          }}>{route.length} fixes</span>
+        )}
 
         {stale && (
           <span title="Observation is over an hour old" style={{
@@ -267,6 +313,46 @@ export default function WeatherRibbon({
               The min width belongs to the open state only. Applied always, it
               set the width of the collapsed pill too, which is why a strip
               showing two short words still stretched halfway across the map. */}
+          {/* Route entry, above the conditions, because entering a route is
+              the frequent act here and reading the field it starts from is
+              what follows from it. Airports, VORs, GPS fixes and the pilot's
+              own saved waypoints, resolved by the same parser the planner
+              uses so a route that works in one box works in the other. */}
+          {open && (
+            <div style={{ padding: '10px 12px 8px' }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  value={draft}
+                  onChange={e => { setDraftFor(routeText); setRouteDraft(e.target.value.toUpperCase()) }}
+                  onKeyDown={e => { if (e.key === 'Enter') submitRoute() }}
+                  onPointerDown={e => e.stopPropagation()}
+                  placeholder="CYTZ CYYZ, or a VOR, fix or saved point"
+                  spellCheck={false}
+                  autoCapitalize="characters"
+                  style={{
+                    flex: 1, minWidth: 0, padding: '9px 11px', borderRadius: 10,
+                    border: '1px solid var(--map-hairline)',
+                    background: 'var(--map-fill-soft)',
+                    color: 'var(--map-ctrl-ink, var(--map-ink))',
+                    fontSize: 13, fontWeight: 700, fontFamily: 'monospace',
+                    letterSpacing: '0.06em', outline: 'none',
+                  }} />
+                <button onClick={submitRoute} disabled={routeBusy} style={{
+                  padding: '9px 14px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                  background: 'var(--accent)', color: 'var(--accent-fg)',
+                  fontSize: 13, fontWeight: 800, flexShrink: 0,
+                }}>{routeBusy ? '...' : 'Go'}</button>
+              </div>
+              {/* Named, not counted. "2 not found" sends a pilot back to read
+                  their own route looking for which two. */}
+              {routeBad.length > 0 && (
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--danger)', marginTop: 6 }}>
+                  Not found: {routeBad.join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{
             minWidth: open ? 236 : 0,
             maxHeight: bodyMaxH, overflowY: bodyMaxH ? 'auto' : undefined,

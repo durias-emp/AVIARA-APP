@@ -1001,7 +1001,7 @@ function MapHomeInner() {
   // Seeded with the module's rung and corrected to the measured one as soon as
   // the dock reports its height, which is the first layout. A number here is
   // unavoidable: the dock cannot be measured before it exists.
-  const [snap, setSnap] = useState(SHEET_STOPS[0])
+  const [snap, setSnap] = useState(SHEET_STOPS[1])
   const sheetOpen = snap !== 0
   // Where a hidden drawer comes back to. Whatever it was doing before it was
   // put away, since putting it away was about seeing the map, not about
@@ -1010,7 +1010,7 @@ function MapHomeInner() {
   // dismissed. Seeded with the module's rung rather than the measured one for
   // the same reason snap is, and never 0, or the button would restore it to
   // being hidden.
-  const lastStop = useRef(SHEET_STOPS[0])
+  const lastStop = useRef(SHEET_STOPS[1])
   useEffect(() => { if (snap !== 0) lastStop.current = snap }, [snap])
   // Planning happens here now, not on a screen of its own. Plan Route raises
   // the drawer to the 'plan' stop and fills it with the flight plan, so the
@@ -1088,14 +1088,14 @@ function MapHomeInner() {
   //
   // A route or an open planner still floats it, unchanged: there the drawer
   // genuinely belongs to the plan.
-  const actionsUp = snap > 40
+  const actionsUp = snap === 100
   const actionsFloating = !actionsUp && (planning || hasRoute)
   const actionsInDrawer = !actionsUp && !actionsFloating
   // The dock's tile size, and the whole of the shrink-and-grow. Closed it is
   // small enough to be a strip along the bottom; at the app page it is a phone
   // dock. One number, transitioned by the tiles themselves, so the change is a
   // smooth grow rather than a re-layout.
-  const dockTile = snap >= 40 ? 62 : 44
+  const dockTile = snap === 100 ? 62 : 46
   // The height every stop is a fraction of, measured off the shell itself
   // rather than read from window.innerHeight.
   //
@@ -1387,7 +1387,7 @@ function MapHomeInner() {
   // rung rather than against the closed one. The closed rung is measured and
   // therefore declared much further down, and reading it here would be reading
   // a const above its own line.
-  const expanded = snap >= 40
+  const expanded = snap === 100
 
   // Warm the planner while the pilot is looking at the map.
   //
@@ -1890,7 +1890,7 @@ function MapHomeInner() {
     const destId = (ident ?? '').trim().toUpperCase()
     setRoute(null)
     setPlanning(false)
-    setSnap(25)
+    setSnap(SHEET_STOPS[1])
     // The camera is the pilot's from here, so the opening framing stops
     // waiting for a fix to move it out from under them. Where it goes is the
     // framing effect's business: it fits the whole route into the strip the
@@ -2045,7 +2045,7 @@ function MapHomeInner() {
 
   function leavePlanner() {
     setPlanning(false)
-    setSnap(25)
+    setSnap(SHEET_STOPS[1])
     // Reset inside the planner deletes the saved route, and this held its own
     // copy in state, so the line stayed on the map after the plan behind it
     // was gone. Re-read on the way out: storage is what actually decides
@@ -2061,7 +2061,7 @@ function MapHomeInner() {
   function onRouteCalculated(calculated) {
     setRoute(calculated)
     setPlanning(false)
-    setSnap(25)
+    setSnap(SHEET_STOPS[1])
   }
 
 
@@ -2094,6 +2094,32 @@ function MapHomeInner() {
   //
   // The camera comes home too. A map still framed on a flight that no longer
   // exists is the app remembering something it was told to forget.
+  // A route typed into the nav bar, turned into the shape the rest of this
+  // screen already speaks: departure, destination, and the points between.
+  //
+  // Saved to the same key the planner writes, so a route entered at the top of
+  // the map is the same object the planner opens, the figures are computed
+  // from, and the data bar measures against. Two stores would have meant two
+  // routes disagreeing about the same flight.
+  const setTypedRoute = useCallback(points => {
+    if (!points || points.length < 2) {
+      del('settings', 'route').catch(() => {})
+      setRoute(null)
+      return
+    }
+    const dep = points[0]
+    const dest = points[points.length - 1]
+    const next = {
+      dep: dep.name,
+      dest: dest.name,
+      depPos: [dep.lat, dep.lon],
+      destPos: [dest.lat, dest.lon],
+      wpts: points.slice(1, -1).map(p => ({ name: p.name, lat: p.lat, lon: p.lon })),
+    }
+    setRoute(next)
+    put('settings', { key: 'route', ...next }).catch(() => {})
+  }, [])
+
   const forgetRoute = useCallback(() => {
     del('settings', 'route').catch(() => {})
     setRoute(null)
@@ -2231,13 +2257,20 @@ function MapHomeInner() {
   // built here rather than taken from the module.
   const closedPct = vh > 0
     ? Math.max(6, Math.min(30, ((dockH || 96) + safeBottom + GRAB_ABOVE_ROUTE) / vh * 100))
-    : SHEET_STOPS[0]
-  const stops = useMemo(() => [closedPct, 40, 100], [closedPct])
+    : SHEET_STOPS[1]
+  // Three positions, and "away" is the first of them rather than something
+  // off the side of the ladder. Closed leaves the data bar and nothing else;
+  // the dock rung shows the apps a pilot pinned; full screen is everything.
+  //
+  // The 40% rung is gone. It existed to show the app page above the dock, and
+  // a stop whose whole job was "the same list, less of it" is the rung nobody
+  // could name, which is the second time that has been true on this ladder.
+  const stops = useMemo(() => [0, closedPct, 100], [closedPct])
   // The rung moves when the dock is measured or the window resizes, and a snap
   // left on the old value would leave the sheet parked between rungs. Derived
   // rather than corrected in an effect: the resting snap IS the closed rung, so
   // reading it that way needs no write and cannot lag a resize by a frame.
-  const effSnap = (snap === 40 || snap === 100) ? snap : closedPct
+  const effSnap = (snap === 0 || snap === 100) ? snap : closedPct
   const CLOSED = closedPct
   const restPx = vh - stopY(vh, closedPct)
 
@@ -2478,22 +2511,6 @@ function MapHomeInner() {
 
     if (isFullPull(vh, d.lastY)) { setSnap(100); return }
 
-    // Pulled down past the closed rung, the sheet goes away entirely. This is
-    // the only way to dismiss it now, and it is the gesture that was always
-    // going to mean this: dragging a sheet below its lowest position is asking
-    // for it to be gone. The button that used to be the only way is now the
-    // way back, and lives with the other map controls.
-    //
-    // Half the dock's height past the rung, or a downward flick from it, so a
-    // short overshoot on the way to closed does not dismiss it by accident.
-    // effSnap, not snap: snap can still hold the seeded percentage while the
-    // measured rung is the one the sheet is actually resting on, and comparing
-    // against the wrong one meant the flick never matched.
-    const closedY = stopY(vh, closedPct)
-    if (!up && (d.lastY > closedY + restPx * 0.5 || (flick && effSnap === closedPct))) {
-      setSnap(0)
-      return
-    }
 
     // One ladder, whatever the drawer is carrying: 25, 50, 80, 100. The
     // positions are the positions.
@@ -2943,6 +2960,12 @@ function MapHomeInner() {
           <WeatherRibbon
             icao={base?.ident ?? null} units={units}
             onChangeAirport={changeBase}
+            // The route the bar is showing, and where a typed one goes. Points
+            // resolved here become the map's route, so the line, the figures
+            // and the data bar's next-waypoint fields all follow from what was
+            // typed at the top of the screen.
+            route={fplRoute}
+            onRouteText={setTypedRoute}
             detailOpen={wxDetail} onDetailChange={setWxDetail}
             style={{ maxHeight: topCardMaxH }}
             expanded={topOpen} onExpandedChange={setTopOpen}
@@ -3468,7 +3491,7 @@ function MapHomeInner() {
               plan. See actionsInDrawer, where the whole rule is written out. */}
           {actionsInDrawer && (
             <div ref={dockRef} style={{
-              paddingBottom: snap >= 40 ? 4 : 0,
+              paddingBottom: snap === 100 ? 4 : 0,
               transition: 'padding-bottom 320ms cubic-bezier(0.32,0.72,0,1)',
             }}>
               <AppDock
@@ -3594,8 +3617,8 @@ function MapHomeInner() {
           // than 40 leaves room for, which is what makes it a page rather than
           // a row, so the gesture has to belong to it there as well as at full
           // screen.
-          overflowY: snap >= 40 ? 'auto' : 'hidden',
-          touchAction: snap >= 40 ? 'pan-y' : 'none',
+          overflowY: snap === 100 ? 'auto' : 'hidden',
+          touchAction: snap === 100 ? 'pan-y' : 'none',
           WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
           padding: '6px 18px calc(var(--safe-bottom) + 24px)',
           // The tools grid fades out below the 25 stop, because down there the

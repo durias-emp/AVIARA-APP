@@ -47,15 +47,20 @@
 // Three, not four. Closed with the dock on the bottom, the app page at 40 with
 // the map still showing above it, and full screen.
 //
-// 14 rather than 25 for the closed stop: it holds the dock and its labels and
-// not one pixel more. At 25 the sheet sat a quarter of the way up the screen
-// with nothing in the space, which reads as a drawer that failed to close
-// rather than as a dock resting on the bottom.
+// Away, the dock, and full screen.
+//
+// Away is a POSITION here, not an escape hatch: a pulled-down sheet leaves the
+// data bar and the map and nothing else, which is a thing a pilot wants in the
+// air and used to need a button in the corner to reach.
+//
+// The middle rung's 14 is a seed only. The screen that uses this ladder
+// measures its dock and builds its own, because a percentage cannot describe
+// "as tall as the dock" on both a phone and a desktop.
 // The fourth rung sat at 80 and was the one nobody could name: it showed the
 // same list as full screen with less of it, so a drag that landed there read as
 // having missed rather than as having arrived. The guidance quoted above cuts
 // both ways, and three predictable stops beat four where one is noise.
-export const SHEET_STOPS = [14, 40, 100]
+export const SHEET_STOPS = [0, 14, 100]
 
 // Off the screen. Deliberately NOT a rung: no drag can reach it, because a
 // sheet that can be dragged out of existence is a sheet a pilot loses. It is
