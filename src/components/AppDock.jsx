@@ -63,7 +63,10 @@ export function AppTile({ app, size, onOpen, holdProps, dimmed = false, index = 
       <span style={{
         width: size, height: size, borderRadius: radius, flexShrink: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: app.tint ?? 'var(--map-fill)',
+        // The stain, when one is chosen, falls back to the theme's own fill.
+        // An app carrying its own tint (the accent one) keeps it: that colour
+        // is saying "this is the emphasised slot", not "this is the material".
+        background: app.tint ?? 'var(--app-tile-bg, var(--map-fill))',
         color: app.ink ?? 'var(--map-ink)',
         boxShadow: '0 2px 8px rgba(0,0,0,0.16)',
         // Every tile animates its own size, so growing the dock between stops

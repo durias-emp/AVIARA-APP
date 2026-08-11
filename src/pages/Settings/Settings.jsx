@@ -7,7 +7,10 @@ import { get, put } from '../../lib/db'
 import { DEFAULT_AUTO_DETECT_CONFIG, autoDetectEnabledFrom } from '../../hooks/useFlightDetector'
 import { SegControl } from '../../components/SegControl'
 import { LIVE_SHARE_KEY, LIVE_SHARE_MODES } from '../../hooks/useLiveShare'
-import { loadGlass, saveGlass, GLASS_MIN, GLASS_MAX, DEFAULT_GLASS } from '../../lib/drawerGlass'
+import {
+  loadGlass, saveGlass, saveStain, STAINS, findStain,
+  GLASS_MIN, GLASS_MAX, DEFAULT_GLASS, DEFAULT_STAIN,
+} from '../../lib/drawerGlass'
 import { withdrawPosition } from '../../lib/livePositions'
 
 const REGIONS = [
@@ -66,12 +69,13 @@ export default function Settings({ onBack, order, onMoveRow }) {
   // The drawer's glass. Held here only so the slider has a position; the value
   // that matters is on the root element, written as the thumb moves.
   const [glass, setGlass] = useState(DEFAULT_GLASS)
+  const [stain, setStain] = useState(DEFAULT_STAIN)
 
   useEffect(() => {
     get('settings', 'autoDetectEnabled').then(row => setAutoDetectEnabled(autoDetectEnabledFrom(row)))
     get('settings', 'autoDetectConfig').then(row => setAutoDetectConfig({ ...DEFAULT_AUTO_DETECT_CONFIG, ...(row?.value ?? {}) }))
     get('settings', LIVE_SHARE_KEY).then(row => { if (row?.value) setLiveShareModeState(row.value) }).catch(() => {})
-    loadGlass().then(setGlass).catch(() => {})
+    loadGlass().then(({ glass: g, stain: st }) => { setGlass(g); setStain(st) }).catch(() => {})
   }, [])
 
   function setLiveShareMode(next) {
@@ -170,8 +174,50 @@ export default function Settings({ onBack, order, onMoveRow }) {
             style={{ width: '100%', accentColor: 'var(--accent)' }}
             aria-label="Drawer opacity" />
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Sheer</span>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Clear</span>
             <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Solid</span>
+          </div>
+
+          {/* The stain, under the slider it depends on: a colour chosen at 0%
+              shows nothing at all, and the two are read together. */}
+          <div style={{
+            marginTop: 16, paddingTop: 14, borderTop: '0.5px solid var(--border)',
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>
+              Stain
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {STAINS.map(sw => {
+                const on = stain === sw.key
+                return (
+                  <button
+                    key={sw.key}
+                    onClick={() => setStain(saveStain(sw.key))}
+                    aria-label={sw.label}
+                    title={sw.label}
+                    style={{
+                      width: 44, height: 44, borderRadius: 12, cursor: 'pointer', padding: 0,
+                      // The swatch IS the colour, at the strength the tiles use
+                      // it, so choosing one is choosing what you can already
+                      // see rather than reading a name and hoping.
+                      background: sw.rgb ? `rgb(${sw.rgb})` : 'var(--bg-card-2)',
+                      border: on ? '3px solid var(--accent)' : '1px solid var(--border)',
+                      boxShadow: on ? '0 0 0 2px var(--bg-card)' : 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: sw.ink === 'dark' ? '#1c1c1e' : '#fff',
+                      fontSize: 11, fontWeight: 800,
+                    }}>
+                    {!sw.rgb && <span style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>/</span>}
+                  </button>
+                )
+              })}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 8 }}>
+              {findStain(stain).label}
+              {glass < 55 && findStain(stain).rgb
+                ? '. Text stays on the theme\u2019s own colour until the glass is past about half, where the stain becomes what a label actually sits on.'
+                : ''}
+            </div>
           </div>
         </div>
 

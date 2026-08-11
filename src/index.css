@@ -909,13 +909,13 @@ input[type="number"]::-webkit-outer-spin-button {
 
 [data-theme="dark"], [data-theme="red"] {
   --map-panel:       rgba(28,28,30,0.94);
-  /* Dark carries a touch more than whatever light is set to, for the same
-     reason as before: white text over a dark panel loses contrast against a
-     bright chart faster than black text over a light one does. It rides the
-     pilot's own number rather than replacing it, so one slider still governs
-     both palettes. */
+  /* Dark's own panel colour. The alpha is NOT adjusted here any more: it used
+     to carry four points more than light for contrast, which was right in the
+     middle of the range and wrong at both ends. With the slider now reaching
+     the extremes, that bump meant 0% was not actually transparent and 100% not
+     actually solid. One number, honoured exactly. */
   --map-panel-rgb:   28, 28, 30;
-  --map-panel-sheer: rgba(var(--map-panel-rgb), calc(var(--drawer-opacity) + 0.04));
+  --map-panel-sheer: rgba(var(--map-panel-rgb), var(--drawer-opacity));
   --map-panel-solid: #1c1c1e;
   --map-ink:         #f2f2f7;
   --map-ink-dim:     rgba(235,235,245,0.62);
