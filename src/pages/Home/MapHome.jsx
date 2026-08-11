@@ -629,7 +629,7 @@ function Ctrl({ onClick, title, active, badge, caption, children, size = CTRL })
       position: 'relative', width: size, height: size, borderRadius: '50%',
       border: 'none', cursor: 'pointer', flexShrink: 0,
       background: active ? 'var(--map-ink)' : 'var(--map-ctrl-bg, var(--map-panel))',
-      color: active ? 'var(--map-ink-invert)' : 'var(--map-ink)',
+      color: active ? 'var(--map-ink-invert)' : 'var(--map-ctrl-ink, var(--map-ink))',
       boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       transition: 'background 160ms, color 160ms',
@@ -3066,7 +3066,7 @@ function MapHomeInner() {
               title={c.view ? 'Tilted view with buildings. Not terrain.' : undefined}
               onClick={() => (c.view ? setView3d(v => !v) : toggleLayer(c.key))} style={{
               background: (c.view ? view3d : layers[c.key]) ? 'var(--map-ink)' : 'var(--map-ctrl-bg, var(--map-panel))',
-              color: (c.view ? view3d : layers[c.key]) ? 'var(--map-ink-invert)' : 'var(--map-ink)',
+              color: (c.view ? view3d : layers[c.key]) ? 'var(--map-ink-invert)' : 'var(--map-ctrl-ink, var(--map-ink))',
               border: 'none', borderRadius: 10, cursor: 'pointer',
               // One size for all of them. Sized to its own label, TFR came out
               // narrower than ARSP and the column read as a ragged edge rather

@@ -144,7 +144,7 @@ export default function WeatherRibbon({
           display: 'flex', alignItems: 'center', gap: 8, width: '100%',
           padding: '9px 14px', border: 'none', background: 'none',
           cursor: 'pointer',
-          fontSize: 12.5, fontWeight: 700, color: 'var(--map-ink)',
+          fontSize: 12.5, fontWeight: 700, color: 'var(--map-ctrl-ink, var(--map-ink))',
         }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2.2" strokeLinecap="round">
@@ -218,7 +218,7 @@ export default function WeatherRibbon({
         }}>{metar ? cat.label : loading ? '···' : '--'}</span>
 
         <span style={{
-          fontSize: 13.5, fontWeight: 700, color: 'var(--map-ink)',
+          fontSize: 13.5, fontWeight: 700, color: 'var(--map-ctrl-ink, var(--map-ink))',
           letterSpacing: '0.4px', flexShrink: 0,
         }}>{icao}</span>
 
@@ -231,7 +231,7 @@ export default function WeatherRibbon({
         )}
 
         {!metar && !loading && (
-          <span style={{ fontSize: 12, color: 'var(--map-ink-faint)' }}>
+          <span style={{ fontSize: 12, color: 'var(--map-ctrl-ink-faint, var(--map-ink-faint))' }}>
             {error ? 'No weather' : 'Tap for weather'}
           </span>
         )}
@@ -275,10 +275,10 @@ export default function WeatherRibbon({
             <div style={{ padding: '2px 12px 11px' }}>
               {metar ? (<>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 8 }}>
-                  <span style={{ fontSize: 24, fontWeight: 800, color: 'var(--map-ink)', letterSpacing: '-0.8px' }}>
+                  <span style={{ fontSize: 24, fontWeight: 800, color: 'var(--map-ctrl-ink, var(--map-ink))', letterSpacing: '-0.8px' }}>
                     {parseTemp(metar, units) ?? '--'}
                   </span>
-                  <span style={{ fontSize: 11.5, color: 'var(--map-ink-dim)', minWidth: 0,
+                  <span style={{ fontSize: 11.5, color: 'var(--map-ctrl-ink-dim, var(--map-ink-dim))', minWidth: 0,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {parseAirportName(metar) || ''}
                   </span>
@@ -289,7 +289,7 @@ export default function WeatherRibbon({
                     <div key={m.icon} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <img src={m.icon} alt="" width={13} height={13}
                         style={{ filter: 'brightness(0)', opacity: 0.55, flexShrink: 0 }} />
-                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--map-ink)' }}>{m.value}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--map-ctrl-ink, var(--map-ink))' }}>{m.value}</span>
                     </div>
                   ))}
                 </div>
@@ -297,12 +297,12 @@ export default function WeatherRibbon({
                 <button onClick={() => onDetailChange?.(true)} style={{
                   marginTop: 10, width: '100%', border: 'none', cursor: 'pointer',
                   background: 'var(--map-fill)', borderRadius: 9, padding: '9px 0',
-                  fontSize: 11.5, fontWeight: 700, color: 'var(--map-ink)',
+                  fontSize: 11.5, fontWeight: 700, color: 'var(--map-ctrl-ink, var(--map-ink))',
                 }}>
                   Full report, METAR and TAF
                 </button>
               </>) : (
-                <div style={{ fontSize: 11.5, color: 'var(--map-ink-dim)', padding: '2px 0 4px' }}>
+                <div style={{ fontSize: 11.5, color: 'var(--map-ctrl-ink-dim, var(--map-ink-dim))', padding: '2px 0 4px' }}>
                   {loading ? 'Loading conditions…' : error ? 'Weather unavailable right now' : 'No observation'}
                 </div>
               )}

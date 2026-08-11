@@ -260,6 +260,24 @@ if (import.meta.env.DEV) {
     send('unhandled-rejection', r instanceof Error ? `${r.name}: ${r.message}\n${r.stack ?? ''}` : String(r))
   })
 
+  // The drawer's resolved tokens, reported once on load.
+  //
+  // These are written to the root element by JavaScript, which means the
+  // browser can be holding values from a version of the code that has since
+  // been edited, and the page looks wrong for a reason no source file shows.
+  // Reading them back is the difference between "reload and tell me what you
+  // see" and knowing.
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      const cs = getComputedStyle(document.documentElement)
+      const names = ['--drawer-opacity', '--drawer-blur', '--map-panel-rgb',
+        '--map-ctrl-bg', '--ifdb-bg', '--ifdb-ink', '--stain-ink', '--map-ink']
+      const seen = {}
+      names.forEach(n => { seen[n] = cs.getPropertyValue(n).trim() || '(unset)' })
+      send('tokens', JSON.stringify(seen))
+    }, 300)
+  })
+
   // Location specifically, because "it is blocked" and "it is permitted and
   // still not arriving" look identical from the outside and are different
   // faults. Reports what the browser itself says the permission is, then what

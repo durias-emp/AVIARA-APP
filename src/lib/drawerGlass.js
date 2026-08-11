@@ -90,7 +90,8 @@ function paint(pct, stainKey) {
     // theme happened to be on when the stain was cleared.
     clear(['--map-panel-rgb', '--app-tile-bg', '--stain-ink', '--stain-ink-dim',
       '--stain-ink-faint', '--stain-icon-ink', '--ifdb-ink', '--ifdb-ink-dim',
-      '--ifdb-ink-faint', '--ifdb-rule'])
+      '--ifdb-ink-faint', '--ifdb-rule', '--map-ctrl-ink', '--map-ctrl-ink-dim',
+      '--map-ctrl-ink-faint', '--map-ctrl-icon'])
     return
   }
 
@@ -99,11 +100,27 @@ function paint(pct, stainKey) {
   // because the bar is never sheerer than 55%: the stain is always what its
   // digits are sitting on, so there is no point below which the theme's ink is
   // the safer answer.
+  // Ink for everything wearing the 80% chrome: the data bar AND the round
+  // controls, the airport pill, the chips, the plate.
+  //
+  // The controls need it for the same reason the bar does, and forgetting them
+  // was the exact cost of scoping the stain properly: with the leak stopped
+  // they went back to the theme's dark ink, which on a dark plum circle is
+  // dark on dark. Two names for one decision, because the bar had its own
+  // first and the chrome now shares it.
   const barLight = stain.ink === 'light'
-  root.style.setProperty('--ifdb-ink', barLight ? '#ffffff' : '#1c1c1e')
-  root.style.setProperty('--ifdb-ink-dim', barLight ? 'rgba(255,255,255,0.74)' : 'rgba(28,28,30,0.66)')
-  root.style.setProperty('--ifdb-ink-faint', barLight ? 'rgba(255,255,255,0.56)' : 'rgba(28,28,30,0.5)')
-  root.style.setProperty('--ifdb-rule', barLight ? 'rgba(255,255,255,0.22)' : 'rgba(28,28,30,0.16)')
+  const ink      = barLight ? '#ffffff' : '#1c1c1e'
+  const inkDim   = barLight ? 'rgba(255,255,255,0.74)' : 'rgba(28,28,30,0.66)'
+  const inkFaint = barLight ? 'rgba(255,255,255,0.56)' : 'rgba(28,28,30,0.5)'
+  const rule     = barLight ? 'rgba(255,255,255,0.22)' : 'rgba(28,28,30,0.16)'
+  root.style.setProperty('--ifdb-ink', ink)
+  root.style.setProperty('--ifdb-ink-dim', inkDim)
+  root.style.setProperty('--ifdb-ink-faint', inkFaint)
+  root.style.setProperty('--ifdb-rule', rule)
+  root.style.setProperty('--map-ctrl-ink', ink)
+  root.style.setProperty('--map-ctrl-ink-dim', inkDim)
+  root.style.setProperty('--map-ctrl-ink-faint', inkFaint)
+  root.style.setProperty('--map-ctrl-icon', barLight ? 'brightness(0) invert(1)' : 'brightness(0)')
   // The tiles take the same colour at a fixed strength rather than at the
   // panel's, so they stay visible as objects on the glass however sheer it is.
   root.style.setProperty('--app-tile-bg', `rgba(${stain.rgb}, 0.28)`)
