@@ -39,7 +39,10 @@ const CARD_MAX = 'calc(100vw - 130px)'
 const CARD_MAX_WIDE = 'calc(100vw - 128px)'
 
 const CARD = {
-  background: 'var(--map-panel)', backdropFilter: 'blur(14px)',
+  // The same floating-object treatment the round map controls use: it sits on
+  // the chart rather than on the drawer, so it takes the stain's colour but not
+  // the drawer's opacity.
+  background: 'var(--map-ctrl-bg, var(--map-panel))', backdropFilter: 'blur(14px)',
   borderRadius: 14, boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
   // Clipped, and not a scroll container. The one row that is always visible,
   // the category and the code, is the reason the card is on the screen and

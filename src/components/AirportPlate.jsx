@@ -319,7 +319,7 @@ function ChartAction({ chart, ident, onOpenChart }) {
   // says whose it is rather than offering something that is not it.
   return (
     <div style={{
-      padding: '9px 11px', borderRadius: 11, background: 'var(--map-panel)',
+      padding: '9px 11px', borderRadius: 11, background: 'var(--map-ctrl-bg, var(--map-panel))',
       fontSize: 11.5, color: 'var(--map-ink-dim)', lineHeight: 1.45,
     }}>
       {chart.kind === 'authority'

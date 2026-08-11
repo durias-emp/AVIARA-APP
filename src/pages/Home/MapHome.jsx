@@ -144,6 +144,12 @@ const CTRL_STACK_H = CTRL * 2 + 12 + 10
 // rather than recomputed: it is one row of round buttons in a padded panel,
 // and its only reader is the height cap on the card at the top of the screen.
 const ACTION_ROW_H = 66
+// What the right-hand controls have to clear to sit above the data bar: the
+// bar's own height, the 6px it stands off the drawer, and a gap. Measured off
+// the bar's real box (7px padding, a 9px label and a 15px value, both at 1.2
+// line height) rather than guessed, because guessing it is what put a button
+// on top of the ETE reading.
+const IFDB_CLEAR = 62
 
 // The one row at the top of that card, the flight category and the code,
 // which is there whatever is open below it. Measured: 36.
@@ -258,7 +264,10 @@ function FloatingCard({ visible, bottom, compact = false, children }) {
       transition: 'opacity 260ms ease-out, transform 260ms cubic-bezier(0.34,1.2,0.64,1), bottom 380ms cubic-bezier(0.32,0.72,0,1)',
     }}>
       <div style={{
-        background: 'var(--map-panel)',
+        // Floating chrome, so it takes the stain's colour at the controls'
+        // fixed opacity rather than the drawer's. Everything that sits on the
+        // chart is one material; everything that sits on the drawer is another.
+        background: 'var(--map-ctrl-bg, var(--map-panel))',
         backdropFilter: compact ? 'blur(14px)' : 'blur(20px)',
         borderRadius: compact ? 16 : 18,
         padding: compact ? '9px 14px' : '16px 18px',
@@ -2958,11 +2967,16 @@ function MapHomeInner() {
           reaches for them in the air. */}
       <div style={{
         position: 'absolute', right: 14, zIndex: 500,
+        // Clear of the data bar, not just of the drawer. The bar is anchored to
+        // the drawer's top edge, so the controls sitting at the drawer's height
+        // put them exactly where the bar now is: the locate button was landing
+        // on the ETE reading. They stack above it instead, on the same live
+        // inset so the whole column travels together.
         bottom: sheetOpen
-          ? `${restPx + (recording ? 132 : 16)}px`
+          ? `calc(var(--map-bottom-inset, 0px) + ${IFDB_CLEAR + (recording ? 132 : 0)}px)`
           : 'calc(var(--safe-bottom) + 28px)',
         display: 'flex', flexDirection: 'column', gap: 12,
-        transition: 'bottom 280ms cubic-bezier(0.4,0,0.2,1), opacity 200ms',
+        transition: 'bottom var(--map-inset-duration, 280ms) cubic-bezier(0.32,0.72,0,1), opacity 200ms',
         opacity: expanded ? 0 : 1,
         pointerEvents: expanded ? 'none' : 'auto',
       }}>
@@ -3051,7 +3065,7 @@ function MapHomeInner() {
             <button key={c.key} className="chart-chip"
               title={c.view ? 'Tilted view with buildings. Not terrain.' : undefined}
               onClick={() => (c.view ? setView3d(v => !v) : toggleLayer(c.key))} style={{
-              background: (c.view ? view3d : layers[c.key]) ? 'var(--map-ink)' : 'var(--map-panel)',
+              background: (c.view ? view3d : layers[c.key]) ? 'var(--map-ink)' : 'var(--map-ctrl-bg, var(--map-panel))',
               color: (c.view ? view3d : layers[c.key]) ? 'var(--map-ink-invert)' : 'var(--map-ink)',
               border: 'none', borderRadius: 10, cursor: 'pointer',
               // One size for all of them. Sized to its own label, TFR came out
