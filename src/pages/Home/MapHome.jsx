@@ -19,7 +19,7 @@ import { CHARTS, EMPTY_LAYERS, resolveOpenaipKey } from '../../components/chartD
 import DropPointPopup from '../../components/DropPointPopup'
 // Route styling lives in one place now, shared with the planner and its
 // preview map: three copies of a hex is how the three drifted apart.
-import { ACCENT, accentAlpha } from '../../components/mapStyle'
+import { ACCENT } from '../../components/mapStyle'
 import RouteChips from '../../components/RouteChips'
 import FlightRulesRow from '../../components/FlightRulesRow'
 import RouteLineEditor from '../../components/RouteLineEditor'
@@ -234,12 +234,6 @@ function useMeasuredHeight() {
 // is stretched to the foot of the resting stop and that arithmetic has to
 // agree with the styles, or it fills to the wrong line.
 const GRAB_ABOVE_ROUTE = 29
-// The room kept clear at the bottom for the hint. Measured, not guessed: the
-// line is 16px tall and sits 4px above the safe-area inset, so its top is 20
-// above it, and the rest is gap. Guessing 11px for its height is what let it
-// overlap VARIATION on the phone while the desktop, where the inset is zero,
-// looked fine.
-const HINT_RESERVE = 28
 
 
 // Everything else the app does. The map home would otherwise be a dead end:
@@ -1089,8 +1083,9 @@ function MapHomeInner() {
   // A route or an open planner still floats it, unchanged: there the drawer
   // genuinely belongs to the plan.
   const actionsUp = snap === 100
-  const actionsFloating = !actionsUp && (planning || hasRoute)
-  const actionsInDrawer = !actionsUp && !actionsFloating
+  // The dock is the only place the actions live now, at every position the
+  // drawer has, so there is no floating copy to be somewhere else.
+  const actionsInDrawer = !actionsUp
   // The dock's tile size, and the whole of the shrink-and-grow. Closed it is
   // small enough to be a strip along the bottom; at the app page it is a phone
   // dock. One number, transitioned by the tiles themselves, so the change is a
@@ -2546,31 +2541,12 @@ function MapHomeInner() {
 
   const statFont = { fontSize: 11, fontWeight: 600, color: 'var(--map-ink-dim)', letterSpacing: '0.2px' }
   const statBig = { fontSize: 26, fontWeight: 800, color: 'var(--map-ink)', letterSpacing: '-0.6px', fontVariantNumeric: 'tabular-nums' }
-  const tileBtn = { background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, width: 92 }
-  const tileCircle = { width: 58, height: 58, borderRadius: '50%',
-    display: 'flex', alignItems: 'center', justifyContent: 'center' }
-  const tileLabel = { fontSize: 12, fontWeight: 600, color: 'var(--map-ink)' }
 
-  // Weather, record, and the planner: the three things the drawer is for.
-  // Defined once and rendered in one of two places, because they are the same
-  // three buttons wherever they are standing. While the flight plan has the
-  // drawer they move onto a card floating over the map, so the plan gets the
-  // whole drawer and the actions stay where a thumb can reach them.
-  //
-  // Only the third button changes with the state, and only in what it does:
-  // with the plan open it closes the plan rather than opening one, so the row
-  // never contains a button that would do nothing.
-  // compact shrinks the row rather than the card: a fit-content card around an
-  // 86px record button is not compact, it is the same card with less padding.
-  // The tile's 92px belongs to its label, so it goes when the label does. Left
-  // on, it padded a fit-content card back out to nearly the full width, which
-  // is a compact card in every respect except the one that was asked for.
-  // What each assignable action actually does, and what it looks like while it
-  // is doing it. Only three of these change with the state of the screen:
-  // record becomes stop, and plan becomes close or clear depending on whether
-  // there is a plan and whether the pilot is standing in it, so the row never
-  // holds a button that would do nothing.
+  // What each app does, and what it looks like while it is doing it. Only
+  // three change with the state of the screen: record becomes stop, and plan
+  // becomes close or clear depending on whether there is a plan and whether
+  // the pilot is standing in it, so a tile never offers something that would
+  // do nothing.
   function actionSpec(key) {
     const meta = findAction(key)
     if (!meta) return null
@@ -2734,50 +2710,9 @@ function MapHomeInner() {
     }
   }
 
-  const actionRow = (compact = false) => (
-    <div style={{
-      display: 'flex', alignItems: 'center',
-      justifyContent: compact ? 'center' : 'space-around',
-      gap: compact ? 18 : 10,
-    }}>
-      {homeActions.map((key, slot) => {
-        const spec = actionSpec(key)
-        if (!spec) return null
-        const hold = holdProps(slot)
-        const fire = () => { if (!holdFired.current) spec.run() }
-        // The middle slot keeps the big accent circle. It is the one the thumb
-        // lands on without aiming, so it stays the emphasised one whatever is
-        // assigned to it rather than the emphasis belonging to recording.
-        if (slot === 1) {
-          return (
-            <button key={key} onClick={fire} {...hold} title={`${spec.label} (hold to change)`}
-              style={{
-                ...hold.style,
-                width: compact ? 52 : 86, height: compact ? 52 : 86,
-                borderRadius: '50%', border: 'none', cursor: 'pointer',
-                background: spec.accent && recording ? 'var(--map-ink)' : ACCENT,
-                boxShadow: `0 6px 20px ${spec.accent && recording ? 'rgba(28,28,30,0.3)' : accentAlpha(0.38)}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                transition: 'background 200ms', flexShrink: 0,
-                color: '#fff',
-              }}>
-              {spec.icon}
-            </button>
-          )
-        }
-        return (
-          <button key={key} onClick={fire} {...hold} title={`${spec.label} (hold to change)`}
-            style={{ ...tileBtn, ...hold.style, ...(compact ? { width: 38 } : null) }}>
-            <span style={{ ...tileCircle, background: 'var(--map-fill)', color: 'var(--map-ink)',
-              ...(compact ? { width: 38, height: 38 } : null) }}>
-              {spec.icon}
-            </span>
-            {!compact && <span style={tileLabel}>{spec.label}</span>}
-          </button>
-        )
-      })}
-    </div>
-  )
+  // The action row is gone with the card that floated it. The dock builds
+  // these straight from actionSpec, so a second builder for the same three
+  // buttons was one that could disagree with it.
 
   return (
     // Fixed to the viewport rather than flowing in the shell: the map is the
@@ -2966,6 +2901,14 @@ function MapHomeInner() {
             // typed at the top of the screen.
             route={fplRoute}
             onRouteText={setTypedRoute}
+            // The aircraft's own numbers, so the time and the fuel on the
+            // route board are this aeroplane's rather than a generic guess.
+            cruiseTas={num(cruisePlan?.tas) ?? num(ac?.cruise?.tas)}
+            burnGph={num(cruisePlan?.burnRate) ?? num(ac?.cruise?.burn)}
+            etd={route?.etd ?? null}
+            // The altitude chosen up here is the route's altitude, so the
+            // planner opens on the level the pilot already picked.
+            onAltitude={ft => setRoute(r => (r ? { ...r, cruiseAlt: ft } : r))}
             detailOpen={wxDetail} onDetailChange={setWxDetail}
             style={{ maxHeight: topCardMaxH }}
             expanded={topOpen} onExpandedChange={setTopOpen}
@@ -3199,41 +3142,11 @@ function MapHomeInner() {
         )}
       </FloatingCard>
 
-      {/* The actions, whenever the drawer has something of its own to say:
-          the flight plan, the read-back, or a route on the collapsed drawer.
-          Same card, same three buttons, moved onto the map so the subject is
-          not paying for them with the top of its own space.
-
-          One card rather than three, so it slides between the three heights
-          instead of one disappearing and another arriving in a different
-          place.
-
-          Above half screen it does not float and it is not in the drawer
-          either: there is no map left to float over, and the drawer is what
-          the pilot asked to see all of. See actionsFloating above. */}
-      <FloatingCard
-        visible={actionsFloating}
-        // Compact wherever it floats, with no exception for the planner.
-        //
-        // The planner kept the wide card on the argument that its stop is fixed
-        // at half the screen whether or not the card above it is wide, so the
-        // width cost nothing. It does not: the planner's half is the half a
-        // route is being drawn across, and a full-width slab with two labels on
-        // it was taking a third of what was left to look at. The other two read
-        // as one object moving between heights, and this one read as a
-        // different card arriving.
-        // Hugging its own width wherever it floats. A card as wide as the
-        // drawer put its three buttons a third of a screen apart and read as
-        // a bar of its own rather than as the small control that belongs to
-        // the card below it.
-        compact
-        // Above whichever stop the drawer is at, and above the recording stats
-        // when those are out too, rather than on top of them. One expression
-        // for both heights now that the stop is the only thing that decides it,
-        // so the card slides between them instead of jumping.
-        bottom={`${vh - stopY(vh, Math.min(snap, 50)) + (snap === CLOSED && recording ? 132 : 0) + 10}px`}>
-        {actionRow(true)}
-      </FloatingCard>
+      {/* The floating action card is gone. It carried the same three buttons
+          the dock does, on a card that appeared over the map whenever the
+          drawer had a route in it, and the dock is on screen at every position
+          the drawer has now. Two sets of the same controls, one of which moved
+          about, is one set too many. */}
 
       {/* The one line the drawer says about itself, on the floor of the
           screen rather than tucked under the route.
@@ -3503,26 +3416,12 @@ function MapHomeInner() {
             </div>
           )}
 
-          {/* A route exists, so the drawer says so: it is the only thing that
-              says what the line across the map is.
-
-              At rest it lives up here in the grab area, filled to the stop, and
-              a finger anywhere on it moves the sheet. With the plan open it
-              moves down into the plan's own scroller instead, because there it
-              is the top of a document rather than a fixed header: see below. */}
-          {hasRoute && !planning && (
-            <RouteSummary route={route} flight={flightFigures}
-              onOpen={openPlanner} onRemoveLeg={removeRouteLeg}
-              onRemoveEnd={removeRouteEnd}
-              onReorder={reorderRouteLeg} onAddStop={addRouteStop} onFocusPoint={focusRoutePoint}
-              fillTo={snap === CLOSED
-                // The hint's reserve only when there is a hint. It goes quiet
-                // while a route is on the drawer, and 28px was still being
-                // held back for a line that no longer renders, which is 28px
-                // taken off the card that replaced it.
-                ? Math.max(0, restPx - GRAB_ABOVE_ROUTE - 10 - safeBottom - (gestureHint ? HINT_RESERVE : 0))
-                : 0} />
-          )}
+          {/* The route chips are gone from the grab area. The drawer showed
+              the flight instead of the apps the moment a route existed, so a
+              pilot in the air had to put their plan away to reach anything.
+              The apps are what this sheet is for at every stop, and the route
+              lives in the bar at the top of the map where it can be read
+              without covering the map it describes. */}
         </div>
 
         {/* The flight plan itself, filling what is left of the drawer. Mounted

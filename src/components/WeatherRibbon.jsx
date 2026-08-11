@@ -18,6 +18,7 @@ import {
 } from '../lib/weather'
 import WeatherDetailOverlay from './WeatherDetailOverlay'
 import { resolveRouteText, routeToText } from '../lib/routeText'
+import RouteBoard from './RouteBoard'
 import AirportPickerModal from './AirportPickerModal'
 // The app's one saturated colour, shared so it changes in one place
 // rather than four.
@@ -62,6 +63,9 @@ const SECTION = { borderTop: '1px solid var(--map-hairline)' }
 
 export default function WeatherRibbon({
   icao, units = {}, style, onChangeAirport,
+  // What the figures need that this strip has no business working out itself:
+  // the aircraft's cruise numbers and the planned departure time.
+  cruiseTas, burnGph, etd, onAltitude,
   // The route, and the way to set one. This strip started life as a weather
   // readout for the home field; a route bar is what a pilot actually reaches
   // for at the top of a moving map, and the conditions belong to whichever
@@ -351,6 +355,21 @@ export default function WeatherRibbon({
                 </div>
               )}
             </div>
+          )}
+
+          {/* The flight itself, once there is one: what it comes to on one
+              page, what it looks like from the side on the next. Above the
+              field's conditions because the route is what the bar is now for,
+              and the conditions belong to one end of it. */}
+          {open && route?.length >= 2 && (
+            <RouteBoard
+              route={{
+                dep: route[0].name,
+                depPos: [route[0].lat, route[0].lon],
+                destPos: [route[route.length - 1].lat, route[route.length - 1].lon],
+                wpts: route.slice(1, -1),
+              }}
+              etd={etd} cruiseTas={cruiseTas} burnGph={burnGph} onAltitude={onAltitude} />
           )}
 
           <div style={{
