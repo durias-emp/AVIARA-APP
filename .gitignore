@@ -30,3 +30,6 @@ dist-ssr
 .cache/
 .vercel
 .env*
+
+# Repository backups. Local safety copies, not source.
+*.bundle
