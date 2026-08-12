@@ -71,10 +71,17 @@ function fmtMhz(mhz) {
 // different sources on different cycles, so they get two credits rather than
 // one. Ilopango's runway is community data and its frequencies are the
 // COCESNA eAIP: saying "OurAirports" over both would be wrong about half of it.
+//
+// Fragments now, not sentences. The two credits were two full lines of prose
+// at the foot of a card the owner wants read at a glance, so they share one
+// faint line instead: "Rwys FAA NASR 06 Aug 2026 · Freq FAA NASR 09 Jul 2026".
+// Compressed, never removed. The sourcing rule is the one thing this card may
+// not drop: community data announcing itself is the difference between this
+// plate and one pretending to be official.
 function freqCredit(source, cycles) {
-  if (source === 'FAA') return `Frequencies: FAA NASR${cycles?.FAA ? ` ${cycles.FAA}` : ''}.`
-  if (source === 'AIP') return `Frequencies: ${cycles?.AIP ?? 'the regional eAIP'}.`
-  return 'Frequencies: OurAirports, community data.'
+  if (source === 'FAA') return `FAA NASR${cycles?.FAA ? ` ${cycles.FAA}` : ''}`
+  if (source === 'AIP') return cycles?.AIP ?? 'regional eAIP'
+  return 'OurAirports, community'
 }
 
 function runwayLine(r) {
@@ -162,8 +169,8 @@ export default function AirportPlate({
   const elev = field.elevFt != null ? `${field.elevFt.toLocaleString()} ft` : null
   const longest = (field.runways ?? []).reduce((best, r) => (r[6] > (best?.[6] ?? 0) ? r : best), null)
   const sourceLine = field.source === 'FAA'
-    ? `Runway positions: FAA NASR${field.cycles?.FAA ? ` ${field.cycles.FAA}` : ''}, surveyed.`
-    : 'Runway positions: OurAirports, community data.'
+    ? `FAA NASR${field.cycles?.FAA ? ` ${field.cycles.FAA}` : ''}, surveyed`
+    : 'OurAirports, community'
 
   return (
     <div style={{ color: 'var(--map-ink)' }}>
@@ -223,14 +230,23 @@ export default function AirportPlate({
             </div>
           )}
 
+          {/* Name left, figure hard against the right edge, both sections the
+              same. The numbers used to sit in a second column a fixed way in
+              from the left, which put a ragged gulf of card between a short
+              label and its figure and made every row a different shape. Two
+              edges, nothing in between: this is how a checklist prints, and it
+              is the fastest thing there is to scan. */}
           <Label>Runways</Label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 11 }}>
             {runways.map(r => (
-              <div key={r.name} style={{ display: 'flex', gap: 10, fontSize: 12.5 }}>
-                <span style={{ fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', minWidth: 54 }}>
+              <div key={r.name} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                gap: 10, fontSize: 12.5,
+              }}>
+                <span style={{ fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', flexShrink: 0 }}>
                   {r.name}
                 </span>
-                <span style={{ color: 'var(--map-ink-dim)' }}>{r.size}</span>
+                <span style={{ color: 'var(--map-ink-dim)', textAlign: 'right' }}>{r.size}</span>
               </div>
             ))}
           </div>
@@ -244,8 +260,11 @@ export default function AirportPlate({
               <div style={{ fontSize: 12, color: 'var(--map-ink-faint)' }}>None published for this field.</div>
             )}
             {freqs?.map(([label, mhz]) => (
-              <div key={label} style={{ display: 'flex', gap: 10, fontSize: 12.5 }}>
-                <span style={{ color: 'var(--map-ink-dim)', minWidth: 104 }}>{label}</span>
+              <div key={label} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                gap: 10, fontSize: 12.5,
+              }}>
+                <span style={{ color: 'var(--map-ink-dim)' }}>{label}</span>
                 <span style={{ fontWeight: 700, fontFamily: 'ui-monospace, Menlo, monospace' }}>
                   {fmtMhz(mhz)}
                 </span>
@@ -255,9 +274,10 @@ export default function AirportPlate({
 
           <ChartAction chart={chart} ident={ident} onOpenChart={onOpenChart} />
 
-          <div style={{ marginTop: 10, fontSize: 10.5, color: 'var(--map-ink-faint)', lineHeight: 1.4 }}>
-            {sourceLine}
-            {freqSource && <><br />{freqSource}</>}
+          {/* One faint line, both sources on it. See freqCredit for why it is
+              compressed and why it can never be removed outright. */}
+          <div style={{ marginTop: 9, fontSize: 9.5, color: 'var(--map-ink-faint)', lineHeight: 1.4 }}>
+            Rwys {sourceLine}{freqSource && <> · Freq {freqSource}</>}
           </div>
         </div>
       )}
@@ -304,27 +324,21 @@ function ChartAction({ chart, ident, onOpenChart }) {
 
   if (chart.kind === 'faa-search') {
     return (
-      <>
-        <a style={BTN} href={chart.url} target="_blank" rel="noreferrer">
-          <DiagramIcon /> Search FAA charts
-        </a>
-        <div style={{ marginTop: 6, fontSize: 10.5, color: 'var(--map-ink-faint)', lineHeight: 1.4 }}>
-          No airport diagram is published for this field in the current cycle.
-        </div>
-      </>
+      <a style={BTN} href={chart.url} target="_blank" rel="noreferrer">
+        <DiagramIcon /> Search FAA charts
+      </a>
     )
   }
 
-  // Outside FAA coverage. The chart exists; this app does not carry it, and
-  // says whose it is rather than offering something that is not it.
-  return (
-    <div style={{
-      padding: '9px 11px', borderRadius: 11, background: 'var(--map-panel)',
-      fontSize: 11.5, color: 'var(--map-ink-dim)', lineHeight: 1.45,
-    }}>
-      {chart.kind === 'authority'
-        ? <>Aerodrome charts for {chart.country} are published by {chart.name}, in its AIP. This app does not carry them.</>
-        : <>No official aerodrome chart source is known to this app for this field.</>}
-    </div>
-  )
+  // Outside FAA coverage the card offers nothing rather than a paragraph.
+  //
+  // It used to carry a three-line notice naming the authority whose AIP holds
+  // the aerodrome chart, at the owner's request gone: on a card a pilot reads
+  // on every approach it was the tallest thing in the section, and what it
+  // said was that the app has nothing to show. A control that exists is
+  // offered; one that does not is not apologised for. Note what this does NOT
+  // touch: the sourcing rule covers data the card presents, and the runway and
+  // frequency figures still carry their sources in the line at the foot. No
+  // chart is shown here, so no chart source is owed.
+  return null
 }
