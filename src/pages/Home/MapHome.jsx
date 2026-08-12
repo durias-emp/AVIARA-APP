@@ -191,6 +191,10 @@ function useMeasuredHeight() {
 // picture is sized against a box it is not in.
 const BODY_PAD_TOP = 6
 const AC_IMG_GAP = 10
+// Between the aircraft's name and the tools grid. Named because the 80 stop's
+// photograph arithmetic has to agree with the style below, same as the two
+// above.
+const AC_TOOLS_GAP = 20
 // What sits above the route block inside the drawer's grab area: its top
 // padding, the handle, and the handle's margin. Named because the route block
 // is stretched to the foot of the resting stop and that arithmetic has to
@@ -362,7 +366,7 @@ function RouteSummary({ route, flight, onOpen, onRemoveLeg, onRemoveEnd, onReord
   const TONE = { warn: '#FF9500', alarm: '#FF3B30' }
   const figure = ({ value, label, dim, placeholder, tone, note }) => (
     <div key={label} style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 0,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0,
     }}>
       <span style={{
         // The whole word. These were cut to MC and VAR back when the figures
@@ -376,19 +380,15 @@ function RouteSummary({ route, flight, onOpen, onRemoveLeg, onRemoveEnd, onReord
         fontSize: 'clamp(8px, 2.5vw, 10px)',
         fontWeight: 600, color: 'var(--map-ink-faint)',
         letterSpacing: '0.4px', textTransform: 'uppercase',
-        // Wraps rather than truncating or spilling. Two short lines of a
-        // whole word beat one line of MAG.
-        //
-        // Two lines' worth of space whether or not the word needs both, so
-        // the four numbers sit on one baseline. Without it MAGNETIC COURSE
-        // pushed its own figure down and the row read as broken rather than
-        // as one word being longer than the others.
-        //
-        // Top aligned, so every label STARTS at the same height. Pushed to the
-        // bottom of that space instead, a one-line word sat a line lower than
-        // MAGNETIC COURSE's first line, and four headings at two different
-        // heights do not read as one row however well the numbers line up.
-        lineHeight: 1.15, minHeight: '2.3em', textAlign: 'center',
+        // One line of label height, not two. The two-line reservation was for
+        // MAGNETIC COURSE, which needed to wrap and whose neighbours had to
+        // hold space so the numbers shared a baseline. That label went when
+        // the eight figures became these six, and every one of the six is a
+        // single line in three columns on the narrowest phone. The reservation
+        // outlived its reason at a cost of ten pixels per row, and those
+        // twenty pixels are half of why the second row of numbers sat below
+        // the bottom of the screen at the resting stop.
+        lineHeight: 1.15, textAlign: 'center',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
       }}>{label}</span>
       <span style={{
@@ -421,14 +421,20 @@ function RouteSummary({ route, flight, onOpen, onRemoveLeg, onRemoveEnd, onReord
 
   return (
     <div style={{
-      marginTop: 10, position: 'relative',
+      marginTop: 6, position: 'relative',
       display: 'flex', flexDirection: 'column',
       // Stacked, not spread. Pushed to the ends of the resting stop the field
       // and its figures had a hand's width of nothing between them and read
       // as two cards that happened to share a drawer. They are one thing: the
       // route, and the numbers that describe it. Any height the stop has left
       // over falls below them rather than between.
-      justifyContent: 'flex-start', gap: 14,
+      //
+      // The margin and the gap are cut to what the resting stop can afford:
+      // with a route loaded this column plus the six figures has to close out
+      // at 164px on a 812px phone, and at 10 and 14 the second row of numbers
+      // ended below the screen. Every pixel here was taken from air, not from
+      // a number.
+      justifyContent: 'flex-start', gap: 10,
       minHeight: fillTo || undefined,
     }}>
       <RouteChips
@@ -466,7 +472,7 @@ function RouteSummary({ route, flight, onOpen, onRemoveLeg, onRemoveEnd, onReord
           // card. Centred, they read as spaced across the drawer at every
           // width, which is what the eye is measuring.
           justifyItems: 'center',
-          alignItems: 'flex-start', gap: '12px 10px',
+          alignItems: 'flex-start', gap: '7px 10px',
         }}>
           {/* Row one: the flight as flown. Distance is the sanity check the
               other five are measured against, then the two times. */}
@@ -910,6 +916,10 @@ export default function MapHome() {
   // guess at either is a guess at whether the name is on the screen.
   const [grabH, grabRef] = useMeasuredHeight()
   const [acTextH, acTextRef] = useMeasuredHeight()
+  // The tools grid too, because at the 80 stop the photograph has to leave
+  // room for it: 80 is the grid's own stop (see the audit declarations), and
+  // a full-size portrait above it was what sliced the second row of buttons.
+  const [toolsH, toolsRef] = useMeasuredHeight()
   const [dragY, setDragY] = useState(null)      // live offset while a finger is down
   const drag = useRef(null)
   // The drawer itself, so a block's offset inside it can be measured against
@@ -1842,6 +1852,13 @@ export default function MapHome() {
     grabRef(node)
     grabAudit?.(node)
   }, [grabRef, grabAudit])
+  // Same composition for the tools grid: measured for the photograph's
+  // arithmetic, declared for the audit, one element.
+  const toolsAudit = declareStop(80, 'tools grid')
+  const toolsAndAudit = useCallback((node) => {
+    toolsRef(node)
+    toolsAudit?.(node)
+  }, [toolsRef, toolsAudit])
 
   // Where the bottom of the chip stack sits: clear of the sheet, then clear of
   // the two map controls, so the chips rest on top of the layers button that
@@ -1919,8 +1936,17 @@ export default function MapHome() {
   // that hangs below the screen, so at 50 it is nowhere near the edge the
   // content is actually being cut at.
   const bodyVisibleH = Math.max(0, (visibleH - liftedY) - grabH - safeBottom)
+  // At the 80 stop, and only there, the tools grid is part of what the
+  // photograph must leave room for. 80 is the grid's stop: the whole menu,
+  // whole buttons, which a full-size portrait was not allowing, so the second
+  // row of tools was sliced mid-button and everything below it was
+  // unreachable, because below full screen the body does not scroll. At 50
+  // the grid is below the fold by design and owes the photograph nothing, and
+  // at 100 the body scrolls, so the subtraction changes nothing: the room is
+  // larger than the full 210 either way.
   const acImgCap = Math.max(0, Math.min(210,
-    Math.round(bodyVisibleH - acTextH - BODY_PAD_TOP - AC_IMG_GAP - AC_BREATHING)))
+    Math.round(bodyVisibleH - acTextH - BODY_PAD_TOP - AC_IMG_GAP - AC_BREATHING
+      - (snap === 80 ? toolsH + AC_TOOLS_GAP : 0))))
 
   // Declared below restY rather than with the other map effects: it reads it,
   // and a const cannot be read before it is initialised. Placed above, the
@@ -2834,7 +2860,7 @@ export default function MapHome() {
           <button ref={declareStop(50, 'aircraft')}
             onClick={() => navigate(ac?.id ? `/aircraft/${ac.id}` : '/aircraft')} style={{
             display: 'block', width: '100%', textAlign: 'left', padding: 0,
-            marginBottom: 20, border: 'none', background: 'none', cursor: 'pointer',
+            marginBottom: AC_TOOLS_GAP, border: 'none', background: 'none', cursor: 'pointer',
           }}>
             {ac?.image ? (
               // Whatever is left after the name, worked out above. 210 is the
@@ -2891,7 +2917,7 @@ export default function MapHome() {
               options to choose from rather than a task in itself. This is the
               one that used to be at 80 only by accident, because it was
               whatever was left after the aircraft above it. */}
-          <div ref={declareStop(80, 'tools grid')}
+          <div ref={toolsAndAudit}
             style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {TOOLS.map(t => (
               <button key={t.view} onClick={() => setDrawerView(t.view)} style={{

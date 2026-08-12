@@ -267,10 +267,13 @@ export default function RouteChips({
           // start, a five-point route wraps into space that was already there
           // and nothing else on the card shifts.
           //
-          // 27px a chip plus the 7px between the rows plus 11px of padding
-          // top and bottom. Measured off the chips rather than guessed, and
-          // the chips are the smaller size again.
-          padding: '11px 11px', minHeight: 83, boxSizing: 'border-box',
+          // 27px a chip plus the 7px between the rows plus 8px of padding top
+          // and bottom. Measured off the chips rather than guessed, and the
+          // chips are the smaller size again. The padding came down from 11
+          // when the six figures moved in below: the two-row reservation
+          // stays, and the six pixels this returns are part of what lets the
+          // whole column close out inside the resting stop.
+          padding: '8px 11px', minHeight: 77, boxSizing: 'border-box',
           background: 'var(--map-fill-soft)', borderRadius: 16,
           border: '0.5px solid var(--map-hairline)',
         }}>
