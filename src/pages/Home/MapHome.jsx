@@ -1827,7 +1827,19 @@ export default function MapHome() {
   // that rests a little lower whenever it happens to be carrying something is
   // a drawer with no position at all. Content fits the stop; the stop does
   // not grow to the content.
-  const restPx = vh - stopY(vh, 25)
+  //
+  // The resting sheet stands ON the home indicator's strip, not behind it.
+  // A stop names how much of the screen the sheet covers, and the indicator's
+  // strip is not screen anyone can use: laid against the stop's own foot, the
+  // bottom row of figures sat flush against the edge of the phone, which the
+  // owner read as touching it. So the resting position is lifted by exactly
+  // the inset, zero on the desktop and the strip on the phone, and everything
+  // that stands relative to the resting sheet (the action card, the chips,
+  // the top card's ceiling) stands on restPx and rises with it. Only the
+  // resting stop is lifted: from 50 up the sheet's foot is below the fold by
+  // construction and has nothing to clear.
+  const restStopY = stopY(vh, 25) - safeBottom
+  const restPx = vh - restStopY
 
   // The stops own their content, and this is what holds them to it.
   //
@@ -1900,7 +1912,7 @@ export default function MapHome() {
   // 0 is full screen and larger numbers are further down.
   // One line each way now that a stop is a number: where the drawer is
   // resting, and where it is actually drawn once a finger is on it.
-  const restY = stopY(vh, snap)
+  const restY = snap === 25 ? restStopY : stopY(vh, snap)
   // The keyboard does not move the shell, so it cannot be allowed to move the
   // stops, but it does cover the bottom of it. The drawer rises by exactly
   // what is covered, never past the top of the screen, so the field being
@@ -2049,7 +2061,7 @@ export default function MapHome() {
     // carrying. The plan used to be clamped at 50, from when it owned the
     // drawer; with its list under the route the finger stopping dead halfway
     // up is the drawer refusing to move.
-    const next = Math.min(stopY(vh, 25), Math.max(stopY(vh, 100), d.fromY + shifted))
+    const next = Math.min(restStopY, Math.max(stopY(vh, 100), d.fromY + shifted))
     d.lastY = next
     setDragY(next)
   }
@@ -2498,7 +2510,7 @@ export default function MapHome() {
         // when those are out too, rather than on top of them. One expression
         // for both heights now that the stop is the only thing that decides it,
         // so the card slides between them instead of jumping.
-        bottom={`${vh - stopY(vh, Math.min(snap, 50)) + (snap === 25 && recording ? 132 : 0) + 10}px`}>
+        bottom={`${(snap === 25 ? restPx : vh - stopY(vh, Math.min(snap, 50))) + (snap === 25 && recording ? 132 : 0) + 10}px`}>
         {actionRow(true)}
       </FloatingCard>
 
