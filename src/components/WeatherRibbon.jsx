@@ -334,7 +334,19 @@ export default function WeatherRibbon({
             0fr still contributes its content's WIDTH, so the airport name and
             the metric grid were setting the width of a pill showing two short
             words: it measured 231px for something that needs about 120. */}
-        <div style={{ overflow: 'hidden', minHeight: 0, width: open ? 'auto' : 0 }}>
+        {/* The scroller, and the ONLY one in the card.
+            It used to sit further in, around the conditions alone, which was
+            right when the conditions were all the expansion held. The route
+            box, the alternate, the figures and the field tabs all arrived
+            above it as siblings, so the card grew past its own cap and the
+            full-report button fell off the bottom with nothing to scroll it
+            back. Everything the tap reveals is inside it now. */}
+        <div style={{
+          overflow: 'hidden', minHeight: 0, width: open ? 'auto' : 0,
+          maxHeight: open ? bodyMaxH : undefined,
+          overflowY: open && bodyMaxH ? 'auto' : undefined,
+          WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
+        }}>
           {/* The scroller, and the only one in the card. Everything the tap
               reveals lives in here, so a field with five runways and six
               frequencies under a full set of conditions runs off the bottom of
@@ -449,7 +461,6 @@ export default function WeatherRibbon({
 
           <div style={{
             minWidth: open ? 236 : 0,
-            maxHeight: bodyMaxH, overflowY: bodyMaxH ? 'auto' : undefined,
             overscrollBehavior: 'contain',
           }}>
             <div style={{ padding: '2px 12px 11px' }}>
