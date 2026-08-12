@@ -2096,6 +2096,17 @@ function MapHomeInner() {
   // the map is the same object the planner opens, the figures are computed
   // from, and the data bar measures against. Two stores would have meant two
   // routes disagreeing about the same flight.
+  // Stable, so a child that watches it does not see a new function on every
+  // render. The inline arrow this replaced was half of an infinite loop.
+  const setCruiseAlt = useCallback(ft => {
+    setRoute(r => {
+      if (!r || r.cruiseAlt === ft) return r
+      const next = { ...r, cruiseAlt: ft }
+      put('settings', { key: 'route', ...next }).catch(() => {})
+      return next
+    })
+  }, [])
+
   const setTypedRoute = useCallback(points => {
     if (!points || points.length < 2) {
       del('settings', 'route').catch(() => {})
@@ -2901,7 +2912,7 @@ function MapHomeInner() {
             etd={route?.etd ?? null}
             // The altitude chosen up here is the route's altitude, so the
             // planner opens on the level the pilot already picked.
-            onAltitude={ft => setRoute(r => (r ? { ...r, cruiseAlt: ft } : r))}
+            onAltitude={setCruiseAlt}
             // The alternate rides with the route, so the planner opens on the
             // same one and the figures never see it as a leg.
             alternate={route?.alternate ?? null}

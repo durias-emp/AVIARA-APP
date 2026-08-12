@@ -712,9 +712,23 @@ export default defineConfig(({ mode }) => {
     server: {
       // Vite rejects requests whose Host header it doesn't recognise, which
       // blocks the phone preview served through a Cloudflare quick tunnel.
-      // The leading dot allows any *.trycloudflare.com subdomain — the quick
+      // The leading dot allows any *.trycloudflare.com subdomain: the quick
       // tunnel picks a fresh random one on every run.
       allowedHosts: ['.trycloudflare.com'],
+      // A port each, and neither is allowed to wander.
+      //
+      // Vite's default is to take the next free port when its own is busy,
+      // which is the wrong behaviour for these two. The desktop and the phone
+      // are different ORIGINS to a browser, and a browser keeps settings,
+      // permissions and its service worker per origin. A dev server that
+      // quietly moved to 5174 handed back an app with the drawer glass at its
+      // default, location unasked, and a stale service worker: identical code
+      // that looks a version behind.
+      //
+      // strictPort makes a busy port an error instead. Failing to start is a
+      // fixable surprise; starting somewhere else is a confusing one.
+      port: phoneTest ? 5174 : 5173,
+      strictPort: true,
       ...(phoneTest ? { host: true } : {}),
     },
     plugins: [

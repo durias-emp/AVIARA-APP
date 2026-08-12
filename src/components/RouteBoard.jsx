@@ -194,7 +194,22 @@ export default function RouteBoard({ route, etd, cruiseTas, burnGph, onAltitude 
     () => suggestAltitude({ rules, magCourseDeg: magCourse, terrainMaxFt: terrain?.maxFt ?? null }),
     [rules, magCourse, terrain?.maxFt])
   const effAlt = alt != null && altitudes.includes(alt) ? alt : suggested
-  useEffect(() => { onAltitude?.(effAlt) }, [effAlt, onAltitude])
+  // Reported only when the level actually changes, and NOT keyed on the
+  // callback's identity.
+  //
+  // This was an infinite render loop. The parent passes an inline arrow, so
+  // onAltitude is a new function every render; an effect depending on it fired
+  // every render, wrote the route, caused the next render, and went round
+  // again until React gave up with "Maximum update depth exceeded". The ref
+  // holds the last value reported, so a render that changed nothing reports
+  // nothing.
+  const reportedAlt = useRef(null)
+  useEffect(() => {
+    if (effAlt == null || reportedAlt.current === effAlt) return
+    reportedAlt.current = effAlt
+    onAltitude?.(effAlt)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effAlt])
 
   useEffect(() => {
     if (!route?.dep) return
