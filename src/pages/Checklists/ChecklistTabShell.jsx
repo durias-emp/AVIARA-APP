@@ -34,7 +34,7 @@ function PaneActivityProvider({ onActiveChange, children }) {
 export default function ChecklistTabShell({
   sections, resetKey, checked, onToggle, total,
   customItems, onDeleteCustomItem, onUpdateCustomItemValue, completeBar,
-  activeIndex, onActiveIndexChange, embedded = false, expanded = true, onStepOpenChange,
+  activeIndex, onActiveIndexChange, embedded = false, onStepOpenChange,
 }) {
   const [dragPx, setDragPx] = useState(0)
   const [dragging, setDragging] = useState(false)
@@ -289,27 +289,28 @@ export default function ChecklistTabShell({
           }
           : { transform: footerHidden ? 'translateY(calc(100% + 24px + var(--safe-bottom)))' : 'translateY(0)' }}
       >
-        {/* The numbered step menu, on the same rule as the buttons under it.
-            Full screen it costs nothing and it is the only way to reach the
-            other four groups without knowing that the panes swipe, which is a
-            gesture with nothing on screen to advertise it: from the Route
-            group, Performance, Airport, Aircraft and Pilot were unreachable
-            by anyone who had not discovered the swipe.
+        {/* The numbered step menu, at every height, at the owner's call.
+            It is the only way to reach the other four groups without knowing
+            that the panes swipe, which is a gesture with nothing on screen to
+            advertise it: from the Route group, Performance, Airport, Aircraft
+            and Pilot were unreachable by anyone who had not discovered it.
 
-            Below full screen it goes, and that has not changed. In a
-            half-height drawer it and the buttons took 132px off a panel that
-            is already short, which was enough to hide the third of the three
-            Route cards. There the swipe is the way. */}
-        {(!embedded || expanded) && (
-          <StepTabBar
-            sections={sections}
-            activeIndex={activeIndex}
-            onSelect={onActiveIndexChange}
-            checked={checked}
-            customItems={customItems}
-            flat={embedded}
-          />
-        )}
+            It used to appear only at full screen, on the theory that a
+            half-height drawer had no room to spare, but that argument was
+            costed against the bar AND the two buttons together, 132px. The
+            bar alone is a third of that, it flows here directly under the
+            step cards, and at the heights where there genuinely is no room it
+            is below the fold rather than on top of anything: in flow, being
+            further down the sheet than the sheet is tall IS how it yields.
+            The two buttons keep their full-screen gate: see completeBar. */}
+        <StepTabBar
+          sections={sections}
+          activeIndex={activeIndex}
+          onSelect={onActiveIndexChange}
+          checked={checked}
+          customItems={customItems}
+          flat={embedded}
+        />
         {completeBar}
       </div>
     </div>
