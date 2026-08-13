@@ -3,9 +3,25 @@
 Flight planning for general aviation pilots. React 19 + Vite PWA, offline
 first, installed to the home screen and flown with.
 
-This is the shared, live project (`durias-emp/AVIARA-APP`), worked on by two
-people from separate machines. The production app deploys from this repo, so
-divergence between the two is routine rather than exceptional.
+This is the shared, live project, worked on by two people from separate
+machines. Divergence between the two is routine rather than exceptional.
+
+## Where the app ships from, since 12 August 2026
+
+Production ships from **`jjmcb123/AVIARA`**, James's repository, whose `main`
+grew out of this line (`vector-map-spike` at `f315d11`) plus his work since.
+His own commit `cc2505b` records the move: merging into
+`durias-emp/AVIARA-APP`'s `main` no longer reaches production. That original
+repository, this working copy's `origin`, is now the archive of the line the
+new one grew from.
+
+Every rule below about `main` therefore applies to `jjmcb123/AVIARA`'s
+`main`: never push to it, never merge into it, pull requests only, and the
+merge click is a human's. Feature branches go to `jjmcb123/AVIARA` (remote
+`james` in this working copy). One caveat the sections below predate: whether
+`pqrh-app.vercel.app` now builds from the new repository has not been
+verified from this machine, so ask rather than assume when deployment wiring
+matters.
 
 ## Branches, and the one rule
 
